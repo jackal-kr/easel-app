@@ -1819,7 +1819,7 @@ canvas_area (EaselWindow *win, int *w, int *h)
 static void
 as6_fit_to_window (void)
 {
-  static const int sizes[][2] = { { 3000, 2000 }, { 800, 600 }, { 100, 100 }, { 10000, 100 } };
+  static const int sizes[][2] = { { 3000, 2000 }, { 800, 600 }, { 100, 100 }, { 10000, 100 }, { 5840, 5184 } };
 
   for (guint i = 0; i < G_N_ELEMENTS (sizes); i++)
     {
@@ -1835,7 +1835,7 @@ as6_fit_to_window (void)
       scroller = GTK_SCROLLED_WINDOW (gtk_widget_get_ancestor (GTK_WIDGET (canvas), GTK_TYPE_SCROLLED_WINDOW));
       wait_for_layout (win);
       canvas_area (win, &aw, &ah);
-      want = easel_view_fit_level (aw, ah, sizes[i][0], sizes[i][1]);
+      want = easel_view_fit_zoom (aw, ah, sizes[i][0], sizes[i][1]);
 
       gtk_adjustment_set_value (gtk_scrolled_window_get_hadjustment (scroller), 300);
       gtk_adjustment_set_value (gtk_scrolled_window_get_vadjustment (scroller), 200);
@@ -1857,6 +1857,22 @@ as6_fit_to_window (void)
       gtk_widget_queue_resize (GTK_WIDGET (win));
       wait_for_layout (win);
       g_assert_cmpint (easel_window_get_zoom (win), ==, want);
+
+      /* Zoom In and Zoom Out go to the level above and below (REQ-0004-04). */
+      if (want < 800)
+        {
+          g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-in", NULL);
+          wait_for_layout (win);
+          g_assert_cmpint (easel_window_get_zoom (win), ==, easel_view_zoom_step (want, 1));
+          g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-fit", NULL);
+          wait_for_layout (win);
+        }
+      if (want > 10)
+        {
+          g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-out", NULL);
+          wait_for_layout (win);
+          g_assert_cmpint (easel_window_get_zoom (win), ==, easel_view_zoom_step (want, -1));
+        }
       close_windows ();
     }
   write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
@@ -3491,6 +3507,507 @@ as2_new_memory_error (void)
   write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
 }
 
+/* ---- 0005: Open ---- */
+
+static char *
+fixture_path (const char *name)
+{
+  const char *dir = g_getenv ("EASEL_TEST_DATA");
+
+  return g_build_filename (dir ? dir : "tests/data", name, NULL);
+}
+
+/* A copy of a fixture in a fresh folder, so that Save may write it. */
+static char *
+fixture_copy (const char *name)
+{
+  g_autofree char *source = fixture_path (name);
+  g_autofree char *dir = g_dir_make_tmp ("easel-ui-XXXXXX", NULL);
+  char *path = g_build_filename (dir, name, NULL);
+  g_autofree char *contents = NULL;
+  gsize len;
+
+  g_assert_true (g_file_get_contents (source, &contents, &len, NULL));
+  g_assert_true (g_file_set_contents (path, contents, (gssize) len, NULL));
+  return path;
+}
+
+/* Asks the window to open the file and waits until the picture is shown or the error is. */
+static void
+open_and_wait (EaselWindow *win, const char *path)
+{
+  g_autoptr (GFile) file = g_file_new_for_path (path);
+  gint64 deadline = g_get_monotonic_time () + 20 * G_USEC_PER_SEC;
+
+  easel_window_open_file (win, file);
+  while (easel_window_is_loading (win) && g_get_monotonic_time () < deadline)
+    g_main_context_iteration (NULL, FALSE);
+  g_assert_false (easel_window_is_loading (win));
+}
+
+/* The pattern of the fixtures (make-fixtures.py) at one pixel, as the picture holds it. */
+static uint32_t
+fixture_pixel (int x, int y)
+{
+  uint32_t a = (x + y) % 4 == 0 ? 0 : (x % 3 == 0 ? 128 : 255);
+  uint32_t r = (uint32_t) (30 * x + 20), g = (uint32_t) (40 * y + 10), b = (uint32_t) (100 + x + y);
+
+  return a == 0 ? 0 : (a << 24) | (r << 16) | (g << 8) | b;
+}
+
+static void
+assert_fixture_picture (EaselWindow *win)
+{
+  assert_size (win, 7, 5);
+  for (int y = 0; y < 5; y++)
+    for (int x = 0; x < 7; x++)
+      g_assert_cmphex (easel_image_get (easel_window_get_picture (win), x, y), ==, fixture_pixel (x, y));
+}
+
+/* The Plan's promise: the busy cursor is shown, and has been sent to the screen, before decoding starts. */
+static void
+busy_cursor_before_decoding (void)
+{
+  EaselWindow *win = start_window ();
+  const EaselImage *before = easel_window_get_picture (win);
+  g_autofree char *path = fixture_copy ("rgba.png");
+  g_autoptr (GFile) file = g_file_new_for_path (path);
+  GdkCursor *cursor;
+
+  wait_for_layout (win);
+  g_assert_null (easel_window_get_cursor_at_decode (win));
+  easel_window_open_file (win, file);
+
+  /* Right after the request: nothing decoded yet, the window says it is loading, the cursor is the busy one. */
+  g_assert_true (easel_window_is_loading (win));
+  g_assert_true (easel_window_get_picture (win) == before);
+  cursor = gtk_widget_get_cursor (GTK_WIDGET (win));
+  g_assert_nonnull (cursor);
+  g_assert_cmpstr (gdk_cursor_get_name (cursor), ==, "wait");
+  g_assert_cmpint (easel_window_get_frames_before_decode (win), ==, -1);       /* not started */
+  /* Also over the canvas and the area around it, which have cursors of their own. */
+  g_assert_cmpstr (gdk_cursor_get_name (gtk_widget_get_cursor (GTK_WIDGET (easel_window_get_canvas (win)))), ==, "wait");
+  g_assert_cmpstr (gdk_cursor_get_name (gtk_widget_get_cursor (
+                     gtk_widget_get_ancestor (GTK_WIDGET (easel_window_get_canvas (win)), GTK_TYPE_SCROLLED_WINDOW))),
+                   ==, "wait");
+  /* Input is ignored meanwhile. */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "new", NULL);
+  g_assert_true (easel_window_get_picture (win) == before);
+
+  /* The decode starts after a frame has been painted, and the cursor was the busy one when it did. */
+  {
+    gint64 deadline = g_get_monotonic_time () + 20 * G_USEC_PER_SEC;
+
+    while (easel_window_is_loading (win) && g_get_monotonic_time () < deadline)
+      g_main_context_iteration (NULL, FALSE);
+  }
+  g_assert_cmpstr (easel_window_get_cursor_at_decode (win), ==, "wait");
+  g_assert_cmpint (easel_window_get_frames_before_decode (win), >=, 1);
+  assert_fixture_picture (win);
+  g_assert_null (gtk_widget_get_cursor (GTK_WIDGET (win)));
+  close_windows ();
+}
+
+/* REQ-0005-07: the opened picture replaces the current one, and the view starts at its top-left at 100 %. */
+static void
+as6_open_replaces_picture (void)
+{
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  g_autofree char *path = fixture_copy ("rgba.png");
+  uint32_t *px;
+  int w, h, cx, cy;
+
+  write_settings ("[new-picture]\nwidth=2000\nheight=2000\n");
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-large", NULL);
+  wait_for_layout (win);
+  gtk_adjustment_set_value (gtk_scrolled_window_get_hadjustment (GTK_SCROLLED_WINDOW (
+                              gtk_widget_get_ancestor (GTK_WIDGET (canvas), GTK_TYPE_SCROLLED_WINDOW))), 300);
+
+  open_and_wait (win, path);
+  wait_for_layout (win);
+  assert_fixture_picture (win);
+  g_assert_cmpstr (gtk_window_get_title (GTK_WINDOW (win)), ==, "rgba.png – Easel");
+  g_assert_false (easel_window_get_modified (win));
+  g_assert_false (action_enabled (win, "undo"));
+  g_assert_cmpint (easel_canvas_get_zoom (canvas), ==, 100);
+  g_assert_cmpstr (easel_window_get_zoom_text (win), ==, "100%");
+  g_assert_cmpstr (easel_status_bar_get_text (easel_window_get_status_bar (win), EASEL_STATUS_SIZE), ==, "7 × 5 px");
+
+  /* What is drawn: the picture's top-left pixel (1, 0), opaque, is at the canvas origin plus one. */
+  px = render_pixels (win, &w, &h, &cx, &cy);
+  g_assert_cmphex (px[(gsize) cy * (gsize) w + (gsize) (cx + 1)], ==, 0xFF320A65u);
+  g_free (px);
+
+  /* Save writes the same file again without asking. */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "save", NULL);
+  g_assert_null (other_toplevel (win));
+  g_assert_cmpint (count_alert_dialogs (GTK_WIDGET (win), &(AdwDialog *) { NULL }), ==, 0);
+  g_assert_false (easel_window_get_modified (win));
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* REQ-0005-08: a modified picture asks first, before the file dialog. */
+static void
+as7_prompt_before_open_dialog (void)
+{
+  EaselWindow *win = start_window ();
+  const EaselImage *before = easel_window_get_picture (win);
+
+  wait_for_layout (win);
+  use_pencil (win);
+  A_STROKE (win);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "open", NULL);
+  wait_for_dialogs (win, 1);
+  wait_for_layout (win);
+  assert_unsaved_prompt (win, "Untitled");
+  g_assert_null (other_toplevel (win));                /* no file dialog yet */
+
+  /* Discard goes on to the file dialog; cancelling that leaves the picture as it was, still modified (REQ-0005-04). */
+  respond (win, "discard");
+  wait_for_layout (win);
+  {
+    GtkWindow *chooser = other_toplevel (win);
+
+    g_assert_nonnull (chooser);
+    gtk_window_close (chooser);   /* as Esc does: the dialog ends as cancelled */
+  }
+  wait_for_layout (win);
+  g_assert_true (easel_window_get_picture (win) == before);
+  g_assert_cmphex (easel_image_get (easel_window_get_picture (win), 5, 3), ==, 0xFF000000u);
+  g_assert_true (easel_window_get_modified (win));
+  g_assert_true (action_enabled (win, "undo"));
+
+  /* An unmodified picture shows the dialog at once. */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_false (easel_window_get_modified (win));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "open", NULL);
+  wait_for_layout (win);
+  g_assert_cmpint (count_alert_dialogs (GTK_WIDGET (win), &(AdwDialog *) { NULL }), ==, 0);
+  g_assert_nonnull (other_toplevel (win));
+  gtk_window_close (other_toplevel (win));
+  wait_for_layout (win);
+  close_windows ();
+}
+
+/* REQ-0005-04 for Open, without the file dialog: the prompt, Cancel, Discard, and a bad file after Discard. */
+static void
+as3_open_and_prompt (void)
+{
+  EaselWindow *win = start_window ();
+  g_autofree char *good = fixture_copy ("rgba.png");
+  g_autofree char *bad = fixture_copy ("text.png");
+  g_autoptr (GFile) good_file = g_file_new_for_path (good);
+  g_autoptr (GFile) bad_file = g_file_new_for_path (bad);
+  const EaselImage *before = easel_window_get_picture (win);
+
+  wait_for_layout (win);
+  use_pencil (win);
+  A_STROKE (win);
+
+  easel_window_open_file (win, good_file);
+  wait_for_dialogs (win, 1);
+  assert_unsaved_prompt (win, "Untitled");
+  g_assert_false (easel_window_is_loading (win));
+  respond (win, "cancel");
+  g_assert_false (easel_window_is_loading (win));
+  g_assert_true (easel_window_get_picture (win) == before);
+  g_assert_true (easel_window_get_modified (win));
+
+  /* Discard, then a file that cannot be opened: the old picture is still there, and still modified. */
+  easel_window_open_file (win, bad_file);
+  wait_for_dialogs (win, 1);
+  respond (win, "discard");
+  {
+    gint64 deadline = g_get_monotonic_time () + 20 * G_USEC_PER_SEC;
+
+    while (easel_window_is_loading (win) && g_get_monotonic_time () < deadline)
+      g_main_context_iteration (NULL, FALSE);
+  }
+  wait_for_dialogs (win, 1);
+  g_assert_cmpstr (adw_alert_dialog_get_heading (open_alert (win)), ==, "Could Not Open “text.png”");
+  g_assert_true (easel_window_get_picture (win) == before);
+  g_assert_cmphex (easel_image_get (easel_window_get_picture (win), 5, 3), ==, 0xFF000000u);
+  g_assert_true (easel_window_get_modified (win));
+  adw_dialog_close (ADW_DIALOG (open_alert (win)));
+  wait_for_dialogs (win, 0);
+
+  /* Discard, then a good file: the picture is replaced. */
+  easel_window_open_file (win, good_file);
+  wait_for_dialogs (win, 1);
+  respond (win, "discard");
+  {
+    gint64 deadline = g_get_monotonic_time () + 20 * G_USEC_PER_SEC;
+
+    while (easel_window_is_loading (win) && g_get_monotonic_time () < deadline)
+      g_main_context_iteration (NULL, FALSE);
+  }
+  assert_fixture_picture (win);
+  g_assert_false (easel_window_get_modified (win));
+  close_windows ();
+}
+
+/* REQ-0005-09: each reason has its body, and nothing changes. */
+static void
+as8_open_error_dialog (void)
+{
+  static const struct { const char *name, *body; } cases[] = {
+    { "text.png", "This is not a picture the app can open." },
+    { "empty.png", "This is not a picture the app can open." },
+    { "cut-header.png", "This is not a picture the app can open." },
+    { "vector.svg", "This is not a picture the app can open." },
+    { "w10001.png", "The picture is bigger than 10000 pixels in width or height." },
+    { "nonexistent.png", "The file cannot be read." },
+  };
+  EaselWindow *win = start_window ();
+  const EaselImage *before = easel_window_get_picture (win);
+  g_autofree char *title = g_strdup (gtk_window_get_title (GTK_WINDOW (win)));
+  struct rlimit old;
+  AdwAlertDialog *dialog;
+  g_autofree char *path = NULL;
+
+  wait_for_layout (win);
+  for (gsize i = 0; i < G_N_ELEMENTS (cases); i++)
+    {
+      g_autofree char *file = fixture_path (cases[i].name);
+      g_autofree char *heading = g_strdup_printf ("Could Not Open “%s”", cases[i].name);
+
+      open_and_wait (win, file);
+      wait_for_dialogs (win, 1);
+      dialog = open_alert (win);
+      g_assert_nonnull (dialog);
+      g_assert_cmpstr (adw_alert_dialog_get_heading (dialog), ==, heading);
+      g_assert_cmpstr (adw_alert_dialog_get_body (dialog), ==, cases[i].body);
+      adw_dialog_close (ADW_DIALOG (dialog));
+      wait_for_dialogs (win, 0);
+      g_assert_true (easel_window_get_picture (win) == before);
+      g_assert_cmpstr (gtk_window_get_title (GTK_WINDOW (win)), ==, title);
+      g_assert_false (easel_window_get_modified (win));
+      g_assert_false (action_enabled (win, "undo"));
+      g_assert_null (gtk_widget_get_cursor (GTK_WIDGET (win)));
+    }
+
+  /* A folder is not readable as a file. */
+  path = g_dir_make_tmp ("easel-ui-XXXXXX", NULL);
+  open_and_wait (win, path);
+  wait_for_dialogs (win, 1);
+  g_assert_cmpstr (adw_alert_dialog_get_body (open_alert (win)), ==, "The file cannot be read.");
+  adw_dialog_close (ADW_DIALOG (open_alert (win)));
+  wait_for_dialogs (win, 0);
+
+  /* A picture that cannot get its memory (simulated: the address space is limited). */
+  g_assert_true (limit_memory (&old, 100));
+  {
+    g_autofree char *big = fixture_path ("flat6000.png");
+
+    open_and_wait (win, big);
+  }
+  g_assert_cmpint (setrlimit (RLIMIT_AS, &old), ==, 0);
+  wait_for_dialogs (win, 1);
+  dialog = open_alert (win);
+  g_assert_cmpstr (adw_alert_dialog_get_heading (dialog), ==, "Could Not Open “flat6000.png”");
+  g_assert_cmpstr (adw_alert_dialog_get_body (dialog), ==, "There is not enough memory for a picture of 6000 × 6000 pixels.");
+  adw_dialog_close (ADW_DIALOG (dialog));
+  wait_for_dialogs (win, 0);
+  g_assert_true (easel_window_get_picture (win) == before);
+  close_windows ();
+}
+
+/* REQ-0005-17: 10000 opens; over it is refused, also after the orientation turns it. */
+static void
+as17_too_big_dialog (void)
+{
+  static const char *refused[] = { "w10001.png", "h10001.png", "big10001.png", "wide-rot6.jpg" };
+  EaselWindow *win = start_window ();
+  const EaselImage *before = easel_window_get_picture (win);
+
+  wait_for_layout (win);
+  for (gsize i = 0; i < G_N_ELEMENTS (refused); i++)
+    {
+      g_autofree char *file = fixture_path (refused[i]);
+      AdwAlertDialog *dialog;
+
+      open_and_wait (win, file);
+      wait_for_dialogs (win, 1);
+      dialog = open_alert (win);
+      g_assert_cmpstr (adw_alert_dialog_get_body (dialog), ==, "The picture is bigger than 10000 pixels in width or height.");
+      adw_dialog_close (ADW_DIALOG (dialog));
+      wait_for_dialogs (win, 0);
+      g_assert_true (easel_window_get_picture (win) == before);
+      g_assert_false (easel_window_get_modified (win));
+    }
+  {
+    g_autofree char *file = fixture_path ("w10000.png");
+
+    open_and_wait (win, file);
+    assert_size (win, 10000, 1);
+  }
+  close_windows ();
+}
+
+/* REQ-0005-16: a freshly opened picture starts a history whose first state is the saved one. */
+static void
+as14_saved_state_across_open_and_save_as (void)
+{
+  EaselWindow *win = start_window ();
+  g_autofree char *path = fixture_copy ("rgba.png");
+
+  wait_for_layout (win);
+  use_pencil (win);
+  open_and_wait (win, path);
+  g_assert_false (action_enabled (win, "undo"));
+  g_assert_false (easel_window_get_modified (win));
+  /* Drawn away from the handles: on a picture this small their hit areas reach into it (REQ-0004-16). */
+  stroke (win, 1.5, 1.5, 3.5, 1.5);
+  g_assert_true (easel_window_get_modified (win));
+  g_assert_cmpstr (gtk_window_get_title (GTK_WINDOW (win)), ==, "• rgba.png – Easel");
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_false (easel_window_get_modified (win));
+  g_assert_cmpstr (gtk_window_get_title (GTK_WINDOW (win)), ==, "rgba.png – Easel");
+  close_windows ();
+}
+
+/* REQ-0005-02: quit does nothing while the Open file dialog is open, and waits for a load that is under way. */
+static void
+as15_quit_around_open (void)
+{
+  EaselWindow *win = start_window ();
+  g_autofree char *path = fixture_copy ("rgba.png");
+  g_autoptr (GFile) file = g_file_new_for_path (path);
+
+  wait_for_layout (win);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "open", NULL);
+  wait_for_layout (win);
+  g_assert_nonnull (other_toplevel (win));
+  gtk_window_close (GTK_WINDOW (win));
+  wait_for_layout (win);
+  g_assert_cmpint (count_alert_dialogs (GTK_WIDGET (win), &(AdwDialog *) { NULL }), ==, 0);
+  g_assert_true (gtk_widget_get_visible (GTK_WIDGET (win)));
+  gtk_window_close (other_toplevel (win));
+  wait_for_layout (win);
+
+  /* Quit while the file is loading: the window stays until the picture is shown, then closes (the picture is not
+     modified, so no prompt). */
+  easel_window_open_file (win, file);
+  g_assert_true (easel_window_is_loading (win));
+  gtk_window_close (GTK_WINDOW (win));
+  g_assert_true (easel_window_is_loading (win));
+  g_assert_true (gtk_widget_get_visible (GTK_WIDGET (win)));
+  {
+    gint64 deadline = g_get_monotonic_time () + 20 * G_USEC_PER_SEC;
+
+    while (g_list_length (gtk_application_get_windows (app)) > 0 && g_get_monotonic_time () < deadline)
+      g_main_context_iteration (NULL, FALSE);
+  }
+  g_assert_cmpuint (g_list_length (gtk_application_get_windows (app)), ==, 0);
+}
+
+/* ---- 0005: a file on the command line ---- */
+
+/* What the system does with `easel a.png b.png`: the application's open signal with the files. */
+static EaselWindow *
+launch_with (GFile **files, int n)
+{
+  gint64 deadline = g_get_monotonic_time () + 10 * G_USEC_PER_SEC;
+  EaselWindow *win = NULL;
+
+  g_application_open (G_APPLICATION (app), files, n, "");
+  while (g_get_monotonic_time () < deadline)
+    {
+      win = EASEL_WINDOW (gtk_application_get_active_window (app));
+      if (win != NULL && easel_window_get_picture (win) != NULL)
+        break;
+      g_main_context_iteration (NULL, FALSE);
+    }
+  g_assert_nonnull (win);
+  g_assert_nonnull (easel_window_get_picture (win));
+  wait_for_layout (win);
+  return win;
+}
+
+/* REQ-0005-15: the first file is the start-up picture; a path and a file:// address both work; the others are ignored. */
+static void
+as13_command_line (void)
+{
+  g_autofree char *first = fixture_copy ("rgba.png");
+  g_autofree char *second = fixture_copy ("flat.jpg");
+  g_autofree char *uri = g_filename_to_uri (first, NULL, NULL);
+  g_autoptr (GFile) by_path = g_file_new_for_path (first);
+  g_autoptr (GFile) by_uri = g_file_new_for_uri (uri);
+  g_autoptr (GFile) other = g_file_new_for_path (second);
+  GFile *two[] = { by_path, other };
+  EaselWindow *win;
+  const EaselImage *picture;
+
+  /* One file, by path. */
+  win = launch_with (two, 1);
+  assert_fixture_picture (win);
+  g_assert_cmpstr (gtk_window_get_title (GTK_WINDOW (win)), ==, "rgba.png – Easel");
+  g_assert_false (easel_window_get_modified (win));
+  g_assert_false (action_enabled (win, "undo"));
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 100);
+  g_assert_cmpstr (easel_status_bar_get_text (easel_window_get_status_bar (win), EASEL_STATUS_SIZE), ==, "7 × 5 px");
+  g_assert_cmpint (count_alert_dialogs (GTK_WIDGET (win), &(AdwDialog *) { NULL }), ==, 0);
+  picture = easel_window_get_picture (win);
+
+  /* A second launch while the window exists only presents it. */
+  {
+    GFile *again[] = { other };
+
+    g_assert_true (launch_with (again, 1) == win);
+    g_assert_true (easel_window_get_picture (win) == picture);
+    g_assert_cmpstr (gtk_window_get_title (GTK_WINDOW (win)), ==, "rgba.png – Easel");
+  }
+  close_windows ();
+
+  /* By file:// address. */
+  win = launch_with (&by_uri, 1);
+  assert_fixture_picture (win);
+  close_windows ();
+
+  /* Two files: only the first opens. */
+  win = launch_with (two, 2);
+  assert_fixture_picture (win);
+  g_assert_cmpstr (gtk_window_get_title (GTK_WINDOW (win)), ==, "rgba.png – Easel");
+  close_windows ();
+}
+
+/* REQ-0005-15: a file that cannot be opened leaves the blank picture and tells why. */
+static void
+as13_command_line_error (void)
+{
+  g_autoptr (GFile) missing = g_file_new_for_path ("/nonexistent/missing.png");
+  g_autoptr (GFile) text = g_file_new_for_path (g_build_filename (g_getenv ("EASEL_TEST_DATA"), "text.png", NULL));
+  EaselWindow *win = launch_with (&missing, 1);
+  AdwAlertDialog *dialog;
+
+  wait_for_dialogs (win, 1);
+  dialog = open_alert (win);
+  g_assert_cmpstr (adw_alert_dialog_get_heading (dialog), ==, "Could Not Open “missing.png”");
+  g_assert_cmpstr (adw_alert_dialog_get_body (dialog), ==, "The file cannot be read.");
+  assert_size (win, 300, 200);                                         /* the blank picture of the settings */
+  g_assert_cmphex (easel_image_get (easel_window_get_picture (win), 10, 10), ==, 0xFFFFFF00u);
+  g_assert_cmpstr (gtk_window_get_title (GTK_WINDOW (win)), ==, "Untitled – Easel");
+  g_assert_false (easel_window_get_modified (win));
+  adw_dialog_close (ADW_DIALOG (dialog));
+  wait_for_dialogs (win, 0);
+  close_windows ();
+
+  /* The same with the size of the settings set to auto, which waits for the canvas area first. */
+  write_settings ("[new-picture]\nwidth=auto\nheight=auto\n");
+  win = launch_with (&text, 1);
+  wait_for_dialogs (win, 1);
+  g_assert_cmpstr (adw_alert_dialog_get_body (open_alert (win)), ==, "This is not a picture the app can open.");
+  g_assert_cmpstr (gtk_window_get_title (GTK_WINDOW (win)), ==, "Untitled – Easel");
+  adw_dialog_close (ADW_DIALOG (open_alert (win)));
+  wait_for_dialogs (win, 0);
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
 int
 main (int argc, char **argv)
 {
@@ -3509,7 +4026,7 @@ main (int argc, char **argv)
 
   app = easel_application_new ();
   /* Do not talk to a running Easel on the session bus. */
-  g_application_set_flags (G_APPLICATION (app), G_APPLICATION_NON_UNIQUE);
+  g_application_set_flags (G_APPLICATION (app), G_APPLICATION_NON_UNIQUE | G_APPLICATION_HANDLES_OPEN);
   g_assert_true (g_application_register (G_APPLICATION (app), NULL, NULL));
 
   g_test_add_func ("/0001/as1_starts_with_settings", as1_starts_with_settings);
@@ -3554,6 +4071,16 @@ main (int argc, char **argv)
   g_test_add_func ("/0004/as12_grid_dialog", as12_grid_dialog);
   g_test_add_func ("/0004/as14_grid_starts_as_settings_say", as14_grid_starts_as_settings_say);
   g_test_add_func ("/0005/as1_file_menu", as1_file_menu);
+  g_test_add_func ("/0005/busy_cursor_before_decoding", busy_cursor_before_decoding);
+  g_test_add_func ("/0005/as6_open_replaces_picture", as6_open_replaces_picture);
+  g_test_add_func ("/0005/as7_prompt_before_open_dialog", as7_prompt_before_open_dialog);
+  g_test_add_func ("/0005/as3_open_and_prompt", as3_open_and_prompt);
+  g_test_add_func ("/0005/as8_open_error_dialog", as8_open_error_dialog);
+  g_test_add_func ("/0005/as17_too_big_dialog", as17_too_big_dialog);
+  g_test_add_func ("/0005/as14_saved_state_across_open_and_save_as", as14_saved_state_across_open_and_save_as);
+  g_test_add_func ("/0005/as15_quit_around_open", as15_quit_around_open);
+  g_test_add_func ("/0005/as13_command_line", as13_command_line);
+  g_test_add_func ("/0005/as13_command_line_error", as13_command_line_error);
   g_test_add_func ("/0005/as2_new_picture", as2_new_picture);
   g_test_add_func ("/0005/as2_new_resets_the_view", as2_new_resets_the_view);
   g_test_add_func ("/0005/as2_new_memory_error", as2_new_memory_error);

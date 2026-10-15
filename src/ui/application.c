@@ -17,11 +17,21 @@ on_activate (GApplication *app)
   gtk_window_present (window);
 }
 
-/* Files on the command line are ignored until feature 0005 (REQ-0001-06). */
+/* The first file on the command line is the start-up picture; the others are ignored. If a window exists already, it is
+   only presented, as a second launch always was (REQ-0001-07, REQ-0005-15). */
 static void
 on_open (GApplication *app, GFile **files, int n_files, const char *hint)
 {
-  g_application_activate (app);
+  GtkWindow *window = gtk_application_get_active_window (GTK_APPLICATION (app));
+
+  if (window == NULL && n_files > 0)
+    window = GTK_WINDOW (easel_window_new_with_file (GTK_APPLICATION (app), files[0]));
+  if (window == NULL)
+    {
+      g_application_activate (app);
+      return;
+    }
+  gtk_window_present (window);
 }
 
 /* Quit asks each window to close, so unsaved changes are prompted for (REQ-0001-34, REQ-0001-35). */

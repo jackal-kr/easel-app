@@ -133,6 +133,26 @@ measure (EaselWindow *win, const char *dir, int w, int h)
         easel_image_free (opened);
       }
     }
+  /* The whole thing as the window does it: the request, the busy cursor, a painted frame, the decode, the first frame of
+     the new picture. The old picture is the window's own and goes with the replacement. */
+  {
+    double end_ms[RUNS], req_ms[RUNS];
+    g_autoptr (GFile) file = g_file_new_for_path (path);
+
+    for (int i = 0; i < RUNS; i++)
+      {
+        gint64 t = g_get_monotonic_time ();
+
+        easel_window_open_file (win, file);
+        req_ms[i] = (g_get_monotonic_time () - t) / 1000.0;
+        while (easel_window_is_loading (win))
+          g_main_context_iteration (NULL, TRUE);
+        wait_for_paint (win);
+        end_ms[i] = (g_get_monotonic_time () - t) / 1000.0;
+      }
+    g_print ("open %s PNG through the window: the call returns after %.1f ms, the picture is on screen after %.0f ms\n",
+             size, median (req_ms, RUNS), median (end_ms, RUNS));
+  }
   g_print ("open %s PNG (%.0f MB as pixels):\n", size, px_mb);
   g_print ("  decode %.0f ms, convert %.0f ms (medians of %d)\n", median (decode_ms, RUNS), median (convert_ms, RUNS), RUNS);
   g_print ("  request to the picture in memory %.0f ms, to the first painted frame %.0f ms\n", median (total_ms, RUNS),

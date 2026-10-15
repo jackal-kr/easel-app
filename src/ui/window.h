@@ -16,6 +16,10 @@ G_DECLARE_FINAL_TYPE (EaselWindow, easel_window, EASEL, WINDOW, AdwApplicationWi
 
 EaselWindow *easel_window_new (GtkApplication *app);
 
+/* A window whose start-up picture is the file (REQ-0005-15). If the file cannot be opened, the window starts with the
+   blank picture and tells why, as Open does. */
+EaselWindow *easel_window_new_with_file (GtkApplication *app, GFile *file);
+
 /* NULL until the start-up picture exists (it may wait for the window's monitor, REQ-0001-02). */
 const EaselImage *easel_window_get_picture (EaselWindow *self);
 int easel_window_get_zoom (EaselWindow *self);
@@ -39,6 +43,21 @@ gboolean easel_window_is_choosing_color (EaselWindow *self);
 /* Ends the open color choice: rgba is the confirmed color, NULL means Cancel. The chooser's callback calls it; tests
    call it in place of GTK's dialog. */
 void easel_window_finish_color_choice (EaselWindow *self, const GdkRGBA *rgba);
+
+/* Opens the picture in file as the Open command does after the file dialog (REQ-0005-07..09), asking first when the
+   picture is modified (REQ-0005-04). Nothing is decoded in this call: the window shows the busy cursor and ignores
+   input, and the picture is read after the next painted frame, so the cursor is on screen before the wait starts. The
+   result, or the error dialog, follows from the main loop. Does nothing before the start-up picture exists or while a
+   dialog is open. */
+void easel_window_open_file (EaselWindow *self, GFile *file);
+
+/* A picture is being opened: from the request until it is shown or the error is. */
+gboolean easel_window_is_loading (EaselWindow *self);
+
+/* Test hooks: the name of the window's cursor at the moment the last decode started (NULL if none yet), and how many
+   frames were painted between the request and that moment (-1 until it starts). */
+const char *easel_window_get_cursor_at_decode (EaselWindow *self);
+int easel_window_get_frames_before_decode (EaselWindow *self);
 
 /* Saves the picture as PNG at path without asking; on success it becomes the picture's file.
    On failure shows an error and returns FALSE (REQ-0001-30, REQ-0001-31). */

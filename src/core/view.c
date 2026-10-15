@@ -12,9 +12,12 @@ easel_view_zoom_step (int pct, int notches)
 {
   int i = 0;
 
-  /* The current zoom is always a level; anything else steps from the level below it. */
+  /* i is the level at or below the zoom. A zoom between two levels (Fit to Window gives one) is not a level: stepping
+     in goes to the level above it, and stepping out to the level below it, which is the first step out. */
   while (i + 1 < N_LEVELS && zoom_levels[i + 1] <= pct)
     i++;
+  if (notches < 0 && zoom_levels[i] != pct)
+    notches++;
   if (notches > N_LEVELS || notches < -N_LEVELS)
     notches = notches > 0 ? N_LEVELS : -N_LEVELS;
   i += notches;
@@ -86,15 +89,19 @@ easel_view_window_size (int monitor_width, int monitor_height, int *width, int *
 }
 
 int
-easel_view_fit_level (int area_w, int area_h, int pic_w, int pic_h)
+easel_view_fit_zoom (int area_w, int area_h, int pic_w, int pic_h)
 {
-  int best = zoom_levels[0];
+  long zoom;
 
-  /* Levels run from small to large; the last one that still fits is the answer. */
-  for (int i = 0; i < N_LEVELS; i++)
-    if ((long) pic_w * zoom_levels[i] <= (long) area_w * 100 && (long) pic_h * zoom_levels[i] <= (long) area_h * 100)
-      best = zoom_levels[i];
-  return best;
+  if (pic_w < 1 || pic_h < 1 || area_w < 1 || area_h < 1)
+    return zoom_levels[0];
+  /* Integer division rounds down, which is what "fits" needs: one percent more would not. */
+  zoom = (long) area_w * 100 / pic_w;
+  if ((long) area_h * 100 / pic_h < zoom)
+    zoom = (long) area_h * 100 / pic_h;
+  if (zoom < zoom_levels[0])
+    return zoom_levels[0];
+  return zoom > zoom_levels[N_LEVELS - 1] ? zoom_levels[N_LEVELS - 1] : (int) zoom;
 }
 
 int

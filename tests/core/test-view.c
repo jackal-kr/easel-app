@@ -133,20 +133,51 @@ as5_zoom_anchor_center (void)
 
 /* REQ-0004-07: the largest level at which the whole picture fits the canvas area; device pixels. */
 static void
-as6_fit_level (void)
+as6_fit_zoom (void)
 {
-  CHECK (easel_view_fit_level (1390, 853, 800, 600) == 100);
-  CHECK (easel_view_fit_level (1390, 853, 3000, 2000) == 25);
-  CHECK (easel_view_fit_level (1390, 853, 10000, 10000) == 10);   /* none fits: 10 % */
-  CHECK (easel_view_fit_level (1390, 853, 1, 1) == 800);          /* smaller than the area even at 800 % */
-  CHECK (easel_view_fit_level (1390, 853, 100, 100) == 800);
-  CHECK (easel_view_fit_level (1390, 853, 174, 100) == 600);      /* 174 * 8 = 1392 > 1390; 174 * 6 = 1044 */
+  /* The largest whole percent that fits, 10 to 800 (REQ-0004-07). */
+  CHECK (easel_view_fit_zoom (1390, 853, 800, 600) == 142);        /* 853 / 600 = 1.421 */
+  CHECK (easel_view_fit_zoom (1390, 853, 3000, 2000) == 42);       /* 853 / 2000 = 0.426 */
+  CHECK (easel_view_fit_zoom (1390, 853, 5840, 5184) == 16);       /* the photo: 853 / 5184 = 0.1645 */
+  CHECK (easel_view_fit_zoom (1390, 853, 10000, 10000) == 10);     /* 8.5 %: not below 10 % */
+  CHECK (easel_view_fit_zoom (1390, 853, 1, 1) == 800);            /* smaller than the area even at 800 % */
+  CHECK (easel_view_fit_zoom (1390, 853, 100, 100) == 800);
+  CHECK (easel_view_fit_zoom (1390, 853, 174, 100) == 798);        /* 1390 / 174 = 7.988 */
+  CHECK (easel_view_fit_zoom (1390, 853, 173, 100) == 800);        /* 8.035: capped */
   /* Fitting exactly counts as fitting; either direction can be the limit. */
-  CHECK (easel_view_fit_level (1000, 800, 1000, 800) == 100);
-  CHECK (easel_view_fit_level (2000, 800, 1000, 800) == 100);     /* the height limits it */
-  CHECK (easel_view_fit_level (1000, 2000, 1000, 800) == 100);    /* the width limits it */
-  CHECK (easel_view_fit_level (2000, 1600, 1000, 800) == 200);
-  CHECK (easel_view_fit_level (0, 0, 800, 600) == 10);            /* no room at all */
+  CHECK (easel_view_fit_zoom (1000, 800, 1000, 800) == 100);
+  CHECK (easel_view_fit_zoom (2000, 800, 1000, 800) == 100);       /* the height limits it */
+  CHECK (easel_view_fit_zoom (1000, 2000, 1000, 800) == 100);      /* the width limits it */
+  CHECK (easel_view_fit_zoom (2000, 1600, 1000, 800) == 200);
+  CHECK (easel_view_fit_zoom (0, 0, 800, 600) == 10);              /* no room at all */
+  /* The result fits, and one percent more would not (except at the ends). */
+  for (int w = 50; w <= 9000; w += 437)
+    for (int h = 50; h <= 9000; h += 611)
+      {
+        int z = easel_view_fit_zoom (1390, 853, w, h);
+
+        if (z > 10)
+          CHECK ((long) w * z <= 1390L * 100 && (long) h * z <= 853L * 100);
+        if (z > 10 && z < 800)
+          CHECK ((long) w * (z + 1) > 1390L * 100 || (long) h * (z + 1) > 853L * 100);
+      }
+}
+
+/* REQ-0004-04, REQ-0004-07: from a zoom between two levels, Zoom In and Zoom Out go to the next level above or below. */
+static void
+as6_levels_from_a_fit_zoom (void)
+{
+  CHECK (easel_view_zoom_step (16, 1) == 25);
+  CHECK (easel_view_zoom_step (16, -1) == 10);
+  CHECK (easel_view_zoom_step (142, 1) == 200);
+  CHECK (easel_view_zoom_step (142, -1) == 100);
+  CHECK (easel_view_zoom_step (798, 1) == 800);
+  CHECK (easel_view_zoom_step (798, -1) == 600);
+  CHECK (easel_view_zoom_step (42, 1) == 50);
+  CHECK (easel_view_zoom_step (42, -1) == 25);
+  CHECK (easel_view_zoom_step (25, 1) == 50);                      /* on a level: the next one */
+  CHECK (easel_view_zoom_step (10, -1) == 10);
+  CHECK (easel_view_zoom_step (800, 1) == 800);
 }
 
 /* REQ-0004-08: one level per 1.5x of the pinch since the last level change; the scale starts again after each change,
@@ -227,7 +258,8 @@ main (void)
   RUN (as13_zoom_steps_and_anchor);
   RUN (as3_zoom_levels);
   RUN (as5_zoom_anchor_center);
-  RUN (as6_fit_level);
+  RUN (as6_fit_zoom);
+  RUN (as6_levels_from_a_fit_zoom);
   RUN (as7_pinch_accumulator);
   RUN (as17_zoomed_click_maps_to_pixel);
   RUN (as17_size_from_movement);

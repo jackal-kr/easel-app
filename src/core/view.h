@@ -20,9 +20,10 @@ void easel_view_to_pixel (double x, double y, int pct, double scale, int *px, in
 double easel_view_anchor (double scroll, double pointer, int old_pct, int new_pct, int picture_size, double scale,
                           double view_size);
 
-/* Fit to Window (REQ-0004-07): the largest zoom level at which a pic_w x pic_h picture fits in an area_w x area_h canvas
-   area, all in device pixels with no scrollbars counted; 10 if none fits. */
-int easel_view_fit_level (int area_w, int area_h, int pic_w, int pic_h);
+/* Fit to Window (REQ-0004-07): the largest whole percent at which a pic_w x pic_h picture fits in an area_w x area_h
+   canvas area, all in device pixels with no scrollbars counted, limited to 10 to 800 (10 if even that is too big). It
+   is usually not one of the zoom levels; easel_view_zoom_step steps from it to the level above or below. */
+int easel_view_fit_zoom (int area_w, int area_h, int pic_w, int pic_h);
 
 /* The pinch (REQ-0004-08). *base is the gesture's scale at the last level change (1.0 when a gesture begins); scale
    is its scale now; pct is the current zoom. Returns +1 or -1 when the scale has changed by 1.5x since *base and the

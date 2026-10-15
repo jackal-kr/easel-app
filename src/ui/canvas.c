@@ -38,6 +38,7 @@ struct _EaselCanvas
   guint stroke_button;
   guint cancelled_button; /* button of a stroke cancelled by Undo, until it is released; 0 if none */
   gboolean input_blocked;
+  gboolean busy;          /* a picture is loading: the busy cursor */
   gboolean grid_on, grid_axonometric;
   int grid_cell;
   GtkWidget *area;        /* ancestor that feeds input; not owned */
@@ -450,7 +451,9 @@ update_cursor (EaselCanvas *self)
 
   EaselHandle handle = self->resizing != EASEL_HANDLE_NONE ? self->resizing : self->hover;
 
-  if (handle != EASEL_HANDLE_NONE)
+  if (self->busy)
+    cursor = gdk_cursor_new_from_name ("wait", NULL);
+  else if (handle != EASEL_HANDLE_NONE)
     cursor = gdk_cursor_new_from_name (handle == EASEL_HANDLE_RIGHT ? "ew-resize"
                                        : handle == EASEL_HANDLE_BOTTOM ? "ns-resize" : "nwse-resize", NULL);
   else if (self->tool == EASEL_TOOL_PENCIL)
@@ -473,6 +476,13 @@ void
 easel_canvas_set_history (EaselCanvas *self, EaselHistory *history)
 {
   self->history = history;
+}
+
+void
+easel_canvas_set_busy (EaselCanvas *self, gboolean busy)
+{
+  self->busy = busy;
+  update_cursor (self);
 }
 
 void
@@ -746,7 +756,7 @@ easel_canvas_fit_to_window (EaselCanvas *self)
   if (self->img == NULL)
     return;
   /* The canvas area in device pixels, with no scrollbars counted (REQ-0004-07). */
-  zoom = easel_view_fit_level ((int) (gtk_adjustment_get_page_size (h) * scale),
+  zoom = easel_view_fit_zoom ((int) (gtk_adjustment_get_page_size (h) * scale),
                                (int) (gtk_adjustment_get_page_size (v) * scale), self->img->width, self->img->height);
   if (zoom == self->zoom)
     {

@@ -46,6 +46,9 @@ void easel_canvas_set_history (EaselCanvas *self, EaselHistory *history);
 void easel_canvas_set_tool (EaselCanvas *self, EaselTool tool);
 void easel_canvas_set_colors (EaselCanvas *self, uint32_t foreground, uint32_t background);
 
+/* While busy (a picture is loading, REQ-0005-02) the cursor over the canvas is the busy one. */
+void easel_canvas_set_busy (EaselCanvas *self, gboolean busy);
+
 /* Shows the picture from its start: zoom 100 %, scrolled to the top-left corner (REQ-0005-03, REQ-0005-07). */
 void easel_canvas_reset_view (EaselCanvas *self);
 

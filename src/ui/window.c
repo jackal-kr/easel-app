@@ -39,6 +39,16 @@ struct _EaselWindow
   EaselHistory *history;
   char *path;             /* the picture's file; NULL until the first save */
   gboolean save_dialog_open;
+  gboolean open_dialog_open;  /* the file dialog of Open */
+  GFile *startup_file;    /* the file of the command line, opened in place of the blank picture (REQ-0005-15) */
+  GFile *pending_file;    /* what Open goes on to read after the unsaved-changes prompt */
+  gboolean loading;       /* a picture is being opened (REQ-0005-02) */
+  GFile *loading_file;
+  gboolean close_after_loading;   /* a quit request came while loading */
+  gulong paint_handler;   /* the frame clock's after-paint that starts the decode */
+  gint64 frame_at_request;
+  char *cursor_at_decode;  /* test hook */
+  int frames_before_decode;
   gboolean prompt_open;   /* a "Save Changes?" prompt, from showing it until its choice is carried out */
   void (*prompt_then) (EaselWindow *self);   /* what Discard, or a Save that worked, goes on to do */
 
@@ -60,6 +70,8 @@ typedef void (*SaveDone) (EaselWindow *self, gboolean saved);
 G_DEFINE_FINAL_TYPE (EaselWindow, easel_window, ADW_TYPE_APPLICATION_WINDOW)
 
 static void sync_zoom_ui (EaselWindow *self);
+static void update_title (EaselWindow *self);
+static void show_open_error (EaselWindow *self, GFile *file, EaselOpenResult result, int width, int height);
 static gboolean dialog_is_open (EaselWindow *self);
 static void show_memory_error (EaselWindow *self, const char *heading, int width, int height);
 static gboolean view_actions_allowed (EaselWindow *self);
@@ -67,20 +79,40 @@ static gboolean view_actions_allowed (EaselWindow *self);
 static void
 create_picture (EaselWindow *self, int area_width, int area_height)
 {
+  g_autoptr (GFile) startup = g_steal_pointer (&self->startup_file);
+  EaselOpenResult opened = EASEL_OPEN_OK;
   int width, height;
 
   if (self->picture != NULL)
     return;
-  easel_settings_resolve_size (&self->settings, area_width, area_height, &width, &height);
-  self->picture = easel_image_new (width, height, self->settings.background);
+  /* The file of the command line replaces the blank picture; if it cannot be opened the blank one shows and the error
+     is told over it (REQ-0005-15). There is no busy cursor here: the window is not showing anything yet. */
+  if (startup != NULL)
+    {
+      g_autofree char *file_path = g_file_get_path (startup);
+
+      opened = EASEL_OPEN_UNREADABLE;
+      if (file_path != NULL)
+        opened = easel_picture_open (file_path, &self->picture, &width, &height);
+      if (opened == EASEL_OPEN_OK)
+        self->path = g_steal_pointer (&file_path);
+    }
+  if (self->picture == NULL)
+    {
+      easel_settings_resolve_size (&self->settings, area_width, area_height, &width, &height);
+      self->picture = easel_image_new (width, height, self->settings.background);
+    }
   if (self->picture == NULL)
     {
       g_critical ("Cannot allocate a %dx%d picture", width, height);
       return;
     }
   easel_canvas_set_image (self->canvas, self->picture);
-  easel_status_bar_set_size (self->status_bar, TRUE, width, height);
+  easel_status_bar_set_size (self->status_bar, TRUE, self->picture->width, self->picture->height);
   sync_zoom_ui (self);
+  update_title (self);
+  if (opened != EASEL_OPEN_OK)
+    show_open_error (self, startup, opened, width, height);
 }
 
 /* The monitor the window is on, or the first one while Wayland has not said yet (REQ-0001-41). */
@@ -419,6 +451,15 @@ easel_window_close_request (GtkWindow *window)
   easel_canvas_cancel_resize (self->canvas);
   easel_window_finish_color_choice (self, NULL);
 
+  /* A quit during loading waits for the picture, then goes on; while the Open dialog is open it does nothing
+     (REQ-0005-02). */
+  if (self->loading)
+    {
+      self->close_after_loading = TRUE;
+      return TRUE;
+    }
+  if (self->open_dialog_open)
+    return TRUE;
   /* One prompt at a time (REQ-0001-38). */
   if (self->prompt_open)
     return TRUE;
@@ -501,6 +542,218 @@ new_activated (GSimpleAction *action, GVariant *parameter, gpointer user_data)
     new_picture (self);
 }
 
+/* ---- Open (REQ-0005-04 to REQ-0005-09) ---- */
+
+static void
+show_open_error (EaselWindow *self, GFile *file, EaselOpenResult result, int width, int height)
+{
+  g_autofree char *name = g_file_get_basename (file);
+  g_autofree char *heading = g_strdup_printf ("Could Not Open “%s”", name);
+
+  switch (result)
+    {
+    case EASEL_OPEN_UNREADABLE:
+      show_save_error (self, heading, "The file cannot be read.");
+      break;
+    case EASEL_OPEN_NOT_PICTURE:
+      show_save_error (self, heading, "This is not a picture the app can open.");
+      break;
+    case EASEL_OPEN_TOO_BIG:
+      show_save_error (self, heading, "The picture is bigger than 10000 pixels in width or height.");
+      break;
+    case EASEL_OPEN_NO_MEMORY:
+      show_memory_error (self, heading, width, height);
+      break;
+    case EASEL_OPEN_OK:
+      break;
+    }
+}
+
+/* The picture is read here, after a frame was painted with the busy cursor (Plan, "The busy cursor shows before
+   decoding starts"), and then shown or refused. */
+static void
+decode_now (EaselWindow *self)
+{
+  g_autoptr (GFile) file = g_steal_pointer (&self->loading_file);
+  g_autofree char *path = g_file_get_path (file);
+  GdkCursor *cursor = gtk_widget_get_cursor (GTK_WIDGET (self));
+  GdkFrameClock *clock = gtk_widget_get_frame_clock (GTK_WIDGET (self));
+  EaselOpenResult result = EASEL_OPEN_UNREADABLE;
+  EaselImage *img = NULL;
+  int w = 0, h = 0;
+
+  g_free (self->cursor_at_decode);
+  self->cursor_at_decode = cursor ? g_strdup (gdk_cursor_get_name (cursor)) : NULL;
+  self->frames_before_decode = clock ? (int) (gdk_frame_clock_get_frame_counter (clock) - self->frame_at_request) : 0;
+
+  if (path != NULL)
+    result = easel_picture_open (path, &img, &w, &h);
+
+  /* Back to the tool's cursor and to taking input, whatever the result. */
+  self->loading = FALSE;
+  gtk_widget_set_cursor (GTK_WIDGET (self), NULL);
+  easel_canvas_set_busy (self->canvas, FALSE);
+  easel_canvas_set_input_blocked (self->canvas, FALSE);
+
+  if (result == EASEL_OPEN_OK)
+    {
+      if (!replace_picture (self, img, g_steal_pointer (&path)))
+        show_open_error (self, file, EASEL_OPEN_NO_MEMORY, w, h);
+    }
+  else
+    show_open_error (self, file, result, w, h);
+  if (self->close_after_loading)
+    {
+      self->close_after_loading = FALSE;
+      gtk_window_close (GTK_WINDOW (self));
+    }
+}
+
+static void
+on_loading_painted (GdkFrameClock *clock, EaselWindow *self)
+{
+  g_clear_signal_handler (&self->paint_handler, clock);
+  decode_now (self);
+}
+
+static gboolean
+decode_idle (gpointer data)
+{
+  EaselWindow *self = data;
+
+  if (self->loading)
+    decode_now (self);
+  g_object_unref (self);
+  return G_SOURCE_REMOVE;
+}
+
+/* Shows the busy cursor and ignores input, then reads the file once a frame has been painted. */
+static void
+begin_loading (EaselWindow *self, GFile *file)
+{
+  GdkFrameClock *clock = gtk_widget_get_mapped (GTK_WIDGET (self)) ? gtk_widget_get_frame_clock (GTK_WIDGET (self)) : NULL;
+
+  g_set_object (&self->loading_file, file);
+  self->loading = TRUE;
+  self->frames_before_decode = -1;
+  gtk_widget_set_cursor_from_name (GTK_WIDGET (self), "wait");
+  easel_canvas_set_busy (self->canvas, TRUE);
+  easel_canvas_set_input_blocked (self->canvas, TRUE);
+  self->frame_at_request = clock ? gdk_frame_clock_get_frame_counter (clock) : 0;
+  if (clock != NULL)
+    {
+      self->paint_handler = g_signal_connect_object (clock, "after-paint", G_CALLBACK (on_loading_painted), self,
+                                                     G_CONNECT_DEFAULT);
+      gtk_widget_queue_draw (GTK_WIDGET (self));
+    }
+  else
+    g_idle_add (decode_idle, g_object_ref (self));   /* a window that is not shown has no frames */
+}
+
+static void
+on_open_dialog_done (GtkFileDialog *dialog, GAsyncResult *result, EaselWindow *self)
+{
+  g_autoptr (GFile) file = gtk_file_dialog_open_finish (dialog, result, NULL);
+
+  self->open_dialog_open = FALSE;
+  /* Cancelled: nothing changes (REQ-0005-05). */
+  if (file != NULL)
+    begin_loading (self, file);
+  g_object_unref (self);
+}
+
+static void
+show_open_dialog (EaselWindow *self)
+{
+  g_autoptr (GtkFileDialog) dialog = gtk_file_dialog_new ();
+  g_autoptr (GListStore) filters = g_list_store_new (GTK_TYPE_FILE_FILTER);
+  g_autoptr (GtkFileFilter) pictures = gtk_file_filter_new ();
+  g_autoptr (GtkFileFilter) all = gtk_file_filter_new ();
+  g_autoptr (GFile) folder = NULL;
+  const char *pictures_dir = g_get_user_special_dir (G_USER_DIRECTORY_PICTURES);
+  static const char *const mime_types[] = { "image/png", "image/jpeg", "image/bmp", "image/tiff", "image/webp", "image/gif" };
+
+  /* The folder of the current picture's file, else the Pictures folder, else home (REQ-0005-05). */
+  if (self->path != NULL)
+    {
+      g_autoptr (GFile) current = g_file_new_for_path (self->path);
+
+      folder = g_file_get_parent (current);
+    }
+  if (folder == NULL || !g_file_query_exists (folder, NULL))
+    {
+      g_clear_object (&folder);
+      folder = g_file_new_for_path (pictures_dir && g_file_test (pictures_dir, G_FILE_TEST_IS_DIR) ? pictures_dir
+                                                                                                     : g_get_home_dir ());
+    }
+  gtk_file_filter_set_name (pictures, "Pictures");
+  for (gsize i = 0; i < G_N_ELEMENTS (mime_types); i++)
+    gtk_file_filter_add_mime_type (pictures, mime_types[i]);
+  gtk_file_filter_set_name (all, "All Files");
+  gtk_file_filter_add_pattern (all, "*");
+  g_list_store_append (filters, pictures);
+  g_list_store_append (filters, all);
+  gtk_file_dialog_set_title (dialog, "Open Picture");
+  gtk_file_dialog_set_filters (dialog, G_LIST_MODEL (filters));
+  gtk_file_dialog_set_default_filter (dialog, pictures);
+  gtk_file_dialog_set_initial_folder (dialog, folder);
+  self->open_dialog_open = TRUE;
+  gtk_file_dialog_open (dialog, GTK_WINDOW (self), NULL, (GAsyncReadyCallback) on_open_dialog_done, g_object_ref (self));
+}
+
+static void
+open_pending (EaselWindow *self)
+{
+  g_autoptr (GFile) file = g_steal_pointer (&self->pending_file);
+
+  begin_loading (self, file);
+}
+
+void
+easel_window_open_file (EaselWindow *self, GFile *file)
+{
+  if (!file_action_allowed (self))
+    return;
+  if (easel_history_is_modified (self->history))
+    {
+      g_set_object (&self->pending_file, file);
+      ask_unsaved (self, open_pending);
+    }
+  else
+    begin_loading (self, file);
+}
+
+static void
+open_activated (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+  EaselWindow *self = user_data;
+
+  if (!file_action_allowed (self))
+    return;
+  if (easel_history_is_modified (self->history))
+    ask_unsaved (self, show_open_dialog);
+  else
+    show_open_dialog (self);
+}
+
+gboolean
+easel_window_is_loading (EaselWindow *self)
+{
+  return self->loading;
+}
+
+const char *
+easel_window_get_cursor_at_decode (EaselWindow *self)
+{
+  return self->cursor_at_decode;
+}
+
+int
+easel_window_get_frames_before_decode (EaselWindow *self)
+{
+  return self->frames_before_decode;
+}
+
 static void
 close_activated (GSimpleAction *action, GVariant *parameter, gpointer user_data)
 {
@@ -517,7 +770,7 @@ save_activated (GSimpleAction *action, GVariant *parameter, gpointer user_data)
 static gboolean
 dialog_is_open (EaselWindow *self)
 {
-  return self->prompt_open || self->save_dialog_open || self->chooser_open
+  return self->prompt_open || self->save_dialog_open || self->open_dialog_open || self->loading || self->chooser_open
          || adw_application_window_get_visible_dialog (ADW_APPLICATION_WINDOW (self)) != NULL;
 }
 
@@ -1039,6 +1292,7 @@ change_tool_state (GSimpleAction *action, GVariant *value, gpointer user_data)
 static const GActionEntry win_actions[] = {
   { .name = "tool", .parameter_type = "s", .state = "'pan'", .change_state = change_tool_state },
   { .name = "new", .activate = new_activated },
+  { .name = "open", .activate = open_activated },
   { .name = "save", .activate = save_activated },
   { .name = "undo", .activate = undo_activated },
   { .name = "redo", .activate = redo_activated },
@@ -1119,6 +1373,10 @@ easel_window_dispose (GObject *object)
   if (self->chooser_cancel != NULL)
     g_cancellable_cancel (self->chooser_cancel);
   g_clear_object (&self->chooser_cancel);
+  g_clear_object (&self->pending_file);
+  g_clear_object (&self->startup_file);
+  g_clear_object (&self->loading_file);
+  g_clear_pointer (&self->cursor_at_decode, g_free);
   if (self->canvas != NULL)
     {
       easel_canvas_set_history (self->canvas, NULL);
@@ -1147,13 +1405,54 @@ easel_window_finalize (GObject *object)
   G_OBJECT_CLASS (easel_window_parent_class)->finalize (object);
 }
 
+enum
+{
+  PROP_STARTUP_FILE = 1,
+  N_PROPS
+};
+
+static void
+easel_window_set_property (GObject *object, guint prop_id, const GValue *value, GParamSpec *pspec)
+{
+  EaselWindow *self = EASEL_WINDOW (object);
+
+  if (prop_id == PROP_STARTUP_FILE)
+    self->startup_file = g_value_dup_object (value);
+  else
+    G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
+}
+
+/* The picture is made here, not in init, because the construct-only startup file is set after init (REQ-0005-15). */
+static void
+easel_window_constructed (GObject *object)
+{
+  EaselWindow *self = EASEL_WINDOW (object);
+
+  G_OBJECT_CLASS (easel_window_parent_class)->constructed (object);
+  set_initial_size (self);
+  if (self->settings.width != EASEL_SIZE_AUTO && self->settings.height != EASEL_SIZE_AUTO)
+    create_picture (self, 0, 0);
+  else
+    {
+      g_signal_connect_object (gtk_scrolled_window_get_hadjustment (self->scroller), "notify::page-size",
+                               G_CALLBACK (on_page_size_changed), self, G_CONNECT_SWAPPED);
+      g_signal_connect_object (gtk_scrolled_window_get_vadjustment (self->scroller), "notify::page-size",
+                               G_CALLBACK (on_page_size_changed), self, G_CONNECT_SWAPPED);
+    }
+}
+
 static void
 easel_window_class_init (EaselWindowClass *klass)
 {
   GObjectClass *object_class = G_OBJECT_CLASS (klass);
   GtkWidgetClass *widget_class = GTK_WIDGET_CLASS (klass);
 
+  object_class->constructed = easel_window_constructed;
+  object_class->set_property = easel_window_set_property;
   object_class->dispose = easel_window_dispose;
+  g_object_class_install_property (object_class, PROP_STARTUP_FILE,
+                                   g_param_spec_object ("startup-file", NULL, NULL, G_TYPE_FILE,
+                                                        G_PARAM_WRITABLE | G_PARAM_CONSTRUCT_ONLY | G_PARAM_STATIC_STRINGS));
   object_class->finalize = easel_window_finalize;
   GTK_WINDOW_CLASS (klass)->close_request = easel_window_close_request;
 
@@ -1229,20 +1528,16 @@ easel_window_init (EaselWindow *self)
   g_signal_connect (self, "notify::is-active", G_CALLBACK (on_active_changed), NULL);
 
   sync_history_ui (self);
-  set_initial_size (self);
-  if (self->settings.width != EASEL_SIZE_AUTO && self->settings.height != EASEL_SIZE_AUTO)
-    create_picture (self, 0, 0);
-  else
-    {
-      g_signal_connect_object (gtk_scrolled_window_get_hadjustment (self->scroller), "notify::page-size",
-                               G_CALLBACK (on_page_size_changed), self, G_CONNECT_SWAPPED);
-      g_signal_connect_object (gtk_scrolled_window_get_vadjustment (self->scroller), "notify::page-size",
-                               G_CALLBACK (on_page_size_changed), self, G_CONNECT_SWAPPED);
-    }
 }
 
 EaselWindow *
 easel_window_new (GtkApplication *app)
 {
   return g_object_new (EASEL_TYPE_WINDOW, "application", app, NULL);
+}
+
+EaselWindow *
+easel_window_new_with_file (GtkApplication *app, GFile *file)
+{
+  return g_object_new (EASEL_TYPE_WINDOW, "application", app, "startup-file", file, NULL);
 }

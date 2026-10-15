@@ -16,13 +16,14 @@ endforeach
 ui_env = environment()
 ui_env.set('GSK_RENDERER', 'cairo')
 ui_env.set('GTK_A11Y', 'none')
+ui_env.set('EASEL_TEST_DATA', meson.current_source_dir() / 'data')
 # File dialogs open in-process, so tests can find and close them.
 ui_env.set('GDK_DEBUG', 'no-portals')
 
 test_window = executable('test-window', 'ui/test-window.c',
   dependencies: easel_ui_dep,
 )
-test('ui-window', test_window, env: ui_env, suite: 'ui')
+test('ui-window', test_window, env: ui_env, suite: 'ui', timeout: 180)
 
 # Performance budgets (docs/engineering.md): meson test -C build --benchmark
 perf_env = environment()

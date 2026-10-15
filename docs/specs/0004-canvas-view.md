@@ -28,10 +28,10 @@ the picture). Words used below: the *canvas area* is the scrolled area that show
 - REQ-0004-03 The View and Image actions and their shortcuts work wherever keyboard focus is in the window, and do nothing before the picture exists (REQ-0001-39), while a dialog, the quit prompt or the color chooser is open, and while a mouse button is held for a stroke or a resize drag.
 
 ### Zoom
-- REQ-0004-04 When the user chooses Zoom In or Zoom Out (the zoom row's buttons or the shortcuts), the app shall move one level in or out, with any tool active; the wheel and the pinch of REQ-0004-08 keep working only in Pan (REQ-0001-17).
+- REQ-0004-04 When the user chooses Zoom In or Zoom Out (the zoom row's buttons or the shortcuts), the app shall move one level in or out (from a zoom between two levels, to the next level above or below it), with any tool active; the wheel and the pinch of REQ-0004-08 keep working only in Pan (REQ-0001-17).
 - REQ-0004-05 When the user chooses Normal Size, the app shall set the zoom to 100 %; Large Size sets it to 400 %.
 - REQ-0004-06 A zoom command from the menu or keyboard shall keep the point at the center of the canvas area still, as far as the view's edges allow (REQ-0001-16 does the same for the pointer). A picture smaller than the canvas area stays at its top-left (REQ-0001-11).
-- REQ-0004-07 When the user chooses Fit to Window, the app shall set the zoom to the largest level at which the whole picture fits in the canvas area, comparing device pixels with no scrollbars counted, or to 10 % if no level fits, and show the picture's top-left corner. A picture smaller than the canvas area even at 800 % gets 800 %. The zoom does not follow later window size changes.
+- REQ-0004-07 When the user chooses Fit to Window, the app shall set the zoom to the largest whole percent at which the whole picture fits in the canvas area, comparing device pixels with no scrollbars counted, but not below 10 % and not above 800 %, and show the picture's top-left corner. The zoom is then usually not one of the levels (for example 16 %), so that the picture reaches the right or the bottom edge of the area as closely as a whole percent allows; if even 10 % is too big for the picture, it gets 10 % and scrollbars, and a picture smaller than the canvas area even at 800 % gets 800 %. Zoom In and Zoom Out from such a zoom go to the next level above or below it (REQ-0004-04), and the zoom row and the status bar show it as `N%`. The zoom does not follow later window size changes. (This replaces the first version of this requirement, which chose a level; the owner saw a 5840 x 5184 photo get 10 % in a canvas area where 16 % fits.)
 - REQ-0004-08 While Pan is active and the user pinches on a touchpad or touch screen, the app shall move one level each time the pinch's scale since the last level change reaches 1.5 (in) or 1/1.5 (out), keeping the pinch center still as far as the edges allow. The scale starts again after each level change, at 800 % and 10 % and when the pinch ends. With any other tool the pinch does nothing. (1.5 is a fixed value of this spec.)
 
 ### Status bar
@@ -67,7 +67,7 @@ the picture). Words used below: the *canvas area* is the scrolled area that show
 - AS-3 (REQ-0004-04, REQ-0004-02, REQ-0004-01) Given Pencil active at 100 %, When the user clicks the Zoom In button in the View menu, Then the zoom is 200 % and the row shows `200%`; at 800 % the Zoom In button is insensitive and Ctrl+= does nothing; the Zoom Out button from 200 % gives 100 %, and at 10 % it is insensitive | Verified by: automated (core, levels) + automated (ui)
 - AS-4 (REQ-0004-05, REQ-0004-02) Given 100 %, When the user presses Ctrl+PageDown, Then the zoom is 400 % and Large Size is insensitive; When the user presses Ctrl+PageUp, Then 100 % | Verified by: automated (ui)
 - AS-5 (REQ-0004-06) Given a 2000x2000 picture at 100 % with a canvas area of 1000x800 scrolled to (500, 400), When the user chooses Zoom In, Then picture pixel (1000, 800), the center, is still at the center of the canvas area; Given a picture smaller than the canvas area, Then it stays at the top-left | Verified by: automated (core, anchor math) + automated (ui)
-- AS-6 (REQ-0004-07) Given a canvas area of 1390x853 device pixels, When the user chooses Fit to Window, Then an 800x600 picture gets 100 %, a 3000x2000 picture 25 %, a 10000x10000 picture 10 %, and a 1x1 picture 800 %; the picture shows from its top-left corner; When the window is made larger afterwards, Then the zoom stays | Verified by: automated (core, fit level) + automated (ui)
+- AS-6 (REQ-0004-07) Given a canvas area of 1390x853 device pixels, When the user chooses Fit to Window, Then an 800x600 picture gets 142 %, a 3000x2000 picture 42 %, a 5840x5184 photo 16 % (its height 829 px, the width 934), a 10000x10000 picture 10 % (with scrollbars), a 174x100 picture 798 % and a 1x1 picture 800 %; one percent more would not fit, except at 800 %; the picture shows from its top-left corner; When the user then chooses Zoom In, Then the zoom is the next level above (16 % gives 25 %, 142 % gives 200 %), and Zoom Out gives the level below (16 % gives 10 %, 142 % gives 100 %); When the window is made larger afterwards, Then the zoom stays | Verified by: automated (core, fit zoom and level steps) + automated (ui)
 - AS-7 (REQ-0004-08) Given Pan active at 100 %, When the pinch scale reaches 1.5, Then the zoom is 200 % and the scale starts at 1 again; When the pinch then shrinks to 1/1.5 of that, Then back to 100 %; with Pencil active a pinch changes nothing | Verified by: automated (core, pinch accumulator) + manual M2
 - AS-8 (REQ-0004-09, REQ-0004-10) Given a 300x200 picture at 200 % with Pan active, When the pointer is over pixel (12, 34), Then the status bar shows Pan's hint at the left and, from left to right at the right edge, "12, 34", "200%" and "300 × 200 px"; When the pointer is over the canvas area outside the picture, Then the position shows negative or beyond-size numbers; When the pointer is over the header bar, Then the position is empty; With Pencil active the hint is Pencil's | Verified by: automated (ui) + manual M3
 - AS-9 (REQ-0004-11) Given the narrowest window, Then the status bar does not widen it and Pencil's hint ends with "…" | Verified by: manual M3
@@ -245,7 +245,7 @@ leave a faster resize (growing in place, or resizing rows only) unbuilt, per rul
   `tests/ui/test-window.c`.
 
 ### Key interfaces (core)
-- `int easel_view_fit_level (int area_w, int area_h, int pic_w, int pic_h)` (percent, 10 if none fits);
+- `int easel_view_fit_zoom (int area_w, int area_h, int pic_w, int pic_h)` (the largest whole percent that fits, 10 to 800);
   `int easel_view_pinch (double *scale_acc, double scale_delta)` (levels to move, -1, 0 or +1, resetting the
   accumulator); `void easel_view_resize_by (int handle, double dx, double dy, int *w, int *h)` (w and h are the size at the press and
   become the new size: the edge moves by dx, dy picture pixels, rounded to the nearest boundary, limits 1 to 10000;
@@ -269,7 +269,7 @@ leave a faster resize (growing in place, or resizing rows only) unbuilt, per rul
 | 3 | core `as3_zoom_levels`, ui `as3_zoom_buttons` |
 | 4 | ui `as4_normal_and_large` |
 | 5 | core `as5_zoom_anchor_center`, ui `as5_zoom_keeps_center` |
-| 6 | core `as6_fit_level`, ui `as6_fit_to_window` |
+| 6 | core `as6_fit_zoom`, ui `as6_fit_to_window` |
 | 7 | core `as7_pinch_accumulator` + manual M2 (the real gesture) |
 | 8 | ui `as8_status_fields`, ui `as8_status_writes_only_on_change` + manual M3 |
 | 9 | manual M3 |
