@@ -1,22 +1,12 @@
 {
   "version": "2.0.0",
   "tasks": [
+    { "label": "Spec: status", "type": "shell", "command": "tools/spec.sh status", "problemMatcher": [] },
+    { "label": "Spec: lint", "type": "shell", "command": "tools/spec.sh lint", "problemMatcher": [] },
     {
-      "label": "Spec: status of all features",
+      "label": "Spec: new",
       "type": "shell",
-      "command": "tools/spec-status.sh",
-      "problemMatcher": []
-    },
-    {
-      "label": "Spec: lint (traceability)",
-      "type": "shell",
-      "command": "tools/check-trace.sh",
-      "problemMatcher": []
-    },
-    {
-      "label": "Spec: new feature folder",
-      "type": "shell",
-      "command": "tools/new-feature.sh ${input:number} ${input:slug}",
+      "command": "tools/spec.sh new ${input:number} ${input:slug}",
       "problemMatcher": []
     }
   ],

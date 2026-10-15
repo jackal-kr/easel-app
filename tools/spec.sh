@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# Usage: tools/spec.sh new <NNNN> <slug> | status | lint
+# Specs are single files: docs/specs/NNNN-slug.md (template: docs/specs/_template.md).
+cd "$(dirname "$0")/.."
+shopt -s nullglob
+specs=(docs/specs/[0-9][0-9][0-9][0-9]-*.md)
+
+status_of() { grep -m1 '^Status:' "$1" | sed 's/Status: *//' | cut -d' ' -f1; }
+
+cmd_new() {
+  local n="${1:-}" slug="${2:-}"
+  [[ "$n" =~ ^[0-9]{4}$ && -n "$slug" ]] || { echo "usage: tools/spec.sh new <NNNN> <slug>"; exit 1; }
+  local f="docs/specs/$n-$slug.md"
+  [ -e "$f" ] && { echo "exists: $f"; exit 1; }
+  sed "s/NNNN/$n/g" docs/specs/_template.md > "$f"
+  echo "created $f"
+}
+
+cmd_status() {
+  [ ${#specs[@]} -eq 0 ] && { echo "no specs yet"; return; }
+  printf '%-34s %-12s %4s %4s %9s\n' SPEC STATUS REQ AS TASKS
+  local s
+  for s in "${specs[@]}"; do
+    printf '%-34s %-12s %4s %4s %9s\n' "$(basename "$s" .md)" "$(status_of "$s")" \
+      "$(grep -cE '^- REQ-[0-9]{4}-[0-9]{2}' "$s")" "$(grep -cE '^- AS-[0-9]+' "$s")" \
+      "$(grep -cE '^- \[x\] T[0-9]+' "$s")/$(grep -cE '^- \[[ x]\] T[0-9]+' "$s")"
+  done
+}
+
+# Every REQ needs a scenario that mentions it; every scenario needs "Verified by:";
+# an accepted/implemented spec may have no open "- [NEEDS CLARIFICATION" lines.
+# Draft specs only get warnings; the exit code is 1 only for accepted/implemented specs.
+cmd_lint() {
+  local rc=0 s st r p
+  for s in "${specs[@]}"; do
+    st=$(status_of "$s")
+    local problems=()
+    for r in $(grep -oE '^- REQ-[0-9]{4}-[0-9]{2}' "$s" | sed 's/- //'); do
+      grep -E '^- AS-[0-9]+' "$s" | grep -q "$r" || problems+=("$r has no scenario")
+    done
+    grep -E '^- AS-[0-9]+' "$s" | grep -vq 'Verified by:' && problems+=("a scenario has no 'Verified by:'")
+    if [ "$st" != draft ] && grep -q '^- \[NEEDS CLARIFICATION' "$s"; then
+      problems+=("open NEEDS CLARIFICATION in a $st spec")
+    fi
+    for p in "${problems[@]}"; do
+      echo "$s: $p"
+      [ "$st" = draft ] || rc=1
+    done
+  done
+  [ $rc -eq 0 ] && echo "spec lint: ok (draft specs may still show warnings above)"
+  return $rc
+}
+
+case "${1:-}" in
+  new) shift; cmd_new "$@" ;;
+  status) cmd_status ;;
+  lint) cmd_lint ;;
+  *) echo "usage: tools/spec.sh new <NNNN> <slug> | status | lint"; exit 1 ;;
+esac

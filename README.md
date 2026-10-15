@@ -2,9 +2,15 @@
 
 A GNOME-native clone of Windows XP Paint, built spec-first: specifications are the source of truth and code is derived from them.
 
-Start with `docs/workflow.md` (the loop and the learning path). Work happens in VS Code with the Claude Code extension.
+Status: in development. Each feature's status is in its spec (`docs/specs/`, or run `tools/spec.sh status`).
 
-Status: specs and rules only, no application code yet.
+## How we work
+Work happens in VS Code with the Claude Code extension. One spec file per feature in `docs/specs/`; three steps:
+`/sdd-spec NNNN` (write and settle the spec), `/sdd-build NNNN` (plan, tasks, implement test-first), `/sdd-check NNNN` (review).
+Rules: `CLAUDE.md` and `docs/constitution.md`. Feature order: `docs/specs/INDEX.md`. Note surprises in `docs/learning-log.md`.
+
+Learning path: read the constitution and change what you disagree with; run the pilot (0001) through all three steps slowly;
+note what felt heavy or useful; trim the process accordingly; then continue through the INDEX.
 
 ## Inspired by
 - **Microsoft Paint in Windows XP**: the original whose functionality and workflow this app follows (XP version specifically, not later Paint releases).

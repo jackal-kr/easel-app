@@ -5,10 +5,8 @@
       "Bash(meson compile:*)",
       "Bash(meson test:*)",
       "Bash(ninja:*)",
-      "Bash(tools/new-feature.sh:*)",
-      "Bash(tools/spec-status.sh:*)",
-      "Bash(tools/check-trace.sh:*)",
       "Bash(git status:*)",
+      "Bash(tools/spec.sh:*)",
       "Bash(git diff:*)",
       "Bash(git log:*)",
       "Bash(git show:*)"
