@@ -1,14 +1,24 @@
 # Learning log
 
-One entry per surprise. Format: `YYYY-MM-DD | feature | phase | what happened | lesson / template change`.
+One line per surprise, especially each time a spec turned out ambiguous or silent while planning or coding.
+Format: `YYYY-MM-DD | feature | what happened | lesson or change to the process`.
 
-## Spec gaps (found during plan or implementation = a spec was ambiguous or silent)
-| Date | Feature | Phase found | Gap | Fix |
-|---|---|---|---|---|
-
-## Notes and lessons
--
-
-## Measures per feature
-| Feature | Spec gaps | Rework after 1st implementation | Defects at first run | Effort (h) | Notes |
-|---|---|---|---|---|---|
+2026-10-15 | 0001 | Draft spec predated INDEX changes (Pan at start-up, zoom, settings file) and missed them | Re-read INDEX one-liner before reviewing an existing draft
+2026-10-15 | 0001 | spec-reviewer found 28 gaps (settings file location/format, save name rules, mid-stroke save/quit, quit prompt text, rendering below 100 %) | Even a "thin" skeleton hides many user-visible decisions; budget a review round per spec
+2026-10-15 | 0001 | Spec promised automated core tests for things the core cannot do (scaling in AS-14, GIO saves in AS-24/27/29); the plan exposed it | When writing 'Verified by', name the layer that owns the behavior; a scenario's test label is part of the spec
+2026-10-15 | 0001 | T002: spec gave the settings file's keys but not its syntax (comments, whitespace, case, repeats, bad lines); found when writing the parser | For any hand-edited file, specify its syntax in the spec, not only its keys
+2026-10-15 | 0001 | Manual check M2 showed 'auto = monitor size' was not what JOD meant: the picture should fill the window's canvas area, and the window size should follow the monitor | Manual checks catch intent gaps automated tests cannot; describe defaults by what the user sees on screen, not by a source value
+2026-10-15 | 0001 | 'auto' size needed two more rounds after M2 (fill area, then largest standard size that fits); each round was a real intent gap, not a bug | For a default the user looks at, show a concrete example on JOD's own screen (1920x1200 -> window 1440x900 -> 1024x768) before accepting
+2026-10-15 | 0001 | T009: name rule silent on 'a.' and '.png' | Edge cases of user-typed text (empty, dots, case) belong in the spec's examples
+2026-10-15 | 0001 | T009: the plan relied on GIO's g_file_replace_contents being atomic; the AS-29 test showed it rewrites the target in place when it cannot create its temp file | A test written from the scenario caught a wrong library assumption in the plan; keep failure-path scenarios automated
+2026-10-15 | 0001 | T010: adding .png after the dialog bypasses its overwrite confirmation | Any rule that changes user input after a confirmation must re-check what was confirmed
+2026-10-15 | 0001 | Resource prefix edited by hand to ...Easel while the app ID was ...EaselSdd; every ui test failed with a missing template | Derive dependent names (resource path) from one source (the app ID) in the build
+2026-10-15 | 0001 | /sdd-check found a stuck-quit bug no scenario covered (Save while a save dialog is already open) | Scenarios for async flows need a "while X is already open" case
+2026-10-15 | 0001 | Performance budgets were set but never measured in the pilot | Add a measurement task to the Tasks list of each feature with a budget
+2026-10-15 | 0001 | Pilot finished: 43 REQ, 38 AS, 15 tasks; spec changed 6 times after acceptance (auto size x2, syntax, odd names, overwrite, stuck quit) | Most gaps surfaced at manual checks and /sdd-check, not while writing the spec; keep both
+2026-10-15 | 0002 | Plan: '16 bytes per changed pixel' ignored the fixed cost every step has (a 1-pixel stroke needs ~76 bytes) | A per-item size bound needs a per-container term too; check bounds against the smallest case
+2026-10-15 | 0002 | A mutation pass in /sdd-check found two rules no test exercised (dropped start state, settings-to-history wiring) although every scenario had a test | For rules that guard against data loss, run a mutation pass in /sdd-check
+2026-10-15 | 0002 | The mutation pass flagged an "uncaught" rule that was an equivalent mutant (unique step ids make the discarded-step check unobservable) | Before writing a test for a surviving mutant, check whether any input could observe it
+2026-10-15 | 0002 | REQ-0002-16's "20 strokes" guarantee did not state its stroke size and budget, so it looked like a contradiction with the "oversized step is kept" rule; JOD caught it, not the reviewer | A numeric guarantee in a requirement states its assumptions and its limits
+2026-10-15 | 0002 | 0002 changed three requirements of the implemented 0001 (new settings section, undo-aware modified mark); pointer notes in 0001 plus a check kept the specs from contradicting each other | A feature that changes an implemented spec adds a pointer note there, and the check confirms the old tests still agree
+2026-10-15 | 0002 | Before "go" on the plan, JOD had to ask whether the history stores bounding boxes or copies the picture; the Plan had not said | For a data structure that grows with use, the Plan states what it stores and what it copies

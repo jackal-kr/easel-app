@@ -9,6 +9,8 @@ Problem or value, for whom. Two or three sentences.
 ## Requirements
 Observable behavior only, never files or libraries. Forms: "When X, the app shall Y", "While X, ...", "If X, then ...".
 Number as `- REQ-NNNN-01 ...`.
+A size or cost bound, or a numeric guarantee, states its assumptions and limits, and must hold for the smallest case
+(one item), including any fixed cost per container.
 
 <!--
     - REQ-NNNN-01 When the user presses the primary button on the canvas with the pencil, the app shall set the pixel under the pointer to the foreground color.

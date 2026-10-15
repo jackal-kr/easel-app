@@ -10,6 +10,7 @@ Precondition: `Status: accepted` in the spec. Otherwise stop and say so.
 1. **Plan.** Read `docs/engineering.md` and `docs/design.md`. Fill the spec's `## Plan`: approach in a few lines, files/modules,
    key interfaces, a map from every `AS-n` to a test or manual check, one line on the constitution check, risks.
    A failure-path scenario (write fails, file unreadable) always gets an automated test, never a manual check only.
+   For a data structure that grows with use, say what it stores per item and what it copies.
    Write an ADR in `docs/decisions/` only if a choice contradicts the constitution or would be questioned later.
    Show the plan. Wait for JOD's "go".
 2. **Tasks.** Fill `## Tasks`: small ordered slices, each `- [ ] T001 title (REQ-..., AS-...) - done when ...`. Every REQ and AS
