@@ -90,6 +90,7 @@ the picture). Words used below: the *canvas area* is the scrolled area that show
 - AS-26 (REQ-0004-25) Given a 2000x2000 picture at 100 % scrolled to (1500, 1500) in a 1000x800 canvas area, When it is resized to 1200x1200, Then the scroll position is the nearest valid one (200, 400), the zoom and the window size are unchanged; When it is resized to 100x100, Then it shows at the top-left; undo gives 2000x2000 again with the same clamping | Verified by: automated (ui) + manual M5
 - AS-27 (REQ-0004-26) Given a resize that cannot be allocated, Then the error dialog with the heading and body of REQ-0004-26 appears, and the picture, the title and Undo are unchanged | Verified by: automated (core, refusal) + automated (ui, dialog)
 - AS-28 (REQ-0004-27) Given a fresh start, When the user chooses Color Box, Then the palette bar (indicator, swap button, swatches) disappears, the check item is unchecked, and the canvas area is taller by the bar's height; Ctrl+Shift+X still swaps the colors and the next stroke uses the swapped color; When the user chooses Color Box again, Then the bar is back with the current colors; hiding Tool Box hides the tool buttons and keeps the active tool, hiding Status Bar hides its fields; none of this changes the title's modified mark or adds an undo step | Verified by: automated (ui) + manual M7
+- AS-29 (REQ-0004-23, REQ-0002-17) Given a 16 MB undo budget and three earlier strokes, When the user shrinks a 4000x2000 picture to 1x1 (about 32 MB of removed pixels, more than the whole budget), Then the resize is kept as the only step and the three strokes can no longer be undone; one Undo restores the 4000x2000 picture with every pixel exactly, and Redo shrinks it again; a later small stroke drops the oversized step, as REQ-0002-16 does for any step | Verified by: automated (core)
 
 ## Edge cases
 - Text the user types: the Grid and Attributes fields hold empty, 0, negative, above the limit, leading zeros ("007" is 7), spaces around the number (trimmed), and anything non-numeric; the same rules for the settings keys of REQ-0004-15 (REQ-0001-40).
@@ -120,7 +121,187 @@ scrollbars, Pan drag); the selection size in the status bar (0009).
 - 0001: REQ-0001-04 and REQ-0002-19 (a created settings file also holds `[view]`, REQ-0004-15), REQ-0001-16 and REQ-0001-39 (zoom commands and the other new actions follow the same rules, REQ-0004-03/04), REQ-0002-08 (scroll position kept as far as the size allows, REQ-0004-25), REQ-0002-16 (a resize step is sized by REQ-0004-23).
 
 ## Plan
-(added by /sdd-build after the spec is accepted: approach, files, key interfaces, scenario-to-test map, risks)
+
+### Approach
+- **Core (libc only, headless):**
+  - `view` gains the Fit to Window level, the pinch accumulator and the drag-position-to-size rule.
+  - `grid` is new: the visibility rule and the line geometry (vertical and diagonal lines as plain segments).
+  - `number` is new: the whole-number field parser used by both dialogs and the settings keys.
+  - `image` gains `easel_image_resize`; `history` gains a resize step.
+  - `settings` gains the `[view]` keys.
+- **ui:** the header-bar Image and View buttons (View's popover holds the zoom row as a custom child and a menu for the
+  rest), the actions and accelerators, the status bar widget, the Grid and Attributes dialogs (libadwaita), the grid,
+  the handles and the drag outline (drawn by the canvas), and the three panel toggles.
+- **io:** unchanged; the created file's default text, which gains the `[view]` section, lives in core.
+
+### A size change and the undo history (finding 5 of the 0002 check)
+A stroke step stores pixel indexes, `y * width + x`, for the width the picture had when it was drawn. That stays correct
+because history is one line and a step is only ever applied or reverted while the picture has the size it had when the
+step was recorded: undoing step k happens in the state right after k, and redoing it in the state right before. A
+resize step is the only thing that changes the size between its neighbours. So stroke steps need no change and no size
+is stored in them.
+- **A resize step stores:** the old and new size, the fill color, and the removed pixels (4 bytes each, in the row-major
+  order of the old picture, skipping the kept area). No indexes: restoring walks the same order. Growing stores no
+  pixels, since undo just cuts the added area, which is still pure fill because every later step has been undone first.
+- **Budget:** 4 bytes per removed pixel plus 64 (REQ-0004-23); the drop-oldest loop and the lone oversized step of
+  REQ-0002-17 are unchanged.
+- **Atomic:** the removed-pixels array and the new pixel buffer are allocated before anything changes. If either fails,
+  nothing changed and the window shows the REQ-0004-26 dialog.
+- **Copies:** a resize allocates one new buffer of the new size and copies the kept area once; the history never copies
+  the whole picture. A stroke step still stores only changed pixels.
+- **Saved state and ids** work as before: a resize step is a step with an id.
+
+### What grows with use
+- The history: a stroke step stores 12 bytes per changed pixel; a resize step 4 bytes per removed pixel; both plus 64.
+  Nothing is copied at stroke start.
+- The grid, the handles and the drag outline store nothing and are drawn each frame, only for the visible area.
+- The status bar stores its four current values and a write counter, nothing else.
+
+### The status bar updates only when a value changes
+Each field keeps its last value; a setter compares the new value with it and writes the label only if they differ, so the
+pointer moving inside one picture pixel (many pointer events at 800 %), or an unchanged zoom or size, writes nothing. A
+per-field counter of label writes is exposed for tests (the AS-8 test moves the pointer inside one pixel 50 times and
+sees the counter grow by 0).
+
+### New settings keys (REQ-0004-15, REQ-0004-27)
+Section `[view]`, syntax as REQ-0001-40 (comments, spaces, case-insensitive values, last repeat wins, an unparseable file
+gives every default). An invalid or out-of-range value is not clamped: it means the default, silently, as `[history]
+memory` does.
+
+| Key | Valid values | Default | Anything else |
+|---|---|---|---|
+| `grid` | `on`, `off` | `off` | `off` |
+| `grid-size` | whole number 1 to 1000 (leading zeros and spaces fine) | `1` | `1` (0, 1001, negative, empty, text) |
+| `grid-axonometric` | `on`, `off` | `off` | `off` |
+| `toolbox` | `on`, `off` | `on` | `on` |
+| `colorbox` | `on`, `off` | `on` | `on` |
+| `statusbar` | `on`, `off` | `on` | `on` |
+
+A settings file the app creates holds the `[view]` section with these defaults, after `[history]`; an existing file is
+never rewritten. `EaselSettings` gains six fields (the default text of a created file lives in `settings.c`, so io needs no change); the window reads them once at start-up.
+
+### Drawing only the changed area at 8000x8000
+The measurements of 0001 and 0002 show the lag is the screen copy: each update turns the whole picture into a new
+`GBytes` (a 256 MB copy at 8000x8000, about 51 ms). The plan:
+1. Make the texture's bytes a zero-copy view of the picture's own pixels (`g_bytes_new_with_free_func` with a no-op free
+   function), and keep passing the previous texture and the changed region to the texture builder, so GTK uploads only
+   that region.
+2. Make the picture's pixel buffer outlive every texture that points at it: a resize (which reallocates it) first drops
+   the canvas's texture and builds the next one in the same call, before control returns to the main loop.
+3. Measure with the benchmark (a task) at 1920x1080 and 8000x8000, with the default renderer. If it still misses, fall
+   back to tiles of 512 x 512 (rebuild only the dirty ones). A budget missed is reported, not hidden (rule P5).
+
+### Files
+- **New:** `src/core/grid.{c,h}`, `src/core/number.{c,h}`, `src/ui/status-bar.{c,h}`, `src/ui/grid-dialog.{c,h}`,
+  `src/ui/attributes-dialog.{c,h}`, `tests/core/test-grid.c`, `tests/core/test-number.c`, `tests/core/test-resize.c`,
+  `tests/perf/perf-0004.c`.
+- **Changed:** `src/core/view.{c,h}`, `src/core/image.{c,h}`, `src/core/history.{c,h}`, `src/core/settings.{c,h}`,
+  `src/ui/canvas.{c,h}`, `src/ui/window.{c,h}`,
+  `src/ui/window.ui`, `src/ui/application.c`, `src/ui/palette-bar.{c,h}` (hide and show), both `meson.build` files,
+  `tests/core/test-view.c`, `tests/core/test-settings.c`, `tests/core/test-history.c`, `tests/io/test-settings-file.c`,
+  `tests/ui/test-window.c`.
+
+### Key interfaces (core)
+- `int easel_view_fit_level (int area_w, int area_h, int pic_w, int pic_h)` (percent, 10 if none fits);
+  `int easel_view_pinch (double *scale_acc, double scale_delta)` (levels to move, -1, 0 or +1, resetting the
+  accumulator); `void easel_view_resize_from_point (double x, double y, int handle, int *w, int *h)` (rounds to the nearest
+  boundary, limits 1 to 10000, handles: right, bottom, corner).
+- `bool easel_grid_visible (int cell, int zoom_pct)` (cell * zoom / 100 >= 4);
+  `void easel_grid_lines (int w, int h, int cell, bool axonometric, EaselGridLineFunc fn, void *data)` (segments in
+  picture coordinates, clipped to the picture).
+- `bool easel_parse_field (const char *text, int min, int max, int *out)`.
+- `EaselResizeResult easel_image_resize (EaselImage *img, int w, int h, uint32_t fill)`; and the edit as one call that
+  allocates first, resizes and records the step: `EaselResizeResult easel_resize_edit (EaselImage *img, EaselHistory *h,
+  int w, int h, uint32_t fill)` (OK, UNCHANGED, NO_MEMORY, BAD_SIZE).
+- `easel_history_undo` and `easel_history_redo` handle the resize step; after either, the caller checks the picture's
+  size and refreshes the canvas.
+
+### Scenario-to-test map
+| AS | Test |
+|---|---|
+| 1 | ui `as1_menus` + manual M1 |
+| 2 | ui `as2_actions_ignored` |
+| 3 | core `as3_zoom_levels`, ui `as3_zoom_buttons` |
+| 4 | ui `as4_normal_and_large` |
+| 5 | core `as5_zoom_anchor_center`, ui `as5_zoom_keeps_center` |
+| 6 | core `as6_fit_level`, ui `as6_fit_to_window` |
+| 7 | core `as7_pinch_accumulator` + manual M2 (the real gesture) |
+| 8 | ui `as8_status_fields`, ui `as8_status_writes_only_on_change` + manual M3 |
+| 9 | manual M3 |
+| 10 | core `as10_grid_visibility`, ui `as10_grid_toggle` + manual M4 |
+| 11 | core `as11_grid_cell_16` |
+| 12 | ui `as12_grid_dialog` |
+| 13 | core `as13_axonometric_lines` + manual M4 |
+| 14 | core `as14_view_settings`, io `as14_created_file_has_view`, io `as14_existing_file_untouched` |
+| 15 | ui `as15_handles` + manual M5 |
+| 16 | manual M5 |
+| 17 | core `as17_size_from_point`, ui `as17_handle_drag` |
+| 18 | ui `as18_drag_cancel_rules` + manual M5 |
+| 19 | core `as19_grow_and_shrink` |
+| 20 | ui `as20_attributes_dialog` + manual M6 |
+| 21 | core `as21_undo_redo_resize_exact` |
+| 22 | core `as22_steps_through_a_resize`, ui `as22_undo_through_resize` |
+| 23 | ui `as23_modified_across_resize` |
+| 24 | core `as24_resize_step_budget` |
+| 25 | ui `as25_same_size_no_step` |
+| 26 | ui `as26_scroll_clamp_after_resize` + manual M5 |
+| 27 | core `as27_resize_refused` (failure path, automated), ui `as27_error_dialog` |
+| 28 | ui `as28_panel_toggles` + manual M7 |
+| 29 | core `as29_oversized_resize_kept_alone` |
+
+### Constitution check
+- P4: grid lines are hard-edged; picture pixels stay hard-edged at every zoom.
+- P5: the screen-copy change is justified by the measurements of 0001 and 0002 and is itself measured.
+- P6: the grid and panel start-up states are settings.
+- Layering: the grid geometry, number parsing, fit and resize are in core with no GLib.
+- One user-visible edit is one undo step: a resize is one step; grid, zoom and panels are not edits.
+
+### Risks
+- **Zero-copy texture memory (the riskiest part).** GTK treats a texture as immutable, but the picture's pixels change
+  under it after every stroke. Torn or stale drawing is possible, and the ui tests (forced Cairo renderer) cannot show
+  it. So the speed work comes first (group A): the manual check M8 draws pencil strokes, undoes and redoes, zooms and
+  pans on an 8000x8000 picture with the real renderer, looking for flicker and old pixels. If it fails, the 512 x 512 tile
+  fallback is applied before any other UI is built on top. The picture's buffer is replaced only by a resize, which
+  rebuilds the texture in the same call; a test (`as26`) resizes while a frame is pending.
+- **Custom child in the View popover.** The zoom row is a widget inside GTK's popover menu; if it does not look right,
+  the whole View menu becomes a custom popover. Manual check M1.
+- **The pinch** cannot be synthesized in a test; the accumulator is tested in core and the real gesture by manual check M2.
+- **Handle drag and scrolling.** The handles are in the canvas widget's own space (it reserves 5 + 2 pixels right and
+  below the picture), so they scroll with it; the drag uses pointer positions relative to the picture.
+- **Grid drawing cost.** Lines are generated only for the visible area; at 800 % with cell 1 that is about a hundred lines;
+  the axonometric grid at a small cell is the worst case, so the benchmark includes it.
+- **Memory of 10000 x 10000** (400 MB): tests of the refusal path use sizes over the limit, and the shrink tests use
+  small pictures; the one real 10000 x 10000 case is a manual check.
+- **The benchmark renderer.** The ui tests force the Cairo renderer; the benchmark uses the default one, as in 0001 and 0002.
+
+### Task groups, with a look-check after each
+The speed work comes first, so every later piece is built and checked on the faster drawing path.
+A. Speed at 8000x8000 (T001, T002): the numbers recorded in this Plan, and manual M8 on the real renderer (flicker, stale pixels).
+B. Menus and zoom (T003 to T006): M1 and M2.
+C. Status bar and panels (T007, T008): M3 and M7.
+D. The grid (T009 to T011): M4.
+E. Resizing (T012 to T014): M6 (Attributes), then M5 (handles).
+F. Measuring the grid and the resize (T015): numbers recorded in this Plan.
 
 ## Tasks
-(added by /sdd-build after the plan is agreed: `- [ ] T001 title (REQ-..., AS-...) - done when ...`)
+Group A, speed at 8000x8000 (budget: engineering.md, "Large picture" and "Pointer event to pixels")
+- [ ] T001 Draw only the changed area (no REQ: the budget of engineering.md and Plan "Drawing only the changed area") - done when the picture's texture is a zero-copy view of its pixels with the changed region passed to GTK, the 0001 and 0002 ui tests pass unchanged, and a resize-time test shows no texture reads freed memory
+- [ ] T002 Benchmark perf-0004 and manual M8 (same budget) - done when `perf-0004` times a pencil stroke motion, an undo and a redo at 1920x1080 and 8000x8000 with the default renderer, its numbers are recorded in the Plan next to the 0001 and 0002 numbers, and manual M8 passes: on the real renderer, a pencil stroke, undo, redo, zoom and pan on an 8000x8000 picture show no flicker and no old pixels (if they do, T001 is redone with the 512 x 512 tiles of the Plan before group B starts)
+Group B, menus and zoom
+- [ ] T003 View settings keys and the number field parser (REQ-0004-13, REQ-0004-15, REQ-0004-21, REQ-0004-27; AS-14) - done when core `as14_view_settings` and the number-field tests pass, io `as14_created_file_has_view` and `as14_existing_file_untouched` pass, and the existing settings tests of 0001 to 0003 pass unchanged
+- [ ] T004 Core zoom rules: fit level, pinch accumulator, zoom levels and anchors (REQ-0004-04, REQ-0004-05, REQ-0004-06, REQ-0004-07, REQ-0004-08; AS-3, AS-5, AS-6, AS-7) - done when core `as3_zoom_levels`, `as5_zoom_anchor_center`, `as6_fit_level` and `as7_pinch_accumulator` pass
+- [ ] T005 Image and View menus, zoom row, zoom actions and shortcuts (REQ-0004-01, REQ-0004-02, REQ-0004-03, REQ-0004-04, REQ-0004-05, REQ-0004-06; AS-1, AS-2, AS-3, AS-4, AS-5) - done when ui `as1_menus`, `as2_actions_ignored`, `as3_zoom_buttons`, `as4_normal_and_large` and `as5_zoom_keeps_center` pass, and manual M1 passes
+- [ ] T006 Fit to Window and the touchpad pinch in the window (REQ-0004-07, REQ-0004-08; AS-6, AS-7) - done when ui `as6_fit_to_window` passes and manual M2 passes (the real pinch)
+Group C, status bar and panels
+- [ ] T007 Status bar: position, size, zoom and hint, writing only on change (REQ-0004-09, REQ-0004-10, REQ-0004-11; AS-8, AS-9) - done when ui `as8_status_fields` and `as8_status_writes_only_on_change` pass and manual M3 passes
+- [ ] T008 Panel toggles: Tool Box, Color Box, Status Bar (REQ-0004-27, REQ-0004-15; AS-28) - done when ui `as28_panel_toggles` passes, panels start as the settings say, and manual M7 passes
+Group D, the grid
+- [ ] T009 Core grid: visibility rule and line geometry (REQ-0004-12, REQ-0004-14; AS-10, AS-11, AS-13) - done when core `as10_grid_visibility`, `as11_grid_cell_16` and `as13_axonometric_lines` pass
+- [ ] T010 Grid drawing, Show Grid, Ctrl+G and the start-up state (REQ-0004-12, REQ-0004-15; AS-10) - done when ui `as10_grid_toggle` passes and the grid is not in the saved picture, and manual M4 passes
+- [ ] T011 Grid dialog (REQ-0004-13; AS-12) - done when ui `as12_grid_dialog` passes (invalid values disable Apply, Esc cancels, Apply never toggles the grid) and manual M4 passes with the dialog
+Group E, resizing
+- [ ] T012 Core resize and the resize history step (REQ-0004-20, REQ-0004-22, REQ-0004-23, REQ-0004-24; AS-19, AS-21, AS-22, AS-24, AS-29) - done when core `as19_grow_and_shrink`, `as21_undo_redo_resize_exact`, `as22_steps_through_a_resize`, `as24_resize_step_budget` and `as29_oversized_resize_kept_alone` pass, and a resize that cannot be allocated leaves picture and history unchanged (core `as27_resize_refused`)
+- [ ] T013 Attributes dialog and the resize in the window (REQ-0004-21, REQ-0004-22, REQ-0004-24, REQ-0004-25, REQ-0004-26; AS-20, AS-23, AS-25, AS-26, AS-27) - done when ui `as20_attributes_dialog`, `as22_undo_through_resize`, `as23_modified_across_resize`, `as25_same_size_no_step`, `as26_scroll_clamp_after_resize` and `as27_error_dialog` pass, and manual M6 passes
+- [ ] T014 Resize handles: visibility, cursors, drag, cancel rules (REQ-0004-16, REQ-0004-17, REQ-0004-18, REQ-0004-19; AS-15, AS-16, AS-17, AS-18) - done when ui `as15_handles`, `as17_handle_drag` and `as18_drag_cancel_rules` pass and manual M5 passes
+Group F, measuring
+- [ ] T015 Measure the grid and the resize (budgets: engineering.md "Pointer event to pixels"; REQ-0004-12, REQ-0004-14, REQ-0004-22) - done when `perf-0004` also times drawing with the grid on (cell 1 at 800 %, and an axonometric grid with cell 4) and a 50,000-pixel resize with its undo and redo at 1920x1080 and 8000x8000, and the numbers are recorded in the Plan
