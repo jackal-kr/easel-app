@@ -14,7 +14,7 @@ In this feature the only edit is a pencil stroke (0001); later features add thei
 
 ### History
 - REQ-0002-01 When an edit that changes at least one pixel is completed, the app shall add exactly one undo step for it.
-- REQ-0002-02 A stroke that changes no pixel, a cancelled stroke (REQ-0001-23), panning, scrolling, zooming, a tool change and saving shall add no undo step.
+- REQ-0002-02 A stroke that changes no pixel, a cancelled stroke (REQ-0001-23), panning, scrolling, zooming, a tool change and saving shall add no undo step. (0003 adds choosing, swapping and editing colors: REQ-0003-09.)
 - REQ-0002-03 When the user chooses Undo, the app shall restore the picture to how it was before the most recent step that has not been undone, and that step becomes redoable.
 - REQ-0002-04 When the user chooses Redo, the app shall reapply the most recently undone step, and it becomes undoable again.
 - REQ-0002-05 When an edit is completed after one or more undos, the app shall discard every redoable step.
@@ -25,7 +25,7 @@ In this feature the only edit is a pencil stroke (0001); later features add thei
 
 ### Controls
 - REQ-0002-10 The header bar shall show Undo and Redo buttons right after Save (order per `docs/design.md`: Open, Save, Undo, Redo), with the standard undo and redo icons and the tooltips "Undo" and "Redo".
-- REQ-0002-11 Undo shall be Ctrl+Z; Redo shall be Ctrl+Y and Ctrl+Shift+Z. The shortcuts work wherever keyboard focus is in the window, and do nothing while the quit prompt or a save, replace or error dialog is open.
+- REQ-0002-11 Undo shall be Ctrl+Z; Redo shall be Ctrl+Y and Ctrl+Shift+Z. The shortcuts work wherever keyboard focus is in the window, and do nothing while the quit prompt or a save, replace or error dialog is open. (0003 adds the color chooser to these dialogs: REQ-0003-14.)
 
 ### Saved state
 This replaces the "modified" rule of 0001 (REQ-0001-13, REQ-0001-26): the modified mark now follows the history.

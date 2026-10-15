@@ -47,6 +47,8 @@ easel_application_new (void)
   gtk_application_set_accels_for_action (GTK_APPLICATION (app), "win.undo", (const char *[]) { "<Control>z", NULL });
   gtk_application_set_accels_for_action (GTK_APPLICATION (app), "win.redo",
                                          (const char *[]) { "<Control>y", "<Control><Shift>z", NULL });
+  gtk_application_set_accels_for_action (GTK_APPLICATION (app), "win.swap-colors",
+                                         (const char *[]) { "<Control><Shift>x", NULL });
   gtk_application_set_accels_for_action (GTK_APPLICATION (app), "win.close", (const char *[]) { "<Control>w", NULL });
   gtk_application_set_accels_for_action (GTK_APPLICATION (app), "app.quit", (const char *[]) { "<Control>q", NULL });
   g_action_map_add_action_entries (G_ACTION_MAP (app), app_actions, G_N_ELEMENTS (app_actions), app);

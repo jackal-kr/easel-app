@@ -5,6 +5,8 @@ easel_core_inc = include_directories('core')
 easel_core = static_library('easel-core',
   'core/history.c',
   'core/image.c',
+  'core/palette.c',
+  'core/ini.c',
   'core/savename.c',
   'core/settings.c',
   'core/stroke.c',
@@ -20,6 +22,7 @@ gio_dep = dependency('gio-2.0')
 pixbuf_dep = dependency('gdk-pixbuf-2.0')
 easel_io_inc = include_directories('io')
 easel_io = static_library('easel-io',
+  'io/palette-file.c',
   'io/png.c',
   'io/settings-file.c',
   include_directories: easel_io_inc,
@@ -44,6 +47,7 @@ easel_ui_inc = include_directories('.', 'ui')
 easel_ui = static_library('easel-ui',
   'ui/application.c',
   'ui/canvas.c',
+  'ui/palette-bar.c',
   'ui/tool.c',
   'ui/window.c',
   ui_resources,

@@ -1,11 +1,11 @@
-foreach name : ['history', 'image', 'savename', 'settings', 'stroke', 'view']
+foreach name : ['history', 'image', 'palette', 'savename', 'settings', 'stroke', 'view']
   test('core-' + name,
     executable('test-' + name, 'core/test-' + name + '.c', dependencies: easel_core_dep),
     suite: 'core',
   )
 endforeach
 
-foreach name : ['png', 'settings-file']
+foreach name : ['palette-file', 'png', 'settings-file']
   test('io-' + name,
     executable('test-' + name, 'io/test-' + name + '.c', dependencies: easel_io_dep),
     suite: 'io',

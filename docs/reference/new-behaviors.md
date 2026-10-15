@@ -26,7 +26,7 @@ belongs to (see `docs/specs/INDEX.md`). Behavior only.
 - Default text size is 12. Esc closes the Font and Thumbnail windows.
 
 ## Colors
-- Changing a palette color (double-click, F2 or click a swatch, then a color chooser) is remembered between runs; Preferences can reset to the classic 28 colors.
+- Changing a palette color (double-click or F2, then a color chooser) is remembered between runs; Preferences can reset to the classic 28 colors. Clicking the fore/background indicator opens the chooser for that color.
 - Keyboard access to the palette: Tab to it, arrows to move, Enter or Space picks the foreground, Shift+Enter the background.
 
 ## Application

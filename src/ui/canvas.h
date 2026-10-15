@@ -23,6 +23,9 @@ int easel_canvas_get_zoom (EaselCanvas *self);
 /* Device pixels per logical pixel of the canvas's surface. */
 double easel_canvas_get_scale (EaselCanvas *self);
 
+/* While blocked (the color chooser is open, REQ-0003-14), presses on the canvas do nothing. */
+void easel_canvas_set_input_blocked (EaselCanvas *self, gboolean blocked);
+
 /* Where finished strokes are recorded as undo steps (not owned; NULL records nothing). */
 void easel_canvas_set_history (EaselCanvas *self, EaselHistory *history);
 
@@ -58,5 +61,8 @@ void easel_canvas_zoom_at (EaselCanvas *self, int notches, double view_x, double
 /* Takes pointer input from area (the canvas's scrolled area), so strokes and pans can start outside the
    picture (REQ-0001-14, REQ-0001-22). */
 void easel_canvas_listen_on (EaselCanvas *self, GtkWidget *area);
+
+/* The checkerboard drawn behind transparency, on screen only (REQ-0001-11, REQ-0003-05). */
+void easel_snapshot_append_checkerboard (GtkSnapshot *snapshot, const graphene_rect_t *bounds, float cell);
 
 G_END_DECLS

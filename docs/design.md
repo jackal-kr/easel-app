@@ -9,8 +9,8 @@ workflow; JOD to confirm or change each point; mark changes with an ADR if they 
 - GNOME-native (GTK 4 + libadwaita, GNOME HIG). Follows system light/dark and accent color. No XP visuals.
 - Header bar: Open, Save, Undo, Redo, Image menu button, View menu button, slim primary (hamburger) menu.
   No nested XP-style menu bar.
-- Layout: toolbox (18 tools: the 16 XP tools plus Pan and Gradient) with per-tool options below it, canvas in a scrolled viewport, palette and
-  fore/background swatches, status bar with pointer position, selection size and tool hint.
+- Layout: toolbox (18 tools: the 16 XP tools plus Pan and Gradient) with per-tool options below it, canvas in a scrolled viewport, palette bar
+  (fore/background indicator, swap button, 28 swatches), status bar with pointer position, selection size and tool hint.
 - Dialogs are libadwaita dialogs; destructive actions (discard unsaved changes) are labelled with the action, not "OK".
 - Preferences dialog: appearance, new-picture defaults, drawing defaults, palette persistence, undo memory budget.
 - Shortcuts window lists every shortcut. Every action reachable by menu or toolbar also has a shortcut where XP had one.
@@ -20,7 +20,7 @@ workflow; JOD to confirm or change each point; mark changes with an ADR if they 
 All user-adjustable defaults (new-picture size and background, drawing defaults, panel visibility, theme, undo budget, text font and style, palette) are settings kept in a configuration file. The Preferences dialog (feature 0013) edits the same settings; until then the file is edited by hand. Concrete default values are decided in the spec that needs them.
 
 ### Palette editing
-Palette colors are edited in place: double-click a palette color, press F2 on it, or click a swatch, which opens the system color chooser. Changes are remembered between runs; Preferences can reset the palette to the classic 28 colors. Whether a separate Edit Colors menu entry is also wanted is settled in spec 0003.
+Palette colors are edited in place: double-click a palette color or press F2 on it, which opens the system color chooser; clicking a square of the fore/background indicator opens it for that color. Changes are remembered between runs; Preferences can reset the palette to the classic 28 colors. There is no separate Edit Colors menu entry (settled in 0003).
 
 ## Interaction model
 How input maps to actions across all tools. Seed from XP Paint behavior; verify while writing each spec.

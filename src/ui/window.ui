@@ -38,6 +38,9 @@
             </child>
           </object>
         </child>
+        <child type="bottom">
+          <object class="EaselPaletteBar" id="palette_bar"/>
+        </child>
         <property name="content">
           <object class="GtkBox">
             <child>

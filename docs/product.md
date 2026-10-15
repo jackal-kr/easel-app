@@ -15,7 +15,7 @@ People who want to sketch, crop, annotate or fix a screenshot or photo in second
 
 ## Scope (v1)
 All 16 XP tools plus Pan and Gradient (see `docs/reference/new-behaviors.md`): free-form select, select, eraser, fill, pick color, magnifier, pencil, brush, airbrush, text,
-line, curve, rectangle, polygon, ellipse, rounded rectangle. Tool options, 28-color palette with Edit Colors,
+line, curve, rectangle, polygon, ellipse, rounded rectangle. Tool options, 28-color palette edited in place (no separate Edit Colors entry),
 fore/background colors, zoom + grid, selections (move, smear, stamp, transparent), clipboard,
 text boxes, Image-menu transforms (flip, rotate, stretch, skew, invert, attributes, clear), unlimited-ish undo,
 open/save png, jpeg, bmp, tiff, webp (gif open only), print, Preferences, shortcuts window, thumbnail, i18n, accessibility,

@@ -211,6 +211,35 @@ stroke_refuses_huge_picture (void)
   CHECK (easel_stroke_begin (&huge, 1, 1, BLACK) == NULL);
 }
 
+/* REQ-0003-08: a color with transparency sets pixels to exactly its value. Blending would mix it with the pixel below;
+   the checkerboard behind transparency exists only on screen, never in the picture (REQ-0003-05). */
+static void
+as6_transparent_stroke_exact (void)
+{
+  static const uint32_t colors[] = { 0x00000000u, 0x80FF0000u };   /* #00000000 and #FF000080 */
+  EaselImage *img = easel_image_new (20, 4, 0xFF336699u);
+
+  for (int k = 0; k < 2; k++)
+    {
+      EaselStroke *s = easel_stroke_begin (img, 0, k, colors[k]);
+
+      easel_stroke_to (s, 19, k);
+      CHECK (easel_stroke_end (s, NULL) == 20);
+      for (int x = 0; x < 20; x++)
+        CHECK (easel_image_get (img, x, k) == colors[k]);
+    }
+  /* The row in between is untouched; a second pass in the same color changes nothing. */
+  for (int x = 0; x < 20; x++)
+    CHECK (easel_image_get (img, x, 2) == 0xFF336699u);
+  {
+    EaselStroke *s = easel_stroke_begin (img, 0, 1, colors[1]);
+
+    easel_stroke_to (s, 19, 1);
+    CHECK (easel_stroke_end (s, NULL) == 0);
+  }
+  easel_image_free (img);
+}
+
 int
 main (void)
 {
@@ -223,5 +252,6 @@ main (void)
   RUN (stroke_ends_into_history);
   RUN (stroke_without_change_adds_no_step);
   RUN (stroke_refuses_huge_picture);
+  RUN (as6_transparent_stroke_exact);
   return 0;
 }

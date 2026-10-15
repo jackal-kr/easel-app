@@ -9,6 +9,8 @@
 
 #include "application.h"
 #include "canvas.h"
+#include "palette-bar.h"
+#include "palette-file.h"
 #include "settings-file.h"
 #include "view.h"
 #include "window.h"
@@ -43,6 +45,15 @@ write_settings (const char *text)
 
   g_assert_cmpint (g_mkdir_with_parents (dir, 0700), ==, 0);
   g_assert_true (g_file_set_contents (path, text, -1, NULL));
+}
+
+/* Tests that edit swatches remove the palette file they wrote, so later tests see the default palette. */
+static void
+remove_palette_file (void)
+{
+  g_autofree char *path = easel_palette_file_path ();
+
+  g_remove (path);
 }
 
 /* Activates the app and waits (at most 5 s) until the window has its start-up picture. */
@@ -948,6 +959,485 @@ as15_save_during_stroke (void)
   close_windows ();
 }
 
+/* ---- 0003: colors and palette ---- */
+
+static graphene_rect_t
+bounds_in (GtkWidget *w, GtkWidget *target)
+{
+  graphene_rect_t r;
+
+  g_assert_true (gtk_widget_compute_bounds (w, target, &r));
+  return r;
+}
+
+static void
+as1_palette_bar (void)
+{
+  EaselWindow *win;
+  EaselPaletteBar *bar;
+  GtkWidget *scroller;
+  graphene_rect_t bar_r, canvas_r;
+  EaselPalette def;
+
+  remove_palette_file ();
+  win = start_window ();
+  bar = easel_window_get_palette_bar (win);
+  g_assert_nonnull (bar);
+  wait_for_layout (win);
+  scroller = gtk_widget_get_ancestor (GTK_WIDGET (easel_window_get_canvas (win)), GTK_TYPE_SCROLLED_WINDOW);
+  bar_r = bounds_in (GTK_WIDGET (bar), GTK_WIDGET (win));
+  canvas_r = bounds_in (scroller, GTK_WIDGET (win));
+
+  /* Below the canvas, across the window's full width (REQ-0003-01). */
+  g_assert_cmpfloat (bar_r.origin.y, >=, canvas_r.origin.y + canvas_r.size.height - 0.5);
+  g_assert_cmpfloat (bar_r.origin.x, <=, 0.5);
+  g_assert_cmpfloat (bar_r.size.width, >=, gtk_widget_get_width (GTK_WIDGET (win)) - 0.5);
+
+  /* The default colors (REQ-0003-04), and black in front of the picture's background (REQ-0003-02). */
+  easel_palette_defaults (&def);
+  for (int n = 1; n <= EASEL_PALETTE_SIZE; n++)
+    g_assert_cmphex (easel_swatch_get_color (easel_palette_bar_get_swatch (bar, n)), ==, def.colors[n - 1]);
+  g_assert_cmphex (easel_palette_bar_get_foreground (bar), ==, 0xFF000000u);
+  g_assert_cmphex (easel_palette_bar_get_background (bar), ==, easel_window_get_background (win));
+  close_windows ();
+}
+
+/* Swatches are 20x20 logical pixels, 2 apart, in two rows of 14, numbered row by row (REQ-0003-01). */
+static void
+as1_swatch_layout (void)
+{
+  EaselWindow *win = start_window ();
+  EaselPaletteBar *bar = easel_window_get_palette_bar (win);
+  graphene_rect_t first, r[EASEL_PALETTE_SIZE + 1];
+
+  wait_for_layout (win);
+  for (int n = 1; n <= EASEL_PALETTE_SIZE; n++)
+    {
+      r[n] = bounds_in (GTK_WIDGET (easel_palette_bar_get_swatch (bar, n)), GTK_WIDGET (bar));
+      g_assert_cmpfloat (r[n].size.width, ==, 20);
+      g_assert_cmpfloat (r[n].size.height, ==, 20);
+    }
+  first = r[1];
+  for (int n = 1; n <= EASEL_PALETTE_SIZE; n++)
+    {
+      int row = n <= 14 ? 1 : 2, col = n <= 14 ? n : n - 14;
+
+      /* Same row, same top; next column, further right; second row below the first, columns aligned. */
+      g_assert_cmpfloat (r[n].origin.y, ==, row == 1 ? first.origin.y : r[15].origin.y);
+      if (col > 1)
+        g_assert_cmpfloat (r[n].origin.x, ==, r[n - 1].origin.x + 22);
+      if (row == 2)
+        {
+          g_assert_cmpfloat (r[n].origin.x, ==, r[n - 14].origin.x);
+          g_assert_cmpfloat (r[n].origin.y, ==, r[n - 14].origin.y + 22);
+        }
+    }
+  /* The indicator is left of swatch 1. */
+  g_assert_cmpfloat (bounds_in (GTK_WIDGET (easel_palette_bar_get_indicator (bar)), GTK_WIDGET (bar)).origin.x
+                     + 1, <, first.origin.x);
+  close_windows ();
+}
+
+/* REQ-0003-18, REQ-0003-19: the bar's exact dimensions, and the swap button. */
+static void
+as18_bar_geometry_and_swap_button (void)
+{
+  EaselWindow *win = start_window ();
+  EaselPaletteBar *bar = easel_window_get_palette_bar (win);
+  GtkWidget *indicator = GTK_WIDGET (easel_palette_bar_get_indicator (bar));
+  GtkWidget *swap = GTK_WIDGET (easel_palette_bar_get_swap_button (bar));
+  GtkWidget *grid = gtk_widget_get_parent (GTK_WIDGET (easel_palette_bar_get_swatch (bar, 1)));
+  GtkWidget *separator = gtk_widget_get_first_child (GTK_WIDGET (bar));
+  graphene_rect_t ind, btn, grd, sep, front, back;
+
+  wait_for_layout (win);
+  /* A separator line above the bar's contents. */
+  g_assert_true (GTK_IS_SEPARATOR (separator));
+  sep = bounds_in (separator, GTK_WIDGET (bar));
+
+  ind = bounds_in (indicator, GTK_WIDGET (bar));
+  btn = bounds_in (swap, GTK_WIDGET (bar));
+  grd = bounds_in (grid, GTK_WIDGET (bar));
+  g_assert_cmpfloat (ind.size.width, ==, 46);
+  g_assert_cmpfloat (ind.size.height, ==, 42);
+  /* From the left: 8 margin, indicator, 8, swap button, 8, grid; at least 6 below the separator. */
+  g_assert_cmpfloat (ind.origin.x, ==, 8);
+  g_assert_cmpfloat (btn.origin.x, ==, ind.origin.x + ind.size.width + 8);
+  g_assert_cmpfloat (grd.origin.x, ==, btn.origin.x + btn.size.width + 8);
+  g_assert_cmpfloat (MIN (ind.origin.y, grd.origin.y), >=, sep.origin.y + sep.size.height + 6);
+  g_assert_cmpfloat (gtk_widget_get_height (GTK_WIDGET (bar)),
+                     >=, MAX (ind.origin.y + ind.size.height, grd.origin.y + grd.size.height) + 6);
+
+  /* The two squares, 28x28 at (2, 2) in front and (16, 12) behind. */
+  easel_color_indicator_get_square (EASEL_COLOR_INDICATOR (indicator), TRUE, &front);
+  easel_color_indicator_get_square (EASEL_COLOR_INDICATOR (indicator), FALSE, &back);
+  g_assert_true (graphene_rect_equal (&front, &GRAPHENE_RECT_INIT (2, 2, 28, 28)));
+  g_assert_true (graphene_rect_equal (&back, &GRAPHENE_RECT_INIT (16, 12, 28, 28)));
+
+  /* The swap button: its symbol and tooltip, and it swaps. */
+  g_assert_cmpstr (gtk_button_get_label (GTK_BUTTON (swap)), ==, "⇄");
+  g_assert_cmpstr (gtk_widget_get_tooltip_text (swap), ==, "Swap foreground and background (Ctrl+Shift+X)");
+  easel_palette_bar_press (bar, 17, 1, 1);
+  easel_palette_bar_press (bar, 21, 3, 1);
+  g_signal_emit_by_name (swap, "clicked");
+  g_assert_cmphex (easel_window_get_foreground (win), ==, 0xFF0000FFu);
+  g_assert_cmphex (easel_window_get_background (win), ==, 0xFFFF0000u);
+
+  /* Not while the chooser is open. */
+  easel_palette_bar_press_indicator (bar, TRUE);
+  g_assert_true (easel_window_is_choosing_color (win));
+  g_signal_emit_by_name (swap, "clicked");
+  g_assert_cmphex (easel_window_get_foreground (win), ==, 0xFF0000FFu);
+  easel_window_finish_color_choice (win, NULL);
+  close_windows ();
+}
+
+static void
+as3_click_picks_colors (void)
+{
+  EaselWindow *win = start_window ();
+  EaselPaletteBar *bar = easel_window_get_palette_bar (win);
+  uint32_t bg;
+
+  wait_for_layout (win);
+  easel_palette_bar_press (bar, 17, 1, 1);
+  g_assert_cmphex (easel_window_get_foreground (win), ==, 0xFFFF0000u);
+  g_assert_cmphex (easel_palette_bar_get_foreground (bar), ==, 0xFFFF0000u);
+  g_assert_true (gtk_widget_is_focus (GTK_WIDGET (easel_palette_bar_get_swatch (bar, 17))));
+
+  easel_palette_bar_press (bar, 21, 3, 1);
+  g_assert_cmphex (easel_window_get_background (win), ==, 0xFF0000FFu);
+  g_assert_cmphex (easel_palette_bar_get_background (bar), ==, 0xFF0000FFu);
+  g_assert_true (gtk_widget_is_focus (GTK_WIDGET (easel_palette_bar_get_swatch (bar, 21))));
+
+  /* The middle button does nothing. */
+  bg = easel_window_get_background (win);
+  easel_palette_bar_press (bar, 1, 2, 1);
+  g_assert_cmphex (easel_window_get_foreground (win), ==, 0xFFFF0000u);
+  g_assert_cmphex (easel_window_get_background (win), ==, bg);
+  close_windows ();
+}
+
+static void
+as4_swap_colors (void)
+{
+  EaselWindow *win = start_window ();
+  EaselPaletteBar *bar = easel_window_get_palette_bar (win);
+  AdwDialog *prompt = NULL;
+
+  wait_for_layout (win);
+  g_assert_true (has_accel ("win.swap-colors", GDK_KEY_x, GDK_CONTROL_MASK | GDK_SHIFT_MASK));
+  easel_palette_bar_press (bar, 17, 1, 1);
+  easel_palette_bar_press (bar, 21, 3, 1);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "swap-colors", NULL);
+  g_assert_cmphex (easel_window_get_foreground (win), ==, 0xFF0000FFu);
+  g_assert_cmphex (easel_window_get_background (win), ==, 0xFFFF0000u);
+  g_assert_cmphex (easel_palette_bar_get_foreground (bar), ==, 0xFF0000FFu);
+
+  /* Not while the quit prompt is open (REQ-0003-07). */
+  use_pencil (win);
+  A_STROKE (win);
+  gtk_window_close (GTK_WINDOW (win));
+  wait_for_dialogs (win, 1);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "swap-colors", NULL);
+  g_assert_cmphex (easel_window_get_foreground (win), ==, 0xFF0000FFu);
+  g_assert_cmpint (count_alert_dialogs (GTK_WIDGET (win), &prompt), ==, 1);
+  adw_dialog_close (prompt);
+  wait_for_dialogs (win, 0);
+  close_windows ();
+}
+
+static void
+as5_strokes_use_current_colors (void)
+{
+  EaselWindow *win = start_window ();
+  EaselPaletteBar *bar = easel_window_get_palette_bar (win);
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+
+  easel_palette_bar_press (bar, 17, 1, 1);
+  easel_palette_bar_press (bar, 21, 3, 1);
+  use_pencil (win);
+
+  stroke (win, 3.5, 3.5, 9.5, 3.5);
+  easel_canvas_press (canvas, 3, 3.5, 8.5);
+  easel_canvas_motion (canvas, 9.5, 8.5);
+  easel_canvas_release (canvas, 3);
+  g_assert_cmphex (easel_image_get (img, 5, 3), ==, 0xFFFF0000u);
+  g_assert_cmphex (easel_image_get (img, 5, 8), ==, 0xFF0000FFu);
+
+  /* A swap during a stroke changes the next stroke only (REQ-0003-08). */
+  easel_canvas_press (canvas, 1, 3.5, 13.5);
+  easel_canvas_motion (canvas, 6.5, 13.5);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "swap-colors", NULL);
+  easel_canvas_motion (canvas, 9.5, 13.5);
+  easel_canvas_release (canvas, 1);
+  for (int x = 3; x <= 9; x++)
+    g_assert_cmphex (easel_image_get (img, x, 13), ==, 0xFFFF0000u);
+  stroke (win, 3.5, 18.5, 9.5, 18.5);
+  g_assert_cmphex (easel_image_get (img, 5, 18), ==, 0xFF0000FFu);
+  close_windows ();
+}
+
+static void
+as6_transparent_background_swap (void)
+{
+  EaselWindow *win;
+  const EaselImage *img;
+
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=transparent\n");
+  win = start_window ();
+  img = easel_window_get_picture (win);
+  g_assert_cmphex (easel_palette_bar_get_background (easel_window_get_palette_bar (win)), ==, 0x00000000u);
+
+  /* Black first, so the transparent stroke has something to replace. */
+  use_pencil (win);
+  stroke (win, 3.5, 3.5, 9.5, 3.5);
+  g_assert_cmphex (easel_image_get (img, 5, 3), ==, 0xFF000000u);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "swap-colors", NULL);
+  g_assert_cmphex (easel_window_get_foreground (win), ==, 0x00000000u);
+  stroke (win, 3.5, 3.5, 9.5, 3.5);
+  for (int x = 3; x <= 9; x++)
+    g_assert_cmphex (easel_image_get (img, x, 3), ==, 0x00000000u);
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+static void
+as7_colors_are_not_edits (void)
+{
+  EaselWindow *win = start_window ();
+  EaselPaletteBar *bar = easel_window_get_palette_bar (win);
+
+  easel_palette_bar_press (bar, 17, 1, 1);
+  easel_palette_bar_press (bar, 21, 3, 1);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "swap-colors", NULL);
+  g_assert_cmpstr (gtk_window_get_title (GTK_WINDOW (win)), ==, "Untitled – Easel");
+  g_assert_false (action_enabled (win, "undo"));
+  close_windows ();
+}
+
+static GdkRGBA
+rgba_of (uint32_t c)
+{
+  return (GdkRGBA) { ((c >> 16) & 0xFF) / 255.0f, ((c >> 8) & 0xFF) / 255.0f, (c & 0xFF) / 255.0f, (c >> 24) / 255.0f };
+}
+
+/* The user confirms color c in the open chooser (NULL: cancels). */
+static void
+choose (EaselWindow *win, const uint32_t *c)
+{
+  GdkRGBA rgba;
+
+  g_assert_true (easel_window_is_choosing_color (win));
+  if (c != NULL)
+    rgba = rgba_of (*c);
+  easel_window_finish_color_choice (win, c ? &rgba : NULL);
+  g_assert_false (easel_window_is_choosing_color (win));
+}
+
+static void
+as9_double_click_edits_swatch (void)
+{
+  EaselWindow *win = start_window ();
+  EaselPaletteBar *bar = easel_window_get_palette_bar (win);
+  const uint32_t c = 0xFF123456u;
+
+  wait_for_layout (win);
+  easel_palette_bar_press (bar, 17, 1, 1);
+  easel_palette_bar_press (bar, 17, 1, 2);
+  choose (win, &c);
+  g_assert_cmphex (easel_swatch_get_color (easel_palette_bar_get_swatch (bar, 17)), ==, c);
+  g_assert_cmphex (easel_window_get_foreground (win), ==, c);
+
+  /* Cancel: the swatch keeps its color; the foreground is what the first click picked. */
+  easel_palette_bar_press (bar, 1, 1, 1);
+  easel_palette_bar_press (bar, 1, 1, 2);
+  choose (win, NULL);
+  g_assert_cmphex (easel_swatch_get_color (easel_palette_bar_get_swatch (bar, 1)), ==, 0xFF000000u);
+  g_assert_cmphex (easel_window_get_foreground (win), ==, 0xFF000000u);
+
+  /* Editing a swatch is not an edit of the picture (REQ-0003-09). */
+  g_assert_cmpstr (gtk_window_get_title (GTK_WINDOW (win)), ==, "Untitled – Easel");
+  g_assert_false (action_enabled (win, "undo"));
+  /* Not even hidden in the history: after one stroke, exactly one undo is possible. */
+  use_pencil (win);
+  A_STROKE (win);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_false (action_enabled (win, "undo"));
+  close_windows ();
+  remove_palette_file ();
+}
+
+static void
+as10_f2_edits_focused_swatch (void)
+{
+  EaselWindow *win = start_window ();
+  EaselPaletteBar *bar = easel_window_get_palette_bar (win);
+  EaselSwatch *swatch = easel_palette_bar_get_swatch (bar, 17);
+  const uint32_t c = 0x8000FF00u;     /* #00FF0080 */
+
+  wait_for_layout (win);
+  easel_palette_bar_press (bar, 17, 1, 1);
+  g_assert_true (gtk_widget_is_focus (GTK_WIDGET (swatch)));
+  /* F2 is bound to this action on every swatch. */
+  g_assert_true (gtk_widget_activate_action (GTK_WIDGET (swatch), "swatch.edit", NULL));
+  choose (win, &c);
+  g_assert_cmphex (easel_swatch_get_color (swatch), ==, c);
+  close_windows ();
+  remove_palette_file ();
+}
+
+static void
+as11_click_sequences (void)
+{
+  EaselWindow *win = start_window ();
+  EaselPaletteBar *bar = easel_window_get_palette_bar (win);
+
+  /* Two quick clicks on two different swatches are two single clicks: each swatch has its own count. */
+  easel_palette_bar_press (bar, 17, 1, 1);
+  easel_palette_bar_press (bar, 18, 1, 1);
+  g_assert_false (easel_window_is_choosing_color (win));
+  g_assert_cmphex (easel_window_get_foreground (win), ==, 0xFFFFFF00u);
+
+  /* A secondary double-click only sets the background. */
+  easel_palette_bar_press (bar, 21, 3, 1);
+  easel_palette_bar_press (bar, 21, 3, 2);
+  g_assert_false (easel_window_is_choosing_color (win));
+  g_assert_cmphex (easel_window_get_background (win), ==, 0xFF0000FFu);
+
+  /* A third quick click is a single click again. */
+  easel_palette_bar_press (bar, 19, 1, 1);
+  easel_palette_bar_press (bar, 19, 1, 2);
+  choose (win, NULL);
+  easel_palette_bar_press (bar, 19, 1, 3);
+  g_assert_false (easel_window_is_choosing_color (win));
+  g_assert_cmphex (easel_window_get_foreground (win), ==, 0xFF00FF00u);
+  close_windows ();
+}
+
+static void
+as12_indicator_edits_color (void)
+{
+  EaselWindow *win;
+  EaselPaletteBar *bar;
+  const uint32_t fg = 0xFF123456u, bg = 0xFF00FF00u;
+  EaselPalette def;
+
+  remove_palette_file ();
+  win = start_window ();
+  bar = easel_window_get_palette_bar (win);
+  easel_palette_bar_press_indicator (bar, TRUE);
+  choose (win, &fg);
+  g_assert_cmphex (easel_window_get_foreground (win), ==, fg);
+  easel_palette_bar_press_indicator (bar, FALSE);
+  choose (win, &bg);
+  g_assert_cmphex (easel_window_get_background (win), ==, bg);
+  g_assert_cmphex (easel_window_get_foreground (win), ==, fg);
+
+  /* No swatch changed. */
+  easel_palette_defaults (&def);
+  for (int n = 1; n <= EASEL_PALETTE_SIZE; n++)
+    g_assert_cmphex (easel_swatch_get_color (easel_palette_bar_get_swatch (bar, n)), ==, def.colors[n - 1]);
+
+  /* Cancel changes nothing. */
+  easel_palette_bar_press_indicator (bar, TRUE);
+  choose (win, NULL);
+  g_assert_cmphex (easel_window_get_foreground (win), ==, fg);
+  close_windows ();
+}
+
+/* REQ-0003-14: while the chooser is open, undo, redo, swap, swatches and drawing do nothing. */
+static void
+as17_undo_ignored_while_chooser_open (void)
+{
+  EaselWindow *win = start_window ();
+  EaselPaletteBar *bar = easel_window_get_palette_bar (win);
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  uint32_t bg = easel_image_get (img, 0, 0);
+
+  use_pencil (win);
+  A_STROKE (win);
+  easel_palette_bar_press (bar, 17, 1, 1);
+  easel_palette_bar_press (bar, 17, 1, 2);
+  g_assert_true (easel_window_is_choosing_color (win));
+
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "redo", NULL);
+  g_assert_cmphex (easel_image_get (img, 5, 3), ==, 0xFF000000u);
+  g_assert_true (action_enabled (win, "undo"));
+  g_assert_false (action_enabled (win, "redo"));
+
+  g_action_group_activate_action (G_ACTION_GROUP (win), "swap-colors", NULL);
+  easel_palette_bar_press (bar, 21, 3, 1);
+  g_assert_cmphex (easel_window_get_foreground (win), ==, 0xFFFF0000u);
+  g_assert_cmphex (easel_window_get_background (win), !=, 0xFF0000FFu);
+  easel_canvas_press (canvas, 1, 3.5, 8.5);
+  easel_canvas_motion (canvas, 9.5, 8.5);
+  easel_canvas_release (canvas, 1);
+  g_assert_cmphex (easel_image_get (img, 5, 8), ==, bg);
+
+  choose (win, NULL);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_cmphex (easel_image_get (img, 5, 3), ==, bg);
+  close_windows ();
+}
+
+/* REQ-0003-15, REQ-0003-17: a confirmed edit is written at once, and the next window shows it. */
+static void
+as14_edit_is_remembered (void)
+{
+  g_autofree char *path = easel_palette_file_path ();
+  g_autofree char *text = NULL;
+  const uint32_t c = 0xFF123456u;
+  EaselWindow *win;
+
+  remove_palette_file ();
+  win = start_window ();
+  easel_palette_bar_press (easel_window_get_palette_bar (win), 3, 1, 1);
+  easel_palette_bar_press (easel_window_get_palette_bar (win), 3, 1, 2);
+  choose (win, &c);
+  g_assert_true (g_file_get_contents (path, &text, NULL, NULL));
+  g_assert_nonnull (strstr (text, "\ncolor3=#123456\n"));
+  close_windows ();
+
+  win = start_window ();
+  g_assert_cmphex (easel_swatch_get_color (easel_palette_bar_get_swatch (easel_window_get_palette_bar (win), 3)), ==, c);
+  close_windows ();
+  remove_palette_file ();
+}
+
+/* REQ-0003-16: if the palette cannot be written, the swatch still changes for this run, silently. */
+static void
+as15_swatch_changes_when_write_fails (void)
+{
+  g_autofree char *path = easel_palette_file_path ();
+  g_autofree char *dir = g_path_get_dirname (path);
+  const uint32_t c = 0xFF123456u;
+  AdwDialog *dialog = NULL;
+  EaselWindow *win;
+
+  if (geteuid () == 0)
+    {
+      g_test_skip ("root ignores folder permissions");
+      return;
+    }
+  remove_palette_file ();
+  win = start_window ();
+  g_assert_cmpint (g_chmod (dir, 0500), ==, 0);
+  easel_palette_bar_press (easel_window_get_palette_bar (win), 3, 1, 1);
+  easel_palette_bar_press (easel_window_get_palette_bar (win), 3, 1, 2);
+  choose (win, &c);
+  g_assert_cmpint (g_chmod (dir, 0700), ==, 0);
+
+  g_assert_cmphex (easel_swatch_get_color (easel_palette_bar_get_swatch (easel_window_get_palette_bar (win), 3)), ==, c);
+  g_assert_false (g_file_test (path, G_FILE_TEST_EXISTS));
+  wait_for_layout (win);
+  g_assert_cmpint (count_alert_dialogs (GTK_WIDGET (win), &dialog), ==, 0);
+  close_windows ();
+}
+
 static void
 as35_input_ignored_before_picture (void)
 {
@@ -1025,6 +1515,21 @@ main (int argc, char **argv)
   g_test_add_func ("/0002/as8_focus_loss_unblocks_undo", as8_focus_loss_unblocks_undo);
   g_test_add_func ("/0002/as14_failed_save_keeps_saved_state", as14_failed_save_keeps_saved_state);
   g_test_add_func ("/0002/as15_save_during_stroke", as15_save_during_stroke);
+  g_test_add_func ("/0003/as1_palette_bar", as1_palette_bar);
+  g_test_add_func ("/0003/as1_swatch_layout", as1_swatch_layout);
+  g_test_add_func ("/0003/as18_bar_geometry_and_swap_button", as18_bar_geometry_and_swap_button);
+  g_test_add_func ("/0003/as3_click_picks_colors", as3_click_picks_colors);
+  g_test_add_func ("/0003/as4_swap_colors", as4_swap_colors);
+  g_test_add_func ("/0003/as5_strokes_use_current_colors", as5_strokes_use_current_colors);
+  g_test_add_func ("/0003/as6_transparent_background_swap", as6_transparent_background_swap);
+  g_test_add_func ("/0003/as7_colors_are_not_edits", as7_colors_are_not_edits);
+  g_test_add_func ("/0003/as9_double_click_edits_swatch", as9_double_click_edits_swatch);
+  g_test_add_func ("/0003/as10_f2_edits_focused_swatch", as10_f2_edits_focused_swatch);
+  g_test_add_func ("/0003/as11_click_sequences", as11_click_sequences);
+  g_test_add_func ("/0003/as12_indicator_edits_color", as12_indicator_edits_color);
+  g_test_add_func ("/0003/as17_undo_ignored_while_chooser_open", as17_undo_ignored_while_chooser_open);
+  g_test_add_func ("/0003/as14_edit_is_remembered", as14_edit_is_remembered);
+  g_test_add_func ("/0003/as15_swatch_changes_when_write_fails", as15_swatch_changes_when_write_fails);
   ret = g_test_run ();
   g_object_unref (app);
   return ret;

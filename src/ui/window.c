@@ -6,6 +6,8 @@
 
 #include "config.h"
 #include "canvas.h"
+#include "palette-bar.h"
+#include "palette-file.h"
 #include "png.h"
 #include "savename.h"
 #include "settings-file.h"
@@ -18,16 +20,29 @@ struct _EaselWindow
 
   GtkScrolledWindow *scroller;
   EaselCanvas *canvas;
+  EaselPaletteBar *palette_bar;
 
   EaselSettings settings;
   EaselImage *picture;
   EaselTool tool;
   uint32_t foreground;
   uint32_t background;
+  EaselPalette palette;
   EaselHistory *history;
   char *path;             /* the picture's file; NULL until the first save */
   gboolean save_dialog_open;
   gboolean quit_prompt_open;  /* from the prompt until its choice is carried out */
+
+  /* The color chooser (REQ-0003-11..14): what it edits, a swatch number or one of the CHOOSE_ values. */
+  gboolean chooser_open;
+  int chooser_target;
+  GCancellable *chooser_cancel;
+};
+
+enum
+{
+  CHOOSE_FOREGROUND = -1,
+  CHOOSE_BACKGROUND = -2,
 };
 
 /* Called when a save started by save () ends; saved is FALSE on failure or cancel. */
@@ -343,8 +358,9 @@ easel_window_close_request (GtkWindow *window)
 {
   EaselWindow *self = EASEL_WINDOW (window);
 
-  /* A stroke in progress is ended first (REQ-0001-33). */
+  /* A stroke in progress is ended first (REQ-0001-33); an open color chooser closes as Cancel (REQ-0003-14). */
   easel_canvas_end_stroke (self->canvas);
+  easel_window_finish_color_choice (self, NULL);
 
   /* One prompt at a time (REQ-0001-38). */
   if (self->quit_prompt_open)
@@ -371,8 +387,146 @@ save_activated (GSimpleAction *action, GVariant *parameter, gpointer user_data)
 static gboolean
 dialog_is_open (EaselWindow *self)
 {
-  return self->quit_prompt_open || self->save_dialog_open
+  return self->quit_prompt_open || self->save_dialog_open || self->chooser_open
          || adw_application_window_get_visible_dialog (ADW_APPLICATION_WINDOW (self)) != NULL;
+}
+
+/* Colors are not edits: no undo step, no modified mark (REQ-0003-09). */
+static void
+set_colors (EaselWindow *self, uint32_t foreground, uint32_t background)
+{
+  self->foreground = foreground;
+  self->background = background;
+  easel_canvas_set_colors (self->canvas, foreground, background);
+  easel_palette_bar_set_colors (self->palette_bar, foreground, background);
+}
+
+static void open_chooser (EaselWindow *self, int target, uint32_t color);
+
+static uint32_t
+from_rgba (const GdkRGBA *c)
+{
+  return ((uint32_t) (c->alpha * 255 + 0.5f) << 24) | ((uint32_t) (c->red * 255 + 0.5f) << 16)
+         | ((uint32_t) (c->green * 255 + 0.5f) << 8) | (uint32_t) (c->blue * 255 + 0.5f);
+}
+
+gboolean
+easel_window_is_choosing_color (EaselWindow *self)
+{
+  return self->chooser_open;
+}
+
+void
+easel_window_finish_color_choice (EaselWindow *self, const GdkRGBA *rgba)
+{
+  uint32_t color;
+
+  if (!self->chooser_open)
+    return;
+  self->chooser_open = FALSE;
+  easel_canvas_set_input_blocked (self->canvas, FALSE);
+  /* Closes GTK's dialog if it is still open; its callback then finds the choice already finished. */
+  g_cancellable_cancel (self->chooser_cancel);
+  g_clear_object (&self->chooser_cancel);
+  if (rgba == NULL)
+    return;
+
+  color = from_rgba (rgba);
+  if (self->chooser_target == CHOOSE_FOREGROUND)
+    set_colors (self, color, self->background);
+  else if (self->chooser_target == CHOOSE_BACKGROUND)
+    set_colors (self, self->foreground, color);
+  else
+    {
+      /* A confirmed swatch color is also the new foreground (REQ-0003-12). */
+      g_autofree char *path = easel_palette_file_path ();
+
+      self->palette.colors[self->chooser_target - 1] = color;
+      easel_palette_bar_set_swatch (self->palette_bar, self->chooser_target, color);
+      set_colors (self, color, self->background);
+      /* Remembered at once; if writing fails the swatch still changes for this run, silently (REQ-0003-15,
+         REQ-0003-16). */
+      easel_palette_file_save (path, &self->palette);
+    }
+}
+
+static void
+on_color_chosen (GObject *source, GAsyncResult *result, gpointer data)
+{
+  EaselWindow *self = data;
+  GdkRGBA *rgba = gtk_color_dialog_choose_rgba_finish (GTK_COLOR_DIALOG (source), result, NULL);
+
+  easel_window_finish_color_choice (self, rgba);
+  if (rgba != NULL)
+    gdk_rgba_free (rgba);
+  g_object_unref (self);
+}
+
+/* The system color chooser, modal and with transparency. The window also blocks its own input while it is open,
+   since a compositor may not (REQ-0003-14). */
+static void
+open_chooser (EaselWindow *self, int target, uint32_t color)
+{
+  g_autoptr (GtkColorDialog) dialog = NULL;
+  GdkRGBA initial = { ((color >> 16) & 0xFF) / 255.0f, ((color >> 8) & 0xFF) / 255.0f, (color & 0xFF) / 255.0f,
+                      (color >> 24) / 255.0f };
+
+  if (dialog_is_open (self))
+    return;
+  self->chooser_open = TRUE;
+  self->chooser_target = target;
+  self->chooser_cancel = g_cancellable_new ();
+  easel_canvas_set_input_blocked (self->canvas, TRUE);
+
+  dialog = gtk_color_dialog_new ();
+  gtk_color_dialog_set_modal (dialog, TRUE);
+  gtk_color_dialog_set_with_alpha (dialog, TRUE);
+  gtk_color_dialog_choose_rgba (dialog, GTK_WINDOW (self), &initial, self->chooser_cancel, on_color_chosen,
+                                g_object_ref (self));
+}
+
+static void
+on_swatch_pressed (EaselWindow *self, int n, guint button, int n_press)
+{
+  uint32_t color = self->palette.colors[n - 1];
+
+  if (dialog_is_open (self))
+    return;
+  if (button == GDK_BUTTON_PRIMARY)
+    set_colors (self, color, self->background);
+  else
+    set_colors (self, self->foreground, color);
+
+  /* A primary double-click on one swatch edits it; the first click has already picked it (REQ-0003-11). */
+  if (button == GDK_BUTTON_PRIMARY && n_press == 2)
+    open_chooser (self, n, color);
+}
+
+static void
+on_swatch_edit (EaselWindow *self, int n)
+{
+  open_chooser (self, n, self->palette.colors[n - 1]);
+}
+
+static void
+on_indicator_pressed (EaselWindow *self, gboolean front)
+{
+  if (front)
+    open_chooser (self, CHOOSE_FOREGROUND, self->foreground);
+  else
+    open_chooser (self, CHOOSE_BACKGROUND, self->background);
+}
+
+static void
+swap_colors_activated (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+  EaselWindow *self = EASEL_WINDOW (user_data);
+
+  /* Like undo and redo, not while a dialog is open (REQ-0003-07). A stroke in progress keeps its color
+     (REQ-0003-08). */
+  if (dialog_is_open (self))
+    return;
+  set_colors (self, self->background, self->foreground);
 }
 
 /* Undo and redo change only the picture: the view, tool and colors stay (REQ-0002-08). */
@@ -440,6 +594,7 @@ static const GActionEntry win_actions[] = {
   { .name = "save", .activate = save_activated },
   { .name = "undo", .activate = undo_activated },
   { .name = "redo", .activate = redo_activated },
+  { .name = "swap-colors", .activate = swap_colors_activated },
   { .name = "close", .activate = close_activated },
 };
 
@@ -485,11 +640,20 @@ easel_window_get_canvas (EaselWindow *self)
   return self->canvas;
 }
 
+EaselPaletteBar *
+easel_window_get_palette_bar (EaselWindow *self)
+{
+  return self->palette_bar;
+}
+
 static void
 easel_window_dispose (GObject *object)
 {
   EaselWindow *self = EASEL_WINDOW (object);
 
+  if (self->chooser_cancel != NULL)
+    g_cancellable_cancel (self->chooser_cancel);
+  g_clear_object (&self->chooser_cancel);
   if (self->canvas != NULL)
     {
       easel_canvas_set_history (self->canvas, NULL);
@@ -498,6 +662,7 @@ easel_window_dispose (GObject *object)
   gtk_widget_dispose_template (GTK_WIDGET (self), EASEL_TYPE_WINDOW);
   self->canvas = NULL;
   self->scroller = NULL;
+  self->palette_bar = NULL;
   G_OBJECT_CLASS (easel_window_parent_class)->dispose (object);
 }
 
@@ -523,9 +688,11 @@ easel_window_class_init (EaselWindowClass *klass)
   GTK_WINDOW_CLASS (klass)->close_request = easel_window_close_request;
 
   g_type_ensure (EASEL_TYPE_CANVAS);
+  g_type_ensure (EASEL_TYPE_PALETTE_BAR);
   gtk_widget_class_set_template_from_resource (widget_class, RESOURCE_PATH "/window.ui");
   gtk_widget_class_bind_template_child (widget_class, EaselWindow, scroller);
   gtk_widget_class_bind_template_child (widget_class, EaselWindow, canvas);
+  gtk_widget_class_bind_template_child (widget_class, EaselWindow, palette_bar);
 }
 
 static void
@@ -548,7 +715,18 @@ easel_window_init (EaselWindow *self)
   easel_canvas_set_history (self->canvas, self->history);
   easel_canvas_listen_on (self->canvas, GTK_WIDGET (self->scroller));
   easel_canvas_set_tool (self->canvas, self->tool);
-  easel_canvas_set_colors (self->canvas, self->foreground, self->background);
+  {
+    g_autofree char *palette_path = easel_palette_file_path ();
+
+    easel_palette_file_load (palette_path, &self->palette);
+  }
+  easel_palette_bar_set_palette (self->palette_bar, &self->palette);
+  set_colors (self, self->foreground, self->background);
+  g_signal_connect_object (self->palette_bar, "swatch-pressed", G_CALLBACK (on_swatch_pressed), self,
+                           G_CONNECT_SWAPPED);
+  g_signal_connect_object (self->palette_bar, "swatch-edit", G_CALLBACK (on_swatch_edit), self, G_CONNECT_SWAPPED);
+  g_signal_connect_object (self->palette_bar, "indicator-pressed", G_CALLBACK (on_indicator_pressed), self,
+                           G_CONNECT_SWAPPED);
   g_signal_connect_object (self->canvas, "stroke-finished", G_CALLBACK (on_stroke_finished), self, G_CONNECT_SWAPPED);
   g_signal_connect (self, "notify::is-active", G_CALLBACK (on_active_changed), NULL);
 

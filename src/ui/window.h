@@ -4,6 +4,7 @@
 #include <adwaita.h>
 
 #include "canvas.h"
+#include "palette-bar.h"
 #include "image.h"
 #include "tool.h"
 
@@ -22,6 +23,14 @@ uint32_t easel_window_get_foreground (EaselWindow *self);
 uint32_t easel_window_get_background (EaselWindow *self);
 gboolean easel_window_get_modified (EaselWindow *self);
 EaselCanvas *easel_window_get_canvas (EaselWindow *self);
+EaselPaletteBar *easel_window_get_palette_bar (EaselWindow *self);
+
+/* The color chooser is open (REQ-0003-14). */
+gboolean easel_window_is_choosing_color (EaselWindow *self);
+
+/* Ends the open color choice: rgba is the confirmed color, NULL means Cancel. The chooser's callback calls it; tests
+   call it in place of GTK's dialog. */
+void easel_window_finish_color_choice (EaselWindow *self, const GdkRGBA *rgba);
 
 /* Saves the picture as PNG at path without asking; on success it becomes the picture's file.
    On failure shows an error and returns FALSE (REQ-0001-30, REQ-0001-31). */

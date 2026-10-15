@@ -22,11 +22,13 @@ still apply: one source of truth for tool definitions, and no threads or caches 
 
 ### Layers and modules
 - **`src/core`** (libc only, no global state) holds the picture (`EaselImage`, straight-alpha `0xAARRGGBB`, ADR-0002),
-  pencil strokes, line clipping, view math (zoom levels, pointer to pixel), settings parsing and the save-name rule.
-- **`src/io`** (GLib, GIO, gdk-pixbuf; never needs a display) reads and creates the settings file and saves PNG files with
-  an atomic replace.
-- **`src/ui`** (GTK 4 + libadwaita) has the application, the window (template `window.ui` in a GResource) and the
-  `EaselCanvas` widget. It turns input into core calls and draws nothing itself.
+  pencil strokes, line clipping, view math (zoom levels, pointer to pixel), the undo history, the palette, the
+  save-name rule, and the shared syntax of the hand-editable files (`ini`: sections, keys, colors), which settings and
+  palette parsing build on.
+- **`src/io`** (GLib, GIO, gdk-pixbuf; never needs a display) reads and creates the settings file, reads and writes the
+  palette file, and saves PNG files. Every write is atomic (temporary file and rename), so a failure leaves the old file.
+- **`src/ui`** (GTK 4 + libadwaita) has the application, the window (template `window.ui` in a GResource), the
+  `EaselCanvas` widget and the palette bar (indicator, swap button, swatches). It turns input into core calls and draws nothing itself.
 
 ### Build layout
 - Meson builds each layer as a static library. `ui` is linked whole into the `easel` executable and into the ui tests.

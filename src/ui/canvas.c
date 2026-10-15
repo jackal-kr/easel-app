@@ -31,6 +31,7 @@ struct _EaselCanvas
   EaselStroke *stroke;
   guint stroke_button;
   guint cancelled_button; /* button of a stroke cancelled by Undo, until it is released; 0 if none */
+  gboolean input_blocked;
   GtkWidget *area;        /* ancestor that feeds input; not owned */
 
   gboolean panning;
@@ -133,12 +134,12 @@ easel_canvas_measure (GtkWidget *widget, GtkOrientation orientation, int for_siz
   *minimum = *natural = size;
 }
 
-static void
-append_checkerboard (GtkSnapshot *snapshot, const graphene_rect_t *bounds)
+void
+easel_snapshot_append_checkerboard (GtkSnapshot *snapshot, const graphene_rect_t *bounds, float cell)
 {
   static const GdkRGBA light = { 0.8, 0.8, 0.8, 1.0 };
   static const GdkRGBA dark = { 0.6, 0.6, 0.6, 1.0 };
-  const float c = CHECKER_SIZE;
+  const float c = cell;
 
   gtk_snapshot_push_repeat (snapshot, bounds, &GRAPHENE_RECT_INIT (0, 0, 2 * c, 2 * c));
   gtk_snapshot_append_color (snapshot, &light, &GRAPHENE_RECT_INIT (0, 0, 2 * c, 2 * c));
@@ -161,7 +162,7 @@ easel_canvas_snapshot (GtkWidget *widget, GtkSnapshot *snapshot)
 
   /* Transparent pixels show the checkerboard (REQ-0001-11); nearest filtering keeps pixels hard-edged
      at every zoom (REQ-0001-18). */
-  append_checkerboard (snapshot, &bounds);
+  easel_snapshot_append_checkerboard (snapshot, &bounds, CHECKER_SIZE);
   gtk_snapshot_append_scaled_texture (snapshot, self->texture, GSK_SCALING_FILTER_NEAREST, &bounds);
 }
 
@@ -196,6 +197,12 @@ update_cursor (EaselCanvas *self)
   gtk_widget_set_cursor (GTK_WIDGET (self), cursor);
   if (self->area != NULL)
     gtk_widget_set_cursor (self->area, cursor);
+}
+
+void
+easel_canvas_set_input_blocked (EaselCanvas *self, gboolean blocked)
+{
+  self->input_blocked = blocked;
 }
 
 void
@@ -287,7 +294,7 @@ easel_canvas_press (EaselCanvas *self, guint button, double x, double y)
   int px, py;
 
   /* Only the primary and secondary buttons draw; others are ignored (REQ-0001-24). */
-  if (button != GDK_BUTTON_PRIMARY && button != GDK_BUTTON_SECONDARY)
+  if (self->input_blocked || (button != GDK_BUTTON_PRIMARY && button != GDK_BUTTON_SECONDARY))
     return;
 
   if (self->stroke != NULL)
