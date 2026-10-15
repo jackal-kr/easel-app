@@ -1,7 +1,7 @@
 # Constitution
 
-Non-negotiable principles. Specs, plans and code are checked against this file (`sdd-plan` has a
-constitution check). Changing a principle needs an ADR in `docs/decisions/`. JOD owns this file; edit freely.
+Non-negotiable principles. Specs, plans and code are checked against this file (`/sdd-build` checks
+the plan against it). Changing a principle needs an ADR in `docs/decisions/`. JOD owns this file; edit freely.
 
 ## Product
 - **P1** XP Paint's functionality and workflow, GNOME-native look (GTK 4 + libadwaita). No XP visuals.
@@ -13,7 +13,7 @@ constitution check). Changing a principle needs an ADR in `docs/decisions/`. JOD
 
 ## Process
 - **S1** Specs are the source of truth; code is derived. When code and spec disagree, one is wrong: decide which, fix the spec first.
-- **S2** No implementation without an accepted spec, plan and task list. Exempt: typos, formatting, comment-only edits.
+- **S2** No implementation without an accepted spec and its agreed plan and tasks. Exempt: typos, formatting, comment-only edits.
 - **S3** Every requirement has an ID (`REQ-NNNN-xx`) and at least one scenario (`AS-n`, Given/When/Then);
   every scenario names how it is verified: an automated test or a numbered manual check.
 - **S4** Specs describe observable behavior (what/why). Technology, files and structures belong in the plan.
@@ -27,7 +27,7 @@ constitution check). Changing a principle needs an ADR in `docs/decisions/`. JOD
 ## Technical (ADR-0001, accepted)
 - C, GTK 4, libadwaita >= 1.8, Cairo, Meson/Ninja, Ubuntu 26.04. License GPL-3.0-or-later.
 - Layering: `src/core` pure C (libc only) and headless-testable; `src/ui` turns input into core calls.
-- Pixels `uint32_t` 0xAARRGGBB premultiplied (revisit in the first plan if a spec makes it unnecessary).
+- Pixels are `uint32_t` 0xAARRGGBB with straight (non-premultiplied) alpha, so stored colors stay exact and PNG round trips are
+  lossless; conversion to what GDK or Cairo expect happens only at the edges that need it (ADR-0002).
 - Warnings are bugs. Tests ship with the change; a bug fix starts with a failing test.
-- Details live in `docs/architecture/coding-standards.md`, `docs/architecture/architecture.md`,
-  `docs/quality/testing-strategy.md` and `docs/quality/performance-budgets.md`. UX rules live in `docs/design/`.
+- Details live in `docs/engineering.md` (coding standards, architecture, testing, performance budgets) and `docs/design.md` (UI and interaction).

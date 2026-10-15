@@ -26,7 +26,7 @@ Use the following technology stack:
 - **Meson / Ninja** - build configuration and execution.
 - **GPL-3.0-or-later** - project license.
 
-Use `io.github.jackal_kr.EaselSdd` as the development application ID. Keep it distinct from other builds of Easel; the application ID and display name may change before release.
+Use `io.github.jackal_kr.Easel` as the application ID (amended 2026-10-15 by JOD; it was `io.github.jackal_kr.EaselSdd`). The GResource base path follows it (`/io/github/jackal_kr/Easel`). The application ID and display name may change before release.
 
 Keep the core document model and drawing operations independent of GTK widgets so they can be tested headlessly.
 

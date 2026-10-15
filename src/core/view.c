@@ -1,0 +1,86 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+
+#include <math.h>
+
+#include "view.h"
+
+static const int zoom_levels[] = { 10, 25, 50, 100, 200, 300, 400, 600, 800 };
+#define N_LEVELS ((int) (sizeof zoom_levels / sizeof zoom_levels[0]))
+
+int
+easel_view_zoom_step (int pct, int notches)
+{
+  int i = 0;
+
+  /* The current zoom is always a level; anything else steps from the level below it. */
+  while (i + 1 < N_LEVELS && zoom_levels[i + 1] <= pct)
+    i++;
+  if (notches > N_LEVELS || notches < -N_LEVELS)
+    notches = notches > 0 ? N_LEVELS : -N_LEVELS;
+  i += notches;
+  if (i < 0)
+    i = 0;
+  if (i >= N_LEVELS)
+    i = N_LEVELS - 1;
+  return zoom_levels[i];
+}
+
+static double
+logical_per_pixel (int pct, double scale)
+{
+  return pct / (100.0 * scale);
+}
+
+int
+easel_view_content_size (int picture_size, int pct, double scale)
+{
+  /* The epsilon keeps exact sizes such as 1920 / 1.0 from rounding up through floating-point noise. */
+  int size = (int) ceil (picture_size * logical_per_pixel (pct, scale) - 1e-9);
+
+  return size < 1 ? 1 : size;
+}
+
+void
+easel_view_to_pixel (double x, double y, int pct, double scale, int *px, int *py)
+{
+  double l = logical_per_pixel (pct, scale);
+
+  *px = (int) floor (x / l);
+  *py = (int) floor (y / l);
+}
+
+double
+easel_view_anchor (double scroll, double pointer, int old_pct, int new_pct, int picture_size, double scale,
+                   double view_size)
+{
+  double picture_point = (scroll + pointer) / logical_per_pixel (old_pct, scale);
+  double next = picture_point * logical_per_pixel (new_pct, scale) - pointer;
+  double max = easel_view_content_size (picture_size, new_pct, scale) - view_size;
+
+  if (next > max)
+    next = max;
+  if (next < 0)
+    next = 0;
+  return next;
+}
+
+int
+easel_view_take_notches (double *acc, double delta)
+{
+  int notches;
+
+  /* A change of direction starts afresh, so one full notch the other way always counts. */
+  if ((*acc > 0 && delta < 0) || (*acc < 0 && delta > 0))
+    *acc = 0;
+  *acc += delta;
+  notches = (int) trunc (*acc);
+  *acc -= notches;
+  return -notches;
+}
+
+void
+easel_view_window_size (int monitor_width, int monitor_height, int *width, int *height)
+{
+  *width = monitor_width * 3 / 4;
+  *height = monitor_height * 3 / 4;
+}
