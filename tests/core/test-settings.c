@@ -164,6 +164,51 @@ as18_budget_setting (void)
 }
 
 static void
+as14_view_settings (void)
+{
+  EaselSettings s;
+
+  /* Defaults: nothing said, an empty section, and the text a new file gets. */
+  s = parse ("");
+  CHECK (!s.grid && s.grid_size == 1 && !s.grid_axonometric && s.show_toolbox && s.show_colorbox && s.show_statusbar);
+  s = parse ("[view]\n");
+  CHECK (!s.grid && s.grid_size == 1 && !s.grid_axonometric && s.show_toolbox && s.show_colorbox && s.show_statusbar);
+  s = parse (easel_settings_default_text);
+  CHECK (!s.grid && s.grid_size == 1 && !s.grid_axonometric && s.show_toolbox && s.show_colorbox && s.show_statusbar);
+
+  /* Valid values, case-insensitive, spaces trimmed. */
+  s = parse ("[view]\ngrid=on\ngrid-size=8\ngrid-axonometric=ON\ntoolbox=off\ncolorbox = Off \nstatusbar=OFF\n");
+  CHECK (s.grid && s.grid_size == 8 && s.grid_axonometric && !s.show_toolbox && !s.show_colorbox && !s.show_statusbar);
+  CHECK (parse ("[view]\ngrid-size=1000\n").grid_size == 1000);
+  CHECK (parse ("[view]\ngrid-size=0016\n").grid_size == 16);
+
+  /* Invalid or out of range: the default, not clamped. */
+  CHECK (!parse ("[view]\ngrid=maybe\n").grid);
+  CHECK (!parse ("[view]\ngrid=1\n").grid);
+  CHECK (!parse ("[view]\ngrid=\n").grid);
+  CHECK (parse ("[view]\ngrid-size=0\n").grid_size == 1);
+  CHECK (parse ("[view]\ngrid-size=1001\n").grid_size == 1);
+  CHECK (parse ("[view]\ngrid-size=-4\n").grid_size == 1);
+  CHECK (parse ("[view]\ngrid-size=abc\n").grid_size == 1);
+  CHECK (parse ("[view]\ngrid-size=\n").grid_size == 1);
+  CHECK (parse ("[view]\ngrid-size=99999999999999999999\n").grid_size == 1);
+  CHECK (parse ("[view]\ntoolbox=maybe\n").show_toolbox);
+  CHECK (parse ("[view]\ncolorbox=0\n").show_colorbox);
+  CHECK (parse ("[view]\nstatusbar=\n").show_statusbar);
+
+  /* Same syntax as the other settings: the last repeat wins, an invalid repeat resets, other sections are ignored,
+     the sections do not leak into each other, and an unparseable file gives every default. */
+  CHECK (parse ("[view]\ngrid-size=8\ngrid-size=16\n").grid_size == 16);
+  CHECK (parse ("[view]\ngrid-size=8\ngrid-size=bad\n").grid_size == 1);
+  CHECK (!parse ("[history]\ngrid=on\n").grid);
+  CHECK (!parse ("grid=on\n").grid);
+  s = parse ("[view]\ngrid=on\nwidth=300\n[new-picture]\nheight=200\ngrid-size=9\n");
+  CHECK (s.grid && s.width == EASEL_SIZE_AUTO && s.height == 200 && s.grid_size == 1);
+  s = parse ("[view]\ngrid=on\ntoolbox=off\nhello\n");
+  CHECK (!s.grid && s.show_toolbox);
+}
+
+static void
 as36_syntax_rules (void)
 {
   EaselSettings s = parse ("# note\n"
@@ -205,6 +250,7 @@ main (void)
   RUN (as4_default_text_parses_to_defaults);
   RUN (as5_invalid_value_falls_back);
   RUN (as18_budget_setting);
+  RUN (as14_view_settings);
   RUN (as6_garbage_is_all_defaults);
   RUN (as7_size_limits);
   RUN (as36_syntax_rules);

@@ -21,6 +21,11 @@ struct _EaselWindow
   GtkScrolledWindow *scroller;
   EaselCanvas *canvas;
   EaselPaletteBar *palette_bar;
+  EaselStatusBar *status_bar;
+  GtkWidget *toolbox_panel;   /* the tool buttons and their separator */
+  GtkMenuButton *image_button;
+  GtkMenuButton *view_button;
+  GtkLabel *zoom_label;       /* the View menu's zoom row, created in code */
 
   EaselSettings settings;
   EaselImage *picture;
@@ -50,6 +55,9 @@ typedef void (*SaveDone) (EaselWindow *self, gboolean saved);
 
 G_DEFINE_FINAL_TYPE (EaselWindow, easel_window, ADW_TYPE_APPLICATION_WINDOW)
 
+static void sync_zoom_ui (EaselWindow *self);
+static gboolean view_actions_allowed (EaselWindow *self);
+
 static void
 create_picture (EaselWindow *self, int area_width, int area_height)
 {
@@ -65,6 +73,8 @@ create_picture (EaselWindow *self, int area_width, int area_height)
       return;
     }
   easel_canvas_set_image (self->canvas, self->picture);
+  easel_status_bar_set_size (self->status_bar, TRUE, width, height);
+  sync_zoom_ui (self);
 }
 
 /* The monitor the window is on, or the first one while Wayland has not said yet (REQ-0001-41). */
@@ -529,6 +539,183 @@ swap_colors_activated (GSimpleAction *action, GVariant *parameter, gpointer user
   set_colors (self, self->background, self->foreground);
 }
 
+/* ---- the status bar (REQ-0004-09..11) ---- */
+
+static const char *
+tool_hint (EaselTool tool)
+{
+  return tool == EASEL_TOOL_PENCIL ? "Draw with the foreground color. The secondary button uses the background color."
+                                   : "Drag to pan. Ctrl+wheel zooms.";
+}
+
+static void
+on_pointer_moved (EaselWindow *self, int x, int y)
+{
+  easel_status_bar_set_position (self->status_bar, TRUE, x, y);
+}
+
+static void
+on_pointer_left (EaselWindow *self)
+{
+  easel_status_bar_set_position (self->status_bar, FALSE, 0, 0);
+}
+
+/* ---- panels (REQ-0004-27) ---- */
+
+static void
+set_panel_state (EaselWindow *self, const char *action, GtkWidget *panel, gboolean shown)
+{
+  GAction *a = g_action_map_lookup_action (G_ACTION_MAP (self), action);
+
+  gtk_widget_set_visible (panel, shown);
+  g_simple_action_set_state (G_SIMPLE_ACTION (a), g_variant_new_boolean (shown));
+}
+
+/* Tool Box, Color Box and Status Bar toggle their panel. Like the other View actions, they do nothing while a dialog
+   is open or a button is held (REQ-0004-03); the check item then stays as it is. */
+static void
+show_panel_state_changed (GSimpleAction *action, GVariant *value, gpointer user_data)
+{
+  EaselWindow *self = user_data;
+  const char *name = g_action_get_name (G_ACTION (action));
+  GtkWidget *panel = g_strcmp0 (name, "show-toolbox") == 0    ? self->toolbox_panel
+                     : g_strcmp0 (name, "show-colorbox") == 0 ? GTK_WIDGET (self->palette_bar)
+                                                               : GTK_WIDGET (self->status_bar);
+
+  if (!view_actions_allowed (self))
+    return;
+  set_panel_state (self, name, panel, g_variant_get_boolean (value));
+}
+
+/* ---- zoom commands (REQ-0004-04..07) ---- */
+
+/* The View and Image actions do nothing before the picture exists, while a dialog is open, or while a mouse button is
+   held for a stroke (REQ-0004-03). */
+static gboolean
+view_actions_allowed (EaselWindow *self)
+{
+  return self->picture != NULL && !dialog_is_open (self) && !easel_canvas_is_stroking (self->canvas)
+         && !easel_canvas_is_waiting_for_release (self->canvas);
+}
+
+/* The row's label and which zoom actions can do something (REQ-0004-02). */
+static void
+sync_zoom_ui (EaselWindow *self)
+{
+  int zoom = easel_canvas_get_zoom (self->canvas);
+  g_autofree char *text = g_strdup_printf ("%d%%", zoom);
+  struct { const char *name; gboolean enabled; } states[] = {
+    { "zoom-in", easel_view_zoom_step (zoom, 1) != zoom },
+    { "zoom-out", easel_view_zoom_step (zoom, -1) != zoom },
+    { "zoom-normal", zoom != 100 },
+    { "zoom-large", zoom != 400 },
+  };
+
+  gtk_label_set_text (self->zoom_label, text);
+  easel_status_bar_set_zoom (self->status_bar, self->picture != NULL, zoom);
+  for (guint i = 0; i < G_N_ELEMENTS (states); i++)
+    {
+      GAction *action = g_action_map_lookup_action (G_ACTION_MAP (self), states[i].name);
+
+      if (action != NULL)
+        g_simple_action_set_enabled (G_SIMPLE_ACTION (action), states[i].enabled);
+    }
+}
+
+const char *
+easel_window_get_zoom_text (EaselWindow *self)
+{
+  return gtk_label_get_text (self->zoom_label);
+}
+
+GtkMenuButton *
+easel_window_get_image_button (EaselWindow *self)
+{
+  return self->image_button;
+}
+
+GtkMenuButton *
+easel_window_get_view_button (EaselWindow *self)
+{
+  return self->view_button;
+}
+
+static void
+zoom_in_activated (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+  EaselWindow *self = user_data;
+
+  if (view_actions_allowed (self))
+    easel_canvas_set_zoom (self->canvas, easel_view_zoom_step (easel_canvas_get_zoom (self->canvas), 1));
+}
+
+static void
+zoom_out_activated (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+  EaselWindow *self = user_data;
+
+  if (view_actions_allowed (self))
+    easel_canvas_set_zoom (self->canvas, easel_view_zoom_step (easel_canvas_get_zoom (self->canvas), -1));
+}
+
+static void
+zoom_normal_activated (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+  EaselWindow *self = user_data;
+
+  if (view_actions_allowed (self))
+    easel_canvas_set_zoom (self->canvas, 100);
+}
+
+static void
+zoom_large_activated (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+  EaselWindow *self = user_data;
+
+  if (view_actions_allowed (self))
+    easel_canvas_set_zoom (self->canvas, 400);
+}
+
+static void
+zoom_fit_activated (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+  EaselWindow *self = user_data;
+
+  if (view_actions_allowed (self))
+    easel_canvas_fit_to_window (self->canvas);
+}
+
+static void
+on_zoom_changed (EaselWindow *self, int pct)
+{
+  sync_zoom_ui (self);
+}
+
+/* The View menu's first item: Zoom Out, the zoom as N%, Zoom In. */
+static GtkWidget *
+make_zoom_row (EaselWindow *self)
+{
+  GtkWidget *row = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 6);
+  GtkWidget *zoom_out = gtk_button_new_from_icon_name ("zoom-out-symbolic");
+  GtkWidget *zoom_in = gtk_button_new_from_icon_name ("zoom-in-symbolic");
+
+  gtk_widget_set_margin_start (row, 6);
+  gtk_widget_set_margin_end (row, 6);
+  gtk_widget_add_css_class (zoom_out, "flat");
+  gtk_widget_add_css_class (zoom_in, "flat");
+  gtk_actionable_set_action_name (GTK_ACTIONABLE (zoom_out), "win.zoom-out");
+  gtk_actionable_set_action_name (GTK_ACTIONABLE (zoom_in), "win.zoom-in");
+  gtk_widget_set_tooltip_text (zoom_out, "Zoom Out (Ctrl+-)");
+  gtk_widget_set_tooltip_text (zoom_in, "Zoom In (Ctrl+=)");
+  self->zoom_label = GTK_LABEL (gtk_label_new ("100%"));
+  gtk_widget_set_hexpand (GTK_WIDGET (self->zoom_label), TRUE);
+  gtk_widget_add_css_class (GTK_WIDGET (self->zoom_label), "numeric");
+  gtk_box_append (GTK_BOX (row), zoom_out);
+  gtk_box_append (GTK_BOX (row), GTK_WIDGET (self->zoom_label));
+  gtk_box_append (GTK_BOX (row), zoom_in);
+  return row;
+}
+
 /* Undo and redo change only the picture: the view, tool and colors stay (REQ-0002-08). */
 static void
 step_history (EaselWindow *self, gboolean undo)
@@ -586,6 +773,7 @@ change_tool_state (GSimpleAction *action, GVariant *value, gpointer user_data)
     return;
   self->tool = tool;
   easel_canvas_set_tool (self->canvas, tool);
+  easel_status_bar_set_hint (self->status_bar, tool_hint (tool));
   g_simple_action_set_state (action, value);
 }
 
@@ -595,6 +783,14 @@ static const GActionEntry win_actions[] = {
   { .name = "undo", .activate = undo_activated },
   { .name = "redo", .activate = redo_activated },
   { .name = "swap-colors", .activate = swap_colors_activated },
+  { .name = "zoom-in", .activate = zoom_in_activated },
+  { .name = "zoom-out", .activate = zoom_out_activated },
+  { .name = "zoom-normal", .activate = zoom_normal_activated },
+  { .name = "zoom-large", .activate = zoom_large_activated },
+  { .name = "zoom-fit", .activate = zoom_fit_activated },
+  { .name = "show-toolbox", .state = "true", .change_state = show_panel_state_changed },
+  { .name = "show-colorbox", .state = "true", .change_state = show_panel_state_changed },
+  { .name = "show-statusbar", .state = "true", .change_state = show_panel_state_changed },
   { .name = "close", .activate = close_activated },
 };
 
@@ -646,6 +842,12 @@ easel_window_get_palette_bar (EaselWindow *self)
   return self->palette_bar;
 }
 
+EaselStatusBar *
+easel_window_get_status_bar (EaselWindow *self)
+{
+  return self->status_bar;
+}
+
 static void
 easel_window_dispose (GObject *object)
 {
@@ -663,6 +865,10 @@ easel_window_dispose (GObject *object)
   self->canvas = NULL;
   self->scroller = NULL;
   self->palette_bar = NULL;
+  self->status_bar = NULL;
+  self->toolbox_panel = NULL;
+  self->image_button = NULL;
+  self->view_button = NULL;
   G_OBJECT_CLASS (easel_window_parent_class)->dispose (object);
 }
 
@@ -689,10 +895,15 @@ easel_window_class_init (EaselWindowClass *klass)
 
   g_type_ensure (EASEL_TYPE_CANVAS);
   g_type_ensure (EASEL_TYPE_PALETTE_BAR);
+  g_type_ensure (EASEL_TYPE_STATUS_BAR);
   gtk_widget_class_set_template_from_resource (widget_class, RESOURCE_PATH "/window.ui");
   gtk_widget_class_bind_template_child (widget_class, EaselWindow, scroller);
   gtk_widget_class_bind_template_child (widget_class, EaselWindow, canvas);
   gtk_widget_class_bind_template_child (widget_class, EaselWindow, palette_bar);
+  gtk_widget_class_bind_template_child (widget_class, EaselWindow, status_bar);
+  gtk_widget_class_bind_template_child (widget_class, EaselWindow, toolbox_panel);
+  gtk_widget_class_bind_template_child (widget_class, EaselWindow, image_button);
+  gtk_widget_class_bind_template_child (widget_class, EaselWindow, view_button);
 }
 
 static void
@@ -712,6 +923,13 @@ easel_window_init (EaselWindow *self)
     g_error ("Out of memory creating the undo history");
 
   g_action_map_add_action_entries (G_ACTION_MAP (self), win_actions, G_N_ELEMENTS (win_actions), self);
+  gtk_popover_menu_add_child (GTK_POPOVER_MENU (gtk_menu_button_get_popover (self->view_button)), make_zoom_row (self),
+                              "zoom");
+  g_signal_connect_object (self->canvas, "zoom-changed", G_CALLBACK (on_zoom_changed), self, G_CONNECT_SWAPPED);
+  g_signal_connect_object (self->canvas, "pointer-moved", G_CALLBACK (on_pointer_moved), self, G_CONNECT_SWAPPED);
+  g_signal_connect_object (self->canvas, "pointer-left", G_CALLBACK (on_pointer_left), self, G_CONNECT_SWAPPED);
+  easel_status_bar_set_hint (self->status_bar, tool_hint (self->tool));
+  sync_zoom_ui (self);
   easel_canvas_set_history (self->canvas, self->history);
   easel_canvas_listen_on (self->canvas, GTK_WIDGET (self->scroller));
   easel_canvas_set_tool (self->canvas, self->tool);
@@ -721,6 +939,10 @@ easel_window_init (EaselWindow *self)
     easel_palette_file_load (palette_path, &self->palette);
   }
   easel_palette_bar_set_palette (self->palette_bar, &self->palette);
+  /* The panels start as the settings file says (REQ-0004-15, REQ-0004-27). */
+  set_panel_state (self, "show-toolbox", self->toolbox_panel, self->settings.show_toolbox);
+  set_panel_state (self, "show-colorbox", GTK_WIDGET (self->palette_bar), self->settings.show_colorbox);
+  set_panel_state (self, "show-statusbar", GTK_WIDGET (self->status_bar), self->settings.show_statusbar);
   set_colors (self, self->foreground, self->background);
   g_signal_connect_object (self->palette_bar, "swatch-pressed", G_CALLBACK (on_swatch_pressed), self,
                            G_CONNECT_SWAPPED);

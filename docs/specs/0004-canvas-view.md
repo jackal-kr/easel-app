@@ -35,7 +35,7 @@ the picture). Words used below: the *canvas area* is the scrolled area that show
 - REQ-0004-08 While Pan is active and the user pinches on a touchpad or touch screen, the app shall move one level each time the pinch's scale since the last level change reaches 1.5 (in) or 1/1.5 (out), keeping the pinch center still as far as the edges allow. The scale starts again after each level change, at 800 % and 10 % and when the pinch ends. With any other tool the pinch does nothing. (1.5 is a fixed value of this spec.)
 
 ### Status bar
-- REQ-0004-09 The window shall have a status bar below the palette bar, across the window's full width, with four fields from the left: the pointer position as `x, y` in picture pixels, the picture size as `W × H`, the zoom as `N%`, and a one-line hint for the active tool. The position is shown while the pointer is over the canvas area, also outside the picture (so it can be negative or beyond the size), and is empty elsewhere. Pan's hint is "Drag to pan. Ctrl+wheel zooms." and Pencil's is "Draw with the foreground color. The secondary button uses the background color." All its texts are translatable (0016).
+- REQ-0004-09 The window shall have a status bar below the palette bar, across the window's full width. At its left it shows a one-line hint for the active tool; at its right edge, in this order, it shows the pointer position as `x, y` in picture pixels, the zoom as `N%`, and the picture size as `W × H px`. The position is shown while the pointer is over the canvas area, also outside the picture (so it can be negative or beyond the size), and is empty elsewhere. Pan's hint is "Drag to pan. Ctrl+wheel zooms." and Pencil's is "Draw with the foreground color. The secondary button uses the background color." All its texts are translatable (0016).
 - REQ-0004-10 Each field shall show a new value within the next frame drawn after it changes. During a resize drag the size field shows the new size; after a cancel it shows the picture's size again. Before the picture exists the position, size and zoom fields are empty.
 - REQ-0004-11 The status bar shall never make the window wider: when there is no room, the hint is shortened with "…" at its end. (0009 adds the selection size next to the picture size.)
 
@@ -69,7 +69,7 @@ the picture). Words used below: the *canvas area* is the scrolled area that show
 - AS-5 (REQ-0004-06) Given a 2000x2000 picture at 100 % with a canvas area of 1000x800 scrolled to (500, 400), When the user chooses Zoom In, Then picture pixel (1000, 800), the center, is still at the center of the canvas area; Given a picture smaller than the canvas area, Then it stays at the top-left | Verified by: automated (core, anchor math) + automated (ui)
 - AS-6 (REQ-0004-07) Given a canvas area of 1390x853 device pixels, When the user chooses Fit to Window, Then an 800x600 picture gets 100 %, a 3000x2000 picture 25 %, a 10000x10000 picture 10 %, and a 1x1 picture 800 %; the picture shows from its top-left corner; When the window is made larger afterwards, Then the zoom stays | Verified by: automated (core, fit level) + automated (ui)
 - AS-7 (REQ-0004-08) Given Pan active at 100 %, When the pinch scale reaches 1.5, Then the zoom is 200 % and the scale starts at 1 again; When the pinch then shrinks to 1/1.5 of that, Then back to 100 %; with Pencil active a pinch changes nothing | Verified by: automated (core, pinch accumulator) + manual M2
-- AS-8 (REQ-0004-09, REQ-0004-10) Given a 300x200 picture at 200 % with Pan active, When the pointer is over pixel (12, 34), Then the status bar shows "12, 34", "300 × 200", "200%" and Pan's hint; When the pointer is over the canvas area outside the picture, Then the position shows negative or beyond-size numbers; When the pointer is over the header bar, Then the position is empty; With Pencil active the hint is Pencil's | Verified by: automated (ui) + manual M3
+- AS-8 (REQ-0004-09, REQ-0004-10) Given a 300x200 picture at 200 % with Pan active, When the pointer is over pixel (12, 34), Then the status bar shows Pan's hint at the left and, from left to right at the right edge, "12, 34", "200%" and "300 × 200 px"; When the pointer is over the canvas area outside the picture, Then the position shows negative or beyond-size numbers; When the pointer is over the header bar, Then the position is empty; With Pencil active the hint is Pencil's | Verified by: automated (ui) + manual M3
 - AS-9 (REQ-0004-11) Given the narrowest window, Then the status bar does not widen it and Pencil's hint ends with "…" | Verified by: manual M3
 - AS-10 (REQ-0004-12) Given the grid off at 400 %, When the user presses Ctrl+G, Then Show Grid is checked and 1-pixel grid lines show every picture pixel inside the picture (none on its edges); When the user zooms to 300 %, Then no lines show but Show Grid stays checked; When the user presses Ctrl+G, Then it is unchecked; the file saved meanwhile has no lines and the title has no modified mark | Verified by: automated (core, line positions and visibility) + automated (ui) + manual M4
 - AS-11 (REQ-0004-12) Given cell size 16, When the zoom is 25 %, Then lines show every 16 picture pixels (4 device pixels apart); at 10 % none | Verified by: automated (core)
@@ -181,15 +181,34 @@ A settings file the app creates holds the `[view]` section with these defaults, 
 never rewritten. `EaselSettings` gains six fields (the default text of a created file lives in `settings.c`, so io needs no change); the window reads them once at start-up.
 
 ### Drawing only the changed area at 8000x8000
-The measurements of 0001 and 0002 show the lag is the screen copy: each update turns the whole picture into a new
-`GBytes` (a 256 MB copy at 8000x8000, about 51 ms). The plan:
-1. Make the texture's bytes a zero-copy view of the picture's own pixels (`g_bytes_new_with_free_func` with a no-op free
-   function), and keep passing the previous texture and the changed region to the texture builder, so GTK uploads only
-   that region.
-2. Make the picture's pixel buffer outlive every texture that points at it: a resize (which reallocates it) first drops
-   the canvas's texture and builds the next one in the same call, before control returns to the main loop.
-3. Measure with the benchmark (a task) at 1920x1080 and 8000x8000, with the default renderer. If it still misses, fall
-   back to tiles of 512 x 512 (rebuild only the dirty ones). A budget missed is reported, not hidden (rule P5).
+The measurements of 0001 and 0002 showed the lag was the screen copy: each update turned the whole picture into a new
+`GBytes` (a 256 MB copy at 8000x8000, about 51 ms). What was tried, and what was built:
+1. **First try, one zero-copy texture plus the changed region.** The copy disappeared (the action itself fell from 51 ms to
+   0.03 ms), but the time to the screen stayed at 56 ms: the Vulkan renderer uploads the whole 256 MB texture each frame and
+   does not narrow the upload to the changed region. The Plan's assumption was wrong; the benchmark showed it in one round.
+2. **Built: tiles.** The picture is shown as tiles of 500 x 500 picture pixels (1 MB each), each a zero-copy view of the
+   picture's own memory (the picture's stride, no copy); an update rebuilds only the tiles that hold a changed pixel, so
+   GTK uploads about one tile. 500, not 512: 500 times any zoom level (10, 25, 50, ... 800 %) is a whole number of device
+   pixels, so tile edges never fall between device pixels and leave no seams. The memory stays valid because the picture's
+   buffer is replaced only by a resize, which points the canvas at the new buffer in the same call, and the canvas drops its
+   tiles before the picture is freed.
+
+### Measurements (T002, 2026-10-15)
+Benchmark `perf-0004` (`meson test -C build --benchmark --verbose perf-0004`), the default renderer (GskVulkanRenderer),
+AMD Ryzen AI 7 PRO 350 with Radeon 860M, 60 Hz display (a refresh is 16.7 ms), window visible. Medians, two runs. "Before"
+is the 0001 and 0002 measurements of the same actions.
+
+| Action | Size | Before | After the tiles |
+|---|---|---|---|
+| Pencil motion, on screen | 1920x1080 | 16.7 ms | 16.7 ms |
+| Pencil motion, on screen | 8000x8000 | 92 ms (51 ms of it the copy) | **16.6 ms** (worst 54 to 59 ms, once per run) |
+| Undo of 50,000 pixels, on screen | 1920x1080 | 16.7 ms | 16.4 ms |
+| Undo of 50,000 pixels, on screen | 8000x8000 | 94 ms | **16.6 ms** |
+| Redo of 50,000 pixels, on screen | 8000x8000 | 96 ms | **16.9 ms** |
+| Bytes of the picture copied by the canvas | any | 256 MB per update at 8000x8000 | 0 |
+
+The three budgets of `docs/engineering.md` that this touches are met at both sizes. The worst case of about 55 ms per run
+is probably the first frame, which uploads the visible tiles; manual check M8 shows whether it is noticeable.
 
 ### Files
 - **New:** `src/core/grid.{c,h}`, `src/core/number.{c,h}`, `src/ui/status-bar.{c,h}`, `src/ui/grid-dialog.{c,h}`,
@@ -249,6 +268,8 @@ The measurements of 0001 and 0002 show the lag is the screen copy: each update t
 | 28 | ui `as28_panel_toggles` + manual M7 |
 | 29 | core `as29_oversized_resize_kept_alone` |
 
+Tasks without a scenario: T001 ui `texture_is_not_copied`; T002 benchmark `perf-0004` and manual M8; T015 `perf-0004` extended.
+
 ### Constitution check
 - P4: grid lines are hard-edged; picture pixels stay hard-edged at every zoom.
 - P5: the screen-copy change is justified by the measurements of 0001 and 0002 and is itself measured.
@@ -261,7 +282,7 @@ The measurements of 0001 and 0002 show the lag is the screen copy: each update t
   under it after every stroke. Torn or stale drawing is possible, and the ui tests (forced Cairo renderer) cannot show
   it. So the speed work comes first (group A): the manual check M8 draws pencil strokes, undoes and redoes, zooms and
   pans on an 8000x8000 picture with the real renderer, looking for flicker and old pixels. If it fails, the 512 x 512 tile
-  fallback is applied before any other UI is built on top. The picture's buffer is replaced only by a resize, which
+  fallback was needed for speed and is built (tiles of 500); any flicker, seam or old pixel M8 shows is fixed before any other UI is built on top. The picture's buffer is replaced only by a resize, which
   rebuilds the texture in the same call; a test (`as26`) resizes while a frame is pending.
 - **Custom child in the View popover.** The zoom row is a widget inside GTK's popover menu; if it does not look right,
   the whole View menu becomes a custom popover. Manual check M1.
@@ -285,16 +306,16 @@ F. Measuring the grid and the resize (T015): numbers recorded in this Plan.
 
 ## Tasks
 Group A, speed at 8000x8000 (budget: engineering.md, "Large picture" and "Pointer event to pixels")
-- [ ] T001 Draw only the changed area (no REQ: the budget of engineering.md and Plan "Drawing only the changed area") - done when the picture's texture is a zero-copy view of its pixels with the changed region passed to GTK, the 0001 and 0002 ui tests pass unchanged, and a resize-time test shows no texture reads freed memory
-- [ ] T002 Benchmark perf-0004 and manual M8 (same budget) - done when `perf-0004` times a pencil stroke motion, an undo and a redo at 1920x1080 and 8000x8000 with the default renderer, its numbers are recorded in the Plan next to the 0001 and 0002 numbers, and manual M8 passes: on the real renderer, a pencil stroke, undo, redo, zoom and pan on an 8000x8000 picture show no flicker and no old pixels (if they do, T001 is redone with the 512 x 512 tiles of the Plan before group B starts)
+- [x] T001 Draw only the changed area (no REQ: the budget of engineering.md and Plan "Drawing only the changed area") - done when the picture is shown as 500 x 500 tiles that are zero-copy views of its pixels and an update rebuilds only the tiles it touches, the 0001 and 0002 ui tests pass unchanged, and ui `texture_is_not_copied` shows the canvas copies 0 bytes of the picture, the texture follows the pixels after strokes, and the canvas can be pointed at another picture and back with the first freed meanwhile (the resize itself comes in T012)
+- [x] T002 Benchmark perf-0004 and manual M8 (same budget) - done when `perf-0004` times a pencil stroke motion, an undo and a redo at 1920x1080 and 8000x8000 with the default renderer, its numbers are recorded in the Plan next to the 0001 and 0002 numbers, and manual M8 passes: on the real renderer, a pencil stroke, undo, redo, zoom and pan on an 8000x8000 picture show no flicker and no old pixels (they are drawn as tiles; if the check shows seams or old pixels, T001 is reworked before group B starts)
 Group B, menus and zoom
-- [ ] T003 View settings keys and the number field parser (REQ-0004-13, REQ-0004-15, REQ-0004-21, REQ-0004-27; AS-14) - done when core `as14_view_settings` and the number-field tests pass, io `as14_created_file_has_view` and `as14_existing_file_untouched` pass, and the existing settings tests of 0001 to 0003 pass unchanged
-- [ ] T004 Core zoom rules: fit level, pinch accumulator, zoom levels and anchors (REQ-0004-04, REQ-0004-05, REQ-0004-06, REQ-0004-07, REQ-0004-08; AS-3, AS-5, AS-6, AS-7) - done when core `as3_zoom_levels`, `as5_zoom_anchor_center`, `as6_fit_level` and `as7_pinch_accumulator` pass
-- [ ] T005 Image and View menus, zoom row, zoom actions and shortcuts (REQ-0004-01, REQ-0004-02, REQ-0004-03, REQ-0004-04, REQ-0004-05, REQ-0004-06; AS-1, AS-2, AS-3, AS-4, AS-5) - done when ui `as1_menus`, `as2_actions_ignored`, `as3_zoom_buttons`, `as4_normal_and_large` and `as5_zoom_keeps_center` pass, and manual M1 passes
-- [ ] T006 Fit to Window and the touchpad pinch in the window (REQ-0004-07, REQ-0004-08; AS-6, AS-7) - done when ui `as6_fit_to_window` passes and manual M2 passes (the real pinch)
+- [x] T003 View settings keys and the number field parser (REQ-0004-13, REQ-0004-15, REQ-0004-21, REQ-0004-27; AS-14) - done when core `as14_view_settings` and the number-field tests pass, io `as14_created_file_has_view` and `as14_existing_file_untouched` pass, and the existing settings tests of 0001 to 0003 pass unchanged
+- [x] T004 Core zoom rules: fit level, pinch accumulator, zoom levels and anchors (REQ-0004-04, REQ-0004-05, REQ-0004-06, REQ-0004-07, REQ-0004-08; AS-3, AS-5, AS-6, AS-7) - done when core `as3_zoom_levels`, `as5_zoom_anchor_center`, `as6_fit_level` and `as7_pinch_accumulator` pass
+- [x] T005 Image and View menus, zoom row, zoom actions and shortcuts (REQ-0004-01, REQ-0004-02, REQ-0004-03, REQ-0004-04, REQ-0004-05, REQ-0004-06; AS-1, AS-2, AS-3, AS-4, AS-5) - done when ui `as1_menus`, `as2_actions_ignored`, `as3_zoom_buttons`, `as4_normal_and_large` and `as5_zoom_keeps_center` pass, and manual M1 passes
+- [x] T006 Fit to Window and the touchpad pinch in the window (REQ-0004-07, REQ-0004-08; AS-6, AS-7) - done when ui `as6_fit_to_window` passes and manual M2 passes (the real pinch)
 Group C, status bar and panels
-- [ ] T007 Status bar: position, size, zoom and hint, writing only on change (REQ-0004-09, REQ-0004-10, REQ-0004-11; AS-8, AS-9) - done when ui `as8_status_fields` and `as8_status_writes_only_on_change` pass and manual M3 passes
-- [ ] T008 Panel toggles: Tool Box, Color Box, Status Bar (REQ-0004-27, REQ-0004-15; AS-28) - done when ui `as28_panel_toggles` passes, panels start as the settings say, and manual M7 passes
+- [x] T007 Status bar: position, size, zoom and hint, writing only on change (REQ-0004-09, REQ-0004-10, REQ-0004-11; AS-8, AS-9) - done when ui `as8_status_fields` and `as8_status_writes_only_on_change` pass and manual M3 passes
+- [x] T008 Panel toggles: Tool Box, Color Box, Status Bar (REQ-0004-27, REQ-0004-15; AS-28) - done when ui `as28_panel_toggles` passes, panels start as the settings say, and manual M7 passes
 Group D, the grid
 - [ ] T009 Core grid: visibility rule and line geometry (REQ-0004-12, REQ-0004-14; AS-10, AS-11, AS-13) - done when core `as10_grid_visibility`, `as11_grid_cell_16` and `as13_axonometric_lines` pass
 - [ ] T010 Grid drawing, Show Grid, Ctrl+G and the start-up state (REQ-0004-12, REQ-0004-15; AS-10) - done when ui `as10_grid_toggle` passes and the grid is not in the saved picture, and manual M4 passes

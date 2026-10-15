@@ -20,7 +20,10 @@ struct _EaselCanvas
 
   EaselImage *img;
   GdkMemoryTextureBuilder *builder;
-  GdkTexture *texture;
+  GdkTexture **tiles;     /* tile_cols x tile_rows textures, row by row; see EASEL_CANVAS_TILE */
+  int tile_cols, tile_rows;
+  gsize tiles_rebuilt;    /* test hook, see easel_canvas_get_tiles_rebuilt () */
+  gsize bytes_copied;     /* test hook: always 0, the tiles read the picture's own memory */
   int zoom;
   GdkSurface *surface;    /* watched for scale changes while realized */
 
@@ -37,6 +40,7 @@ struct _EaselCanvas
   gboolean panning;
   double pan_x, pan_y;    /* canvas point under the pointer when the pan began */
   double notch_acc;       /* touchpad scrolling not yet a whole notch */
+  double pinch_base;      /* the pinch's scale at the last level change, 1 when it begins */
   gboolean anchor_pending;
   double anchor_h, anchor_v;  /* scroll offsets to apply once the new zoom is allocated */
 };
@@ -47,6 +51,9 @@ struct _EaselCanvas
 enum
 {
   SIGNAL_STROKE_FINISHED,
+  SIGNAL_ZOOM_CHANGED,
+  SIGNAL_POINTER_MOVED,
+  SIGNAL_POINTER_LEFT,
   N_SIGNALS
 };
 
@@ -54,22 +61,57 @@ static guint signals[N_SIGNALS];
 
 G_DEFINE_FINAL_TYPE (EaselCanvas, easel_canvas, GTK_TYPE_WIDGET)
 
-static GBytes *
-image_bytes (const EaselImage *img)
+GdkTexture *
+easel_canvas_get_tile_texture (EaselCanvas *self, int tx, int ty)
 {
-  return g_bytes_new (img->px, (gsize) img->width * (gsize) img->height * sizeof (uint32_t));
+  if (self->tiles == NULL || tx < 0 || ty < 0 || tx >= self->tile_cols || ty >= self->tile_rows)
+    return NULL;
+  return self->tiles[ty * self->tile_cols + tx];
+}
+
+gsize
+easel_canvas_get_tiles_rebuilt (EaselCanvas *self)
+{
+  return self->tiles_rebuilt;
+}
+
+gsize
+easel_canvas_get_bytes_copied (EaselCanvas *self)
+{
+  return self->bytes_copied;
 }
 
 static void
-rebuild_texture (EaselCanvas *self, const cairo_region_t *region)
+free_tiles (EaselCanvas *self)
 {
-  g_autoptr (GBytes) bytes = image_bytes (self->img);
+  for (int i = 0; self->tiles != NULL && i < self->tile_cols * self->tile_rows; i++)
+    g_clear_object (&self->tiles[i]);
+  g_clear_pointer (&self->tiles, g_free);
+  self->tile_cols = self->tile_rows = 0;
+}
+
+/* One tile's texture: a view of the picture's own memory (no copy; its rows are the picture's rows, so the stride is
+   the picture's), rebuilt whenever a pixel in it changes. The memory stays valid because the picture's buffer is only
+   replaced by a resize, which points the canvas at the new buffer in the same call, and the canvas drops its tiles
+   before the picture is freed. */
+static void
+build_tile (EaselCanvas *self, int tx, int ty)
+{
+  const EaselImage *img = self->img;
+  int x0 = tx * EASEL_CANVAS_TILE, y0 = ty * EASEL_CANVAS_TILE;
+  int w = MIN (EASEL_CANVAS_TILE, img->width - x0), h = MIN (EASEL_CANVAS_TILE, img->height - y0);
+  gsize stride = (gsize) img->width * sizeof (uint32_t);
+  g_autoptr (GBytes) bytes = g_bytes_new_static (img->px + (gsize) y0 * (gsize) img->width + (gsize) x0,
+                                                 (gsize) (h - 1) * stride + (gsize) w * sizeof (uint32_t));
 
   gdk_memory_texture_builder_set_bytes (self->builder, bytes);
-  gdk_memory_texture_builder_set_update_texture (self->builder, region ? self->texture : NULL);
-  gdk_memory_texture_builder_set_update_region (self->builder, (cairo_region_t *) region);
-  g_set_object (&self->texture, NULL);
-  self->texture = gdk_memory_texture_builder_build (self->builder);
+  gdk_memory_texture_builder_set_width (self->builder, w);
+  gdk_memory_texture_builder_set_height (self->builder, h);
+  gdk_memory_texture_builder_set_stride (self->builder, stride);
+  gdk_memory_texture_builder_set_format (self->builder, PICTURE_FORMAT);
+  g_clear_object (&self->tiles[ty * self->tile_cols + tx]);
+  self->tiles[ty * self->tile_cols + tx] = gdk_memory_texture_builder_build (self->builder);
+  self->tiles_rebuilt++;
 }
 
 void
@@ -77,17 +119,20 @@ easel_canvas_set_image (EaselCanvas *self, EaselImage *img)
 {
   EaselRect ignored;
 
+  free_tiles (self);
   self->img = img;
-  g_clear_object (&self->texture);
+  self->tiles_rebuilt = 0;
   if (img != NULL)
     {
-      /* The whole texture is new, so earlier dirty marks are already covered. */
+      /* Every tile is new, so earlier dirty marks are already covered. */
       easel_image_take_dirty (img, &ignored);
-      gdk_memory_texture_builder_set_width (self->builder, img->width);
-      gdk_memory_texture_builder_set_height (self->builder, img->height);
-      gdk_memory_texture_builder_set_stride (self->builder, (gsize) img->width * sizeof (uint32_t));
-      gdk_memory_texture_builder_set_format (self->builder, PICTURE_FORMAT);
-      rebuild_texture (self, NULL);
+      self->tile_cols = (img->width + EASEL_CANVAS_TILE - 1) / EASEL_CANVAS_TILE;
+      self->tile_rows = (img->height + EASEL_CANVAS_TILE - 1) / EASEL_CANVAS_TILE;
+      self->tiles = g_new0 (GdkTexture *, (gsize) self->tile_cols * (gsize) self->tile_rows);
+      for (int ty = 0; ty < self->tile_rows; ty++)
+        for (int tx = 0; tx < self->tile_cols; tx++)
+          build_tile (self, tx, ty);
+      self->tiles_rebuilt = 0;
     }
   gtk_widget_queue_resize (GTK_WIDGET (self));
 }
@@ -96,13 +141,13 @@ void
 easel_canvas_update (EaselCanvas *self)
 {
   EaselRect r;
-  cairo_region_t *region;
 
   if (self->img == NULL || !easel_image_take_dirty (self->img, &r))
     return;
-  region = cairo_region_create_rectangle (&(cairo_rectangle_int_t) { r.x0, r.y0, r.x1 - r.x0, r.y1 - r.y0 });
-  rebuild_texture (self, region);
-  cairo_region_destroy (region);
+  /* Only the tiles that hold a changed pixel: r is half-open. */
+  for (int ty = r.y0 / EASEL_CANVAS_TILE; ty <= (r.y1 - 1) / EASEL_CANVAS_TILE; ty++)
+    for (int tx = r.x0 / EASEL_CANVAS_TILE; tx <= (r.x1 - 1) / EASEL_CANVAS_TILE; tx++)
+      build_tile (self, tx, ty);
   gtk_widget_queue_draw (GTK_WIDGET (self));
 }
 
@@ -155,15 +200,24 @@ easel_canvas_snapshot (GtkWidget *widget, GtkSnapshot *snapshot)
   double l;
   graphene_rect_t bounds;
 
-  if (self->texture == NULL)
+  if (self->tiles == NULL)
     return;
   l = self->zoom / (100.0 * easel_canvas_get_scale (self));
   bounds = GRAPHENE_RECT_INIT (0, 0, (float) (self->img->width * l), (float) (self->img->height * l));
 
   /* Transparent pixels show the checkerboard (REQ-0001-11); nearest filtering keeps pixels hard-edged
-     at every zoom (REQ-0001-18). */
+     at every zoom (REQ-0001-18). Each tile is drawn where its pixels are; edges fall on whole device pixels. */
   easel_snapshot_append_checkerboard (snapshot, &bounds, CHECKER_SIZE);
-  gtk_snapshot_append_scaled_texture (snapshot, self->texture, GSK_SCALING_FILTER_NEAREST, &bounds);
+  for (int ty = 0; ty < self->tile_rows; ty++)
+    for (int tx = 0; tx < self->tile_cols; tx++)
+      {
+        GdkTexture *tile = self->tiles[ty * self->tile_cols + tx];
+        graphene_rect_t r = GRAPHENE_RECT_INIT ((float) (tx * EASEL_CANVAS_TILE * l), (float) (ty * EASEL_CANVAS_TILE * l),
+                                                (float) (gdk_texture_get_width (tile) * l),
+                                                (float) (gdk_texture_get_height (tile) * l));
+
+        gtk_snapshot_append_scaled_texture (snapshot, tile, GSK_SCALING_FILTER_NEAREST, &r);
+      }
 }
 
 static GdkCursor *
@@ -374,12 +428,71 @@ easel_canvas_release (EaselCanvas *self, guint button)
     easel_canvas_end_stroke (self);
 }
 
-void
-easel_canvas_zoom_at (EaselCanvas *self, int notches, double view_x, double view_y)
+/* Sets the zoom; the new scroll offsets can only be applied once the adjustments know the new size, so they wait for
+   the next allocation. */
+static void
+commit_zoom (EaselCanvas *self, int zoom, double scroll_h, double scroll_v)
+{
+  self->anchor_h = scroll_h;
+  self->anchor_v = scroll_v;
+  self->anchor_pending = TRUE;
+  self->zoom = zoom;
+  gtk_widget_queue_resize (GTK_WIDGET (self));
+  g_signal_emit (self, signals[SIGNAL_ZOOM_CHANGED], 0, zoom);
+}
+
+/* The zoom that keeps the picture point under (view_x, view_y), relative to the canvas area, still. */
+static void
+zoom_around (EaselCanvas *self, int zoom, double view_x, double view_y)
 {
   GtkAdjustment *h = adjustment (self, GTK_ORIENTATION_HORIZONTAL);
   GtkAdjustment *v = adjustment (self, GTK_ORIENTATION_VERTICAL);
   double scale = easel_canvas_get_scale (self);
+
+  commit_zoom (self, zoom,
+               easel_view_anchor (gtk_adjustment_get_value (h), view_x, self->zoom, zoom, self->img->width, scale,
+                                  gtk_adjustment_get_page_size (h)),
+               easel_view_anchor (gtk_adjustment_get_value (v), view_y, self->zoom, zoom, self->img->height, scale,
+                                  gtk_adjustment_get_page_size (v)));
+}
+
+void
+easel_canvas_set_zoom (EaselCanvas *self, int pct)
+{
+  GtkAdjustment *h = adjustment (self, GTK_ORIENTATION_HORIZONTAL);
+  GtkAdjustment *v = adjustment (self, GTK_ORIENTATION_VERTICAL);
+
+  if (self->img == NULL || pct == self->zoom)
+    return;
+  zoom_around (self, pct, gtk_adjustment_get_page_size (h) / 2, gtk_adjustment_get_page_size (v) / 2);
+}
+
+void
+easel_canvas_fit_to_window (EaselCanvas *self)
+{
+  GtkAdjustment *h = adjustment (self, GTK_ORIENTATION_HORIZONTAL);
+  GtkAdjustment *v = adjustment (self, GTK_ORIENTATION_VERTICAL);
+  double scale = easel_canvas_get_scale (self);
+  int zoom;
+
+  if (self->img == NULL)
+    return;
+  /* The canvas area in device pixels, with no scrollbars counted (REQ-0004-07). */
+  zoom = easel_view_fit_level ((int) (gtk_adjustment_get_page_size (h) * scale),
+                               (int) (gtk_adjustment_get_page_size (v) * scale), self->img->width, self->img->height);
+  if (zoom == self->zoom)
+    {
+      /* Same zoom: still show the top-left corner. */
+      gtk_adjustment_set_value (h, 0);
+      gtk_adjustment_set_value (v, 0);
+      return;
+    }
+  commit_zoom (self, zoom, 0, 0);
+}
+
+void
+easel_canvas_zoom_at (EaselCanvas *self, int notches, double view_x, double view_y)
+{
   int zoom;
 
   if (self->img == NULL || self->tool != EASEL_TOOL_PAN)
@@ -387,15 +500,70 @@ easel_canvas_zoom_at (EaselCanvas *self, int notches, double view_x, double view
   zoom = easel_view_zoom_step (self->zoom, notches);
   if (zoom == self->zoom)
     return;
+  zoom_around (self, zoom, view_x, view_y);
+}
 
-  /* The new offsets can only be set once the adjustments know the new size, so they wait for allocation. */
-  self->anchor_h = easel_view_anchor (gtk_adjustment_get_value (h), view_x, self->zoom, zoom, self->img->width,
-                                      scale, gtk_adjustment_get_page_size (h));
-  self->anchor_v = easel_view_anchor (gtk_adjustment_get_value (v), view_y, self->zoom, zoom, self->img->height,
-                                      scale, gtk_adjustment_get_page_size (v));
-  self->anchor_pending = TRUE;
-  self->zoom = zoom;
-  gtk_widget_queue_resize (GTK_WIDGET (self));
+void
+easel_canvas_pointer_at (EaselCanvas *self, double x, double y)
+{
+  int px, py;
+
+  if (self->img == NULL)
+    return;
+  to_pixel (self, x, y, &px, &py);
+  g_signal_emit (self, signals[SIGNAL_POINTER_MOVED], 0, px, py);
+}
+
+void
+easel_canvas_pointer_left (EaselCanvas *self)
+{
+  g_signal_emit (self, signals[SIGNAL_POINTER_LEFT], 0);
+}
+
+void
+easel_canvas_pinch_begin (EaselCanvas *self)
+{
+  self->pinch_base = 1.0;
+}
+
+void
+easel_canvas_pinch_end (EaselCanvas *self)
+{
+  self->pinch_base = 1.0;
+}
+
+void
+easel_canvas_pinch (EaselCanvas *self, double scale, double view_x, double view_y)
+{
+  int step;
+
+  /* Like Ctrl+wheel, the pinch zooms only in Pan mode (REQ-0001-17, REQ-0004-08). */
+  if (self->img == NULL || self->tool != EASEL_TOOL_PAN || self->pinch_base <= 0)
+    return;
+  step = easel_view_pinch (&self->pinch_base, scale, self->zoom);
+  if (step != 0)
+    easel_canvas_zoom_at (self, step, view_x, view_y);
+}
+
+static void
+on_pinch_begin (GtkGesture *gesture, GdkEventSequence *sequence, EaselCanvas *self)
+{
+  easel_canvas_pinch_begin (self);
+}
+
+static void
+on_pinch_end (GtkGesture *gesture, GdkEventSequence *sequence, EaselCanvas *self)
+{
+  easel_canvas_pinch_end (self);
+}
+
+static void
+on_pinch_scale_changed (GtkGestureZoom *gesture, double scale, EaselCanvas *self)
+{
+  double x = 0, y = 0;
+
+  gtk_gesture_get_bounding_box_center (GTK_GESTURE (gesture), &x, &y);
+  easel_canvas_pinch (self, scale, x, y);
 }
 
 static gboolean
@@ -437,6 +605,11 @@ on_event (GtkEventControllerLegacy *controller, GdkEvent *event, EaselCanvas *se
 
   GtkWidget *area = gtk_event_controller_get_widget (GTK_EVENT_CONTROLLER (controller));
 
+  if (type == GDK_LEAVE_NOTIFY)
+    {
+      easel_canvas_pointer_left (self);
+      return GDK_EVENT_PROPAGATE;
+    }
   if (type != GDK_BUTTON_PRESS && type != GDK_BUTTON_RELEASE && type != GDK_MOTION_NOTIFY)
     return GDK_EVENT_PROPAGATE;
 
@@ -470,6 +643,8 @@ on_event (GtkEventControllerLegacy *controller, GdkEvent *event, EaselCanvas *se
       y = p.y;
     }
 
+  if (type == GDK_MOTION_NOTIFY)
+    easel_canvas_pointer_at (self, x, y);
   if (type == GDK_BUTTON_PRESS)
     easel_canvas_press (self, gdk_button_event_get_button (event), x, y);
   else if (type == GDK_BUTTON_RELEASE)
@@ -495,6 +670,16 @@ easel_canvas_listen_on (EaselCanvas *self, GtkWidget *area)
   gtk_event_controller_set_propagation_phase (scroll, GTK_PHASE_CAPTURE);
   g_signal_connect_object (scroll, "scroll", G_CALLBACK (on_scroll), self, G_CONNECT_DEFAULT);
   gtk_widget_add_controller (area, scroll);
+
+  /* The pinch on a touchpad or touch screen. */
+  {
+    GtkGesture *pinch = gtk_gesture_zoom_new ();
+
+    g_signal_connect_object (pinch, "begin", G_CALLBACK (on_pinch_begin), self, G_CONNECT_DEFAULT);
+    g_signal_connect_object (pinch, "end", G_CALLBACK (on_pinch_end), self, G_CONNECT_DEFAULT);
+    g_signal_connect_object (pinch, "scale-changed", G_CALLBACK (on_pinch_scale_changed), self, G_CONNECT_DEFAULT);
+    gtk_widget_add_controller (area, GTK_EVENT_CONTROLLER (pinch));
+  }
 }
 
 static void
@@ -551,7 +736,7 @@ easel_canvas_dispose (GObject *object)
   self->img = NULL;
   self->history = NULL;
   self->area = NULL;
-  g_clear_object (&self->texture);
+  free_tiles (self);
   g_clear_object (&self->builder);
   G_OBJECT_CLASS (easel_canvas_parent_class)->dispose (object);
 }
@@ -569,6 +754,12 @@ easel_canvas_class_init (EaselCanvasClass *klass)
   widget_class->realize = easel_canvas_realize;
   widget_class->unrealize = easel_canvas_unrealize;
 
+  signals[SIGNAL_POINTER_MOVED] = g_signal_new ("pointer-moved", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST, 0, NULL,
+                                                NULL, NULL, G_TYPE_NONE, 2, G_TYPE_INT, G_TYPE_INT);
+  signals[SIGNAL_POINTER_LEFT] = g_signal_new ("pointer-left", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST, 0, NULL,
+                                               NULL, NULL, G_TYPE_NONE, 0);
+  signals[SIGNAL_ZOOM_CHANGED] = g_signal_new ("zoom-changed", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST, 0, NULL, NULL,
+                                               NULL, G_TYPE_NONE, 1, G_TYPE_INT);
   signals[SIGNAL_STROKE_FINISHED] = g_signal_new ("stroke-finished", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST,
                                                   0, NULL, NULL, NULL, G_TYPE_NONE, 1, G_TYPE_UINT);
 }
@@ -577,6 +768,7 @@ static void
 easel_canvas_init (EaselCanvas *self)
 {
   self->zoom = 100;
+  self->pinch_base = 1.0;
   self->builder = gdk_memory_texture_builder_new ();
   update_cursor (self);
   gtk_widget_set_halign (GTK_WIDGET (self), GTK_ALIGN_START);

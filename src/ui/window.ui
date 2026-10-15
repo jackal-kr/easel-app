@@ -36,47 +36,83 @@
                 <property name="menu-model">primary_menu</property>
               </object>
             </child>
+            <child type="end">
+              <object class="GtkMenuButton" id="view_button">
+                <property name="always-show-arrow">true</property>
+                <property name="menu-model">view_menu</property>
+                <property name="child">
+                  <object class="AdwButtonContent">
+                    <property name="icon-name">view-reveal-symbolic</property>
+                    <property name="label" translatable="yes">View</property>
+                  </object>
+                </property>
+              </object>
+            </child>
+            <child type="end">
+              <object class="GtkMenuButton" id="image_button">
+                <property name="always-show-arrow">true</property>
+                <property name="menu-model">image_menu</property>
+                <property name="child">
+                  <object class="AdwButtonContent">
+                    <property name="icon-name">image-x-generic-symbolic</property>
+                    <property name="label" translatable="yes">Image</property>
+                  </object>
+                </property>
+              </object>
+            </child>
           </object>
         </child>
         <child type="bottom">
-          <object class="EaselPaletteBar" id="palette_bar"/>
+          <object class="GtkBox">
+            <property name="orientation">vertical</property>
+            <child>
+              <object class="EaselPaletteBar" id="palette_bar"/>
+            </child>
+            <child>
+              <object class="EaselStatusBar" id="status_bar"/>
+            </child>
+          </object>
         </child>
         <property name="content">
           <object class="GtkBox">
             <child>
-              <object class="GtkBox">
-                <property name="orientation">vertical</property>
-                <property name="spacing">6</property>
-                <property name="margin-start">6</property>
-                <property name="margin-end">6</property>
-                <property name="margin-top">6</property>
-                <property name="margin-bottom">6</property>
+              <object class="GtkBox" id="toolbox_panel">
                 <child>
-                  <object class="GtkToggleButton">
-                    <property name="icon-name">easel-tool-pan-symbolic</property>
-                    <property name="tooltip-text" translatable="yes">Pan</property>
-                    <property name="action-name">win.tool</property>
-                    <property name="action-target">'pan'</property>
-                    <style>
-                      <class name="flat"/>
-                    </style>
+                  <object class="GtkBox">
+                    <property name="orientation">vertical</property>
+                    <property name="spacing">6</property>
+                    <property name="margin-start">6</property>
+                    <property name="margin-end">6</property>
+                    <property name="margin-top">6</property>
+                    <property name="margin-bottom">6</property>
+                    <child>
+                      <object class="GtkToggleButton">
+                        <property name="icon-name">easel-tool-pan-symbolic</property>
+                        <property name="tooltip-text" translatable="yes">Pan</property>
+                        <property name="action-name">win.tool</property>
+                        <property name="action-target">'pan'</property>
+                        <style>
+                          <class name="flat"/>
+                        </style>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkToggleButton">
+                        <property name="icon-name">easel-tool-pencil-symbolic</property>
+                        <property name="tooltip-text" translatable="yes">Pencil</property>
+                        <property name="action-name">win.tool</property>
+                        <property name="action-target">'pencil'</property>
+                        <style>
+                          <class name="flat"/>
+                        </style>
+                      </object>
+                    </child>
                   </object>
                 </child>
                 <child>
-                  <object class="GtkToggleButton">
-                    <property name="icon-name">easel-tool-pencil-symbolic</property>
-                    <property name="tooltip-text" translatable="yes">Pencil</property>
-                    <property name="action-name">win.tool</property>
-                    <property name="action-target">'pencil'</property>
-                    <style>
-                      <class name="flat"/>
-                    </style>
-                  </object>
+                  <object class="GtkSeparator"/>
                 </child>
               </object>
-            </child>
-            <child>
-              <object class="GtkSeparator"/>
             </child>
             <child>
               <object class="GtkScrolledWindow" id="scroller">
@@ -92,6 +128,59 @@
       </object>
     </property>
   </template>
+  <menu id="image_menu">
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">Attributes…</attribute>
+        <attribute name="action">win.attributes</attribute>
+      </item>
+    </section>
+  </menu>
+  <menu id="view_menu">
+    <section>
+      <item>
+        <attribute name="custom">zoom</attribute>
+      </item>
+    </section>
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">Normal Size</attribute>
+        <attribute name="action">win.zoom-normal</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">Large Size</attribute>
+        <attribute name="action">win.zoom-large</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">Fit to Window</attribute>
+        <attribute name="action">win.zoom-fit</attribute>
+      </item>
+    </section>
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">Show Grid</attribute>
+        <attribute name="action">win.grid</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">Grid…</attribute>
+        <attribute name="action">win.grid-dialog</attribute>
+      </item>
+    </section>
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">Tool Box</attribute>
+        <attribute name="action">win.show-toolbox</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">Color Box</attribute>
+        <attribute name="action">win.show-colorbox</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">Status Bar</attribute>
+        <attribute name="action">win.show-statusbar</attribute>
+      </item>
+    </section>
+  </menu>
   <menu id="primary_menu">
     <section>
       <item>

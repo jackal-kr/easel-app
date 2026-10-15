@@ -98,11 +98,95 @@ as2_window_size (void)
   CHECK (w == 1024 && h == 576);
 }
 
+/* REQ-0004-04, REQ-0004-02: one level per step, and the limits where a step does nothing. */
+static void
+as3_zoom_levels (void)
+{
+  static const int levels[] = { 10, 25, 50, 100, 200, 300, 400, 600, 800 };
+
+  for (int i = 0; i + 1 < 9; i++)
+    {
+      CHECK (easel_view_zoom_step (levels[i], 1) == levels[i + 1]);
+      CHECK (easel_view_zoom_step (levels[i + 1], -1) == levels[i]);
+    }
+  CHECK (easel_view_zoom_step (800, 1) == 800);   /* Zoom In has nothing to do at 800 % */
+  CHECK (easel_view_zoom_step (10, -1) == 10);    /* and Zoom Out at 10 % */
+}
+
+/* REQ-0004-06: a zoom command keeps the center of the canvas area still. */
+static void
+as5_zoom_anchor_center (void)
+{
+  /* 2000x2000 picture at 100 %, canvas area 1000x800 scrolled to (500, 400): the center is picture pixel (1000, 800). */
+  double sx = easel_view_anchor (500, 500, 100, 200, 2000, 1.0, 1000);
+  double sy = easel_view_anchor (400, 400, 100, 200, 2000, 1.0, 800);
+
+  CHECK (sx == 1500 && sy == 1200);       /* (1000, 800) * 2 - (500, 400) */
+  CHECK (easel_view_anchor (500, 500, 200, 100, 2000, 1.0, 1000) == 0);   /* zooming out: the picture fits, no scroll */
+  /* A picture smaller than the canvas area stays at the top-left, at any zoom. */
+  CHECK (easel_view_anchor (0, 500, 100, 200, 300, 1.0, 1000) == 0);
+  CHECK (easel_view_anchor (0, 400, 100, 800, 100, 1.0, 1000) == 0);   /* 100 pixels at 800 % are 800 < 1000 */
+  /* Where the anchor would leave the picture, the edge wins: zooming out at the right end (200 % scrolled to 3000). */
+  CHECK (easel_view_anchor (3000, 500, 200, 100, 2000, 1.0, 1000) == 1000);
+  CHECK (easel_view_anchor (1000, 1000, 100, 200, 2000, 1.0, 1000) == 3000);   /* zooming in at the right end */
+}
+
+/* REQ-0004-07: the largest level at which the whole picture fits the canvas area; device pixels. */
+static void
+as6_fit_level (void)
+{
+  CHECK (easel_view_fit_level (1390, 853, 800, 600) == 100);
+  CHECK (easel_view_fit_level (1390, 853, 3000, 2000) == 25);
+  CHECK (easel_view_fit_level (1390, 853, 10000, 10000) == 10);   /* none fits: 10 % */
+  CHECK (easel_view_fit_level (1390, 853, 1, 1) == 800);          /* smaller than the area even at 800 % */
+  CHECK (easel_view_fit_level (1390, 853, 100, 100) == 800);
+  CHECK (easel_view_fit_level (1390, 853, 174, 100) == 600);      /* 174 * 8 = 1392 > 1390; 174 * 6 = 1044 */
+  /* Fitting exactly counts as fitting; either direction can be the limit. */
+  CHECK (easel_view_fit_level (1000, 800, 1000, 800) == 100);
+  CHECK (easel_view_fit_level (2000, 800, 1000, 800) == 100);     /* the height limits it */
+  CHECK (easel_view_fit_level (1000, 2000, 1000, 800) == 100);    /* the width limits it */
+  CHECK (easel_view_fit_level (2000, 1600, 1000, 800) == 200);
+  CHECK (easel_view_fit_level (0, 0, 800, 600) == 10);            /* no room at all */
+}
+
+/* REQ-0004-08: one level per 1.5x of the pinch since the last level change; the scale starts again after each change,
+   at the limits, and when a pinch ends. */
+static void
+as7_pinch_accumulator (void)
+{
+  double base = 1.0;
+
+  CHECK (easel_view_pinch (&base, 1.2, 100) == 0 && base == 1.0);
+  CHECK (easel_view_pinch (&base, 1.5, 100) == 1 && base == 1.5);         /* in, and the scale starts again */
+  CHECK (easel_view_pinch (&base, 2.0, 200) == 0 && base == 1.5);
+  CHECK (easel_view_pinch (&base, 2.25, 200) == 1 && base == 2.25);       /* 2.25 / 1.5 */
+  CHECK (easel_view_pinch (&base, 1.5, 300) == -1 && base == 1.5);        /* out, 1 / 1.5 of the last change */
+  CHECK (easel_view_pinch (&base, 1.2, 200) == 0 && base == 1.5);
+  /* A fast pinch moves one level per call, not several. */
+  base = 1.0;
+  CHECK (easel_view_pinch (&base, 4.0, 100) == 1 && base == 4.0);
+
+  /* At 800 % a further pinch out does nothing and starts the scale again, so reversing needs a normal 1.5x. */
+  base = 1.0;
+  CHECK (easel_view_pinch (&base, 1.6, 800) == 0 && base == 1.6);
+  CHECK (easel_view_pinch (&base, 1.2, 800) == 0 && base == 1.6);
+  CHECK (easel_view_pinch (&base, 1.0, 800) == -1 && base == 1.0);
+  /* Same at 10 %: a pinch in does nothing there and restarts the scale; 1.5x from that point zooms in. */
+  base = 1.0;
+  CHECK (easel_view_pinch (&base, 0.6, 10) == 0 && base == 0.6);
+  CHECK (easel_view_pinch (&base, 0.8, 10) == 0 && base == 0.6);
+  CHECK (easel_view_pinch (&base, 0.9, 10) == 1 && base == 0.9);
+}
+
 int
 main (void)
 {
   RUN (as2_window_size);
   RUN (as13_zoom_steps_and_anchor);
+  RUN (as3_zoom_levels);
+  RUN (as5_zoom_anchor_center);
+  RUN (as6_fit_level);
+  RUN (as7_pinch_accumulator);
   RUN (as17_zoomed_click_maps_to_pixel);
   RUN (content_size_covers_picture);
   return 0;

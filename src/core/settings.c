@@ -1,10 +1,14 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 
+#include <string.h>
+
 #include "ini.h"
+#include "number.h"
 #include "settings.h"
 
 #define SECTION "new-picture"
 #define SECTION_HISTORY "history"
+#define SECTION_VIEW "view"
 
 /* Digits only, 1..EASEL_SIZE_MAX, or auto. */
 static bool
@@ -62,7 +66,15 @@ const char easel_settings_default_text[] =
   "background=#FFFFFF\n"
   "\n"
   "[" SECTION_HISTORY "]\n"
-  "memory=512\n";
+  "memory=512\n"
+  "\n"
+  "[" SECTION_VIEW "]\n"
+  "grid=off\n"
+  "grid-size=1\n"
+  "grid-axonometric=off\n"
+  "toolbox=on\n"
+  "colorbox=on\n"
+  "statusbar=on\n";
 
 void
 easel_settings_defaults (EaselSettings *s)
@@ -71,6 +83,25 @@ easel_settings_defaults (EaselSettings *s)
   s->height = EASEL_SIZE_AUTO;
   s->background = 0xFFFFFFFFu;
   s->undo_budget_mb = EASEL_UNDO_MB_DEFAULT;
+  s->grid = false;
+  s->grid_size = EASEL_GRID_SIZE_DEFAULT;
+  s->grid_axonometric = false;
+  s->show_toolbox = true;
+  s->show_colorbox = true;
+  s->show_statusbar = true;
+}
+
+/* on or off, in any case. */
+static bool
+parse_on_off (EaselSpan v, bool *out)
+{
+  if (easel_span_is_nocase (v, "on"))
+    *out = true;
+  else if (easel_span_is_nocase (v, "off"))
+    *out = false;
+  else
+    return false;
+  return true;
 }
 
 /* An invalid value resets the key to its default, so a later valid repeat still wins. */
@@ -91,6 +122,31 @@ apply (EaselSpan section, EaselSpan key, EaselSpan value, void *data)
   else if (easel_span_is (section, SECTION_HISTORY) && easel_span_is (key, "memory")
            && !parse_undo_mb (value, &s->undo_budget_mb))
     s->undo_budget_mb = EASEL_UNDO_MB_DEFAULT;
+  else if (easel_span_is (section, SECTION_VIEW))
+    {
+      /* easel_parse_field wants a NUL-terminated text; a number in range is short, so copy it. */
+      char text[16] = "";
+
+      if (easel_span_is (key, "grid") && !parse_on_off (value, &s->grid))
+        s->grid = false;
+      else if (easel_span_is (key, "grid-axonometric") && !parse_on_off (value, &s->grid_axonometric))
+        s->grid_axonometric = false;
+      else if (easel_span_is (key, "toolbox") && !parse_on_off (value, &s->show_toolbox))
+        s->show_toolbox = true;
+      else if (easel_span_is (key, "colorbox") && !parse_on_off (value, &s->show_colorbox))
+        s->show_colorbox = true;
+      else if (easel_span_is (key, "statusbar") && !parse_on_off (value, &s->show_statusbar))
+        s->show_statusbar = true;
+      else if (easel_span_is (key, "grid-size"))
+        {
+          if (value.n < sizeof text)
+            memcpy (text, value.p, value.n);
+          else
+            text[0] = 'x';   /* too long to be a number in range */
+          if (!easel_parse_field (text, EASEL_GRID_SIZE_MIN, EASEL_GRID_SIZE_MAX, &s->grid_size))
+            s->grid_size = EASEL_GRID_SIZE_DEFAULT;
+        }
+    }
 }
 
 void

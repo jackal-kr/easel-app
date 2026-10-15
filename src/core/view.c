@@ -84,3 +84,34 @@ easel_view_window_size (int monitor_width, int monitor_height, int *width, int *
   *width = monitor_width * 3 / 4;
   *height = monitor_height * 3 / 4;
 }
+
+int
+easel_view_fit_level (int area_w, int area_h, int pic_w, int pic_h)
+{
+  int best = zoom_levels[0];
+
+  /* Levels run from small to large; the last one that still fits is the answer. */
+  for (int i = 0; i < N_LEVELS; i++)
+    if ((long) pic_w * zoom_levels[i] <= (long) area_w * 100 && (long) pic_h * zoom_levels[i] <= (long) area_h * 100)
+      best = zoom_levels[i];
+  return best;
+}
+
+int
+easel_view_pinch (double *base, double scale, int pct)
+{
+  const double step = 1.5, eps = 1e-9;
+  double ratio = scale / *base;
+
+  if (ratio >= step - eps)
+    {
+      *base = scale;
+      return easel_view_zoom_step (pct, 1) != pct ? 1 : 0;
+    }
+  if (ratio * step <= 1.0 + eps)
+    {
+      *base = scale;
+      return easel_view_zoom_step (pct, -1) != pct ? -1 : 0;
+    }
+  return 0;
+}

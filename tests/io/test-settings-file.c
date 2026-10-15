@@ -25,6 +25,46 @@ as4_creates_default_file (void)
   g_assert_nonnull (g_strstr_len (contents, -1, "[new-picture]\nwidth=auto\nheight=auto\nbackground=#FFFFFF\n"));
 }
 
+/* REQ-0004-15: a created file also holds the [view] defaults. */
+static void
+as14_created_file_has_view (void)
+{
+  g_autofree char *dir = g_dir_make_tmp ("easel-XXXXXX", NULL);
+  g_autofree char *path = g_build_filename (dir, "settings.ini", NULL);
+  g_autofree char *contents = NULL;
+  EaselSettings s;
+
+  easel_settings_file_load (path, &s);
+  g_assert_false (s.grid);
+  g_assert_cmpint (s.grid_size, ==, 1);
+  g_assert_true (s.show_toolbox && s.show_colorbox && s.show_statusbar);
+  g_assert_true (g_file_get_contents (path, &contents, NULL, NULL));
+  g_assert_nonnull (g_strstr_len (contents, -1, "[view]\ngrid=off\ngrid-size=1\ngrid-axonometric=off\ntoolbox=on\n"
+                                                "colorbox=on\nstatusbar=on\n"));
+}
+
+/* REQ-0004-15: an existing file without [view] is never rewritten, and the defaults apply. */
+static void
+as14_existing_file_untouched (void)
+{
+  static const char old[] = "[new-picture]\nwidth=300\nheight=200\n\n[history]\nmemory=64\n";
+  g_autofree char *dir = g_dir_make_tmp ("easel-XXXXXX", NULL);
+  g_autofree char *path = g_build_filename (dir, "settings.ini", NULL);
+  g_autofree char *after = NULL;
+  gsize after_len;
+  EaselSettings s;
+
+  g_assert_true (g_file_set_contents (path, old, -1, NULL));
+  easel_settings_file_load (path, &s);
+  g_assert_cmpint (s.width, ==, 300);
+  g_assert_cmpint (s.undo_budget_mb, ==, 64);
+  g_assert_false (s.grid);
+  g_assert_cmpint (s.grid_size, ==, 1);
+  g_assert_true (s.show_toolbox && s.show_colorbox && s.show_statusbar);
+  g_assert_true (g_file_get_contents (path, &after, &after_len, NULL));
+  g_assert_cmpmem (after, after_len, old, sizeof old - 1);
+}
+
 /* REQ-0002-19: a file the app creates also holds the undo budget. */
 static void
 as19_new_file_has_history (void)
@@ -145,6 +185,8 @@ main (int argc, char **argv)
 {
   g_test_init (&argc, &argv, G_TEST_OPTION_ISOLATE_DIRS, NULL);
   g_test_add_func ("/0001/as4_creates_default_file", as4_creates_default_file);
+  g_test_add_func ("/0004/as14_created_file_has_view", as14_created_file_has_view);
+  g_test_add_func ("/0004/as14_existing_file_untouched", as14_existing_file_untouched);
   g_test_add_func ("/0002/as19_new_file_has_history", as19_new_file_has_history);
   g_test_add_func ("/0002/as19_existing_file_untouched", as19_existing_file_untouched);
   g_test_add_func ("/0001/reads_existing_file", reads_existing_file);

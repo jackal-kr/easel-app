@@ -11,6 +11,7 @@
 #include "canvas.h"
 #include "palette-bar.h"
 #include "palette-file.h"
+#include "status-bar.h"
 #include "settings-file.h"
 #include "view.h"
 #include "window.h"
@@ -1438,6 +1439,705 @@ as15_swatch_changes_when_write_fails (void)
   close_windows ();
 }
 
+/* The pixel (x, y) of the picture as its tile's texture holds it (opaque colors only: the download is premultiplied). */
+static uint32_t
+tile_pixel (EaselCanvas *canvas, int x, int y)
+{
+  GdkTexture *texture = easel_canvas_get_tile_texture (canvas, x / EASEL_CANVAS_TILE, y / EASEL_CANVAS_TILE);
+  int w, h;
+  g_autofree uint32_t *data = NULL;
+
+  g_assert_nonnull (texture);
+  w = gdk_texture_get_width (texture);
+  h = gdk_texture_get_height (texture);
+  data = g_malloc ((gsize) w * (gsize) h * 4);
+  gdk_texture_download (texture, (guchar *) data, (gsize) w * 4);
+  return data[(gsize) (y % EASEL_CANVAS_TILE) * (gsize) w + (gsize) (x % EASEL_CANVAS_TILE)];
+}
+
+/* 0004 T001: the canvas shows the picture's own memory in tiles, copies nothing, rebuilds only the tiles an update
+   touches, and follows the pixels after strokes and after it is pointed at another picture. */
+static void
+texture_is_not_copied (void)
+{
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  EaselImage *other = easel_image_new (20, 10, 0xFF112233u);
+  const EaselImage *picture;
+  gsize before;
+
+  write_settings ("[new-picture]\nwidth=1200\nheight=1100\nbackground=#FFFF00\n");
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  picture = easel_window_get_picture (win);
+  use_pencil (win);
+
+  /* 1200 x 1100 is 3 x 3 tiles; the right and bottom ones are smaller. */
+  g_assert_nonnull (easel_canvas_get_tile_texture (canvas, 2, 2));
+  g_assert_null (easel_canvas_get_tile_texture (canvas, 3, 0));
+  g_assert_null (easel_canvas_get_tile_texture (canvas, 0, 3));
+  g_assert_cmpint (gdk_texture_get_width (easel_canvas_get_tile_texture (canvas, 2, 2)), ==, 200);
+  g_assert_cmpint (gdk_texture_get_height (easel_canvas_get_tile_texture (canvas, 2, 2)), ==, 100);
+
+  /* A stroke inside one tile rebuilds that tile; a stroke across three tiles rebuilds those three; nothing, none. */
+  before = easel_canvas_get_tiles_rebuilt (canvas);
+  stroke (win, 10.5, 10.5, 20.5, 10.5);
+  g_assert_cmpuint (easel_canvas_get_tiles_rebuilt (canvas) - before, ==, 2);   /* press and motion: 1 + 1 */
+  before = easel_canvas_get_tiles_rebuilt (canvas);
+  g_assert_cmpuint (easel_canvas_get_tiles_rebuilt (canvas) - before, ==, 0);
+  stroke (win, 10.5, 600.5, 1100.5, 600.5);
+  g_assert_cmpuint (easel_canvas_get_tiles_rebuilt (canvas) - before, ==, 4);   /* press: 1 tile, the motion: 3 tiles */
+  g_assert_cmpuint (easel_canvas_get_bytes_copied (canvas), ==, 0);
+
+  /* The tiles hold the pixels: inside a tile, on a tile edge, across the tiles, and untouched ones. */
+  g_assert_cmphex (tile_pixel (canvas, 15, 10), ==, 0xFF000000u);
+  g_assert_cmphex (tile_pixel (canvas, 499, 600), ==, 0xFF000000u);
+  g_assert_cmphex (tile_pixel (canvas, 500, 600), ==, 0xFF000000u);
+  g_assert_cmphex (tile_pixel (canvas, 1000, 600), ==, 0xFF000000u);
+  g_assert_cmphex (tile_pixel (canvas, 1100, 600), ==, 0xFF000000u);
+  g_assert_cmphex (tile_pixel (canvas, 1150, 700), ==, easel_image_get (picture, 1150, 700));
+
+  /* Another picture, then back; the other can be freed once the canvas shows the first again. */
+  easel_canvas_set_image (canvas, other);
+  g_assert_cmphex (tile_pixel (canvas, 5, 5), ==, 0xFF112233u);
+  g_assert_null (easel_canvas_get_tile_texture (canvas, 1, 0));
+  easel_canvas_set_image (canvas, (EaselImage *) picture);
+  easel_image_free (other);
+  g_assert_cmphex (tile_pixel (canvas, 1100, 600), ==, 0xFF000000u);
+  stroke (win, 1150.5, 1050.5, 1190.5, 1050.5);
+  g_assert_cmphex (tile_pixel (canvas, 1170, 1050), ==, 0xFF000000u);
+  g_assert_cmpuint (easel_canvas_get_bytes_copied (canvas), ==, 0);
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* ---- 0004: menus and zoom ---- */
+
+/* The labels and actions of one section of a menu model, as "label|action" (a custom item as "custom:<name>"). */
+static char *
+describe_section (GMenuModel *model, int section)
+{
+  g_autoptr (GMenuModel) items = g_menu_model_get_item_link (model, section, G_MENU_LINK_SECTION);
+  GString *out = g_string_new (NULL);
+
+  for (int i = 0; i < g_menu_model_get_n_items (items); i++)
+    {
+      g_autofree char *label = NULL, *action = NULL, *custom = NULL;
+
+      g_menu_model_get_item_attribute (items, i, "label", "s", &label);
+      g_menu_model_get_item_attribute (items, i, "action", "s", &action);
+      g_menu_model_get_item_attribute (items, i, "custom", "s", &custom);
+      if (i > 0)
+        g_string_append (out, "; ");
+      if (custom != NULL)
+        g_string_append_printf (out, "custom:%s", custom);
+      else
+        g_string_append_printf (out, "%s|%s", label, action);
+    }
+  return g_string_free (out, FALSE);
+}
+
+static GMenuModel *
+menu_of (GtkMenuButton *button)
+{
+  return gtk_menu_button_get_menu_model (button);
+}
+
+/* REQ-0004-01, REQ-0004-02: the Image and View buttons and their menus. */
+static void
+as1_menus (void)
+{
+  EaselWindow *win = start_window ();
+  GtkMenuButton *image = easel_window_get_image_button (win);
+  GtkMenuButton *view = easel_window_get_view_button (win);
+  GMenuModel *vm = menu_of (view), *im = menu_of (image);
+  GtkWidget *popover = GTK_WIDGET (gtk_menu_button_get_popover (view));
+  g_autofree char *s0 = NULL, *s1 = NULL, *s2 = NULL, *s3 = NULL, *i0 = NULL;
+  GtkButton *zoom_in, *zoom_out;
+
+  wait_for_layout (win);
+  /* Image first, then View, each with an icon and its label, both before the primary menu in the header bar. */
+  g_assert_true (ADW_IS_BUTTON_CONTENT (gtk_menu_button_get_child (image)));
+  g_assert_cmpstr (adw_button_content_get_label (ADW_BUTTON_CONTENT (gtk_menu_button_get_child (image))), ==, "Image");
+  g_assert_cmpstr (adw_button_content_get_label (ADW_BUTTON_CONTENT (gtk_menu_button_get_child (view))), ==, "View");
+  g_assert_cmpstr (adw_button_content_get_icon_name (ADW_BUTTON_CONTENT (gtk_menu_button_get_child (image))), !=, NULL);
+  g_assert_cmpstr (adw_button_content_get_icon_name (ADW_BUTTON_CONTENT (gtk_menu_button_get_child (view))), !=, NULL);
+  {
+    graphene_rect_t ri = bounds_in (GTK_WIDGET (image), GTK_WIDGET (win)), rv = bounds_in (GTK_WIDGET (view), GTK_WIDGET (win));
+
+    g_assert_cmpfloat (ri.origin.x + ri.size.width, <=, rv.origin.x);
+  }
+
+  g_assert_cmpint (g_menu_model_get_n_items (vm), ==, 4);
+  s0 = describe_section (vm, 0);
+  s1 = describe_section (vm, 1);
+  s2 = describe_section (vm, 2);
+  s3 = describe_section (vm, 3);
+  g_assert_cmpstr (s0, ==, "custom:zoom");
+  g_assert_cmpstr (s1, ==, "Normal Size|win.zoom-normal; Large Size|win.zoom-large; Fit to Window|win.zoom-fit");
+  g_assert_cmpstr (s2, ==, "Show Grid|win.grid; Grid…|win.grid-dialog");
+  g_assert_cmpstr (s3, ==, "Tool Box|win.show-toolbox; Color Box|win.show-colorbox; Status Bar|win.show-statusbar");
+  g_assert_cmpint (g_menu_model_get_n_items (im), ==, 1);
+  i0 = describe_section (im, 0);
+  g_assert_cmpstr (i0, ==, "Attributes…|win.attributes");
+
+  /* No Frame Time and no Show Thumbnail. */
+  g_assert_null (g_strstr_len (s3, -1, "Frame"));
+  g_assert_null (g_strstr_len (s2, -1, "Thumbnail"));
+
+  /* The shortcuts, shown beside the items by the menus (REQ-0004-01). */
+  g_assert_true (has_accel ("win.zoom-in", GDK_KEY_equal, GDK_CONTROL_MASK));
+  g_assert_true (has_accel ("win.zoom-in", GDK_KEY_plus, GDK_CONTROL_MASK));
+  g_assert_true (has_accel ("win.zoom-in", GDK_KEY_KP_Add, GDK_CONTROL_MASK));
+  g_assert_true (has_accel ("win.zoom-out", GDK_KEY_minus, GDK_CONTROL_MASK));
+  g_assert_true (has_accel ("win.zoom-out", GDK_KEY_KP_Subtract, GDK_CONTROL_MASK));
+  g_assert_true (has_accel ("win.zoom-normal", GDK_KEY_Page_Up, GDK_CONTROL_MASK));
+  g_assert_true (has_accel ("win.zoom-large", GDK_KEY_Page_Down, GDK_CONTROL_MASK));
+  g_assert_true (has_accel ("win.zoom-fit", GDK_KEY_0, GDK_CONTROL_MASK));
+  g_assert_true (has_accel ("win.attributes", GDK_KEY_e, GDK_CONTROL_MASK));
+
+  /* The zoom row: Zoom Out, the zoom as N%, Zoom In, with their tooltips. */
+  zoom_in = find_action_button (popover, "win.zoom-in");
+  zoom_out = find_action_button (popover, "win.zoom-out");
+  g_assert_nonnull (zoom_in);
+  g_assert_nonnull (zoom_out);
+  g_assert_cmpstr (gtk_widget_get_tooltip_text (GTK_WIDGET (zoom_in)), ==, "Zoom In (Ctrl+=)");
+  g_assert_cmpstr (gtk_widget_get_tooltip_text (GTK_WIDGET (zoom_out)), ==, "Zoom Out (Ctrl+-)");
+  g_assert_cmpstr (easel_window_get_zoom_text (win), ==, "100%");
+
+  /* At 100 %: Normal Size has nothing to do; the rest can act. */
+  g_assert_false (action_enabled (win, "zoom-normal"));
+  g_assert_true (action_enabled (win, "zoom-in"));
+  g_assert_true (action_enabled (win, "zoom-out"));
+  g_assert_true (action_enabled (win, "zoom-large"));
+  g_assert_true (action_enabled (win, "zoom-fit"));
+  close_windows ();
+}
+
+/* REQ-0004-03: the actions do nothing in these states. */
+static void
+as2_actions_ignored (void)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  AdwDialog *prompt = NULL;
+
+  wait_for_layout (win);
+  use_pencil (win);
+  A_STROKE (win);
+
+  /* A stroke in progress (the button held). */
+  easel_canvas_press (canvas, 1, 3.5, 30.5);
+  easel_canvas_motion (canvas, 9.5, 30.5);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-in", NULL);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-large", NULL);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-fit", NULL);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 100);
+  easel_canvas_release (canvas, 1);
+
+  /* The quit prompt open. */
+  gtk_window_close (GTK_WINDOW (win));
+  wait_for_dialogs (win, 1);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-in", NULL);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-large", NULL);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 100);
+  g_assert_cmpint (count_alert_dialogs (GTK_WIDGET (win), &prompt), ==, 1);
+  adw_dialog_close (prompt);
+  wait_for_dialogs (win, 0);
+
+  /* The color chooser open. */
+  easel_palette_bar_press_indicator (easel_window_get_palette_bar (win), TRUE);
+  g_assert_true (easel_window_is_choosing_color (win));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-in", NULL);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-fit", NULL);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 100);
+  easel_window_finish_color_choice (win, NULL);
+
+  /* Free again: it works. */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-in", NULL);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 200);
+  close_windows ();
+}
+
+/* A window whose picture does not exist yet ignores the zoom actions too (REQ-0004-03, REQ-0001-39). */
+static void
+as2_actions_ignored_before_picture (void)
+{
+  EaselWindow *win;
+
+  write_settings ("[new-picture]\nwidth=auto\nheight=auto\n");
+  win = easel_window_new (app);
+  g_assert_null (easel_window_get_picture (win));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-in", NULL);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-large", NULL);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-fit", NULL);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 100);
+  gtk_window_destroy (GTK_WINDOW (win));
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* REQ-0004-04, REQ-0004-02: the zoom row's buttons, with any tool. */
+static void
+as3_zoom_buttons (void)
+{
+  EaselWindow *win = start_window ();
+  GtkWidget *popover;
+  GtkButton *zoom_in, *zoom_out;
+
+  wait_for_layout (win);
+  use_pencil (win);
+  popover = GTK_WIDGET (gtk_menu_button_get_popover (easel_window_get_view_button (win)));
+  zoom_in = find_action_button (popover, "win.zoom-in");
+  zoom_out = find_action_button (popover, "win.zoom-out");
+
+  g_signal_emit_by_name (zoom_in, "clicked");
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 200);
+  g_assert_cmpstr (easel_window_get_zoom_text (win), ==, "200%");
+
+  /* Up to 800 %: Zoom In becomes insensitive and does nothing. */
+  for (int i = 0; i < 5; i++)
+    g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-in", NULL);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 800);
+  g_assert_cmpstr (easel_window_get_zoom_text (win), ==, "800%");
+  g_assert_false (action_enabled (win, "zoom-in"));
+  g_assert_false (gtk_widget_is_sensitive (GTK_WIDGET (zoom_in)));
+  g_assert_true (gtk_widget_is_sensitive (GTK_WIDGET (zoom_out)));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-in", NULL);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 800);
+
+  /* And down to 10 %. */
+  g_signal_emit_by_name (zoom_out, "clicked");
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 600);
+  for (int i = 0; i < 10; i++)
+    g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-out", NULL);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 10);
+  g_assert_false (action_enabled (win, "zoom-out"));
+  g_assert_false (gtk_widget_is_sensitive (GTK_WIDGET (zoom_out)));
+  g_assert_true (action_enabled (win, "zoom-in"));
+  close_windows ();
+}
+
+/* REQ-0004-05, REQ-0004-02. */
+static void
+as4_normal_and_large (void)
+{
+  EaselWindow *win = start_window ();
+
+  wait_for_layout (win);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-large", NULL);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 400);
+  g_assert_false (action_enabled (win, "zoom-large"));
+  g_assert_true (action_enabled (win, "zoom-normal"));
+  g_assert_cmpstr (easel_window_get_zoom_text (win), ==, "400%");
+
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-normal", NULL);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 100);
+  g_assert_false (action_enabled (win, "zoom-normal"));
+  g_assert_true (action_enabled (win, "zoom-large"));
+  close_windows ();
+}
+
+/* REQ-0004-06: a zoom command keeps the center of the canvas area still. */
+static void
+as5_zoom_keeps_center (void)
+{
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  GtkScrolledWindow *scroller;
+  GtkAdjustment *h, *v;
+  double cx, cy, ph, pv;
+
+  write_settings ("[new-picture]\nwidth=2000\nheight=2000\n");
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  scroller = GTK_SCROLLED_WINDOW (gtk_widget_get_ancestor (GTK_WIDGET (canvas), GTK_TYPE_SCROLLED_WINDOW));
+  h = gtk_scrolled_window_get_hadjustment (scroller);
+  v = gtk_scrolled_window_get_vadjustment (scroller);
+  wait_for_layout (win);
+  ph = gtk_adjustment_get_page_size (h);
+  pv = gtk_adjustment_get_page_size (v);
+
+  gtk_adjustment_set_value (h, 500);
+  gtk_adjustment_set_value (v, 400);
+  wait_for_layout (win);
+  /* The picture point at the center of the canvas area, in picture pixels (zoom 100 %, scale 1). */
+  cx = (gtk_adjustment_get_value (h) + ph / 2) / easel_canvas_get_scale (canvas);
+  cy = (gtk_adjustment_get_value (v) + pv / 2) / easel_canvas_get_scale (canvas);
+
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-in", NULL);
+  wait_for_layout (win);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 200);
+  g_assert_cmpfloat_with_epsilon ((gtk_adjustment_get_value (h) + ph / 2) / 2 / easel_canvas_get_scale (canvas), cx, 1.0);
+  g_assert_cmpfloat_with_epsilon ((gtk_adjustment_get_value (v) + pv / 2) / 2 / easel_canvas_get_scale (canvas), cy, 1.0);
+
+  /* A picture smaller than the canvas area stays at the top-left. */
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  scroller = GTK_SCROLLED_WINDOW (gtk_widget_get_ancestor (GTK_WIDGET (canvas), GTK_TYPE_SCROLLED_WINDOW));
+  wait_for_layout (win);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-in", NULL);
+  wait_for_layout (win);
+  g_assert_cmpfloat (gtk_adjustment_get_value (gtk_scrolled_window_get_hadjustment (scroller)), ==, 0);
+  g_assert_cmpfloat (gtk_adjustment_get_value (gtk_scrolled_window_get_vadjustment (scroller)), ==, 0);
+  close_windows ();
+}
+
+/* The canvas area in device pixels, as Fit to Window sees it. */
+static void
+canvas_area (EaselWindow *win, int *w, int *h)
+{
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  GtkScrolledWindow *scroller = GTK_SCROLLED_WINDOW (gtk_widget_get_ancestor (GTK_WIDGET (canvas), GTK_TYPE_SCROLLED_WINDOW));
+  double scale = easel_canvas_get_scale (canvas);
+
+  *w = (int) (gtk_adjustment_get_page_size (gtk_scrolled_window_get_hadjustment (scroller)) * scale);
+  *h = (int) (gtk_adjustment_get_page_size (gtk_scrolled_window_get_vadjustment (scroller)) * scale);
+}
+
+/* REQ-0004-07: Fit to Window picks the largest level that fits, shows the top-left corner, and the zoom then stays. */
+static void
+as6_fit_to_window (void)
+{
+  static const int sizes[][2] = { { 3000, 2000 }, { 800, 600 }, { 100, 100 }, { 10000, 100 } };
+
+  for (guint i = 0; i < G_N_ELEMENTS (sizes); i++)
+    {
+      g_autofree char *settings = g_strdup_printf ("[new-picture]\nwidth=%d\nheight=%d\n", sizes[i][0], sizes[i][1]);
+      EaselWindow *win;
+      EaselCanvas *canvas;
+      GtkScrolledWindow *scroller;
+      int aw, ah, want;
+
+      write_settings (settings);
+      win = start_window ();
+      canvas = easel_window_get_canvas (win);
+      scroller = GTK_SCROLLED_WINDOW (gtk_widget_get_ancestor (GTK_WIDGET (canvas), GTK_TYPE_SCROLLED_WINDOW));
+      wait_for_layout (win);
+      canvas_area (win, &aw, &ah);
+      want = easel_view_fit_level (aw, ah, sizes[i][0], sizes[i][1]);
+
+      gtk_adjustment_set_value (gtk_scrolled_window_get_hadjustment (scroller), 300);
+      gtk_adjustment_set_value (gtk_scrolled_window_get_vadjustment (scroller), 200);
+      use_pencil (win);                                     /* with any tool */
+      g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-fit", NULL);
+      wait_for_layout (win);
+      g_assert_cmpint (easel_window_get_zoom (win), ==, want);
+      g_assert_cmpfloat (gtk_adjustment_get_value (gtk_scrolled_window_get_hadjustment (scroller)), ==, 0);
+      g_assert_cmpfloat (gtk_adjustment_get_value (gtk_scrolled_window_get_vadjustment (scroller)), ==, 0);
+      g_assert_cmpstr (easel_window_get_zoom_text (win), ==, g_strdup_printf ("%d%%", want));
+
+      /* The whole picture is visible at that zoom unless even 10 % is too big. */
+      if (want > 10)
+        {
+          g_assert_cmpint (sizes[i][0] * want, <=, aw * 100);
+          g_assert_cmpint (sizes[i][1] * want, <=, ah * 100);
+        }
+      /* No fit mode: the zoom stays when the layout changes. */
+      gtk_widget_queue_resize (GTK_WIDGET (win));
+      wait_for_layout (win);
+      g_assert_cmpint (easel_window_get_zoom (win), ==, want);
+      close_windows ();
+    }
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* REQ-0004-08: the pinch moves a level per 1.5x of the gesture, in Pan mode only. */
+static void
+as7_pinch_in_window (void)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+
+  wait_for_layout (win);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "tool", g_variant_new_string ("pan"));
+  easel_canvas_pinch_begin (canvas);
+  easel_canvas_pinch (canvas, 1.2, 100, 100);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 100);
+  easel_canvas_pinch (canvas, 1.5, 100, 100);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 200);
+  easel_canvas_pinch (canvas, 2.25, 100, 100);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 300);
+  easel_canvas_pinch (canvas, 1.5, 100, 100);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 200);
+  easel_canvas_pinch_end (canvas);
+
+  /* A new pinch starts again at scale 1, and any other tool ignores it. */
+  easel_canvas_pinch_begin (canvas);
+  easel_canvas_pinch (canvas, 0.6, 100, 100);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 100);
+  easel_canvas_pinch_end (canvas);
+  use_pencil (win);
+  easel_canvas_pinch_begin (canvas);
+  easel_canvas_pinch (canvas, 3.0, 100, 100);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 100);
+  easel_canvas_pinch_end (canvas);
+  close_windows ();
+}
+
+/* ---- 0004: the status bar ---- */
+
+#define PAN_HINT "Drag to pan. Ctrl+wheel zooms."
+#define PENCIL_HINT "Draw with the foreground color. The secondary button uses the background color."
+
+/* REQ-0004-09, REQ-0004-10: the four fields. */
+static void
+as8_status_fields (void)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  EaselStatusBar *bar = easel_window_get_status_bar (win);
+
+  wait_for_layout (win);
+  /* Below the palette bar, across the window's full width. */
+  {
+    graphene_rect_t sb = bounds_in (GTK_WIDGET (bar), GTK_WIDGET (win));
+    graphene_rect_t pb = bounds_in (GTK_WIDGET (easel_window_get_palette_bar (win)), GTK_WIDGET (win));
+
+    g_assert_cmpfloat (sb.origin.y, >=, pb.origin.y + pb.size.height - 0.5);
+    g_assert_cmpfloat (sb.origin.x, <=, 0.5);
+    g_assert_cmpfloat (sb.size.width, >=, gtk_widget_get_width (GTK_WIDGET (win)) - 0.5);
+  }
+
+  /* The hint at the left; at the right edge, in order: position, zoom, size (REQ-0004-09). */
+  {
+    graphene_rect_t hint = bounds_in (GTK_WIDGET (easel_status_bar_get_label (bar, EASEL_STATUS_HINT)), GTK_WIDGET (bar));
+    graphene_rect_t pos = bounds_in (GTK_WIDGET (easel_status_bar_get_label (bar, EASEL_STATUS_POSITION)), GTK_WIDGET (bar));
+    graphene_rect_t zoom = bounds_in (GTK_WIDGET (easel_status_bar_get_label (bar, EASEL_STATUS_ZOOM)), GTK_WIDGET (bar));
+    graphene_rect_t size = bounds_in (GTK_WIDGET (easel_status_bar_get_label (bar, EASEL_STATUS_SIZE)), GTK_WIDGET (bar));
+
+    g_assert_cmpfloat (hint.origin.x, <, pos.origin.x);
+    g_assert_cmpfloat (pos.origin.x + pos.size.width, <=, zoom.origin.x);
+    g_assert_cmpfloat (zoom.origin.x + zoom.size.width, <=, size.origin.x);
+    /* The group sits at the right edge of the bar. */
+    g_assert_cmpfloat (size.origin.x + size.size.width, >=, gtk_widget_get_width (GTK_WIDGET (bar)) - 12);
+  }
+
+  /* A 300x200 picture at 200 % with Pan active. */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "tool", g_variant_new_string ("pan"));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-in", NULL);
+  wait_for_layout (win);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 200);
+  g_assert_cmpstr (easel_status_bar_get_text (bar, EASEL_STATUS_SIZE), ==, "300 × 200 px");
+  g_assert_cmpstr (easel_status_bar_get_text (bar, EASEL_STATUS_ZOOM), ==, "200%");
+  g_assert_cmpstr (easel_status_bar_get_text (bar, EASEL_STATUS_HINT), ==, PAN_HINT);
+  /* A real pointer over the test window may have reported a position; start from the pointer being elsewhere. */
+  easel_canvas_pointer_left (canvas);
+  g_assert_cmpstr (easel_status_bar_get_text (bar, EASEL_STATUS_POSITION), ==, "");
+
+  /* Over picture pixel (12, 34); at 200 % a pixel is 2 x 2 logical pixels. */
+  easel_canvas_pointer_at (canvas, 25.0, 69.0);
+  g_assert_cmpstr (easel_status_bar_get_text (bar, EASEL_STATUS_POSITION), ==, "12, 34");
+  /* Over the canvas area but outside the picture: negative or beyond the size. */
+  easel_canvas_pointer_at (canvas, -5.0, 900.0);
+  g_assert_cmpstr (easel_status_bar_get_text (bar, EASEL_STATUS_POSITION), ==, "-3, 450");
+  easel_canvas_pointer_at (canvas, 700.0, 10.0);
+  g_assert_cmpstr (easel_status_bar_get_text (bar, EASEL_STATUS_POSITION), ==, "350, 5");
+  /* Elsewhere in the window (the header bar, the palette bar): empty. */
+  easel_canvas_pointer_left (canvas);
+  g_assert_cmpstr (easel_status_bar_get_text (bar, EASEL_STATUS_POSITION), ==, "");
+
+  /* The hint follows the tool. */
+  use_pencil (win);
+  g_assert_cmpstr (easel_status_bar_get_text (bar, EASEL_STATUS_HINT), ==, PENCIL_HINT);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "tool", g_variant_new_string ("pan"));
+  g_assert_cmpstr (easel_status_bar_get_text (bar, EASEL_STATUS_HINT), ==, PAN_HINT);
+  close_windows ();
+}
+
+/* REQ-0004-10: before the picture exists the position, size and zoom fields are empty; the hint is shown. */
+static void
+as8_status_before_picture (void)
+{
+  EaselWindow *win;
+  EaselStatusBar *bar;
+
+  write_settings ("[new-picture]\nwidth=auto\nheight=auto\n");
+  win = easel_window_new (app);
+  bar = easel_window_get_status_bar (win);
+  g_assert_null (easel_window_get_picture (win));
+  g_assert_cmpstr (easel_status_bar_get_text (bar, EASEL_STATUS_POSITION), ==, "");
+  g_assert_cmpstr (easel_status_bar_get_text (bar, EASEL_STATUS_SIZE), ==, "");
+  g_assert_cmpstr (easel_status_bar_get_text (bar, EASEL_STATUS_ZOOM), ==, "");
+  g_assert_cmpstr (easel_status_bar_get_text (bar, EASEL_STATUS_HINT), ==, PAN_HINT);
+  gtk_window_destroy (GTK_WINDOW (win));
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* REQ-0004-10 (Plan): a field is written only when its value changes. */
+static void
+as8_status_writes_only_on_change (void)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  EaselStatusBar *bar = easel_window_get_status_bar (win);
+  guint pos, size, zoom, hint;
+
+  wait_for_layout (win);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "tool", g_variant_new_string ("pan"));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-large", NULL);       /* 400 %: a pixel is 4 x 4 */
+  wait_for_layout (win);
+  easel_canvas_pointer_at (canvas, 41.0, 41.0);                                    /* pixel (10, 10) */
+  pos = easel_status_bar_get_writes (bar, EASEL_STATUS_POSITION);
+  size = easel_status_bar_get_writes (bar, EASEL_STATUS_SIZE);
+  zoom = easel_status_bar_get_writes (bar, EASEL_STATUS_ZOOM);
+  hint = easel_status_bar_get_writes (bar, EASEL_STATUS_HINT);
+
+  /* 50 pointer events inside that one picture pixel write nothing. */
+  for (int i = 0; i < 50; i++)
+    easel_canvas_pointer_at (canvas, 40.0 + 0.07 * i, 40.0 + 0.07 * (49 - i));
+  g_assert_cmpuint (easel_status_bar_get_writes (bar, EASEL_STATUS_POSITION), ==, pos);
+
+  /* The same tool, the same zoom and the same size again write nothing either. */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "tool", g_variant_new_string ("pan"));
+  easel_status_bar_set_size (bar, TRUE, 300, 200);
+  easel_status_bar_set_zoom (bar, TRUE, 400);
+  easel_status_bar_set_hint (bar, PAN_HINT);
+  easel_canvas_pointer_left (canvas);
+  easel_canvas_pointer_left (canvas);                                              /* empty twice: one write */
+  g_assert_cmpuint (easel_status_bar_get_writes (bar, EASEL_STATUS_SIZE), ==, size);
+  g_assert_cmpuint (easel_status_bar_get_writes (bar, EASEL_STATUS_ZOOM), ==, zoom);
+  g_assert_cmpuint (easel_status_bar_get_writes (bar, EASEL_STATUS_HINT), ==, hint);
+  g_assert_cmpuint (easel_status_bar_get_writes (bar, EASEL_STATUS_POSITION), ==, pos + 1);
+
+  /* A different pixel writes once. */
+  easel_canvas_pointer_at (canvas, 45.0, 41.0);
+  g_assert_cmpstr (easel_status_bar_get_text (bar, EASEL_STATUS_POSITION), ==, "11, 10");
+  g_assert_cmpuint (easel_status_bar_get_writes (bar, EASEL_STATUS_POSITION), ==, pos + 2);
+  close_windows ();
+}
+
+/* REQ-0004-11: the status bar never makes the window wider; the hint is shortened with an ellipsis. */
+static void
+as9_status_bar_does_not_force_width (void)
+{
+  EaselWindow *win = start_window ();
+  EaselStatusBar *bar = easel_window_get_status_bar (win);
+  int min = 0;
+
+  gtk_widget_measure (GTK_WIDGET (bar), GTK_ORIENTATION_HORIZONTAL, -1, &min, NULL, NULL, NULL);
+  g_assert_cmpint (min, <=, 300);
+  g_assert_cmpint (gtk_label_get_ellipsize (easel_status_bar_get_label (bar, EASEL_STATUS_HINT)), ==, PANGO_ELLIPSIZE_END);
+  close_windows ();
+}
+
+/* ---- 0004: panel toggles ---- */
+
+static gboolean
+panel_checked (EaselWindow *win, const char *action)
+{
+  g_autoptr (GVariant) state = g_action_group_get_action_state (G_ACTION_GROUP (win), action);
+
+  return g_variant_get_boolean (state);
+}
+
+/* The width the bottom area (the color box over the status bar) needs. The window's own minimum is set by the header
+   bar, so the color box's part is measured where it counts. */
+static int
+bottom_min_width (EaselWindow *win)
+{
+  int min = 0;
+
+  gtk_widget_measure (gtk_widget_get_parent (GTK_WIDGET (easel_window_get_palette_bar (win))), GTK_ORIENTATION_HORIZONTAL,
+                      -1, &min, NULL, NULL, NULL);
+  return min;
+}
+
+/* REQ-0004-27: Tool Box, Color Box and Status Bar hide and show their panels. */
+static void
+as28_panel_toggles (void)
+{
+  EaselWindow *win = start_window ();
+  EaselPaletteBar *colors = easel_window_get_palette_bar (win);
+  EaselStatusBar *status = easel_window_get_status_bar (win);
+  GtkToggleButton *pan = find_tool_button (GTK_WIDGET (win), "pan");
+  GtkWidget *scroller = gtk_widget_get_ancestor (GTK_WIDGET (easel_window_get_canvas (win)), GTK_TYPE_SCROLLED_WINDOW);
+  int height_with, min_with;
+
+  wait_for_layout (win);
+  g_assert_true (panel_checked (win, "show-toolbox") && panel_checked (win, "show-colorbox") && panel_checked (win, "show-statusbar"));
+  g_assert_true (gtk_widget_is_visible (GTK_WIDGET (colors)) && gtk_widget_is_visible (GTK_WIDGET (status)));
+  g_assert_true (gtk_widget_is_visible (GTK_WIDGET (pan)));
+
+  /* Color Box off: the bar is gone and the canvas area is taller by its height. */
+  height_with = gtk_widget_get_height (scroller);
+  min_with = bottom_min_width (win);
+  g_assert_cmpint (min_with, >, 300);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "show-colorbox", NULL);
+  wait_for_layout (win);
+  g_assert_false (panel_checked (win, "show-colorbox"));
+  g_assert_false (gtk_widget_is_visible (GTK_WIDGET (colors)));
+  g_assert_cmpint (gtk_widget_get_height (scroller), >=, height_with + 40);
+  g_assert_cmpint (bottom_min_width (win), <=, 300);        /* REQ-0003-03 applies only while the bar is shown */
+
+  /* The colors still swap and strokes still use them. */
+  easel_palette_bar_press (colors, 17, 1, 1);
+  easel_palette_bar_press (colors, 21, 3, 1);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "swap-colors", NULL);
+  g_assert_cmphex (easel_window_get_foreground (win), ==, 0xFF0000FFu);
+  use_pencil (win);
+  stroke (win, 3.5, 3.5, 9.5, 3.5);
+  g_assert_cmphex (easel_image_get (easel_window_get_picture (win), 5, 3), ==, 0xFF0000FFu);
+
+  /* Back on: the bar shows the current colors. */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "show-colorbox", NULL);
+  g_assert_true (panel_checked (win, "show-colorbox"));
+  g_assert_true (gtk_widget_is_visible (GTK_WIDGET (colors)));
+  g_assert_cmphex (easel_palette_bar_get_foreground (colors), ==, 0xFF0000FFu);
+
+  /* Tool Box off: the buttons go, the active tool stays. */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "show-toolbox", NULL);
+  wait_for_layout (win);
+  g_assert_false (panel_checked (win, "show-toolbox"));
+  g_assert_false (gtk_widget_is_visible (GTK_WIDGET (pan)));
+  g_assert_cmpint (easel_window_get_tool (win), ==, EASEL_TOOL_PENCIL);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "show-toolbox", NULL);
+  g_assert_true (gtk_widget_is_visible (GTK_WIDGET (pan)));
+
+  /* Status Bar off: its fields go. */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "show-statusbar", NULL);
+  g_assert_false (panel_checked (win, "show-statusbar"));
+  g_assert_false (gtk_widget_is_visible (GTK_WIDGET (status)));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "show-statusbar", NULL);
+  g_assert_true (gtk_widget_is_visible (GTK_WIDGET (status)));
+
+  /* Not edits: one stroke was drawn, so exactly one undo step exists, and nothing else marks the picture. */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_false (action_enabled (win, "undo"));
+  close_windows ();
+}
+
+/* REQ-0004-27, REQ-0004-15: a panel starts as the settings say; the toggles ignore the cases of REQ-0004-03. */
+static void
+as28_panels_start_as_settings_say (void)
+{
+  EaselWindow *win;
+  AdwDialog *prompt = NULL;
+
+  write_settings ("[new-picture]\nwidth=300\nheight=200\n\n[view]\ntoolbox=off\ncolorbox=off\nstatusbar=off\n");
+  win = start_window ();
+  wait_for_layout (win);
+  g_assert_false (panel_checked (win, "show-toolbox") || panel_checked (win, "show-colorbox") || panel_checked (win, "show-statusbar"));
+  g_assert_false (gtk_widget_is_visible (GTK_WIDGET (easel_window_get_palette_bar (win))));
+  g_assert_false (gtk_widget_is_visible (GTK_WIDGET (easel_window_get_status_bar (win))));
+  g_assert_false (gtk_widget_is_visible (GTK_WIDGET (find_tool_button (GTK_WIDGET (win), "pan"))));
+
+  /* While the quit prompt is open the toggles do nothing. */
+  use_pencil (win);
+  A_STROKE (win);
+  gtk_window_close (GTK_WINDOW (win));
+  wait_for_dialogs (win, 1);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "show-colorbox", NULL);
+  g_assert_false (panel_checked (win, "show-colorbox"));
+  g_assert_false (gtk_widget_is_visible (GTK_WIDGET (easel_window_get_palette_bar (win))));
+  g_assert_cmpint (count_alert_dialogs (GTK_WIDGET (win), &prompt), ==, 1);
+  adw_dialog_close (prompt);
+  wait_for_dialogs (win, 0);
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
 static void
 as35_input_ignored_before_picture (void)
 {
@@ -1515,6 +2215,21 @@ main (int argc, char **argv)
   g_test_add_func ("/0002/as8_focus_loss_unblocks_undo", as8_focus_loss_unblocks_undo);
   g_test_add_func ("/0002/as14_failed_save_keeps_saved_state", as14_failed_save_keeps_saved_state);
   g_test_add_func ("/0002/as15_save_during_stroke", as15_save_during_stroke);
+  g_test_add_func ("/0004/texture_is_not_copied", texture_is_not_copied);
+  g_test_add_func ("/0004/as1_menus", as1_menus);
+  g_test_add_func ("/0004/as2_actions_ignored", as2_actions_ignored);
+  g_test_add_func ("/0004/as2_actions_ignored_before_picture", as2_actions_ignored_before_picture);
+  g_test_add_func ("/0004/as3_zoom_buttons", as3_zoom_buttons);
+  g_test_add_func ("/0004/as4_normal_and_large", as4_normal_and_large);
+  g_test_add_func ("/0004/as5_zoom_keeps_center", as5_zoom_keeps_center);
+  g_test_add_func ("/0004/as6_fit_to_window", as6_fit_to_window);
+  g_test_add_func ("/0004/as8_status_fields", as8_status_fields);
+  g_test_add_func ("/0004/as8_status_before_picture", as8_status_before_picture);
+  g_test_add_func ("/0004/as8_status_writes_only_on_change", as8_status_writes_only_on_change);
+  g_test_add_func ("/0004/as9_status_bar_does_not_force_width", as9_status_bar_does_not_force_width);
+  g_test_add_func ("/0004/as28_panel_toggles", as28_panel_toggles);
+  g_test_add_func ("/0004/as28_panels_start_as_settings_say", as28_panels_start_as_settings_say);
+  g_test_add_func ("/0004/as7_pinch_in_window", as7_pinch_in_window);
   g_test_add_func ("/0003/as1_palette_bar", as1_palette_bar);
   g_test_add_func ("/0003/as1_swatch_layout", as1_swatch_layout);
   g_test_add_func ("/0003/as18_bar_geometry_and_swap_button", as18_bar_geometry_and_swap_button);

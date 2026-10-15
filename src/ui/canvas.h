@@ -20,6 +20,19 @@ void easel_canvas_update (EaselCanvas *self);
 
 int easel_canvas_get_zoom (EaselCanvas *self);
 
+/* The picture is shown as tiles of EASEL_CANVAS_TILE x EASEL_CANVAS_TILE picture pixels (fewer at the right and bottom
+   edges), each a texture that reads the picture's own memory. An update rebuilds only the tiles it touches: at 8000x8000
+   the Vulkan renderer uploads a whole texture each frame, which one big texture made cost 56 ms. 500 divides every zoom
+   level into whole device pixels (500 * 10 % = 50), so tile edges never fall between device pixels. */
+#define EASEL_CANVAS_TILE 500
+
+/* Test hooks (0004 T001): the texture of tile (tx, ty), not owned (NULL outside the picture); how many tile textures
+   have been built since the picture was set; how many bytes of the picture the canvas has copied (always 0: the tiles
+   read the picture's own memory). */
+GdkTexture *easel_canvas_get_tile_texture (EaselCanvas *self, int tx, int ty);
+gsize easel_canvas_get_tiles_rebuilt (EaselCanvas *self);
+gsize easel_canvas_get_bytes_copied (EaselCanvas *self);
+
 /* Device pixels per logical pixel of the canvas's surface. */
 double easel_canvas_get_scale (EaselCanvas *self);
 
@@ -53,6 +66,25 @@ void easel_canvas_end_stroke (EaselCanvas *self);
 void easel_canvas_press (EaselCanvas *self, guint button, double x, double y);
 void easel_canvas_motion (EaselCanvas *self, double x, double y);
 void easel_canvas_release (EaselCanvas *self, guint button);
+
+/* Zoom commands from the menus and keys, with any tool (REQ-0004-04..07). Both emit "zoom-changed" (int percent) when the
+   zoom changes. set_zoom keeps the center of the canvas area still as far as the edges allow; fit_to_window picks the
+   largest level at which the whole picture fits the canvas area and shows its top-left corner. */
+void easel_canvas_set_zoom (EaselCanvas *self, int pct);
+void easel_canvas_fit_to_window (EaselCanvas *self);
+
+/* The pointer over the canvas area (REQ-0004-09): "pointer-moved" (int x, int y) with the picture pixel under it,
+   negative or beyond the size when it is outside the picture, and "pointer-left" when it leaves the canvas area. The
+   event controller feeds these; tests call them. (x, y) are in canvas coordinates, logical pixels from the picture's
+   top-left. */
+void easel_canvas_pointer_at (EaselCanvas *self, double x, double y);
+void easel_canvas_pointer_left (EaselCanvas *self);
+
+/* The touchpad or touch pinch (REQ-0004-08). The gesture feeds these; tests call them. scale is the gesture's scale since
+   it began; (view_x, view_y) is its center relative to the canvas area. Pan only. */
+void easel_canvas_pinch_begin (EaselCanvas *self);
+void easel_canvas_pinch (EaselCanvas *self, double scale, double view_x, double view_y);
+void easel_canvas_pinch_end (EaselCanvas *self);
 
 /* In Pan mode, moves notches zoom levels (positive = in), keeping the picture point at view (x, y) still
    (REQ-0001-16). view_x, view_y are relative to the visible area. */

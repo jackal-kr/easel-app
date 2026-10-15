@@ -49,6 +49,16 @@ easel_application_new (void)
                                          (const char *[]) { "<Control>y", "<Control><Shift>z", NULL });
   gtk_application_set_accels_for_action (GTK_APPLICATION (app), "win.swap-colors",
                                          (const char *[]) { "<Control><Shift>x", NULL });
+  gtk_application_set_accels_for_action (GTK_APPLICATION (app), "win.zoom-in",
+                                         (const char *[]) { "<Control>equal", "<Control>plus", "<Control>KP_Add", NULL });
+  gtk_application_set_accels_for_action (GTK_APPLICATION (app), "win.zoom-out",
+                                         (const char *[]) { "<Control>minus", "<Control>KP_Subtract", NULL });
+  gtk_application_set_accels_for_action (GTK_APPLICATION (app), "win.zoom-normal", (const char *[]) { "<Control>Page_Up", NULL });
+  gtk_application_set_accels_for_action (GTK_APPLICATION (app), "win.zoom-large", (const char *[]) { "<Control>Page_Down", NULL });
+  gtk_application_set_accels_for_action (GTK_APPLICATION (app), "win.zoom-fit", (const char *[]) { "<Control>0", NULL });
+  /* The grid and Attributes actions come with their own tasks; their shortcuts are registered with the menus. */
+  gtk_application_set_accels_for_action (GTK_APPLICATION (app), "win.grid", (const char *[]) { "<Control>g", NULL });
+  gtk_application_set_accels_for_action (GTK_APPLICATION (app), "win.attributes", (const char *[]) { "<Control>e", NULL });
   gtk_application_set_accels_for_action (GTK_APPLICATION (app), "win.close", (const char *[]) { "<Control>w", NULL });
   gtk_application_set_accels_for_action (GTK_APPLICATION (app), "app.quit", (const char *[]) { "<Control>q", NULL });
   g_action_map_add_action_entries (G_ACTION_MAP (app), app_actions, G_N_ELEMENTS (app_actions), app);

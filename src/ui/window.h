@@ -5,6 +5,7 @@
 
 #include "canvas.h"
 #include "palette-bar.h"
+#include "status-bar.h"
 #include "image.h"
 #include "tool.h"
 
@@ -24,6 +25,12 @@ uint32_t easel_window_get_background (EaselWindow *self);
 gboolean easel_window_get_modified (EaselWindow *self);
 EaselCanvas *easel_window_get_canvas (EaselWindow *self);
 EaselPaletteBar *easel_window_get_palette_bar (EaselWindow *self);
+EaselStatusBar *easel_window_get_status_bar (EaselWindow *self);
+
+GtkMenuButton *easel_window_get_image_button (EaselWindow *self);
+GtkMenuButton *easel_window_get_view_button (EaselWindow *self);
+/* The zoom as the View menu's row shows it, for example "100%" (REQ-0004-01). */
+const char *easel_window_get_zoom_text (EaselWindow *self);
 
 /* The color chooser is open (REQ-0003-14). */
 gboolean easel_window_is_choosing_color (EaselWindow *self);

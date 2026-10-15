@@ -2,6 +2,7 @@
 /* Settings file text (REQ-0001-01..05, REQ-0001-40). Reading and writing the file is io's job. */
 #pragma once
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -12,6 +13,9 @@ enum
   EASEL_UNDO_MB_MIN = 16,
   EASEL_UNDO_MB_MAX = 8192,
   EASEL_UNDO_MB_DEFAULT = 512,
+  EASEL_GRID_SIZE_MIN = 1,
+  EASEL_GRID_SIZE_MAX = 1000,
+  EASEL_GRID_SIZE_DEFAULT = 1,
 };
 
 typedef struct
@@ -20,6 +24,12 @@ typedef struct
   int height;
   uint32_t background;    /* 0xAARRGGBB, straight alpha */
   int undo_budget_mb;     /* EASEL_UNDO_MB_MIN..EASEL_UNDO_MB_MAX (REQ-0002-18) */
+  bool grid;              /* the grid starts on (REQ-0004-15) */
+  int grid_size;          /* EASEL_GRID_SIZE_MIN..EASEL_GRID_SIZE_MAX picture pixels */
+  bool grid_axonometric;
+  bool show_toolbox;      /* the panels start shown (REQ-0004-27) */
+  bool show_colorbox;
+  bool show_statusbar;
 } EaselSettings;
 
 /* What a newly created settings file holds (REQ-0001-04). */
