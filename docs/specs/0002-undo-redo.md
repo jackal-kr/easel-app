@@ -35,12 +35,12 @@ This replaces the "modified" rule of 0001 (REQ-0001-13, REQ-0001-26): the modifi
 - REQ-0002-15 A failed save (REQ-0001-31) shall not move the saved state. A save requested during a stroke ends the stroke first (REQ-0001-33), so the saved state is the one after that stroke.
 
 ### Memory budget
-- REQ-0002-16 The app shall keep the memory the history stores to undo and redo (not the picture itself, not other app memory) within the budget; when a new step would exceed it, the app shall drop the oldest steps, oldest first, until it fits, silently. A step shall need at most 16 bytes per pixel it changed plus 64 bytes for the step itself. So with the default 512 MB budget and
+- REQ-0002-16 The app shall keep the memory the history stores to undo and redo (not the picture itself, not other app memory) within the budget; when a new step would exceed it, the app shall drop the oldest steps, oldest first, until it fits, silently. A step shall need at most 16 bytes per pixel it changed plus 64 bytes for the step itself. So with the default 512 MB budget and (0004: a resize step counts as 4 bytes per removed pixel plus 64: REQ-0004-23.)
   small strokes (each changing at most 50,000 pixels, at most 0.8 MB each), at least the 640 most recent strokes stay
   undoable; this guarantee assumes every stroke is that small. A single edit bigger than the whole budget follows REQ-0002-17.
 - REQ-0002-17 If one step alone is larger than the budget, then the app shall keep it as the only step, so the last edit can always be undone.
 - REQ-0002-18 The budget shall be read at start-up from the settings file (syntax as REQ-0001-40): section `[history]`, key `memory`, a whole number of megabytes from 16 to 8192, default 512. A missing, invalid or out-of-range value means 512, silently. A change takes effect at the next start.
-- REQ-0002-19 A settings file the app creates (REQ-0001-04) shall also hold `[history]` with `memory=512`; an existing file without it is never rewritten.
+- REQ-0002-19 A settings file the app creates (REQ-0001-04) shall also hold `[history]` with `memory=512`; an existing file without it is never rewritten. (0004 adds `[view]` to a created file: REQ-0004-15.)
 
 ## Scenarios
 - AS-1 (REQ-0002-01, REQ-0002-03, REQ-0002-11) Given a white picture, When the user draws stroke A, then stroke B, and presses Ctrl+Z, Then the picture shows A only; When the user presses Ctrl+Z again, Then the picture is white | Verified by: automated (core) + automated (ui, shortcuts)

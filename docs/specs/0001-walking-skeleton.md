@@ -14,7 +14,7 @@ Look, layout and input rules come from `docs/design.md`; this spec only adds wha
 - REQ-0001-01 The app shall read its settings from `~/.config/easel/settings.ini`, a text file of `key=value` lines under `[section]` headers. 0001 uses section `[new-picture]` with keys `width`, `height` and `background`.
 - REQ-0001-02 `width` and `height` shall each be `auto` or a whole number from 1 to 10000. If either is `auto`, both are: the picture takes the largest of 640x480, 800x600 and 1024x768 that is smaller than the visible canvas area in both directions when the window first appears (in device pixels, so at 100 % space remains right and bottom and no scrollbars show); if none fits, 640x480. Later window resizes do not change the picture.
 - REQ-0001-03 `background` shall be `#RRGGBB`, `#RRGGBBAA` or `transparent` (= `#00000000`).
-- REQ-0001-04 If the settings file does not exist at start-up, then the app shall create it with `width=auto`, `height=auto`, `background=#FFFFFF`. (Amended by REQ-0002-19: a new file also holds `[history]` `memory=512`.)
+- REQ-0001-04 If the settings file does not exist at start-up, then the app shall create it with `width=auto`, `height=auto`, `background=#FFFFFF`. (Amended by REQ-0002-19: a new file also holds `[history]` `memory=512`.) (0004 adds `[view]` to a created file: REQ-0004-15.)
 - REQ-0001-05 If a value is missing or invalid, then the app shall use the default from REQ-0001-04 for that value only, without a message to the user; if the file cannot be read or parsed at all, then every value uses its default and the file is left untouched.
 - REQ-0001-40 The settings file syntax shall be: blank lines and lines starting with `#` are ignored; spaces around `=` and around the value are trimmed; keys are case-sensitive; `auto`, `transparent` and hex digits are case-insensitive; numbers are digits only (`05` is 5, `+5` and `5.0` are invalid); when a key repeats, the last one wins; unknown sections and keys are ignored. Any other non-empty line makes the file unparseable (REQ-0001-05).
 - REQ-0001-41 When the app starts, the window shall open at 75 % of the width and height of the monitor it opens on (if that monitor is not known before the window appears, the first monitor); the system decides where it is placed.
@@ -36,7 +36,7 @@ Look, layout and input rules come from `docs/design.md`; this spec only adds wha
 ### View: pan, scroll, zoom
 - REQ-0001-14 While Pan is active and the user drags with the primary button, the app shall move the view with the pointer (the picture follows the pointer), stopping at the picture's edges, without changing any pixel or the modified state; a drag that starts in the canvas area outside the picture also pans.
 - REQ-0001-15 While any tool is active, the mouse wheel shall scroll the view vertically and Shift + wheel horizontally, stopping at the picture's edges; scrollbars shall show the view's position while the picture is larger than the view.
-- REQ-0001-16 While Pan is active and the user turns the mouse wheel with Ctrl held, the app shall move one step per notch through the zoom levels 10, 25, 50, 100, 200, 300, 400, 600, 800 % (wheel up = larger), keeping the picture point under the pointer under the pointer as far as the view's edge limits allow; at 10 % and 800 % further notches in that direction do nothing. Touchpad Ctrl + scroll counts in whole notches.
+- REQ-0001-16 While Pan is active and the user turns the mouse wheel with Ctrl held, the app shall move one step per notch through the zoom levels 10, 25, 50, 100, 200, 300, 400, 600, 800 % (wheel up = larger), keeping the picture point under the pointer under the pointer as far as the view's edge limits allow; at 10 % and 800 % further notches in that direction do nothing. Touchpad Ctrl + scroll counts in whole notches. (0004 adds zoom commands for every tool, and the pinch: REQ-0004-04, REQ-0004-08; the wheel rule is unchanged.)
 - REQ-0001-17 While any tool other than Pan is active, Ctrl + wheel shall not change the zoom.
 - REQ-0001-18 Above 100 %, the app shall show each picture pixel as a solid square of its color; below 100 %, each device pixel shall show the color of exactly one picture pixel, with no blending.
 
@@ -67,7 +67,7 @@ Look, layout and input rules come from `docs/design.md`; this spec only adds wha
 - REQ-0001-38 While the quit prompt is open, further quit requests shall not open a second prompt.
 
 ### Before the picture exists
-- REQ-0001-39 Until the start-up picture exists (it may take one frame while the window learns its monitor, REQ-0001-02), the app shall ignore drawing, Save and zoom input; Quit closes at once (nothing is modified).
+- REQ-0001-39 Until the start-up picture exists (it may take one frame while the window learns its monitor, REQ-0001-02), the app shall ignore drawing, Save and zoom input; Quit closes at once (nothing is modified). (0004: the View and Image actions also do nothing before the picture exists: REQ-0004-03.)
 
 ## Scenarios
 - AS-1 (REQ-0001-01, REQ-0001-06, REQ-0001-08) Given a settings file with width 300, height 200, background #FFFF00, When the app starts, Then one window shows a 300x200 yellow picture at 100 %, Pan active, foreground black, background color yellow | Verified by: automated (ui) + manual M1

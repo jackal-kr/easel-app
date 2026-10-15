@@ -8,7 +8,7 @@ Vertical slices first (a thin end-to-end feature), breadth later.
 | 0001 | walking-skeleton | Start in Pan mode on a blank canvas (size and background from the configuration file), pan and zoom it, draw with the pencil, save as PNG, quit with an unsaved-changes prompt | **Pilot.** Includes Pan and the settings file. Write together, slowly |
 | 0002 | undo-redo | Undo/redo with memory budget and "saved" state | Deferred idea: keep old undo steps on disk instead of dropping them; revisit only if 512 MB proves too small |
 | 0003 | colors-palette | Palette, fore/background colors, Edit Colors | |
-| 0004 | canvas-view | Zoom range, Fit to Window, pixel grid and Grid dialog, scrolling, resize handles, Attributes dialog | Builds on Pan from 0001. History steps store pixel indexes; any change of picture size must clear the history or record the size. Undo takes about 94 ms at 8000x8000, and that is the screen copy, not the history (0002 measurements) |
+| 0004 | canvas-view | Zoom range and commands, Fit to Window, View and Image menus with panel toggles, status bar, pixel grid and Grid dialog, resize handles, Attributes dialog | Builds on Pan from 0001. History steps store pixel indexes; any change of picture size must clear the history or record the size. Undo takes about 94 ms at 8000x8000, and that is the screen copy, not the history (0002 measurements) |
 | 0005 | file-io | Open/save formats, Save As, modified tracking for Open and New, errors | gif open-only; the saved state itself is 0002 |
 | 0006 | freehand-tools | Brush shapes/sizes, airbrush, eraser | |
 | 0007 | fill-pick-magnify | Fill, pick color, magnifier | |
@@ -18,7 +18,7 @@ Vertical slices first (a thin end-to-end feature), breadth later.
 | 0011 | text | Text box, fonts, styles, per-selection fonts | |
 | 0012 | image-transforms | Flip, rotate, stretch, skew, invert, clear, black and white | |
 | 0013 | preferences | Appearance, new-picture and drawing defaults, palette persistence, undo budget | Dialog edits the same configuration file the app already reads |
-| 0014 | window-extras | Shortcuts window, thumbnail, frame time, print, context menus, About with acknowledgements (XP Paint, JS Paint) | |
+| 0014 | window-extras | Shortcuts window, thumbnail, frame time, print, context menus, About with acknowledgements (XP Paint, JS Paint) | Adds the View menu's Show Thumbnail item (not in 0004); Frame Time has no View item, only a Preferences setting (0013) |
 | 0015 | accessibility | Names/roles, keyboard-only drawing and palette | |
 | 0016 | i18n | UI languages (pl, uk, ru, de, cs, it, es, pt + English) | Mark the 0001 strings (title, quit and save prompts, errors) translatable; deferred from the 0001 check |
 | 0017 | packaging-release | Flatpak, deb, AppImage, metadata | |
