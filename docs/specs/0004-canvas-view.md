@@ -247,11 +247,11 @@ is probably the first frame, which uploads the visible tiles; manual check M8 sh
 | 7 | core `as7_pinch_accumulator` + manual M2 (the real gesture) |
 | 8 | ui `as8_status_fields`, ui `as8_status_writes_only_on_change` + manual M3 |
 | 9 | manual M3 |
-| 10 | core `as10_grid_visibility`, ui `as10_grid_toggle` + manual M4 |
+| 10 | core `as10_grid_visibility`, ui `as10_grid_toggle`, ui `as10_grid_pixels` (the drawn lines, in a rendered window) + manual M4 |
 | 11 | core `as11_grid_cell_16` |
 | 12 | ui `as12_grid_dialog` |
 | 13 | core `as13_axonometric_lines` + manual M4 |
-| 14 | core `as14_view_settings`, io `as14_created_file_has_view`, io `as14_existing_file_untouched` |
+| 14 | core `as14_view_settings`, io `as14_created_file_has_view`, io `as14_existing_file_untouched`, ui `as14_grid_starts_as_settings_say` |
 | 15 | ui `as15_handles` + manual M5 |
 | 16 | manual M5 |
 | 17 | core `as17_size_from_point`, ui `as17_handle_drag` |
@@ -268,7 +268,7 @@ is probably the first frame, which uploads the visible tiles; manual check M8 sh
 | 28 | ui `as28_panel_toggles` + manual M7 |
 | 29 | core `as29_oversized_resize_kept_alone` |
 
-Tasks without a scenario: T001 ui `texture_is_not_copied`; T002 benchmark `perf-0004` and manual M8; T015 `perf-0004` extended.
+Tasks without a scenario: T001 ui `texture_is_not_copied`; T002 benchmark `perf-0004` and manual M8; T015 `perf-0004` extended. Found during T010: ui `as13_offset_is_displayed` (0001 REQ-0001-16: after a zoom the picture is shown at the scroll position, not only the adjustment values).
 
 ### Constitution check
 - P4: grid lines are hard-edged; picture pixels stay hard-edged at every zoom.
@@ -317,9 +317,9 @@ Group C, status bar and panels
 - [x] T007 Status bar: position, size, zoom and hint, writing only on change (REQ-0004-09, REQ-0004-10, REQ-0004-11; AS-8, AS-9) - done when ui `as8_status_fields` and `as8_status_writes_only_on_change` pass and manual M3 passes
 - [x] T008 Panel toggles: Tool Box, Color Box, Status Bar (REQ-0004-27, REQ-0004-15; AS-28) - done when ui `as28_panel_toggles` passes, panels start as the settings say, and manual M7 passes
 Group D, the grid
-- [ ] T009 Core grid: visibility rule and line geometry (REQ-0004-12, REQ-0004-14; AS-10, AS-11, AS-13) - done when core `as10_grid_visibility`, `as11_grid_cell_16` and `as13_axonometric_lines` pass
-- [ ] T010 Grid drawing, Show Grid, Ctrl+G and the start-up state (REQ-0004-12, REQ-0004-15; AS-10) - done when ui `as10_grid_toggle` passes and the grid is not in the saved picture, and manual M4 passes
-- [ ] T011 Grid dialog (REQ-0004-13; AS-12) - done when ui `as12_grid_dialog` passes (invalid values disable Apply, Esc cancels, Apply never toggles the grid) and manual M4 passes with the dialog
+- [x] T009 Core grid: visibility rule and line geometry (REQ-0004-12, REQ-0004-14; AS-10, AS-11, AS-13) - done when core `as10_grid_visibility`, `as11_grid_cell_16` and `as13_axonometric_lines` pass
+- [x] T010 Grid drawing, Show Grid, Ctrl+G and the start-up state (REQ-0004-12, REQ-0004-15; AS-10) - done when ui `as10_grid_toggle` passes and the grid is not in the saved picture, and manual M4 passes
+- [x] T011 Grid dialog (REQ-0004-13; AS-12) - done when ui `as12_grid_dialog` passes (invalid values disable Apply, Esc cancels, Apply never toggles the grid) and manual M4 passes with the dialog
 Group E, resizing
 - [ ] T012 Core resize and the resize history step (REQ-0004-20, REQ-0004-22, REQ-0004-23, REQ-0004-24; AS-19, AS-21, AS-22, AS-24, AS-29) - done when core `as19_grow_and_shrink`, `as21_undo_redo_resize_exact`, `as22_steps_through_a_resize`, `as24_resize_step_budget` and `as29_oversized_resize_kept_alone` pass, and a resize that cannot be allocated leaves picture and history unchanged (core `as27_resize_refused`)
 - [ ] T013 Attributes dialog and the resize in the window (REQ-0004-21, REQ-0004-22, REQ-0004-24, REQ-0004-25, REQ-0004-26; AS-20, AS-23, AS-25, AS-26, AS-27) - done when ui `as20_attributes_dialog`, `as22_undo_through_resize`, `as23_modified_across_resize`, `as25_same_size_no_step`, `as26_scroll_clamp_after_resize` and `as27_error_dialog` pass, and manual M6 passes

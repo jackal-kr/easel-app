@@ -5,6 +5,7 @@
 #include <string.h>
 
 #include "config.h"
+#include "grid-dialog.h"
 #include "canvas.h"
 #include "palette-bar.h"
 #include "palette-file.h"
@@ -587,6 +588,42 @@ show_panel_state_changed (GSimpleAction *action, GVariant *value, gpointer user_
   set_panel_state (self, name, panel, g_variant_get_boolean (value));
 }
 
+/* ---- the grid (REQ-0004-12, REQ-0004-15) ---- */
+
+/* Show Grid and Ctrl+G toggle the grid. Like the other View actions they do nothing while a dialog is open or a button
+   is held (REQ-0004-03). Not an edit: nothing to undo, no modified mark. */
+static void
+grid_state_changed (GSimpleAction *action, GVariant *value, gpointer user_data)
+{
+  EaselWindow *self = user_data;
+
+  if (!view_actions_allowed (self))
+    return;
+  easel_canvas_set_grid (self->canvas, g_variant_get_boolean (value), easel_canvas_get_grid_cell (self->canvas),
+                         easel_canvas_get_grid_axonometric (self->canvas));
+  g_simple_action_set_state (action, value);
+}
+
+/* Grid…: the dialog sets the cell size and the style; it never switches the grid on or off (REQ-0004-13). */
+static void
+grid_dialog_applied (int cell, gboolean axonometric, gpointer user_data)
+{
+  EaselWindow *self = user_data;
+
+  easel_canvas_set_grid (self->canvas, easel_canvas_get_grid_on (self->canvas), cell, axonometric);
+}
+
+static void
+grid_dialog_activated (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+  EaselWindow *self = user_data;
+
+  if (!view_actions_allowed (self))
+    return;
+  easel_grid_dialog_present (GTK_WIDGET (self), easel_canvas_get_grid_cell (self->canvas),
+                             easel_canvas_get_grid_axonometric (self->canvas), grid_dialog_applied, self);
+}
+
 /* ---- zoom commands (REQ-0004-04..07) ---- */
 
 /* The View and Image actions do nothing before the picture exists, while a dialog is open, or while a mouse button is
@@ -788,6 +825,8 @@ static const GActionEntry win_actions[] = {
   { .name = "zoom-normal", .activate = zoom_normal_activated },
   { .name = "zoom-large", .activate = zoom_large_activated },
   { .name = "zoom-fit", .activate = zoom_fit_activated },
+  { .name = "grid", .state = "false", .change_state = grid_state_changed },
+  { .name = "grid-dialog", .activate = grid_dialog_activated },
   { .name = "show-toolbox", .state = "true", .change_state = show_panel_state_changed },
   { .name = "show-colorbox", .state = "true", .change_state = show_panel_state_changed },
   { .name = "show-statusbar", .state = "true", .change_state = show_panel_state_changed },
@@ -939,7 +978,10 @@ easel_window_init (EaselWindow *self)
     easel_palette_file_load (palette_path, &self->palette);
   }
   easel_palette_bar_set_palette (self->palette_bar, &self->palette);
-  /* The panels start as the settings file says (REQ-0004-15, REQ-0004-27). */
+  /* The grid and the panels start as the settings file says (REQ-0004-15, REQ-0004-27). */
+  easel_canvas_set_grid (self->canvas, self->settings.grid, self->settings.grid_size, self->settings.grid_axonometric);
+  g_simple_action_set_state (G_SIMPLE_ACTION (g_action_map_lookup_action (G_ACTION_MAP (self), "grid")),
+                             g_variant_new_boolean (self->settings.grid));
   set_panel_state (self, "show-toolbox", self->toolbox_panel, self->settings.show_toolbox);
   set_panel_state (self, "show-colorbox", GTK_WIDGET (self->palette_bar), self->settings.show_colorbox);
   set_panel_state (self, "show-statusbar", GTK_WIDGET (self->status_bar), self->settings.show_statusbar);

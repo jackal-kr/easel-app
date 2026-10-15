@@ -73,6 +73,15 @@ void easel_canvas_release (EaselCanvas *self, guint button);
 void easel_canvas_set_zoom (EaselCanvas *self, int pct);
 void easel_canvas_fit_to_window (EaselCanvas *self);
 
+/* The pixel grid (REQ-0004-12..14): on or off, the cell size in picture pixels, and whether it is axonometric. It is
+   drawn over the picture, never saved, and only while one cell is at least 4 device pixels wide on screen. */
+void easel_canvas_set_grid (EaselCanvas *self, gboolean on, int cell, gboolean axonometric);
+gboolean easel_canvas_get_grid_on (EaselCanvas *self);
+int easel_canvas_get_grid_cell (EaselCanvas *self);
+gboolean easel_canvas_get_grid_axonometric (EaselCanvas *self);
+/* On, and big enough to be drawn at the current zoom. */
+gboolean easel_canvas_grid_is_drawn (EaselCanvas *self);
+
 /* The pointer over the canvas area (REQ-0004-09): "pointer-moved" (int x, int y) with the picture pixel under it,
    negative or beyond the size when it is outside the picture, and "pointer-left" when it leaves the canvas area. The
    event controller feeds these; tests call them. (x, y) are in canvas coordinates, logical pixels from the picture's

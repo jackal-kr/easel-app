@@ -4,6 +4,7 @@ libm = meson.get_compiler('c').find_library('m', required: false)
 easel_core_inc = include_directories('core')
 easel_core = static_library('easel-core',
   'core/history.c',
+  'core/grid.c',
   'core/image.c',
   'core/palette.c',
   'core/ini.c',
@@ -48,6 +49,7 @@ easel_ui_inc = include_directories('.', 'ui')
 easel_ui = static_library('easel-ui',
   'ui/application.c',
   'ui/canvas.c',
+  'ui/grid-dialog.c',
   'ui/palette-bar.c',
   'ui/status-bar.c',
   'ui/tool.c',

@@ -1,7 +1,10 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 
+#include <math.h>
+
 #include "config.h"
 #include "canvas.h"
+#include "grid.h"
 #include "stroke.h"
 #include "view.h"
 
@@ -35,6 +38,8 @@ struct _EaselCanvas
   guint stroke_button;
   guint cancelled_button; /* button of a stroke cancelled by Undo, until it is released; 0 if none */
   gboolean input_blocked;
+  gboolean grid_on, grid_axonometric;
+  int grid_cell;
   GtkWidget *area;        /* ancestor that feeds input; not owned */
 
   gboolean panning;
@@ -58,6 +63,8 @@ enum
 };
 
 static guint signals[N_SIGNALS];
+
+static GtkAdjustment *adjustment (EaselCanvas *self, GtkOrientation orientation);
 
 G_DEFINE_FINAL_TYPE (EaselCanvas, easel_canvas, GTK_TYPE_WIDGET)
 
@@ -193,6 +200,61 @@ easel_snapshot_append_checkerboard (GtkSnapshot *snapshot, const graphene_rect_t
   gtk_snapshot_pop (snapshot);
 }
 
+typedef struct
+{
+  cairo_t *cr;
+  double l;         /* logical pixels per picture pixel */
+  double scale;     /* device pixels per logical pixel */
+} GridDraw;
+
+/* Picture coordinates to canvas coordinates, putting the line on a whole device pixel: a vertical or horizontal line
+   covers the device pixel that starts at the boundary, and any other line the pixels it passes through. */
+static void
+grid_segment (double x0, double y0, double x1, double y1, void *data)
+{
+  GridDraw *d = data;
+  double ax = x0 * d->l, ay = y0 * d->l, bx = x1 * d->l, by = y1 * d->l;
+  double half = 0.5 / d->scale;
+
+  if (x0 == x1)
+    ax = bx = floor (ax * d->scale) / d->scale + half;
+  else if (y0 == y1)
+    ay = by = floor (ay * d->scale) / d->scale + half;
+  cairo_move_to (d->cr, ax, ay);
+  cairo_line_to (d->cr, bx, by);
+}
+
+/* The grid over the visible part of the picture, as one Cairo node of that size with antialiasing off, so the lines
+   are hard-edged: 1 device pixel wide, mid grey at 50 % (REQ-0004-12). */
+static void
+append_grid (EaselCanvas *self, GtkSnapshot *snapshot)
+{
+  GtkAdjustment *h = adjustment (self, GTK_ORIENTATION_HORIZONTAL);
+  GtkAdjustment *v = adjustment (self, GTK_ORIENTATION_VERTICAL);
+  double scale = easel_canvas_get_scale (self);
+  double l = self->zoom / (100.0 * scale);
+  double vx0 = fmax (0, gtk_adjustment_get_value (h)), vy0 = fmax (0, gtk_adjustment_get_value (v));
+  double vx1 = fmin (self->img->width * l, gtk_adjustment_get_value (h) + gtk_adjustment_get_page_size (h));
+  double vy1 = fmin (self->img->height * l, gtk_adjustment_get_value (v) + gtk_adjustment_get_page_size (v));
+  GridDraw d = { NULL, l, scale };
+
+  if (vx1 <= vx0 || vy1 <= vy0)
+    return;
+  d.cr = gtk_snapshot_append_cairo (snapshot, &GRAPHENE_RECT_INIT ((float) vx0, (float) vy0, (float) (vx1 - vx0),
+                                                                    (float) (vy1 - vy0)));
+  /* The context's origin is the top-left of the bounds, not of the canvas, so go back to canvas coordinates. This
+     matters whenever the view is scrolled. */
+  cairo_translate (d.cr, -vx0, -vy0);
+  cairo_set_antialias (d.cr, CAIRO_ANTIALIAS_NONE);
+  cairo_set_source_rgba (d.cr, 0.5, 0.5, 0.5, 0.5);
+  cairo_set_line_width (d.cr, 1.0 / scale);
+  /* The visible area in picture pixels, with a pixel to spare so a line on its edge is not lost. */
+  easel_grid_lines (self->img->width, self->img->height, self->grid_cell, self->grid_axonometric,
+                    vx0 / l - 1, vy0 / l - 1, vx1 / l + 1, vy1 / l + 1, grid_segment, &d);
+  cairo_stroke (d.cr);
+  cairo_destroy (d.cr);
+}
+
 static void
 easel_canvas_snapshot (GtkWidget *widget, GtkSnapshot *snapshot)
 {
@@ -218,6 +280,8 @@ easel_canvas_snapshot (GtkWidget *widget, GtkSnapshot *snapshot)
 
         gtk_snapshot_append_scaled_texture (snapshot, tile, GSK_SCALING_FILTER_NEAREST, &r);
       }
+  if (easel_canvas_grid_is_drawn (self))
+    append_grid (self, snapshot);
 }
 
 static GdkCursor *
@@ -504,6 +568,39 @@ easel_canvas_zoom_at (EaselCanvas *self, int notches, double view_x, double view
 }
 
 void
+easel_canvas_set_grid (EaselCanvas *self, gboolean on, int cell, gboolean axonometric)
+{
+  self->grid_on = on;
+  self->grid_cell = CLAMP (cell, 1, 1000);
+  self->grid_axonometric = axonometric;
+  gtk_widget_queue_draw (GTK_WIDGET (self));
+}
+
+gboolean
+easel_canvas_get_grid_on (EaselCanvas *self)
+{
+  return self->grid_on;
+}
+
+int
+easel_canvas_get_grid_cell (EaselCanvas *self)
+{
+  return self->grid_cell;
+}
+
+gboolean
+easel_canvas_get_grid_axonometric (EaselCanvas *self)
+{
+  return self->grid_axonometric;
+}
+
+gboolean
+easel_canvas_grid_is_drawn (EaselCanvas *self)
+{
+  return self->grid_on && easel_grid_visible (self->grid_cell, self->zoom);
+}
+
+void
 easel_canvas_pointer_at (EaselCanvas *self, double x, double y)
 {
   int px, py;
@@ -709,6 +806,19 @@ easel_canvas_unrealize (GtkWidget *widget)
   GTK_WIDGET_CLASS (easel_canvas_parent_class)->unrealize (widget);
 }
 
+/* One frame later: the viewport placed the canvas before the scroll values changed inside this allocation, and it does
+   not lay out again for a change made while it is allocating. Asking from a tick callback (the frame's update phase)
+   makes it place the canvas at the new scroll position in that frame's layout. */
+static gboolean
+replace_in_viewport (GtkWidget *widget, GdkFrameClock *clock, gpointer data)
+{
+  GtkWidget *viewport = gtk_widget_get_parent (widget);
+
+  if (viewport != NULL)
+    gtk_widget_queue_allocate (viewport);
+  return G_SOURCE_REMOVE;
+}
+
 static void
 easel_canvas_size_allocate (GtkWidget *widget, int width, int height, int baseline)
 {
@@ -720,6 +830,7 @@ easel_canvas_size_allocate (GtkWidget *widget, int width, int height, int baseli
       self->anchor_pending = FALSE;
       gtk_adjustment_set_value (adjustment (self, GTK_ORIENTATION_HORIZONTAL), self->anchor_h);
       gtk_adjustment_set_value (adjustment (self, GTK_ORIENTATION_VERTICAL), self->anchor_v);
+      gtk_widget_add_tick_callback (widget, replace_in_viewport, NULL, NULL);
     }
 }
 
@@ -768,6 +879,7 @@ static void
 easel_canvas_init (EaselCanvas *self)
 {
   self->zoom = 100;
+  self->grid_cell = 1;
   self->pinch_base = 1.0;
   self->builder = gdk_memory_texture_builder_new ();
   update_cursor (self);

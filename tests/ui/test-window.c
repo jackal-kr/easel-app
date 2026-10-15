@@ -1614,6 +1614,8 @@ as1_menus (void)
   close_windows ();
 }
 
+static AdwAlertDialog *open_alert (EaselWindow *win);
+
 /* REQ-0004-03: the actions do nothing in these states. */
 static void
 as2_actions_ignored (void)
@@ -1632,7 +1634,11 @@ as2_actions_ignored (void)
   g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-in", NULL);
   g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-large", NULL);
   g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-fit", NULL);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "grid", NULL);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "grid-dialog", NULL);
   g_assert_cmpint (easel_window_get_zoom (win), ==, 100);
+  g_assert_false (easel_canvas_get_grid_on (canvas));
+  g_assert_null (open_alert (win));
   easel_canvas_release (canvas, 1);
 
   /* The quit prompt open. */
@@ -1640,8 +1646,11 @@ as2_actions_ignored (void)
   wait_for_dialogs (win, 1);
   g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-in", NULL);
   g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-large", NULL);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "grid", NULL);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "grid-dialog", NULL);
   g_assert_cmpint (easel_window_get_zoom (win), ==, 100);
-  g_assert_cmpint (count_alert_dialogs (GTK_WIDGET (win), &prompt), ==, 1);
+  g_assert_false (easel_canvas_get_grid_on (canvas));
+  g_assert_cmpint (count_alert_dialogs (GTK_WIDGET (win), &prompt), ==, 1);        /* only the quit prompt */
   adw_dialog_close (prompt);
   wait_for_dialogs (win, 0);
 
@@ -1650,7 +1659,11 @@ as2_actions_ignored (void)
   g_assert_true (easel_window_is_choosing_color (win));
   g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-in", NULL);
   g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-fit", NULL);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "grid", NULL);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "grid-dialog", NULL);
   g_assert_cmpint (easel_window_get_zoom (win), ==, 100);
+  g_assert_false (easel_canvas_get_grid_on (canvas));
+  g_assert_null (open_alert (win));
   easel_window_finish_color_choice (win, NULL);
 
   /* Free again: it works. */
@@ -1671,7 +1684,10 @@ as2_actions_ignored_before_picture (void)
   g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-in", NULL);
   g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-large", NULL);
   g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-fit", NULL);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "grid", NULL);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "grid-dialog", NULL);
   g_assert_cmpint (easel_window_get_zoom (win), ==, 100);
+  g_assert_false (easel_canvas_get_grid_on (easel_window_get_canvas (win)));
   gtk_window_destroy (GTK_WINDOW (win));
   write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
 }
@@ -2138,6 +2154,344 @@ as28_panels_start_as_settings_say (void)
   write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
 }
 
+/* REQ-0001-16 and REQ-0004-06: after a zoom the picture is shown where the scroll position says, not only the adjustment
+   values (found while testing the grid: the view stayed unscrolled until the next layout). */
+static void
+as13_offset_is_displayed (void)
+{
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  GtkWidget *scroller;
+  GtkAdjustment *h, *v;
+  graphene_rect_t r;
+  const char *actions[] = { "zoom-in", "zoom-in", "zoom-out", "zoom-large", "zoom-normal", "zoom-fit", "zoom-large" };
+
+  write_settings ("[new-picture]\nwidth=2000\nheight=2000\n");
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  scroller = gtk_widget_get_ancestor (GTK_WIDGET (canvas), GTK_TYPE_SCROLLED_WINDOW);
+  h = gtk_scrolled_window_get_hadjustment (GTK_SCROLLED_WINDOW (scroller));
+  v = gtk_scrolled_window_get_vadjustment (GTK_SCROLLED_WINDOW (scroller));
+  wait_for_layout (win);
+  gtk_adjustment_set_value (h, 500);
+  gtk_adjustment_set_value (v, 400);
+  wait_for_layout (win);
+
+  for (guint i = 0; i < G_N_ELEMENTS (actions); i++)
+    {
+      g_action_group_activate_action (G_ACTION_GROUP (win), actions[i], NULL);
+      wait_for_layout (win);
+      g_assert_true (gtk_widget_compute_bounds (GTK_WIDGET (canvas), scroller, &r));
+      g_assert_cmpfloat_with_epsilon (r.origin.x, -gtk_adjustment_get_value (h), 1.0);   /* GTK places it at whole pixels */
+      g_assert_cmpfloat_with_epsilon (r.origin.y, -gtk_adjustment_get_value (v), 1.0);
+    }
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* ---- 0004: the pixel grid ---- */
+
+/* The window's pixels as drawn now (premultiplied 0xAARRGGBB), and the position of the canvas in them. */
+static uint32_t *
+render_pixels (EaselWindow *win, int *w, int *h, int *canvas_x, int *canvas_y)
+{
+  GtkWidget *widget = GTK_WIDGET (win);
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  g_autoptr (GdkPaintable) paintable = gtk_widget_paintable_new (widget);
+  GtkSnapshot *snapshot = gtk_snapshot_new ();
+  GskRenderNode *node;
+  g_autoptr (GdkTexture) texture = NULL;
+  graphene_rect_t r;
+  double scale = easel_canvas_get_scale (canvas);
+  uint32_t *px;
+
+  *w = gtk_widget_get_width (widget);
+  *h = gtk_widget_get_height (widget);
+  gdk_paintable_snapshot (paintable, snapshot, *w, *h);
+  node = gtk_snapshot_free_to_node (snapshot);
+  texture = gsk_renderer_render_texture (gtk_native_get_renderer (GTK_NATIVE (win)), node,
+                                         &GRAPHENE_RECT_INIT (0, 0, *w, *h));
+  gsk_render_node_unref (node);
+  *w = gdk_texture_get_width (texture);
+  *h = gdk_texture_get_height (texture);
+  px = g_malloc ((gsize) *w * (gsize) *h * 4);
+  gdk_texture_download (texture, (guchar *) px, (gsize) *w * 4);
+  g_assert_true (gtk_widget_compute_bounds (GTK_WIDGET (canvas), widget, &r));
+  *canvas_x = (int) (r.origin.x * scale);
+  *canvas_y = (int) (r.origin.y * scale);
+  return px;
+}
+
+/* REQ-0004-12: Show Grid and Ctrl+G toggle the grid; the lines show only while a cell is 4 device pixels wide; the grid
+   is not part of the picture, not an edit. */
+static void
+as10_grid_toggle (void)
+{
+  g_autofree char *dir = g_dir_make_tmp ("easel-ui-XXXXXX", NULL);
+  g_autofree char *path = g_build_filename (dir, "a.png", NULL);
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  g_autoptr (GdkPixbuf) saved = NULL;
+
+  wait_for_layout (win);
+  g_assert_true (has_accel ("win.grid", GDK_KEY_g, GDK_CONTROL_MASK));
+  g_assert_false (panel_checked (win, "grid"));
+  g_assert_false (easel_canvas_get_grid_on (canvas));
+
+  /* On, but 1-pixel cells at 100 % are 1 device pixel: hidden, and the check item stays checked. */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "grid", NULL);
+  g_assert_true (panel_checked (win, "grid"));
+  g_assert_true (easel_canvas_get_grid_on (canvas));
+  g_assert_false (easel_canvas_grid_is_drawn (canvas));
+
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-large", NULL);       /* 400 % */
+  g_assert_true (easel_canvas_grid_is_drawn (canvas));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-out", NULL);         /* 300 % */
+  g_assert_false (easel_canvas_grid_is_drawn (canvas));
+  g_assert_true (panel_checked (win, "grid"));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-large", NULL);
+  g_assert_true (easel_canvas_grid_is_drawn (canvas));
+
+  /* Not an edit: no modified mark, nothing to undo; and not in the saved picture. */
+  g_assert_cmpstr (gtk_window_get_title (GTK_WINDOW (win)), ==, "Untitled – Easel");
+  g_assert_false (action_enabled (win, "undo"));
+  g_assert_true (easel_window_save_to (win, path));
+  saved = gdk_pixbuf_new_from_file (path, NULL);
+  g_assert_nonnull (saved);
+  g_assert_cmpint (gdk_pixbuf_get_width (saved), ==, 300);
+  g_assert_cmpint (gdk_pixbuf_get_pixels (saved)[0], ==, 0xFF);            /* the yellow background's red channel */
+  g_assert_cmpint (gdk_pixbuf_get_pixels (saved)[4 * 4 + 2], ==, 0);       /* blue 0: no grey line at x = 4 */
+  g_assert_cmpstr (gtk_window_get_title (GTK_WINDOW (win)), ==, "a.png – Easel");
+
+  /* Ctrl+G's action turns it off again. */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "grid", NULL);
+  g_assert_false (panel_checked (win, "grid"));
+  g_assert_false (easel_canvas_get_grid_on (canvas));
+  close_windows ();
+}
+
+/* The grid as it is drawn: 1 device pixel wide lines in grey at 50 %, every picture pixel at 400 %, none at 100 %. The
+   yellow background #FFFF00 under 50 % grey gives #BFBF40. The scrolled window shades the first few pixels along its
+   edges, so the samples are taken well inside the picture. (That the picture's own edges get no line is checked on the
+   geometry in core: easel_grid_lines.) */
+static void
+as10_grid_pixels (void)
+{
+  const uint32_t yellow = 0xFFFFFF00u, line = 0xFFBFBF40u;
+  EaselWindow *win;
+  GtkWidget *scroller;
+  int w, h, cx, cy, sv, sh, R, C;
+  g_autofree uint32_t *px = NULL;
+
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+  win = start_window ();
+  scroller = gtk_widget_get_ancestor (GTK_WIDGET (easel_window_get_canvas (win)), GTK_TYPE_SCROLLED_WINDOW);
+  wait_for_layout (win);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "grid", NULL);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-large", NULL);
+  wait_for_layout (win);
+  px = render_pixels (win, &w, &h, &cx, &cy);
+  /* The canvas can be scrolled (a 200-pixel picture at 400 % is 800 high): rows and columns are canvas device pixels,
+     taken at least 30 inside the visible part so the scrolled window's edge shading does not reach them. A line is at
+     every multiple of 4 (a cell of 1 picture pixel); R and C are such multiples. */
+  sv = (int) gtk_adjustment_get_value (gtk_scrolled_window_get_vadjustment (GTK_SCROLLED_WINDOW (scroller)));
+  sh = (int) gtk_adjustment_get_value (gtk_scrolled_window_get_hadjustment (GTK_SCROLLED_WINDOW (scroller)));
+  R = ((sv + 30) / 4 + 1) * 4;
+  C = ((sh + 30) / 4 + 1) * 4;
+#define PX(row, col) px[(gsize) (cy + (row)) * w + cx + (col)]
+
+  g_assert_cmphex (PX (R + 2, C), ==, line);              /* a vertical line, between two horizontal ones */
+  g_assert_cmphex (PX (R, C + 2), ==, line);              /* a horizontal line */
+  g_assert_cmphex (PX (R, C), ==, line);                  /* where they cross: one line color, not blended twice */
+  g_assert_cmphex (PX (R + 2, C + 8), ==, line);          /* two picture pixels further */
+  g_assert_cmphex (PX (R + 12, C + 20), ==, line);        /* a horizontal line three pixels further down */
+  /* Inside a cell: the picture. */
+  g_assert_cmphex (PX (R + 2, C + 1), ==, yellow);
+  g_assert_cmphex (PX (R + 2, C + 2), ==, yellow);
+  g_assert_cmphex (PX (R + 2, C + 3), ==, yellow);
+  g_assert_cmphex (PX (R + 1, C + 2), ==, yellow);
+  g_assert_cmphex (PX (R + 3, C + 3), ==, yellow);
+
+  /* At 100 % the lines are hidden. */
+  g_free (px);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-normal", NULL);
+  wait_for_layout (win);
+  px = render_pixels (win, &w, &h, &cx, &cy);
+  g_assert_cmphex (px[(gsize) (cy + 40) * w + cx + 40], ==, yellow);
+  g_assert_cmphex (px[(gsize) (cy + 42) * w + cx + 40], ==, yellow);
+  g_assert_cmphex (px[(gsize) (cy + 40) * w + cx + 42], ==, yellow);
+#undef PX
+  close_windows ();
+}
+
+/* REQ-0004-15: the grid starts as the settings file says; changes in the window never rewrite the file. */
+static void
+as14_grid_starts_as_settings_say (void)
+{
+  g_autofree char *path = easel_settings_file_path ();
+  g_autofree char *before = NULL, *after = NULL;
+  EaselWindow *win;
+  EaselCanvas *canvas;
+
+  write_settings ("[new-picture]\nwidth=300\nheight=200\n\n[view]\ngrid=on\ngrid-size=8\ngrid-axonometric=on\n");
+  g_assert_true (g_file_get_contents (path, &before, NULL, NULL));
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  g_assert_true (easel_canvas_get_grid_on (canvas));
+  g_assert_cmpint (easel_canvas_get_grid_cell (canvas), ==, 8);
+  g_assert_true (easel_canvas_get_grid_axonometric (canvas));
+  g_assert_true (panel_checked (win, "grid"));
+
+  /* A change in the window lasts until quitting and leaves the file alone. */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "grid", NULL);
+  g_assert_false (easel_canvas_get_grid_on (canvas));
+  g_assert_cmpint (easel_canvas_get_grid_cell (canvas), ==, 8);        /* the toggle keeps the cell size and the style */
+  g_assert_true (easel_canvas_get_grid_axonometric (canvas));
+  g_assert_true (g_file_get_contents (path, &after, NULL, NULL));
+  g_assert_cmpstr (before, ==, after);
+  close_windows ();
+
+  /* Invalid values mean the defaults. */
+  write_settings ("[new-picture]\nwidth=300\nheight=200\n\n[view]\ngrid=maybe\ngrid-size=0\n");
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  g_assert_false (easel_canvas_get_grid_on (canvas));
+  g_assert_cmpint (easel_canvas_get_grid_cell (canvas), ==, 1);
+  g_assert_false (easel_canvas_get_grid_axonometric (canvas));
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* The first descendant of root that is of the given type. */
+static GtkWidget *
+find_of_type (GtkWidget *root, GType type)
+{
+  for (GtkWidget *child = gtk_widget_get_first_child (root); child; child = gtk_widget_get_next_sibling (child))
+    {
+      GtkWidget *found;
+
+      if (G_TYPE_CHECK_INSTANCE_TYPE (child, type))
+        return child;
+      found = find_of_type (child, type);
+      if (found != NULL)
+        return found;
+    }
+  return NULL;
+}
+
+/* The one open alert dialog of the window, or NULL. */
+static AdwAlertDialog *
+open_alert (EaselWindow *win)
+{
+  AdwDialog *dialog = NULL;
+
+  return count_alert_dialogs (GTK_WIDGET (win), &dialog) == 1 ? ADW_ALERT_DIALOG (dialog) : NULL;
+}
+
+/* REQ-0004-13: the Grid dialog. */
+static void
+as12_grid_dialog (void)
+{
+  static const char *bad[] = { "", "0", "abc", "1001", "-3", "1.5", "1 2", "99999999999999999999" };
+  static const char *good[] = { "1000", " 16 ", "007", "1" };
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  AdwAlertDialog *dialog;
+  GtkEditable *entry;
+  GtkCheckButton *axon;
+
+  wait_for_layout (win);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "grid-dialog", NULL);
+  wait_for_dialogs (win, 1);
+  dialog = open_alert (win);
+  g_assert_nonnull (dialog);
+  g_assert_cmpstr (adw_alert_dialog_get_heading (dialog), ==, "Grid");
+  entry = GTK_EDITABLE (find_of_type (GTK_WIDGET (dialog), ADW_TYPE_ENTRY_ROW));
+  axon = GTK_CHECK_BUTTON (find_of_type (GTK_WIDGET (dialog), GTK_TYPE_CHECK_BUTTON));
+  g_assert_nonnull (entry);
+  g_assert_nonnull (axon);
+  g_assert_cmpstr (gtk_check_button_get_label (axon), ==, "Axonometric");
+  g_assert_cmpstr (gtk_editable_get_text (entry), ==, "1");
+  g_assert_false (gtk_check_button_get_active (axon));
+  g_assert_cmpstr (adw_alert_dialog_get_default_response (dialog), ==, "apply");
+  g_assert_cmpstr (adw_alert_dialog_get_close_response (dialog), ==, "cancel");
+  g_assert_true (adw_alert_dialog_get_response_enabled (dialog, "apply"));
+
+  /* The same action again, or the other dialog, does not open a second one. */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "grid-dialog", NULL);
+  wait_for_layout (win);
+  g_assert_nonnull (open_alert (win));
+
+  /* Apply is insensitive while the cell size is not a whole number from 1 to 1000. */
+  for (guint i = 0; i < G_N_ELEMENTS (bad); i++)
+    {
+      gtk_editable_set_text (entry, bad[i]);
+      g_assert_false (adw_alert_dialog_get_response_enabled (dialog, "apply"));
+    }
+  for (guint i = 0; i < G_N_ELEMENTS (good); i++)
+    {
+      gtk_editable_set_text (entry, good[i]);
+      g_assert_true (adw_alert_dialog_get_response_enabled (dialog, "apply"));
+    }
+
+  /* Esc (the close response) changes nothing. */
+  gtk_editable_set_text (entry, "20");
+  gtk_check_button_set_active (axon, TRUE);
+  adw_dialog_close (ADW_DIALOG (dialog));
+  wait_for_dialogs (win, 0);
+  g_assert_cmpint (easel_canvas_get_grid_cell (canvas), ==, 1);
+  g_assert_false (easel_canvas_get_grid_axonometric (canvas));
+
+  /* Apply sets the cell size and the style, and never switches the grid on. */
+  g_assert_false (panel_checked (win, "grid"));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "grid-dialog", NULL);
+  wait_for_dialogs (win, 1);
+  dialog = open_alert (win);
+  entry = GTK_EDITABLE (find_of_type (GTK_WIDGET (dialog), ADW_TYPE_ENTRY_ROW));
+  axon = GTK_CHECK_BUTTON (find_of_type (GTK_WIDGET (dialog), GTK_TYPE_CHECK_BUTTON));
+  gtk_editable_set_text (entry, " 8 ");
+  gtk_check_button_set_active (axon, TRUE);
+  g_signal_emit_by_name (dialog, "response", "apply");
+  adw_dialog_close (ADW_DIALOG (dialog));
+  wait_for_dialogs (win, 0);
+  g_assert_cmpint (easel_canvas_get_grid_cell (canvas), ==, 8);
+  g_assert_true (easel_canvas_get_grid_axonometric (canvas));
+  g_assert_false (easel_canvas_get_grid_on (canvas));
+  g_assert_false (panel_checked (win, "grid"));
+
+  /* The dialog starts with what is set; Enter in the field applies a valid value and ignores an invalid one. */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "grid-dialog", NULL);
+  wait_for_dialogs (win, 1);
+  dialog = open_alert (win);
+  entry = GTK_EDITABLE (find_of_type (GTK_WIDGET (dialog), ADW_TYPE_ENTRY_ROW));
+  axon = GTK_CHECK_BUTTON (find_of_type (GTK_WIDGET (dialog), GTK_TYPE_CHECK_BUTTON));
+  g_assert_cmpstr (gtk_editable_get_text (entry), ==, "8");
+  g_assert_true (gtk_check_button_get_active (axon));
+  gtk_editable_set_text (entry, "abc");
+  g_signal_emit_by_name (entry, "entry-activated");
+  wait_for_layout (win);
+  g_assert_nonnull (open_alert (win));                       /* still open, nothing applied */
+  g_assert_cmpint (easel_canvas_get_grid_cell (canvas), ==, 8);
+  gtk_editable_set_text (entry, "12");
+  g_signal_emit_by_name (entry, "entry-activated");
+  wait_for_dialogs (win, 0);
+  g_assert_cmpint (easel_canvas_get_grid_cell (canvas), ==, 12);
+
+  /* Applying with the grid on keeps it on. */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "grid", NULL);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "grid-dialog", NULL);
+  wait_for_dialogs (win, 1);
+  dialog = open_alert (win);
+  entry = GTK_EDITABLE (find_of_type (GTK_WIDGET (dialog), ADW_TYPE_ENTRY_ROW));
+  gtk_editable_set_text (entry, "4");
+  g_signal_emit_by_name (dialog, "response", "apply");
+  adw_dialog_close (ADW_DIALOG (dialog));
+  wait_for_dialogs (win, 0);
+  g_assert_true (easel_canvas_get_grid_on (canvas));
+  g_assert_cmpint (easel_canvas_get_grid_cell (canvas), ==, 4);
+  close_windows ();
+}
+
 static void
 as35_input_ignored_before_picture (void)
 {
@@ -2227,6 +2581,11 @@ main (int argc, char **argv)
   g_test_add_func ("/0004/as8_status_before_picture", as8_status_before_picture);
   g_test_add_func ("/0004/as8_status_writes_only_on_change", as8_status_writes_only_on_change);
   g_test_add_func ("/0004/as9_status_bar_does_not_force_width", as9_status_bar_does_not_force_width);
+  g_test_add_func ("/0001/as13_offset_is_displayed", as13_offset_is_displayed);
+  g_test_add_func ("/0004/as10_grid_toggle", as10_grid_toggle);
+  g_test_add_func ("/0004/as10_grid_pixels", as10_grid_pixels);
+  g_test_add_func ("/0004/as12_grid_dialog", as12_grid_dialog);
+  g_test_add_func ("/0004/as14_grid_starts_as_settings_say", as14_grid_starts_as_settings_say);
   g_test_add_func ("/0004/as28_panel_toggles", as28_panel_toggles);
   g_test_add_func ("/0004/as28_panels_start_as_settings_say", as28_panels_start_as_settings_say);
   g_test_add_func ("/0004/as7_pinch_in_window", as7_pinch_in_window);

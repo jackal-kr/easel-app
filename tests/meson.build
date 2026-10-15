@@ -1,4 +1,4 @@
-foreach name : ['history', 'image', 'number', 'palette', 'savename', 'settings', 'stroke', 'view']
+foreach name : ['grid', 'history', 'image', 'number', 'palette', 'savename', 'settings', 'stroke', 'view']
   test('core-' + name,
     executable('test-' + name, 'core/test-' + name + '.c', dependencies: easel_core_dep),
     suite: 'core',
