@@ -1,13 +1,14 @@
-foreach name : ['grid', 'history', 'image', 'number', 'palette', 'resize', 'savename', 'settings', 'stroke', 'view']
+foreach name : ['format', 'grid', 'history', 'image', 'number', 'palette', 'resize', 'settings', 'stroke', 'view']
   test('core-' + name,
     executable('test-' + name, 'core/test-' + name + '.c', dependencies: easel_core_dep),
     suite: 'core',
   )
 endforeach
 
-foreach name : ['palette-file', 'png', 'settings-file']
+foreach name : ['palette-file', 'picture-file', 'png', 'settings-file']
   test('io-' + name,
     executable('test-' + name, 'io/test-' + name + '.c', dependencies: easel_io_dep),
+    env: {'EASEL_TEST_DATA': meson.current_source_dir() / 'data'},
     suite: 'io',
   )
 endforeach
@@ -32,3 +33,5 @@ benchmark('perf-0002', executable('perf-0002', 'perf/perf-0002.c', dependencies:
   timeout: 120)
 benchmark('perf-0004', executable('perf-0004', 'perf/perf-0004.c', dependencies: easel_ui_dep), env: perf_env,
   timeout: 180)
+benchmark('perf-0005', executable('perf-0005', 'perf/perf-0005.c', dependencies: easel_ui_dep), env: perf_env,
+  timeout: 300)

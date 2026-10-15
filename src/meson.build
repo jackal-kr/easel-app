@@ -3,13 +3,13 @@ libm = meson.get_compiler('c').find_library('m', required: false)
 # Core: libc only (no GLib, GTK or Cairo), so it is built without those dependencies.
 easel_core_inc = include_directories('core')
 easel_core = static_library('easel-core',
+  'core/format.c',
   'core/history.c',
   'core/grid.c',
   'core/image.c',
   'core/palette.c',
   'core/ini.c',
   'core/number.c',
-  'core/savename.c',
   'core/settings.c',
   'core/stroke.c',
   'core/view.c',
@@ -25,7 +25,7 @@ pixbuf_dep = dependency('gdk-pixbuf-2.0')
 easel_io_inc = include_directories('io')
 easel_io = static_library('easel-io',
   'io/palette-file.c',
-  'io/png.c',
+  'io/picture-file.c',
   'io/settings-file.c',
   include_directories: easel_io_inc,
   dependencies: [easel_core_dep, gio_dep, pixbuf_dep],

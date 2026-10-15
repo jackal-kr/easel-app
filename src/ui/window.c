@@ -10,8 +10,8 @@
 #include "canvas.h"
 #include "palette-bar.h"
 #include "palette-file.h"
-#include "png.h"
-#include "savename.h"
+#include "picture-file.h"
+#include "format.h"
 #include "settings-file.h"
 #include "view.h"
 #include "window.h"
@@ -188,7 +188,7 @@ easel_window_save_to (EaselWindow *self, const char *path)
 
   if (self->picture == NULL)
     return FALSE;
-  if (!easel_png_save (self->picture, path, &error))
+  if (!easel_picture_save (self->picture, path, EASEL_FORMAT_PNG, 90, &error))
     {
       g_autofree char *name = g_path_get_basename (path);
       g_autofree char *heading = g_strdup_printf ("Could Not Save “%s”", name);
@@ -261,6 +261,7 @@ on_save_dialog_done (GtkFileDialog *dialog, GAsyncResult *result, SaveRequest *r
   g_autoptr (GFile) file = gtk_file_dialog_save_finish (dialog, result, NULL);
   g_autofree char *chosen = file ? g_file_get_path (file) : NULL;
   char *fixed = NULL;
+  EaselFormat format;
 
   req->self->save_dialog_open = FALSE;
 
@@ -271,19 +272,28 @@ on_save_dialog_done (GtkFileDialog *dialog, GAsyncResult *result, SaveRequest *r
       return;
     }
 
-  switch (easel_savename_fix (chosen, &fixed))
+  /* Only PNG can be saved until T011 of 0005 brings the other formats. */
+  switch (easel_format_fix_name (chosen, &fixed, &format))
     {
-    case EASEL_SAVENAME_NOT_PNG:
+    case EASEL_FORMAT_UNKNOWN_EXTENSION:
       show_save_error (req->self, "Only PNG Can Be Saved",
                        "This version of Easel saves pictures as PNG only. Choose a name ending in .png.");
       save_request_finish (req, FALSE);
       return;
-    case EASEL_SAVENAME_NO_MEMORY:
+    case EASEL_FORMAT_NO_MEMORY:
       g_critical ("Out of memory choosing a file name");
       save_request_finish (req, FALSE);
       return;
-    case EASEL_SAVENAME_OK:
+    case EASEL_FORMAT_OK:
       break;
+    }
+  if (format != EASEL_FORMAT_PNG)
+    {
+      free (fixed);
+      show_save_error (req->self, "Only PNG Can Be Saved",
+                       "This version of Easel saves pictures as PNG only. Choose a name ending in .png.");
+      save_request_finish (req, FALSE);
+      return;
     }
 
   req->path = g_strdup (fixed);

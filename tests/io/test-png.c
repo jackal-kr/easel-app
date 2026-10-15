@@ -5,7 +5,7 @@
 #include <glib/gstdio.h>
 #include <unistd.h>
 
-#include "png.h"
+#include "picture-file.h"
 
 /* Decodes path back into straight-alpha 0xAARRGGBB, as the saved file holds it. */
 static guint32
@@ -52,7 +52,7 @@ as24_png_round_trip (void)
   easel_image_set (img, 5, 7, 0x80FF8040u);
   easel_image_set (img, 6, 7, 0x01020304u);
 
-  g_assert_true (easel_png_save (img, path, &error));
+  g_assert_true (easel_picture_save (img, path, EASEL_FORMAT_PNG, 90, &error));
   g_assert_no_error (error);
   assert_file_equals_image (path, img);
   easel_image_free (img);
@@ -66,7 +66,7 @@ as27_transparent_round_trip (void)
   EaselImage *img = easel_image_new (10, 10, 0x00000000u);
 
   easel_image_set (img, 4, 4, 0xFF000000u);
-  g_assert_true (easel_png_save (img, path, &error));
+  g_assert_true (easel_picture_save (img, path, EASEL_FORMAT_PNG, 90, &error));
   assert_file_equals_image (path, img);
   easel_image_free (img);
 }
@@ -89,7 +89,7 @@ as29_failed_save_keeps_old_file (void)
   g_assert_cmpint (g_chmod (dir, 0500), ==, 0);
 
   img = easel_image_new (4, 4, 0xFF000000u);
-  g_assert_false (easel_png_save (img, path, &error));
+  g_assert_false (easel_picture_save (img, path, EASEL_FORMAT_PNG, 90, &error));
   g_assert_nonnull (error);
   g_assert_nonnull (error->message);
   easel_image_free (img);

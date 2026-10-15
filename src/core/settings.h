@@ -16,6 +16,9 @@ enum
   EASEL_GRID_SIZE_MIN = 1,
   EASEL_GRID_SIZE_MAX = 1000,
   EASEL_GRID_SIZE_DEFAULT = 1,
+  EASEL_JPEG_QUALITY_MIN = 1,
+  EASEL_JPEG_QUALITY_MAX = 100,
+  EASEL_JPEG_QUALITY_DEFAULT = 90,
 };
 
 typedef struct
@@ -30,6 +33,7 @@ typedef struct
   bool show_toolbox;      /* the panels start shown (REQ-0004-27) */
   bool show_colorbox;
   bool show_statusbar;
+  int jpeg_quality;       /* EASEL_JPEG_QUALITY_MIN..EASEL_JPEG_QUALITY_MAX (REQ-0005-14) */
 } EaselSettings;
 
 /* What a newly created settings file holds (REQ-0001-04). */

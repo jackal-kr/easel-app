@@ -208,6 +208,33 @@ as14_view_settings (void)
   CHECK (!s.grid && s.show_toolbox);
 }
 
+/* 0005 AS-16: [save] jpeg-quality is a whole number from 1 to 100, else 90, silently. */
+static void
+as16_jpeg_quality_setting (void)
+{
+  CHECK (parse ("").jpeg_quality == 90);
+  CHECK (parse ("[save]\n").jpeg_quality == 90);
+  CHECK (parse (easel_settings_default_text).jpeg_quality == 90);
+  CHECK (parse ("[save]\njpeg-quality=30\n").jpeg_quality == 30);
+  CHECK (parse ("[save]\njpeg-quality=1\n").jpeg_quality == 1);
+  CHECK (parse ("[save]\njpeg-quality=100\n").jpeg_quality == 100);
+  CHECK (parse ("[save]\njpeg-quality = 075 \n").jpeg_quality == 75);
+  CHECK (parse ("[save]\njpeg-quality=0\n").jpeg_quality == 90);
+  CHECK (parse ("[save]\njpeg-quality=101\n").jpeg_quality == 90);
+  CHECK (parse ("[save]\njpeg-quality=-5\n").jpeg_quality == 90);
+  CHECK (parse ("[save]\njpeg-quality=abc\n").jpeg_quality == 90);
+  CHECK (parse ("[save]\njpeg-quality=5.0\n").jpeg_quality == 90);
+  CHECK (parse ("[save]\njpeg-quality=\n").jpeg_quality == 90);
+  CHECK (parse ("[save]\njpeg-quality=99999999999999999999\n").jpeg_quality == 90);
+  /* The same syntax as the other keys: the last repeat wins, an invalid repeat resets, other sections do not count. */
+  CHECK (parse ("[save]\njpeg-quality=30\njpeg-quality=40\n").jpeg_quality == 40);
+  CHECK (parse ("[save]\njpeg-quality=30\njpeg-quality=bad\n").jpeg_quality == 90);
+  CHECK (parse ("[view]\njpeg-quality=30\n").jpeg_quality == 90);
+  CHECK (parse ("jpeg-quality=30\n").jpeg_quality == 90);
+  CHECK (parse ("[save]\njpeg-quality=30\nhello\n").jpeg_quality == 90);   /* an unparseable file: every default */
+  CHECK (parse ("[save]\njpeg-quality=30\n[new-picture]\nwidth=300\n").width == 300);
+}
+
 static void
 as36_syntax_rules (void)
 {
@@ -251,6 +278,7 @@ main (void)
   RUN (as5_invalid_value_falls_back);
   RUN (as18_budget_setting);
   RUN (as14_view_settings);
+  RUN (as16_jpeg_quality_setting);
   RUN (as6_garbage_is_all_defaults);
   RUN (as7_size_limits);
   RUN (as36_syntax_rules);

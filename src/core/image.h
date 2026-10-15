@@ -48,3 +48,16 @@ void easel_image_set (EaselImage *img, int x, int y, uint32_t color);
 
 /* Copies the area changed since the last call into *r and clears it; false if nothing changed. */
 bool easel_image_take_dirty (EaselImage *img, EaselRect *r);
+
+/* Flattens n pixels on white for the formats without transparency (REQ-0005-11): every channel c of a pixel with alpha a
+   becomes round ((c * a + 255 * (255 - a)) / 255); rgb gets three bytes per pixel, red first. The only copy of the
+   formula. */
+void easel_flatten_on_white (const uint32_t *src, uint8_t *rgb, int n);
+
+/* Makes a picture from decoded bytes in one pass, upright as the EXIF orientation says (REQ-0005-06): src holds h rows
+   of w pixels, stride bytes apart, each 3 bytes (red, green, blue: opaque) or 4 (with alpha). orientation is the EXIF
+   value 1 to 8 (1 as stored, 2 mirrored left to right, 3 turned 180 degrees, 4 mirrored top to bottom, 5 transposed,
+   6 turned 90 degrees clockwise, 7 transversed, 8 turned 90 degrees counter-clockwise); anything else counts as 1. For
+   5 to 8 the picture is h wide and w high. A fully transparent pixel becomes 0x00000000. NULL if the size is not
+   positive, channels is not 3 or 4, or memory runs out; w and h are the stored size. */
+EaselImage *easel_image_from_bytes (const uint8_t *src, int w, int h, int stride, int channels, int orientation);

@@ -89,19 +89,39 @@ the main thread (P5): the window shows the busy cursor and ignores input until t
 already describes.
 
 ### How formats are detected, and a missing loader (owner's requirement)
-- **Open, by content.** `gdk_pixbuf_get_file_info` reads only the file's header and returns its format and size. The
-  format's name must be one of `png`, `jpeg`, `bmp`, `tiff`, `webp`, `gif`; anything else, including formats the system
-  could read (SVG, AVIF, ICO), is "This is not a picture the app can open." (REQ-0005-06 lists the six). The size is
-  checked here, before decoding: `max (w, h) > 10000` refuses (REQ-0005-17); rotation only swaps w and h, so the check is
-  the same before and after orientation. Then the file is decoded and converted in one pass by the core (see "Memory
-  when opening"): upright as the `orientation` option says (probed: the JPEG loader reports `orientation=6` and does not
-  apply it by itself), straight 8-bit RGBA, JPEG and BMP with alpha 255, fully transparent pixels as #00000000.
+- **Open, by content, with a header sniffer of our own (decided with the owner, 2026-10-15).** The first draft of this
+  Plan used `gdk_pixbuf_get_file_info` for the format and the size. Measured on gdk-pixbuf 2.44.5, it is not header-only:
+  glycin decodes the whole picture inside the call (a 10001 x 10001 PNG took 113 ms and tried to allocate 300 MB; a
+  6000 x 6000 one tried 108 MB), and `GdkPixbufLoader` reports "size-prepared" only after all the data is fed. So io has
+  a **sniffer**, `easel_picture_sniff`, that reads only the first bytes of the file (a few hundred; a JPEG's segment
+  headers are skipped with `fseek`) and answers the format name and the stored size, or "none":
+  - PNG: signature, then the IHDR chunk's width and height; GIF: `GIF87a` or `GIF89a`, then the screen size; BMP: `BM`,
+    then the width and height of the DIB header (the 12-byte OS/2 form and the 40-byte and longer forms); JPEG: `FFD8`,
+    then the segments up to the first start-of-frame marker (a size marker before the start of scan, or none); TIFF: the
+    byte-order mark, then the width and height entries of the first directory; WebP: `RIFF`, `WEBP`, then the size in a
+    `VP8 `, `VP8L` or `VP8X` chunk.
+  - What the sniffer answers decides three things before any decoding: "none" (empty, truncated before the size, no
+    size marker, other content, a format outside the six, a format hidden by the test hook) is "This is not a picture
+    the app can open."; `max (w, h) > 10000` is refused (REQ-0005-17), and since turning a picture by 90 degrees only
+    swaps its sides the check is the same before and after the orientation; anything else goes on to the memory
+    pre-check and the decoder.
+  - **What it protects against.** Honest files: a picture that is too big, a file of another kind, a cut-off download.
+    It is not a defence against a hostile file. A file whose header says 9000 x 9000 and whose data says otherwise
+    passes the sniffer and is decided by the decoder, which runs in glycin's sandbox; the decoder's own errors become
+    "not a picture". The app promises no more than that.
+  - After the sniffer the file is decoded and converted in one pass by the core (see "Memory when opening"): upright as
+    the `orientation` option says (probed: the JPEG loader reports `orientation=6` and does not apply it by itself),
+    straight 8-bit RGBA, JPEG and BMP with alpha 255, fully transparent pixels as #00000000.
 - **The error bodies.** Not readable (g_file_test or the read fails: missing, permission, a folder) gives "cannot be
-  read"; no format, an unknown one, or a decode error gives "not a picture"; a size over 10000 gives "bigger than";
-  `GDK_PIXBUF_ERROR_INSUFFICIENT_MEMORY` or a failed allocation of the picture gives the memory body.
+  read"; "none" from the sniffer, or a decode error, gives "not a picture"; a size over 10000 gives "bigger than";
+  a failed memory pre-check, `GDK_PIXBUF_ERROR_INSUFFICIENT_MEMORY` or a failed allocation of the picture gives the
+  memory body.
 - **Save, by name.** The core maps the extension to a format (REQ-0005-10) and io calls `gdk_pixbuf_save_to_buffer`
-  with that format's name, JPEG with `quality`, WebP with `lossless=TRUE` (probed: exact round trip), then the atomic
-  write that PNG uses since 0001. JPEG and BMP get an RGB pixbuf made from the flattened pixels.
+  with that format's name, JPEG with `quality`, WebP with `lossless=TRUE`, then the atomic write that PNG uses since
+  0001. JPEG and BMP get an RGB pixbuf made from the flattened pixels. Measured on this build (2.44.5 with glycin): the
+  WebP saver ignores its options and is always lossless (the same 16580 bytes for every option on a noisy 64 x 64
+  picture), so the option is kept for builds whose saver honours it, and what guards REQ-0005-11 is the exact round-trip
+  test on noise, not the option.
 - **A missing loader or saver, for example WebP.** The six formats are what the dev machine and the Flatpak runtime
   (0017) ship, so a missing one is a broken installation; the app still behaves sensibly and adds no strings:
   - the Open dialog's filter lists the six by MIME type whatever is installed; a WebP file then opens with "This is not a
@@ -110,7 +130,7 @@ already describes.
     what is installed: `a.webp` is still a WebP name, so it does not get the "Cannot Save This Kind of File" error, whose
     body lists WebP and would contradict itself;
   - the save then fails in the encoder and shows the save error of REQ-0001-31: "Could Not Save “a.webp”" with
-    gdk-pixbuf's own reason ("This build of gdk-pixbuf does not support saving the image format: webp"); nothing is
+    gdk-pixbuf's own reason ("Image type “webp” is not supported", measured); nothing is
     written, an existing file keeps its content, and the picture keeps its file, title and modified state.
   - **How the tests simulate it.** Probed: hiding the loader module (`GDK_PIXBUF_MODULE_FILE` pointing at an empty
     cache) does not remove WebP here, because gdk-pixbuf 2.44 has it built in. So io has one test hook,
@@ -147,6 +167,13 @@ already describes.
   the three coexist only during the conversion pass, and afterwards there is one. At start-up or from the command line
   there is no old picture: two. The canvas adds none (its tiles read the picture's own memory, 0004), and the undo
   history of the new picture starts empty.
+- **The memory pre-check stays (measured).** glycin is Rust code in our own process, and Rust aborts the process when an
+  allocation fails: under a limited address space the decoder's request for 108 MB ended the test program, with no error
+  to catch. So before decoding, io reserves what the decoder's pixels and the picture need at most (two buffers of 4
+  bytes per pixel, from the size the sniffer found) and lets them go again; if it cannot, the result is the memory error
+  and the decoder is never asked. This works for a limited address space (`ulimit -v`, containers) and is how the tests
+  force the case; it cannot foresee that the kernel will run out of memory later. The protection is for honest
+  files and ordinary limits, not hostile ones.
 - **Unknown, measured:** glycin decodes in a separate sandboxed process and passes the pixels through shared memory;
   whether gdk-pixbuf copies them once more is not documented. The benchmark records the peak resident memory
   (VmHWM, reset before each open) next to each time, for 1920 × 1080 and 8000 × 8000 opened alone and on top of a
@@ -175,6 +202,34 @@ Checked by ui `busy_cursor_before_decoding`: right after `easel_window_open_file
 one, the window says it is loading and its cursor is the busy one; a test hook records the cursor at the moment the
 decode starts and it must be the busy one; after the main loop runs, the new picture is there and the cursor is the
 tool's again. Manual M3 confirms on screen with the 8000 × 8000 file that the busy cursor appears at once.
+
+### Measurements (T006, 2026-10-15)
+Benchmark `perf-0005` (`meson test -C build --benchmark --verbose perf-0005`), the default renderer (GskVulkanRenderer),
+AMD Ryzen AI 7 PRO 350 with Radeon 860M, 60 Hz display, window visible, medians of three runs. The picture is a gradient
+with noise (a PNG that is not squeezed to nothing). The window's own Open action does not exist yet, so the benchmark does
+what it will do, in the same order, on the window's canvas: open the file, give the picture to the canvas, wait for the
+first painted frame. T009 repeats it end to end.
+
+| Open a PNG of | Decode | Convert | Request to picture in memory | To first painted frame | Budget |
+|---|---|---|---|---|---|
+| 1920 x 1080 (8 MB as pixels) | 23 ms | 2 ms | 26 ms | **28 ms** | 250 ms |
+| 8000 x 8000 (244 MB as pixels) | 732 ms | 105 ms | 843 ms | **846 ms** | 2000 ms |
+
+| Peak resident memory (VmHWM) | Measured | Baseline of the running app | Measured minus baseline | Expected |
+|---|---|---|---|---|
+| 1920 x 1080, alone / on top of a same-size picture | 138 / 138 MB | 138 MB | 0 / 0 (below what the baseline hides) | 16 / 24 MB |
+| 8000 x 8000, alone | 618 MB | 138 MB | 480 MB | 488 MB (2 copies) |
+| 8000 x 8000, on top of a same-size picture | 862 MB | 138 MB | 724 MB | 732 MB (3 copies) |
+
+Reading: both budgets are met by a wide margin (8000 x 8000 opens in 0.85 s, a third of it decoding in glycin's loader
+and one eighth converting). The peak is what the Plan says, two copies alone and three on top, so there is **no hidden
+third copy**: the decoder's pixels are the only extra. The 138 MB baseline is the window, GTK and the renderer. Memory
+the glycin sandbox uses for its own work is in its own process and not in these figures.
+
+Decision for "without freezing" (the Plan's rule: about 1 s or less at 8000 x 8000 stays synchronous): **0.85 s is
+within it, so loading stays synchronous with the busy cursor; no thread, no ADR.** The 0.85 s freeze is the cost of the
+busy cursor design (REQ-0005-02); the owner judges it in M3 on the real 8000 x 8000 file. The numbers for drawing, undo
+and redo after an open stay as in 0004 (the picture is the same object), and T009 records them end to end.
 
 ### Files
 - **New:** `src/core/format.{c,h}` (name to format, replacing `savename`), `src/io/picture-file.{c,h}` (open and save
@@ -241,7 +296,7 @@ named `a.png`, an empty file, an SVG. Pillow is used only to make test files, ne
 | 2 | ui `as2_new_picture` |
 | 3 | ui `as3_new_and_open_prompt` (incl. Discard then a cancelled or failed open keeps the picture) |
 | 4 | manual M2 (the system dialog cannot be driven headless) |
-| 5 | io `as5_open_formats` (the fixtures; `a.dat`; text named `a.png`) |
+| 5 | io `as5_open_formats` (the fixtures; `a.dat`; text named `a.png`), io `sniff_sizes_match_decoder` |
 | 6 | ui `as6_open_replaces_picture` (title, 100 % at top-left checked by rendering the window, status size, Save) |
 | 7 | ui `as7_prompt_before_open_dialog` |
 | 8 | io `as8_open_errors` (failure path, automated; memory with RLIMIT_AS), ui `as8_open_error_dialog` |
@@ -255,7 +310,7 @@ named `a.png`, an empty file, an SVG. Pillow is used only to make test files, ne
 | 16 | core `as16_jpeg_quality_setting`, io `as16_save_section_in_new_file`, io `as16_quality_changes_size` |
 | 17 | io `as17_too_big_refused` (failure path, automated; also asserts it returns well under a second, so nothing was decoded), ui `as17_too_big_dialog` |
 | 18 | core `as18_orientation_pass` (the eight tags on a 3 x 2 buffer), io `as18_orientation` (all eight tags; the PNG saved from it has no orientation tag and reads upright with orientation ignored) + manual M3 (a real phone photo) |
-| - | io `missing_loader_is_not_a_picture`, io `missing_saver_reports_reason`, ui `missing_saver_error_dialog`, io `unknown_format_is_not_a_picture` (an SVG) |
+| - | io `sniff_refuses_broken_files` (truncated header, truncated data, empty file, a header that claims 10000 x 10000 or 40000 x 40000 in a tiny file, a JPEG with no size marker, a text file), io `missing_loader_is_not_a_picture`, io `missing_saver_reports_reason`, ui `missing_saver_error_dialog`, io `unknown_format_is_not_a_picture` (an SVG) |
 | - | ui `busy_cursor_before_decoding` + manual M3 |
 | - | perf `perf-0005` (T006: open 1920 x 1080 and 8000 x 8000 PNG to first frame, decode and conversion times, peak memory; numbers recorded here) + manual M3 |
 
@@ -270,7 +325,13 @@ Layering kept (format rules and flattening in core, gdk-pixbuf only in io, dialo
   M3 checks a real session. A failure shows up as "not a picture" for every file: the io tests would catch it here.
 - **Orientation in other loaders:** probed for JPEG only; the fixtures include the eight tags, so a loader that already
   rotates (and would rotate twice) fails `as18_orientation`.
-- **`gdk_pixbuf_get_file_info` on a 10001 x 10001 file** must not decode the pixels; `as17_too_big_refused` times it.
+- **The sniffer disagrees with the decoder** (a format variant whose header it does not read, such as a BigTIFF, or a
+  file whose real size differs from its header): the first is "not a picture" and the second is decided by the decoder;
+  io `sniff_sizes_match_decoder` checks every fixture, and M3 opens real files from the Pictures folder.
+- **Hostile input** is outside what this feature promises (see "How formats are detected"): the decoder is sandboxed by
+  glycin, but a file made to exhaust memory inside it aborts the app. A truncated file, an empty file, a header that
+  claims a huge size inside a tiny file, and a JPEG with no size marker have tests (io `as8_open_errors`,
+  `sniff_refuses_broken_files`).
 - **The file dialog** is the system's portal on GNOME; headless tests use `easel_window_open_file` and the existing
   `easel_window_save_to` instead, and the dialog itself is M2.
 - **Pillow-made fixtures** could differ from files real programs write; M3 opens real files from the Pictures folder.
@@ -283,12 +344,12 @@ B. Menus and New (T007, T008): M1.
 C. Open (T009, T010): M2 (the Open dialog), M3 (real photos, orientation, the 8000 × 8000 file, the busy cursor).
 D. Save and the edge rules (T011, T012): M4 (Save As and the system's replace confirmation).
 
-- [ ] T001 Core format names (REQ-0005-10; AS-9) - done when core `as9_format_by_name` passes (every name of AS-9 plus `report 2024.05.10`, case, dot and hidden-file rules), `savename` and its test are folded into `format` with no test dropped, and every 0001 test still passes
-- [ ] T002 Core flattening and the one-pass conversion with orientation (REQ-0005-06, REQ-0005-11; AS-10, AS-18) - done when core `as10_flatten_formula` (a = 0, 1, 127, 128, 254, 255) and `as18_orientation_pass` (eight tags on a 3 x 2 buffer, 3 and 4 channels, alpha 0 to #00000000) pass
-- [ ] T003 The `[save] jpeg-quality` setting (REQ-0005-14; AS-16) - done when core `as16_jpeg_quality_setting` and io `as16_save_section_in_new_file` pass and an existing file without `[save]` is not rewritten
-- [ ] T004 Fixtures and opening in io (REQ-0005-06, REQ-0005-09, REQ-0005-17; AS-5, AS-8, AS-17, AS-18) - done when `tests/data/make-fixtures.py` and its files are committed and io `as5_open_formats`, `as8_open_errors` (memory with RLIMIT_AS), `as17_too_big_refused` (timed), `as18_orientation`, `missing_loader_is_not_a_picture` and `unknown_format_is_not_a_picture` pass
-- [ ] T005 Saving every format in io (REQ-0005-10, REQ-0005-11, REQ-0005-14; AS-10, AS-16) - done when io `as10_round_trips`, `as10_failed_save_keeps_old_file` (from an existing PNG, JPEG and TIFF), `as16_quality_changes_size` and `missing_saver_reports_reason` pass, `png.{c,h}` is folded into `picture-file` with one atomic writer, and the 0001 save tests still pass
-- [ ] T006 Benchmark opening (budgets of the Plan; REQ-0005-07) - done when `perf-0005` records for 1920 x 1080 and 8000 x 8000 PNG, alone and on top of a same-size picture: time to the first painted frame, decode and conversion times, peak memory with the expected value beside it, and drawing, undo and redo afterwards; the numbers are in the Plan; check A decides (within budget: synchronous; over: stop for an ADR)
+- [x] T001 Core format names (REQ-0005-10; AS-9) - done when core `as9_format_by_name` passes (every name of AS-9 plus `report 2024.05.10`, case, dot and hidden-file rules), `savename` and its test are folded into `format` with no test dropped, and every 0001 test still passes
+- [x] T002 Core flattening and the one-pass conversion with orientation (REQ-0005-06, REQ-0005-11; AS-10, AS-18) - done when core `as10_flatten_formula` (a = 0, 1, 127, 128, 254, 255) and `as18_orientation_pass` (eight tags on a 3 x 2 buffer, 3 and 4 channels, alpha 0 to #00000000) pass
+- [x] T003 The `[save] jpeg-quality` setting (REQ-0005-14; AS-16) - done when core `as16_jpeg_quality_setting` and io `as16_save_section_in_new_file` pass and an existing file without `[save]` is not rewritten
+- [x] T004 Fixtures, the header sniffer and opening in io (REQ-0005-06, REQ-0005-09, REQ-0005-17; AS-5, AS-8, AS-17, AS-18) - done when `tests/data/make-fixtures.py` and its files are committed and io `as5_open_formats`, `as8_open_errors` (memory with RLIMIT_AS), `as17_too_big_refused` (timed), `as18_orientation`, `missing_loader_is_not_a_picture`, `unknown_format_is_not_a_picture`, `sniff_sizes_match_decoder` and `sniff_refuses_broken_files` pass
+- [x] T005 Saving every format in io (REQ-0005-10, REQ-0005-11, REQ-0005-14; AS-10, AS-16) - done when io `as10_round_trips`, `as10_failed_save_keeps_old_file` (from an existing PNG, JPEG and TIFF), `as16_quality_changes_size` and `missing_saver_reports_reason` pass, `png.{c,h}` is folded into `picture-file` with one atomic writer, and the 0001 save tests still pass
+- [x] T006 Benchmark opening (budgets of the Plan; REQ-0005-07) - done when `perf-0005` records for 1920 x 1080 and 8000 x 8000 PNG, alone and on top of a same-size picture: time to the first painted frame, decode and conversion times, peak memory with the expected value beside it, and drawing, undo and redo afterwards; the numbers are in the Plan; check A decides (within budget: synchronous; over: stop for an ADR)
 - [ ] T007 Open button, main menu, actions and their gating (REQ-0005-01, REQ-0005-02; AS-1, AS-15) - done when ui `as1_file_menu` passes, the actions do nothing before the picture exists and while any dialog is open (part of `as15_actions_ignored_and_stroke_ended`), and the 0001 to 0004 ui tests still pass
 - [ ] T008 New and the shared prompt (REQ-0005-03, REQ-0005-04, REQ-0005-16; AS-2, AS-3, AS-14) - done when ui `as2_new_picture`, the New part of `as3_new_and_open_prompt` and the New part of `as14_saved_state_across_open_and_save_as` pass, the quit prompt tests of 0001 still pass with the shared prompt, and manual M1 passes
 - [ ] T009 Open in the window: busy cursor, replacing the picture, errors, the Open dialog (REQ-0005-04, REQ-0005-05, REQ-0005-07, REQ-0005-08, REQ-0005-09, REQ-0005-16, REQ-0005-17; AS-3, AS-4, AS-6, AS-7, AS-8, AS-14, AS-17) - done when ui `busy_cursor_before_decoding`, `as6_open_replaces_picture` (100 % at the top-left checked by rendering), `as7_prompt_before_open_dialog`, `as8_open_error_dialog`, `as17_too_big_dialog`, the Open parts of `as3_new_and_open_prompt` and `as14_saved_state_across_open_and_save_as` pass, and manual M2 (Open dialog) passes

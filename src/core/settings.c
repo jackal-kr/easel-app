@@ -9,6 +9,7 @@
 #define SECTION "new-picture"
 #define SECTION_HISTORY "history"
 #define SECTION_VIEW "view"
+#define SECTION_SAVE "save"
 
 /* Digits only, 1..EASEL_SIZE_MAX, or auto. */
 static bool
@@ -74,7 +75,10 @@ const char easel_settings_default_text[] =
   "grid-axonometric=off\n"
   "toolbox=on\n"
   "colorbox=on\n"
-  "statusbar=on\n";
+  "statusbar=on\n"
+  "\n"
+  "[" SECTION_SAVE "]\n"
+  "jpeg-quality=90\n";
 
 void
 easel_settings_defaults (EaselSettings *s)
@@ -89,6 +93,7 @@ easel_settings_defaults (EaselSettings *s)
   s->show_toolbox = true;
   s->show_colorbox = true;
   s->show_statusbar = true;
+  s->jpeg_quality = EASEL_JPEG_QUALITY_DEFAULT;
 }
 
 /* on or off, in any case. */
@@ -122,6 +127,17 @@ apply (EaselSpan section, EaselSpan key, EaselSpan value, void *data)
   else if (easel_span_is (section, SECTION_HISTORY) && easel_span_is (key, "memory")
            && !parse_undo_mb (value, &s->undo_budget_mb))
     s->undo_budget_mb = EASEL_UNDO_MB_DEFAULT;
+  else if (easel_span_is (section, SECTION_SAVE) && easel_span_is (key, "jpeg-quality"))
+    {
+      char text[16] = "";
+
+      if (value.n < sizeof text)
+        memcpy (text, value.p, value.n);
+      else
+        text[0] = 'x';   /* too long to be a number in range */
+      if (!easel_parse_field (text, EASEL_JPEG_QUALITY_MIN, EASEL_JPEG_QUALITY_MAX, &s->jpeg_quality))
+        s->jpeg_quality = EASEL_JPEG_QUALITY_DEFAULT;
+    }
   else if (easel_span_is (section, SECTION_VIEW))
     {
       /* easel_parse_field wants a NUL-terminated text; a number in range is short, so copy it. */

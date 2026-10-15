@@ -43,6 +43,21 @@ as14_created_file_has_view (void)
                                                 "colorbox=on\nstatusbar=on\n"));
 }
 
+/* REQ-0005-14: a created file also holds [save] with the JPEG quality. */
+static void
+as16_save_section_in_new_file (void)
+{
+  g_autofree char *dir = g_dir_make_tmp ("easel-XXXXXX", NULL);
+  g_autofree char *path = g_build_filename (dir, "settings.ini", NULL);
+  g_autofree char *contents = NULL;
+  EaselSettings s;
+
+  easel_settings_file_load (path, &s);
+  g_assert_cmpint (s.jpeg_quality, ==, 90);
+  g_assert_true (g_file_get_contents (path, &contents, NULL, NULL));
+  g_assert_nonnull (g_strstr_len (contents, -1, "[save]\njpeg-quality=90\n"));
+}
+
 /* REQ-0004-15: an existing file without [view] is never rewritten, and the defaults apply. */
 static void
 as14_existing_file_untouched (void)
@@ -60,6 +75,7 @@ as14_existing_file_untouched (void)
   g_assert_cmpint (s.undo_budget_mb, ==, 64);
   g_assert_false (s.grid);
   g_assert_cmpint (s.grid_size, ==, 1);
+  g_assert_cmpint (s.jpeg_quality, ==, 90);
   g_assert_true (s.show_toolbox && s.show_colorbox && s.show_statusbar);
   g_assert_true (g_file_get_contents (path, &after, &after_len, NULL));
   g_assert_cmpmem (after, after_len, old, sizeof old - 1);
@@ -187,6 +203,7 @@ main (int argc, char **argv)
   g_test_add_func ("/0001/as4_creates_default_file", as4_creates_default_file);
   g_test_add_func ("/0004/as14_created_file_has_view", as14_created_file_has_view);
   g_test_add_func ("/0004/as14_existing_file_untouched", as14_existing_file_untouched);
+  g_test_add_func ("/0005/as16_save_section_in_new_file", as16_save_section_in_new_file);
   g_test_add_func ("/0002/as19_new_file_has_history", as19_new_file_has_history);
   g_test_add_func ("/0002/as19_existing_file_untouched", as19_existing_file_untouched);
   g_test_add_func ("/0001/reads_existing_file", reads_existing_file);
