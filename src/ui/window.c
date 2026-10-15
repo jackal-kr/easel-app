@@ -25,6 +25,7 @@ struct _EaselWindow
   EaselPaletteBar *palette_bar;
   EaselStatusBar *status_bar;
   GtkWidget *toolbox_panel;   /* the tool buttons and their separator */
+  GtkMenuButton *main_menu_button;
   GtkMenuButton *image_button;
   GtkMenuButton *view_button;
   GtkLabel *zoom_label;       /* the View menu's zoom row, created in code */
@@ -38,7 +39,8 @@ struct _EaselWindow
   EaselHistory *history;
   char *path;             /* the picture's file; NULL until the first save */
   gboolean save_dialog_open;
-  gboolean quit_prompt_open;  /* from the prompt until its choice is carried out */
+  gboolean prompt_open;   /* a "Save Changes?" prompt, from showing it until its choice is carried out */
+  void (*prompt_then) (EaselWindow *self);   /* what Discard, or a Save that worked, goes on to do */
 
   /* The color chooser (REQ-0003-11..14): what it edits, a swatch number or one of the CHOOSE_ values. */
   gboolean chooser_open;
@@ -58,6 +60,8 @@ typedef void (*SaveDone) (EaselWindow *self, gboolean saved);
 G_DEFINE_FINAL_TYPE (EaselWindow, easel_window, ADW_TYPE_APPLICATION_WINDOW)
 
 static void sync_zoom_ui (EaselWindow *self);
+static gboolean dialog_is_open (EaselWindow *self);
+static void show_memory_error (EaselWindow *self, const char *heading, int width, int height);
 static gboolean view_actions_allowed (EaselWindow *self);
 
 static void
@@ -349,29 +353,38 @@ save (EaselWindow *self, SaveDone done)
 }
 
 static void
-on_quit_save_done (EaselWindow *self, gboolean saved)
+on_prompt_save_done (EaselWindow *self, gboolean saved)
 {
-  self->quit_prompt_open = FALSE;
-  /* Close only if the save succeeded (REQ-0001-36). */
+  void (*then) (EaselWindow *) = self->prompt_then;
+
+  self->prompt_open = FALSE;
+  self->prompt_then = NULL;
+  /* Go on only if the save succeeded (REQ-0001-36, REQ-0005-04). */
   if (saved)
-    gtk_window_destroy (GTK_WINDOW (self));
+    then (self);
 }
 
 static void
-on_quit_response (AdwAlertDialog *dialog, const char *response, EaselWindow *self)
+on_prompt_response (AdwAlertDialog *dialog, const char *response, EaselWindow *self)
 {
+  void (*then) (EaselWindow *) = self->prompt_then;
+
   if (g_strcmp0 (response, "save") == 0)
     {
-      save (self, on_quit_save_done);
+      save (self, on_prompt_save_done);
       return;
     }
-  self->quit_prompt_open = FALSE;
+  self->prompt_open = FALSE;
+  self->prompt_then = NULL;
+  /* Discard only means "go on": nothing is lost until a picture really replaces this one (REQ-0005-04). */
   if (g_strcmp0 (response, "discard") == 0)
-    gtk_window_destroy (GTK_WINDOW (self));
+    then (self);
 }
 
+/* The question of the quit prompt (REQ-0001-35), also asked before New and Open (REQ-0005-04); then is what a
+   Discard, or a Save that worked, goes on to do. */
 static void
-ask_quit (EaselWindow *self)
+ask_unsaved (EaselWindow *self, void (*then) (EaselWindow *self))
 {
   g_autofree char *name = self->path ? g_path_get_basename (self->path) : g_strdup ("Untitled");
   g_autofree char *body = g_strdup_printf ("“%s” has unsaved changes.", name);
@@ -383,9 +396,16 @@ ask_quit (EaselWindow *self)
   adw_alert_dialog_set_response_appearance (ADW_ALERT_DIALOG (dialog), "save", ADW_RESPONSE_SUGGESTED);
   adw_alert_dialog_set_default_response (ADW_ALERT_DIALOG (dialog), "save");
   adw_alert_dialog_set_close_response (ADW_ALERT_DIALOG (dialog), "cancel");
-  g_signal_connect_object (dialog, "response", G_CALLBACK (on_quit_response), self, G_CONNECT_DEFAULT);
-  self->quit_prompt_open = TRUE;
+  g_signal_connect_object (dialog, "response", G_CALLBACK (on_prompt_response), self, G_CONNECT_DEFAULT);
+  self->prompt_open = TRUE;
+  self->prompt_then = then;
   adw_dialog_present (dialog, GTK_WIDGET (self));
+}
+
+static void
+quit_now (EaselWindow *self)
+{
+  gtk_window_destroy (GTK_WINDOW (self));
 }
 
 /* Ctrl+Q, Ctrl+W and the window's close button all end here. */
@@ -400,12 +420,85 @@ easel_window_close_request (GtkWindow *window)
   easel_window_finish_color_choice (self, NULL);
 
   /* One prompt at a time (REQ-0001-38). */
-  if (self->quit_prompt_open)
+  if (self->prompt_open)
     return TRUE;
   if (!easel_history_is_modified (self->history))
     return FALSE;
-  ask_quit (self);
+  ask_unsaved (self, quit_now);
   return TRUE;
+}
+
+/* ---- New (REQ-0005-03, REQ-0005-04) ---- */
+
+/* Puts img in place of the picture, with a new, empty history whose first state is the saved one, the file path (taken
+   over; NULL for none), the view at its start, and everything that shows the picture brought up to date. The old picture
+   and history go last, so that nothing is lost if this fails. Returns FALSE, with img freed and nothing changed, if the
+   history cannot be had. */
+static gboolean
+replace_picture (EaselWindow *self, EaselImage *img, char *path)
+{
+  EaselHistory *history = easel_history_new ((size_t) self->settings.undo_budget_mb << 20);
+  EaselImage *old_picture = self->picture;
+  EaselHistory *old_history = self->history;
+
+  if (history == NULL)
+    {
+      easel_image_free (img);
+      g_free (path);
+      return FALSE;
+    }
+  self->picture = img;
+  self->history = history;
+  g_free (self->path);
+  self->path = path;
+  easel_canvas_set_history (self->canvas, history);
+  easel_canvas_set_image (self->canvas, img);
+  easel_canvas_reset_view (self->canvas);
+  easel_status_bar_set_size (self->status_bar, TRUE, img->width, img->height);
+  sync_zoom_ui (self);
+  sync_history_ui (self);
+  easel_image_free (old_picture);
+  easel_history_free (old_history);
+  return TRUE;
+}
+
+/* A picture as at start-up: the size and background of the settings read when the app started (REQ-0005-03). */
+static void
+new_picture (EaselWindow *self)
+{
+  int area_w = 0, area_h = 0, w, h;
+  EaselImage *img;
+
+  canvas_area_device (self, &area_w, &area_h);
+  easel_settings_resolve_size (&self->settings, area_w, area_h, &w, &h);
+  img = easel_image_new (w, h, self->settings.background);
+  if (img == NULL || !replace_picture (self, img, NULL))
+    show_memory_error (self, "Could Not Create a New Picture", w, h);
+}
+
+/* New, Open, Save and Save As: nothing before the start-up picture exists or while a dialog or prompt is open; a stroke
+   in progress ends first and a resize drag is cancelled (REQ-0005-02). */
+static gboolean
+file_action_allowed (EaselWindow *self)
+{
+  if (self->picture == NULL || dialog_is_open (self))
+    return FALSE;
+  easel_canvas_end_stroke (self->canvas);
+  easel_canvas_cancel_resize (self->canvas);
+  return TRUE;
+}
+
+static void
+new_activated (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+  EaselWindow *self = user_data;
+
+  if (!file_action_allowed (self))
+    return;
+  if (easel_history_is_modified (self->history))
+    ask_unsaved (self, new_picture);
+  else
+    new_picture (self);
 }
 
 static void
@@ -424,7 +517,7 @@ save_activated (GSimpleAction *action, GVariant *parameter, gpointer user_data)
 static gboolean
 dialog_is_open (EaselWindow *self)
 {
-  return self->quit_prompt_open || self->save_dialog_open || self->chooser_open
+  return self->prompt_open || self->save_dialog_open || self->chooser_open
          || adw_application_window_get_visible_dialog (ADW_APPLICATION_WINDOW (self)) != NULL;
 }
 
@@ -692,6 +785,12 @@ easel_window_get_zoom_text (EaselWindow *self)
 }
 
 GtkMenuButton *
+easel_window_get_main_menu_button (EaselWindow *self)
+{
+  return self->main_menu_button;
+}
+
+GtkMenuButton *
 easel_window_get_image_button (EaselWindow *self)
 {
   return self->image_button;
@@ -782,13 +881,19 @@ make_zoom_row (EaselWindow *self)
 /* ---- the picture's size (REQ-0004-20..26) ---- */
 
 static void
-show_resize_error (EaselWindow *self, int width, int height)
+show_memory_error (EaselWindow *self, const char *heading, int width, int height)
 {
   g_autofree char *body = g_strdup_printf ("There is not enough memory for a picture of %d × %d pixels.", width, height);
-  AdwDialog *dialog = adw_alert_dialog_new ("Could Not Resize the Picture", body);
+  AdwDialog *dialog = adw_alert_dialog_new (heading, body);
 
   adw_alert_dialog_add_response (ADW_ALERT_DIALOG (dialog), "close", "Close");
   adw_dialog_present (dialog, GTK_WIDGET (self));
+}
+
+static void
+show_resize_error (EaselWindow *self, int width, int height)
+{
+  show_memory_error (self, "Could Not Resize the Picture", width, height);
 }
 
 /* The pixel buffer was replaced: the canvas builds its tiles again (zoom and scroll stay, GTK clamps the scroll to the
@@ -933,6 +1038,7 @@ change_tool_state (GSimpleAction *action, GVariant *value, gpointer user_data)
 
 static const GActionEntry win_actions[] = {
   { .name = "tool", .parameter_type = "s", .state = "'pan'", .change_state = change_tool_state },
+  { .name = "new", .activate = new_activated },
   { .name = "save", .activate = save_activated },
   { .name = "undo", .activate = undo_activated },
   { .name = "redo", .activate = redo_activated },
@@ -1025,6 +1131,7 @@ easel_window_dispose (GObject *object)
   self->status_bar = NULL;
   self->toolbox_panel = NULL;
   self->image_button = NULL;
+  self->main_menu_button = NULL;
   self->view_button = NULL;
   G_OBJECT_CLASS (easel_window_parent_class)->dispose (object);
 }
@@ -1060,6 +1167,7 @@ easel_window_class_init (EaselWindowClass *klass)
   gtk_widget_class_bind_template_child (widget_class, EaselWindow, status_bar);
   gtk_widget_class_bind_template_child (widget_class, EaselWindow, toolbox_panel);
   gtk_widget_class_bind_template_child (widget_class, EaselWindow, image_button);
+  gtk_widget_class_bind_template_child (widget_class, EaselWindow, main_menu_button);
   gtk_widget_class_bind_template_child (widget_class, EaselWindow, view_button);
 }
 

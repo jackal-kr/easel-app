@@ -46,6 +46,9 @@ void easel_canvas_set_history (EaselCanvas *self, EaselHistory *history);
 void easel_canvas_set_tool (EaselCanvas *self, EaselTool tool);
 void easel_canvas_set_colors (EaselCanvas *self, uint32_t foreground, uint32_t background);
 
+/* Shows the picture from its start: zoom 100 %, scrolled to the top-left corner (REQ-0005-03, REQ-0005-07). */
+void easel_canvas_reset_view (EaselCanvas *self);
+
 /* A pencil stroke is in progress. */
 gboolean easel_canvas_is_stroking (EaselCanvas *self);
 

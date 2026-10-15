@@ -3193,6 +3193,304 @@ as18_drag_cancel_rules (void)
   close_windows ();
 }
 
+/* ---- 0005: file I/O ---- */
+
+/* REQ-0005-01: the Open button before Save, and the main menu with its shortcuts. */
+static void
+as1_file_menu (void)
+{
+  EaselWindow *win = start_window ();
+  GtkMenuButton *main = easel_window_get_main_menu_button (win);
+  GMenuModel *menu = menu_of (main);
+  GtkButton *open = find_action_button (GTK_WIDGET (win), "win.open");
+  GtkButton *save = find_action_button (GTK_WIDGET (win), "win.save");
+  GtkButton *undo = find_action_button (GTK_WIDGET (win), "win.undo");
+  g_autofree char *s0 = NULL, *s1 = NULL;
+
+  wait_for_layout (win);
+  /* Open, Save, Undo, Redo, left to right (docs/design.md). */
+  g_assert_nonnull (open);
+  g_assert_nonnull (save);
+  g_assert_cmpstr (gtk_widget_get_tooltip_text (GTK_WIDGET (open)), ==, "Open");
+  {
+    graphene_rect_t ro = bounds_in (GTK_WIDGET (open), GTK_WIDGET (win)), rs = bounds_in (GTK_WIDGET (save), GTK_WIDGET (win)),
+                    ru = bounds_in (GTK_WIDGET (undo), GTK_WIDGET (win));
+
+    g_assert_cmpfloat (ro.origin.x + ro.size.width, <=, rs.origin.x);
+    g_assert_cmpfloat (rs.origin.x + rs.size.width, <=, ru.origin.x);
+  }
+
+  /* New, Open…, Save and Save As… in one section, Quit apart from them in the next. */
+  g_assert_true (gtk_menu_button_get_primary (main));
+  g_assert_cmpint (g_menu_model_get_n_items (menu), ==, 2);
+  s0 = describe_section (menu, 0);
+  s1 = describe_section (menu, 1);
+  g_assert_cmpstr (s0, ==, "_New|win.new; _Open…|win.open; _Save|win.save; Save _As…|win.save-as");
+  g_assert_cmpstr (s1, ==, "_Quit|app.quit");
+
+  g_assert_true (has_accel ("win.new", GDK_KEY_n, GDK_CONTROL_MASK));
+  g_assert_true (has_accel ("win.open", GDK_KEY_o, GDK_CONTROL_MASK));
+  g_assert_true (has_accel ("win.save", GDK_KEY_s, GDK_CONTROL_MASK));
+  g_assert_true (has_accel ("win.save-as", GDK_KEY_s, GDK_CONTROL_MASK | GDK_SHIFT_MASK));
+  g_assert_true (has_accel ("app.quit", GDK_KEY_q, GDK_CONTROL_MASK));
+  close_windows ();
+}
+
+static void
+respond (EaselWindow *win, const char *response)
+{
+  AdwAlertDialog *dialog = open_alert (win);
+
+  g_assert_nonnull (dialog);
+  g_signal_emit_by_name (dialog, "response", response);
+  adw_dialog_close (ADW_DIALOG (dialog));
+  wait_for_dialogs (win, 0);
+}
+
+static void
+assert_unsaved_prompt (EaselWindow *win, const char *name)
+{
+  AdwAlertDialog *dialog = open_alert (win);
+  g_autofree char *body = g_strdup_printf ("“%s” has unsaved changes.", name);
+
+  g_assert_nonnull (dialog);
+  g_assert_cmpstr (adw_alert_dialog_get_heading (dialog), ==, "Save Changes?");
+  g_assert_cmpstr (adw_alert_dialog_get_body (dialog), ==, body);
+  g_assert_cmpstr (adw_alert_dialog_get_default_response (dialog), ==, "save");
+  g_assert_cmpstr (adw_alert_dialog_get_close_response (dialog), ==, "cancel");
+}
+
+/* REQ-0005-03: New on an unmodified picture replaces it at once with a picture as at start-up. */
+static void
+as2_new_picture (void)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  g_autofree char *dir = g_dir_make_tmp ("easel-ui-XXXXXX", NULL);
+  g_autofree char *path = g_build_filename (dir, "a.png", NULL);
+  uint32_t fg, bg;
+
+  wait_for_layout (win);
+  use_pencil (win);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "swap-colors", NULL);
+  fg = easel_window_get_foreground (win);
+  bg = easel_window_get_background (win);
+  g_assert_cmpint (easel_window_resize_picture (win, 50, 40), ==, EASEL_RESIZE_OK);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "grid", NULL);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-large", NULL);
+  wait_for_layout (win);
+  g_assert_true (easel_window_save_to (win, path));                 /* now unmodified, with a file */
+  g_assert_cmpstr (gtk_window_get_title (GTK_WINDOW (win)), ==, "a.png – Easel");
+
+  g_action_group_activate_action (G_ACTION_GROUP (win), "new", NULL);
+  g_assert_cmpint (count_alert_dialogs (GTK_WIDGET (win), &(AdwDialog *) { NULL }), ==, 0);
+  assert_size (win, 300, 200);
+  g_assert_cmphex (easel_image_get (easel_window_get_picture (win), 299, 199), ==, 0xFFFFFF00u);   /* the settings' background */
+  g_assert_cmpstr (gtk_window_get_title (GTK_WINDOW (win)), ==, "Untitled – Easel");
+  g_assert_false (easel_window_get_modified (win));
+  g_assert_false (action_enabled (win, "undo"));
+  g_assert_false (action_enabled (win, "redo"));
+  wait_for_layout (win);
+  g_assert_cmpint (easel_canvas_get_zoom (canvas), ==, 100);
+  g_assert_true (gtk_widget_get_ancestor (GTK_WIDGET (canvas), GTK_TYPE_SCROLLED_WINDOW) != NULL);
+  g_assert_cmpint (easel_window_get_tool (win), ==, EASEL_TOOL_PENCIL);
+  g_assert_true (easel_canvas_get_grid_on (canvas));
+  g_assert_cmphex (easel_window_get_foreground (win), ==, fg);
+  g_assert_cmphex (easel_window_get_background (win), ==, bg);
+  close_windows ();
+}
+
+/* REQ-0005-03: the zoom and the scroll start again. */
+static void
+as2_new_resets_the_view (void)
+{
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  GtkScrolledWindow *scroller;
+
+  write_settings ("[new-picture]\nwidth=2000\nheight=2000\n");
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  scroller = GTK_SCROLLED_WINDOW (gtk_widget_get_ancestor (GTK_WIDGET (canvas), GTK_TYPE_SCROLLED_WINDOW));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-large", NULL);
+  wait_for_layout (win);
+  gtk_adjustment_set_value (gtk_scrolled_window_get_hadjustment (scroller), 500);
+  gtk_adjustment_set_value (gtk_scrolled_window_get_vadjustment (scroller), 400);
+  wait_for_layout (win);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "new", NULL);
+  wait_for_layout (win);
+  g_assert_cmpint (easel_canvas_get_zoom (canvas), ==, 100);
+  g_assert_cmpstr (easel_window_get_zoom_text (win), ==, "100%");
+  g_assert_cmpfloat (gtk_adjustment_get_value (gtk_scrolled_window_get_hadjustment (scroller)), ==, 0);
+  g_assert_cmpfloat (gtk_adjustment_get_value (gtk_scrolled_window_get_vadjustment (scroller)), ==, 0);
+  g_assert_cmpint (easel_window_get_picture (win)->width, ==, 2000);
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* REQ-0005-04: New on a modified picture asks first, with the question of the quit prompt. */
+static void
+as3_new_and_open_prompt (void)
+{
+  EaselWindow *win = start_window ();
+  g_autofree char *dir = g_dir_make_tmp ("easel-ui-XXXXXX", NULL);
+  g_autofree char *path = g_build_filename (dir, "a.png", NULL);
+  g_autoptr (GdkPixbuf) saved = NULL;
+
+  wait_for_layout (win);
+  use_pencil (win);
+  A_STROKE (win);
+  g_assert_true (easel_window_get_modified (win));
+
+  /* The prompt; Cancel, and Esc, change nothing. */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "new", NULL);
+  wait_for_dialogs (win, 1);
+  assert_unsaved_prompt (win, "Untitled");
+  respond (win, "cancel");
+  g_assert_cmphex (easel_image_get (easel_window_get_picture (win), 5, 3), ==, 0xFF000000u);
+  g_assert_true (easel_window_get_modified (win));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "new", NULL);
+  wait_for_dialogs (win, 1);
+  adw_dialog_close (ADW_DIALOG (open_alert (win)));               /* Esc is the close response */
+  wait_for_dialogs (win, 0);
+  g_assert_true (easel_window_get_modified (win));
+  g_assert_cmphex (easel_image_get (easel_window_get_picture (win), 5, 3), ==, 0xFF000000u);
+
+  /* While the prompt is open, the actions do nothing: a second New adds no second prompt. */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "new", NULL);
+  wait_for_dialogs (win, 1);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "new", NULL);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  wait_for_layout (win);
+  g_assert_nonnull (open_alert (win));
+  g_assert_cmphex (easel_image_get (easel_window_get_picture (win), 5, 3), ==, 0xFF000000u);
+
+  /* Discard replaces the picture. */
+  respond (win, "discard");
+  g_assert_cmphex (easel_image_get (easel_window_get_picture (win), 5, 3), ==, 0xFFFFFF00u);
+  g_assert_false (easel_window_get_modified (win));
+  g_assert_cmpstr (gtk_window_get_title (GTK_WINDOW (win)), ==, "Untitled – Easel");
+
+  /* Save, with a file: the file is written and then the picture replaced. */
+  g_assert_true (easel_window_save_to (win, path));
+  A_STROKE (win);
+  g_assert_cmpstr (gtk_window_get_title (GTK_WINDOW (win)), ==, "• a.png – Easel");
+  g_action_group_activate_action (G_ACTION_GROUP (win), "new", NULL);
+  wait_for_dialogs (win, 1);
+  assert_unsaved_prompt (win, "a.png");
+  respond (win, "save");
+  g_assert_cmpstr (gtk_window_get_title (GTK_WINDOW (win)), ==, "Untitled – Easel");
+  g_assert_cmphex (easel_image_get (easel_window_get_picture (win), 5, 3), ==, 0xFFFFFF00u);
+  {
+    g_autoptr (GError) error = NULL;
+
+    saved = gdk_pixbuf_new_from_file (path, &error);
+    g_assert_no_error (error);
+    g_assert_cmpint (gdk_pixbuf_get_pixels (saved)[3 * gdk_pixbuf_get_rowstride (saved) + 5 * 4], ==, 0);   /* the stroke */
+  }
+  close_windows ();
+}
+
+/* REQ-0005-04: a failing save in the prompt keeps the picture. */
+static void
+as3_new_save_fails (void)
+{
+  EaselWindow *win = start_window ();
+  g_autofree char *dir = g_dir_make_tmp ("easel-ui-XXXXXX", NULL);
+  g_autofree char *path = g_build_filename (dir, "a.png", NULL);
+
+  if (geteuid () == 0)
+    {
+      g_test_skip ("root ignores folder permissions");
+      close_windows ();
+      return;
+    }
+  wait_for_layout (win);
+  g_assert_true (easel_window_save_to (win, path));
+  use_pencil (win);
+  A_STROKE (win);
+  g_assert_cmpint (g_chmod (dir, 0500), ==, 0);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "new", NULL);
+  wait_for_dialogs (win, 1);
+  {
+    AdwAlertDialog *prompt = open_alert (win);
+
+    g_signal_emit_by_name (prompt, "response", "save");
+    adw_dialog_close (ADW_DIALOG (prompt));
+  }
+  /* The save error dialog shows; the picture is the old one, still modified. */
+  wait_for_dialogs (win, 1);
+  g_assert_cmphex (easel_image_get (easel_window_get_picture (win), 5, 3), ==, 0xFF000000u);
+  g_assert_true (easel_window_get_modified (win));
+  g_assert_cmpstr (gtk_window_get_title (GTK_WINDOW (win)), ==, "• a.png – Easel");
+  g_chmod (dir, 0700);
+  close_windows ();
+}
+
+/* REQ-0005-16: New starts a new history whose first state is the saved one. */
+static void
+as14_new_starts_a_history (void)
+{
+  EaselWindow *win = start_window ();
+
+  wait_for_layout (win);
+  use_pencil (win);
+  A_STROKE (win);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "new", NULL);
+  wait_for_dialogs (win, 1);
+  respond (win, "discard");
+  g_assert_false (action_enabled (win, "undo"));
+  g_assert_false (easel_window_get_modified (win));
+  A_STROKE (win);
+  g_assert_true (easel_window_get_modified (win));
+  g_assert_cmpstr (gtk_window_get_title (GTK_WINDOW (win)), ==, "• Untitled – Easel");
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_false (easel_window_get_modified (win));
+  g_assert_cmpstr (gtk_window_get_title (GTK_WINDOW (win)), ==, "Untitled – Easel");
+  close_windows ();
+}
+
+/* REQ-0005-02: New does nothing before the start-up picture exists. */
+static void
+as15_new_before_picture (void)
+{
+  EaselWindow *win;
+
+  write_settings ("[new-picture]\nwidth=auto\nheight=auto\n");
+  win = easel_window_new (app);
+  g_assert_null (easel_window_get_picture (win));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "new", NULL);
+  g_assert_null (easel_window_get_picture (win));
+  gtk_window_destroy (GTK_WINDOW (win));
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* REQ-0005-03: a new picture whose memory cannot be had shows the error and keeps the current one. */
+static void
+as2_new_memory_error (void)
+{
+  EaselWindow *win;
+  AdwAlertDialog *dialog;
+  struct rlimit old;
+
+  write_settings ("[new-picture]\nwidth=10000\nheight=10000\n");
+  win = start_window ();
+  wait_for_layout (win);
+  g_assert_true (limit_memory (&old, 200));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "new", NULL);
+  g_assert_cmpint (setrlimit (RLIMIT_AS, &old), ==, 0);
+  wait_for_dialogs (win, 1);
+  dialog = open_alert (win);
+  g_assert_cmpstr (adw_alert_dialog_get_heading (dialog), ==, "Could Not Create a New Picture");
+  g_assert_cmpstr (adw_alert_dialog_get_body (dialog), ==, "There is not enough memory for a picture of 10000 × 10000 pixels.");
+  g_assert_cmpint (easel_window_get_picture (win)->width, ==, 10000);
+  g_assert_false (easel_window_get_modified (win));
+  adw_dialog_close (ADW_DIALOG (dialog));
+  wait_for_dialogs (win, 0);
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
 int
 main (int argc, char **argv)
 {
@@ -3255,6 +3553,14 @@ main (int argc, char **argv)
   g_test_add_func ("/0004/as10_grid_pixels", as10_grid_pixels);
   g_test_add_func ("/0004/as12_grid_dialog", as12_grid_dialog);
   g_test_add_func ("/0004/as14_grid_starts_as_settings_say", as14_grid_starts_as_settings_say);
+  g_test_add_func ("/0005/as1_file_menu", as1_file_menu);
+  g_test_add_func ("/0005/as2_new_picture", as2_new_picture);
+  g_test_add_func ("/0005/as2_new_resets_the_view", as2_new_resets_the_view);
+  g_test_add_func ("/0005/as2_new_memory_error", as2_new_memory_error);
+  g_test_add_func ("/0005/as3_new_and_open_prompt", as3_new_and_open_prompt);
+  g_test_add_func ("/0005/as3_new_save_fails", as3_new_save_fails);
+  g_test_add_func ("/0005/as14_new_starts_a_history", as14_new_starts_a_history);
+  g_test_add_func ("/0005/as15_new_before_picture", as15_new_before_picture);
   g_test_add_func ("/0004/as20_attributes_dialog", as20_attributes_dialog);
   g_test_add_func ("/0004/as22_undo_through_resize", as22_undo_through_resize);
   g_test_add_func ("/0004/as23_modified_across_resize", as23_modified_across_resize);

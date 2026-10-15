@@ -726,6 +726,16 @@ easel_canvas_set_zoom (EaselCanvas *self, int pct)
 }
 
 void
+easel_canvas_reset_view (EaselCanvas *self)
+{
+  if (self->img == NULL)
+    return;
+  /* Also at 100 % already: the new picture's size is not known to the adjustments yet, so the scroll waits for the next
+     allocation like any zoom does. */
+  commit_zoom (self, 100, 0, 0);
+}
+
+void
 easel_canvas_fit_to_window (EaselCanvas *self)
 {
   GtkAdjustment *h = adjustment (self, GTK_ORIENTATION_HORIZONTAL);

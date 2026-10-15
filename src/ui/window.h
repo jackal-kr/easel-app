@@ -27,6 +27,7 @@ EaselCanvas *easel_window_get_canvas (EaselWindow *self);
 EaselPaletteBar *easel_window_get_palette_bar (EaselWindow *self);
 EaselStatusBar *easel_window_get_status_bar (EaselWindow *self);
 
+GtkMenuButton *easel_window_get_main_menu_button (EaselWindow *self);
 GtkMenuButton *easel_window_get_image_button (EaselWindow *self);
 GtkMenuButton *easel_window_get_view_button (EaselWindow *self);
 /* The zoom as the View menu's row shows it, for example "100%" (REQ-0004-01). */
