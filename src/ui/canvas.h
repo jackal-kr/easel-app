@@ -6,6 +6,7 @@
 #include "history.h"
 #include "image.h"
 #include "tool.h"
+#include "view.h"
 
 G_BEGIN_DECLS
 
@@ -54,8 +55,25 @@ void easel_canvas_cancel_stroke (EaselCanvas *self);
 /* A mouse button of a cancelled stroke is still held: history changes wait until it is released. */
 gboolean easel_canvas_is_waiting_for_release (EaselCanvas *self);
 
+/* The resize handles (REQ-0004-16..19). They show while a tool other than Pan is active and a picture exists, just
+   outside its right edge, bottom edge and bottom-right corner (5 x 5 logical pixels, touching the picture), and the
+   canvas reserves room for them. Rectangles are in the canvas's own logical coordinates. */
+gboolean easel_canvas_get_handle_rect (EaselCanvas *self, EaselHandle handle, graphene_rect_t *rect);
+
+/* The handle whose 9 x 9 hit area holds the point (the corner wins an overlap), or EASEL_HANDLE_NONE; always NONE while
+   the handles are hidden. */
+EaselHandle easel_canvas_handle_at (EaselCanvas *self, double x, double y);
+
+/* A handle drag is in progress; its outline is the size the picture would get (FALSE and untouched if none). */
+gboolean easel_canvas_is_resizing (EaselCanvas *self);
+gboolean easel_canvas_get_resize_outline (EaselCanvas *self, int *width, int *height);
+
+/* Cancels a handle drag, changing nothing, and ignores the rest of that mouse press (REQ-0004-19). On release the canvas
+   emits "resize-requested" (width, height) if the size differs from the one at the press. */
+void easel_canvas_cancel_resize (EaselCanvas *self);
+
 /* The window lost focus, so the pointer buttons can no longer be trusted: ends a stroke in progress (kept), forgets
-   a cancelled stroke's button and a pan (REQ-0001-25, REQ-0002-09). */
+   a cancelled stroke's button and a pan, and cancels a handle drag (REQ-0001-25, REQ-0002-09, REQ-0004-19). */
 void easel_canvas_reset_pointer (EaselCanvas *self);
 
 /* Ends a stroke in progress as if its button were released, keeping what was drawn (REQ-0001-25, REQ-0001-33). */

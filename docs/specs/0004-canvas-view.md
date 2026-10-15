@@ -1,6 +1,6 @@
 # 0004 Canvas view
 
-Status: accepted
+Status: implemented
 Depends on: 0001, 0002, 0003
 
 ## Why
@@ -46,17 +46,17 @@ the picture). Words used below: the *canvas area* is the scrolled area that show
 - REQ-0004-15 The grid starts as the settings file says (syntax as REQ-0001-40): section `[view]`, key `grid` (`on` or `off`, default `off`), key `grid-size` (a whole number 1 to 1000, default 1), key `grid-axonometric` (`on` or `off`, default `off`), and the panel keys `toolbox`, `colorbox` and `statusbar` (`on` or `off`, default `on`; REQ-0004-27). A missing or invalid value means its default, silently; an unparseable file gives every default (REQ-0001-05). Changes made in the window last until the app quits, and the settings file is never rewritten for them. A settings file the app creates also holds `[view]` with the defaults (amends REQ-0001-04 and REQ-0002-19).
 
 ### Changing the picture's size
-- REQ-0004-16 While the picture exists and a tool other than Pan is active, the app shall show three resize handles just outside the picture: at the middle of its right edge, at the middle of its bottom edge and at its bottom-right corner, each 5 x 5 logical pixels with a hit area of 9 x 9 around its center. They scroll with the picture, the scrollable area includes them, and where hit areas overlap the corner handle wins. Pan hides them, because nothing in Pan mode changes the picture. The primary button on a handle starts a resize; the secondary or middle button on it does nothing.
+- REQ-0004-16 While the picture exists and a tool other than Pan is active, the app shall show three resize handles just outside the picture, touching its edge: at the middle of its right edge, at the middle of its bottom edge and at its bottom-right corner, each 5 x 5 logical pixels with a hit area of 9 x 9 around its center. They scroll with the picture, the scrollable area includes them, and where hit areas overlap the corner handle wins. Pan hides them, because nothing in Pan mode changes the picture. The primary button on a handle starts a resize; the secondary or middle button on it does nothing.
 - REQ-0004-17 While the pointer is over a handle, the cursor shall be the horizontal resize cursor (right handle), the vertical resize cursor (bottom handle) or the diagonal resize cursor (corner handle), instead of the tool's cursor.
-- REQ-0004-18 While the user drags a handle with the primary button, the app shall show the new picture's outline: the right handle sets the width, the bottom handle the height, the corner both, each as the pointer's position in picture pixels rounded to the nearest pixel boundary and limited to 1 to 10000. The drag goes on while the pointer is outside the canvas area or the window, and the view does not scroll. On release the app shall resize the picture to the outlined size.
+- REQ-0004-18 While the user drags a handle with the primary button, the app shall show the new picture's outline: the right handle sets the width, the bottom handle the height, the corner both, each moving the picture's edge by the pointer's movement since the press (a click without moving changes nothing), the result rounded to the nearest pixel boundary and limited to 1 to 10000. The drag goes on while the pointer is outside the canvas area or the window, and the view does not scroll. On release the app shall resize the picture to the outlined size.
 - REQ-0004-19 If the user presses Esc, presses the other mouse button, loses the window's focus, or asks to save or quit during a resize drag, then the app shall cancel it and change nothing. Until the button is released, Undo, Redo, the View and Image actions and the grid shortcut are ignored.
 - REQ-0004-20 When the picture grows, the new area shall be filled with the background color current at that moment (a transparent background gives transparent pixels); when it shrinks, the pixels outside the new size are removed; the pixels that stay are unchanged. This holds for handles and for Attributes alike.
-- REQ-0004-21 When the user chooses Attributes…, the app shall open a modal dialog "Attributes" with Width and Height in pixels (whole numbers from 1 to 10000, starting at the current size), a Default button, and the buttons Cancel and OK. OK is insensitive while a field is empty, 0, not a whole number or above 10000. Default fills in the size a new picture would get now: the settings file's `width` and `height`, with `auto` resolved as REQ-0001-02 does against the canvas area at that moment. Enter is OK and Esc is Cancel. OK resizes as REQ-0004-20; Cancel changes nothing. No units other than pixels, and no aspect-ratio option.
+- REQ-0004-21 When the user chooses Attributes…, the app shall open a modal dialog "Attributes" with the line "New area is filled with the background color; a smaller size crops the picture." under its heading, then Width and Height in pixels (whole numbers from 1 to 10000, starting at the current size), each a number field with a minus and a plus button that change it by 1, a Default button, and the buttons Cancel and OK. A typed number below 1 becomes 1 and above 10000 becomes 10000, and text that is not a whole number goes back to the value the field had; so OK is always sensitive and always gives a size from 1 to 10000. Default fills in the size a new picture would get now: the settings file's `width` and `height`, with `auto` resolved as REQ-0001-02 does against the canvas area at that moment. Enter is OK and Esc is Cancel. OK resizes as REQ-0004-20; Cancel changes nothing. No units other than pixels, and no aspect-ratio option.
 - REQ-0004-22 A resize that changes the picture's size shall be exactly one undo step (REQ-0002-01). Undoing it restores the previous size and every pixel exactly, including the pixels that were cropped (transparent ones too); redoing it gives the same result as the first time, including the fill color used then, even if the background color has changed since. Steps before and after a resize stay undoable through it, and the modified mark and the saved state follow the history as in REQ-0002-12..14.
 - REQ-0004-23 A resize step counts for the memory budget as 4 bytes per pixel it removes plus 64 bytes (pixels it adds need no storage). It is one step for REQ-0002-16 and REQ-0002-17: a step bigger than the whole budget stays as the only step and the older steps are dropped silently.
 - REQ-0004-24 A resize to the size the picture already has (a drag that ends where it started, a click on a handle, Attributes with unchanged values) shall add no undo step and change nothing.
 - REQ-0004-25 After a resize, undo or redo that changes the size, the zoom shall stay, the scroll position shall be kept as far as the new size allows (as REQ-0002-08), the window shall keep its size, and scrollbars appear or disappear as needed.
-- REQ-0004-26 If the memory for the new picture or its undo step cannot be had, then the app shall show an error dialog, heading "Could Not Resize the Picture" and body "There is not enough memory for a picture of W × H pixels." (with the numbers), and change nothing: neither the picture nor the history.
+- REQ-0004-26 If the memory for the new picture or its undo step cannot be had, then the app shall show an error dialog, heading "Could Not Resize the Picture" and body "There is not enough memory for a picture of W × H pixels." (with the numbers), and change nothing: neither the picture nor the history. The same holds when Undo or Redo of a resize needs memory for the size it restores and cannot get it: the same dialog appears (with the numbers of the size that could not be had), the picture stays as it is, and the history position stays where it was, so the same Undo or Redo can be tried again.
 
 ### Panels
 - REQ-0004-27 When the user chooses Tool Box, Color Box or Status Bar in the View menu, the app shall hide that panel if it is shown, or show it if it is hidden, at once, and update the check item. Hiding Tool Box hides the tool buttons (the active tool stays); hiding Color Box hides the whole palette bar (indicator, swap button and swatches) while colors still change with Ctrl+Shift+X and strokes still use them; hiding Status Bar hides all its fields. The canvas area takes the freed space. The window's minimum width of REQ-0003-03 applies only while the Color Box is shown. A panel starts shown or hidden as the settings file says (REQ-0004-15) and changes last until the app quits. Showing or hiding a panel is not an edit and changes neither the picture, the zoom nor the modified mark.
@@ -78,10 +78,10 @@ the picture). Words used below: the *canvas area* is the scrolled area that show
 - AS-14 (REQ-0004-15) Given `[view]` with `grid=on`, `grid-size=8`, `grid-axonometric=on`, When the app starts, Then the grid is on with cell 8 and Axonometric; `grid=maybe` and `grid-size=0` fall back to off and 1; a garbage file gives all defaults; a newly created file holds `[view]` with the defaults; `toolbox=off`, `colorbox=off` and `statusbar=off` start with those panels hidden and `statusbar=maybe` falls back to on; an existing file without it is byte-for-byte unchanged; changing the grid in the window leaves the file unchanged | Verified by: automated (core) + automated (io)
 - AS-15 (REQ-0004-16) Given a 300x200 picture at 100 %, When Pencil is active, Then three handles show just outside the picture's right middle, bottom middle and bottom-right corner, 5x5 each; When Pan is active, Then none show; When the picture is scrolled, Then the handles move with it | Verified by: automated (ui, geometry and visibility) + manual M5
 - AS-16 (REQ-0004-17) Given Pencil active, When the pointer is over the right, bottom and corner handles, Then the cursors are horizontal, vertical and diagonal resize | Verified by: manual M5
-- AS-17 (REQ-0004-18, REQ-0004-24) Given a 300x200 picture, When the user drags the right handle to picture x = 400.4 and releases, Then the picture is 400x200; dragging the bottom handle to y = 150 gives 400x150; dragging the corner to (500, 300) gives 500x300; dragging to a negative position gives width or height 1; to 20000 gives 10000; a drag that ends at the starting size, and a click without moving, add no undo step | Verified by: automated (core, size from position) + automated (ui)
+- AS-17 (REQ-0004-18, REQ-0004-24) Given a 300x200 picture, When the user presses the right handle and drags it 100.4 picture pixels to the right and releases, Then the picture is 400x200; dragging the bottom handle 50 pixels up gives 300x150; dragging the corner by (+200, +100) gives 500x300; dragging far to the left or up gives width or height 1; far to the right or down gives 10000; a drag that ends at the starting size, and a click without moving, add no undo step; the drag works the same at other zoom levels | Verified by: automated (core, size from movement) + automated (ui)
 - AS-18 (REQ-0004-19) Given a handle drag in progress, When the user presses Esc, or presses the secondary button, or the window loses focus, or Save or Quit is requested, Then the picture keeps its size; While the drag is in progress, Undo, Ctrl+0 and Ctrl+G do nothing; the other-button press and Esc also work with the pointer outside the window | Verified by: automated (ui) + manual M5
 - AS-19 (REQ-0004-20) Given a 4x4 picture with background white, When it grows to 6x5, Then the original 16 pixels are unchanged and the 14 new pixels are white; with a transparent background the new pixels are #00000000; shrinking to 2x2 keeps the top-left 2x2 pixels | Verified by: automated (core)
-- AS-20 (REQ-0004-21) Given the Attributes dialog on a 300x200 picture, Then it shows 300 and 200; When Width is "", "0" or "10001", Then OK is insensitive; When the user enters 640 and 480 and presses Enter, Then the picture is 640x480; When the user presses Default with `width=auto height=auto` and a canvas area of 1390x853, Then the fields show 1024 and 768; Esc cancels | Verified by: automated (ui) + manual M6
+- AS-20 (REQ-0004-21) Given the Attributes dialog on a 300x200 picture, Then it shows the help line, 300 and 200; When the user presses plus on Width and minus on Height, Then they show 301 and 199; When Width is typed as "0", "10001" or "99999999999999999999", Then it becomes 1, 10000 and 10000; When it is typed as "abc", "1.5" or "", Then it goes back to its previous value; When the user enters 640 and 480 and presses Enter, Then the picture is 640x480; When the user presses Default with `width=auto height=auto` and a canvas area of 1390x853, Then the fields show 1024 and 768; Esc cancels | Verified by: automated (ui) + manual M6
 - AS-21 (REQ-0004-22) Given a 4x4 picture with some pixels transparent, When the user shrinks it to 2x2 and presses Undo, Then the picture is 4x4 and every pixel, the transparent ones too, is as before; When the background was changed in between and the user presses Redo, Then the new area has the color of the first time | Verified by: automated (core)
 - AS-22 (REQ-0004-22) Given stroke A, a resize and stroke B, When the user undoes three times, Then B, the resize and A are undone in turn, each with the right size and pixels; redoing three times returns to the end | Verified by: automated (core) + automated (ui)
 - AS-23 (REQ-0004-22) Given a picture saved as a.png, When the user resizes it, Then the title has the modified mark; When the user undoes the resize, Then the mark is gone and quitting needs no prompt | Verified by: automated (ui)
@@ -91,6 +91,7 @@ the picture). Words used below: the *canvas area* is the scrolled area that show
 - AS-27 (REQ-0004-26) Given a resize that cannot be allocated, Then the error dialog with the heading and body of REQ-0004-26 appears, and the picture, the title and Undo are unchanged | Verified by: automated (core, refusal) + automated (ui, dialog)
 - AS-28 (REQ-0004-27) Given a fresh start, When the user chooses Color Box, Then the palette bar (indicator, swap button, swatches) disappears, the check item is unchecked, and the canvas area is taller by the bar's height; Ctrl+Shift+X still swaps the colors and the next stroke uses the swapped color; When the user chooses Color Box again, Then the bar is back with the current colors; hiding Tool Box hides the tool buttons and keeps the active tool, hiding Status Bar hides its fields; none of this changes the title's modified mark or adds an undo step | Verified by: automated (ui) + manual M7
 - AS-29 (REQ-0004-23, REQ-0002-17) Given a 16 MB undo budget and three earlier strokes, When the user shrinks a 4000x2000 picture to 1x1 (about 32 MB of removed pixels, more than the whole budget), Then the resize is kept as the only step and the three strokes can no longer be undone; one Undo restores the 4000x2000 picture with every pixel exactly, and Redo shrinks it again; a later small stroke drops the oversized step, as REQ-0002-16 does for any step | Verified by: automated (core)
+- AS-30 (REQ-0004-26) Given a 4000x2000 picture shrunk to 1x1 (one resize step) and memory that can no longer hold 4000x2000 pixels, When the user chooses Undo, Then the error dialog with the heading and body of REQ-0004-26 appears for "4000 × 2000", the picture is still 1x1, and Undo is still sensitive and Redo still insensitive; When memory is available again and the user chooses Undo, Then the picture is 4000x2000 with every pixel exactly as before; the same holds for Redo of a resize that grows the picture | Verified by: automated (core, refusal) + automated (ui, dialog)
 
 ## Edge cases
 - Text the user types: the Grid and Attributes fields hold empty, 0, negative, above the limit, leading zeros ("007" is 7), spaces around the number (trimmed), and anything non-numeric; the same rules for the settings keys of REQ-0004-15 (REQ-0001-40).
@@ -146,7 +147,8 @@ is stored in them.
 - **Budget:** 4 bytes per removed pixel plus 64 (REQ-0004-23); the drop-oldest loop and the lone oversized step of
   REQ-0002-17 are unchanged.
 - **Atomic:** the removed-pixels array and the new pixel buffer are allocated before anything changes. If either fails,
-  nothing changed and the window shows the REQ-0004-26 dialog.
+  nothing changed and the window shows the REQ-0004-26 dialog. Undo and redo allocate the restored buffer first too;
+  on failure they return an error, `applied` does not move, and the window shows the same dialog (AS-30).
 - **Copies:** a resize allocates one new buffer of the new size and copies the kept area once; the history never copies
   the whole picture. A stroke step still stores only changed pixels.
 - **Saved state and ids** work as before: a resize step is a step with an id.
@@ -210,6 +212,28 @@ is the 0001 and 0002 measurements of the same actions.
 The three budgets of `docs/engineering.md` that this touches are met at both sizes. The worst case of about 55 ms per run
 is probably the first frame, which uploads the visible tiles; manual check M8 shows whether it is noticeable.
 
+### Measurements (T015, 2026-10-15)
+Same benchmark, machine and renderer as above (60 Hz, a refresh is 16.7 ms), one run, medians; "action" is the time of the
+call itself, "on screen" runs to the next painted frame.
+
+| Action | Size | Action | On screen |
+|---|---|---|---|
+| Frame with the grid, cell 1 at 800 % | 1920x1080 / 4000x4000 / 8000x8000 | 0.01 ms | 16.9 / 16.7 / 16.6 ms |
+| Frame with the axonometric grid, cell 4 at 800 % | 1920x1080 / 4000x4000 / 8000x8000 | 0.00 ms | 16.8 / 16.8 / 16.6 ms |
+| Resize removing about 50,000 pixels | 1920x1080 | 1.4 ms | 16.8 ms |
+| Undo of that resize | 1920x1080 | 1.6 ms | 16.7 ms |
+| Redo of that resize | 1920x1080 | 0.9 ms | 16.6 ms |
+| Resize removing about 50,000 pixels | 4000x4000 | 22 ms | 24 ms |
+| Undo / redo of it | 4000x4000 | 21 / 16 ms | 24 / 19 ms |
+| Resize removing about 50,000 pixels | 8000x8000 | 75 ms | 77 ms |
+| Undo / redo of it | 8000x8000 | 73 / 58 ms | 76 / 61 ms |
+
+The grid costs nothing measurable: it draws only the visible area, and a frame with it is a normal frame at every size.
+A resize allocates and fills a whole new picture (256 MB at 8000x8000), so its time grows with the picture, not with the
+removed area: one frame at 1920x1080, a few frames at 4000x4000, about five at 8000x8000. The engineering budgets (pencil
+motion, undo and redo of a stroke) do not cover a resize, which happens once in a while and not per pointer event; I
+leave a faster resize (growing in place, or resizing rows only) unbuilt, per rule P5, unless JOD finds it slow in M8.
+
 ### Files
 - **New:** `src/core/grid.{c,h}`, `src/core/number.{c,h}`, `src/ui/status-bar.{c,h}`, `src/ui/grid-dialog.{c,h}`,
   `src/ui/attributes-dialog.{c,h}`, `tests/core/test-grid.c`, `tests/core/test-number.c`, `tests/core/test-resize.c`,
@@ -223,10 +247,12 @@ is probably the first frame, which uploads the visible tiles; manual check M8 sh
 ### Key interfaces (core)
 - `int easel_view_fit_level (int area_w, int area_h, int pic_w, int pic_h)` (percent, 10 if none fits);
   `int easel_view_pinch (double *scale_acc, double scale_delta)` (levels to move, -1, 0 or +1, resetting the
-  accumulator); `void easel_view_resize_from_point (double x, double y, int handle, int *w, int *h)` (rounds to the nearest
-  boundary, limits 1 to 10000, handles: right, bottom, corner).
+  accumulator); `void easel_view_resize_by (int handle, double dx, double dy, int *w, int *h)` (w and h are the size at the press and
+  become the new size: the edge moves by dx, dy picture pixels, rounded to the nearest boundary, limits 1 to 10000;
+  handles: right, bottom, corner).
 - `bool easel_grid_visible (int cell, int zoom_pct)` (cell * zoom / 100 >= 4);
-  `void easel_grid_lines (int w, int h, int cell, bool axonometric, EaselGridLineFunc fn, void *data)` (segments in
+  `void easel_grid_lines (int w, int h, int cell, bool axonometric, double cx0, double cy0, double cx1, double cy1,
+  EaselGridLineFunc fn, void *data)` (segments in
   picture coordinates, clipped to the picture).
 - `bool easel_parse_field (const char *text, int min, int max, int *out)`.
 - `EaselResizeResult easel_image_resize (EaselImage *img, int w, int h, uint32_t fill)`; and the edit as one call that
@@ -254,7 +280,7 @@ is probably the first frame, which uploads the visible tiles; manual check M8 sh
 | 14 | core `as14_view_settings`, io `as14_created_file_has_view`, io `as14_existing_file_untouched`, ui `as14_grid_starts_as_settings_say` |
 | 15 | ui `as15_handles` + manual M5 |
 | 16 | manual M5 |
-| 17 | core `as17_size_from_point`, ui `as17_handle_drag` |
+| 17 | core `as17_size_from_movement`, ui `as17_handle_drag` |
 | 18 | ui `as18_drag_cancel_rules` + manual M5 |
 | 19 | core `as19_grow_and_shrink` |
 | 20 | ui `as20_attributes_dialog` + manual M6 |
@@ -264,7 +290,8 @@ is probably the first frame, which uploads the visible tiles; manual check M8 sh
 | 24 | core `as24_resize_step_budget` |
 | 25 | ui `as25_same_size_no_step` |
 | 26 | ui `as26_scroll_clamp_after_resize` + manual M5 |
-| 27 | core `as27_resize_refused` (failure path, automated), ui `as27_error_dialog` |
+| 27 | core `as27_resize_refused` (failure path, automated), ui `as27_error_dialog`, ui `as27_error_through_attributes` |
+| 30 | core `as30_undo_redo_refused` (failure path, automated), ui `as30_undo_error_dialog` |
 | 28 | ui `as28_panel_toggles` + manual M7 |
 | 29 | core `as29_oversized_resize_kept_alone` |
 
@@ -321,8 +348,8 @@ Group D, the grid
 - [x] T010 Grid drawing, Show Grid, Ctrl+G and the start-up state (REQ-0004-12, REQ-0004-15; AS-10) - done when ui `as10_grid_toggle` passes and the grid is not in the saved picture, and manual M4 passes
 - [x] T011 Grid dialog (REQ-0004-13; AS-12) - done when ui `as12_grid_dialog` passes (invalid values disable Apply, Esc cancels, Apply never toggles the grid) and manual M4 passes with the dialog
 Group E, resizing
-- [x] T012 Core resize and the resize history step (REQ-0004-20, REQ-0004-22, REQ-0004-23, REQ-0004-24; AS-19, AS-21, AS-22, AS-24, AS-29) - done when core `as19_grow_and_shrink`, `as21_undo_redo_resize_exact`, `as22_steps_through_a_resize`, `as24_resize_step_budget` and `as29_oversized_resize_kept_alone` pass, and a resize that cannot be allocated leaves picture and history unchanged (core `as27_resize_refused`)
-- [ ] T013 Attributes dialog and the resize in the window (REQ-0004-21, REQ-0004-22, REQ-0004-24, REQ-0004-25, REQ-0004-26; AS-20, AS-23, AS-25, AS-26, AS-27) - done when ui `as20_attributes_dialog`, `as22_undo_through_resize`, `as23_modified_across_resize`, `as25_same_size_no_step`, `as26_scroll_clamp_after_resize` and `as27_error_dialog` pass, and manual M6 passes
-- [ ] T014 Resize handles: visibility, cursors, drag, cancel rules (REQ-0004-16, REQ-0004-17, REQ-0004-18, REQ-0004-19; AS-15, AS-16, AS-17, AS-18) - done when ui `as15_handles`, `as17_handle_drag` and `as18_drag_cancel_rules` pass and manual M5 passes
+- [x] T012 Core resize and the resize history step (REQ-0004-20, REQ-0004-22, REQ-0004-23, REQ-0004-24; AS-19, AS-21, AS-22, AS-24, AS-29, AS-30) - done when core `as19_grow_and_shrink`, `as21_undo_redo_resize_exact`, `as22_steps_through_a_resize`, `as24_resize_step_budget` and `as29_oversized_resize_kept_alone` pass, and a resize that cannot be allocated leaves picture and history unchanged (core `as27_resize_refused`) and so does an undo or redo that cannot allocate (core `as30_undo_redo_refused`)
+- [x] T013 Attributes dialog and the resize in the window (REQ-0004-21, REQ-0004-22, REQ-0004-24, REQ-0004-25, REQ-0004-26; AS-20, AS-23, AS-25, AS-26, AS-27, AS-30) - done when ui `as20_attributes_dialog`, `as22_undo_through_resize`, `as23_modified_across_resize`, `as25_same_size_no_step`, `as26_scroll_clamp_after_resize` and `as27_error_dialog` and `as30_undo_error_dialog` pass, and manual M6 passes
+- [x] T014 Resize handles: visibility, cursors, drag, cancel rules (REQ-0004-16, REQ-0004-17, REQ-0004-18, REQ-0004-19; AS-15, AS-16, AS-17, AS-18) - done when ui `as15_handles`, `as17_handle_drag` and `as18_drag_cancel_rules` pass and manual M5 passes
 Group F, measuring
-- [ ] T015 Measure the grid and the resize (budgets: engineering.md "Pointer event to pixels"; REQ-0004-12, REQ-0004-14, REQ-0004-22) - done when `perf-0004` also times drawing with the grid on (cell 1 at 800 %, and an axonometric grid with cell 4) and a 50,000-pixel resize with its undo and redo at 1920x1080 and 8000x8000, and the numbers are recorded in the Plan
+- [x] T015 Measure the grid and the resize (budgets: engineering.md "Pointer event to pixels"; REQ-0004-12, REQ-0004-14, REQ-0004-22) - done when `perf-0004` also times drawing with the grid on (cell 1 at 800 %, and an axonometric grid with cell 4) and a 50,000-pixel resize with its undo and redo at 1920x1080 and 8000x8000, and the numbers are recorded in the Plan

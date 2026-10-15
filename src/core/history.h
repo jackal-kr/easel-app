@@ -29,6 +29,10 @@ bool easel_history_push (EaselHistory *h, EaselChange *changes, size_t n);
 /* Write the step's pixels back through easel_image_set, so the screen update sees them. False: nothing to do. */
 bool easel_history_undo (EaselHistory *h, EaselImage *img);
 bool easel_history_redo (EaselHistory *h, EaselImage *img);
+/* True if the most recent undo or redo was refused for lack of memory (REQ-0004-26); then the picture and the history
+   position are unchanged, w and h get the size that could not be allocated, and the same call can be tried again.
+   Any later successful undo, redo or edit clears it. */
+bool easel_history_refused (const EaselHistory *h, int *w, int *h_out);
 bool easel_history_can_undo (const EaselHistory *h);
 bool easel_history_can_redo (const EaselHistory *h);
 

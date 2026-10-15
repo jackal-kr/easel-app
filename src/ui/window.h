@@ -43,4 +43,9 @@ void easel_window_finish_color_choice (EaselWindow *self, const GdkRGBA *rgba);
    On failure shows an error and returns FALSE (REQ-0001-30, REQ-0001-31). */
 gboolean easel_window_save_to (EaselWindow *self, const char *path);
 
+/* Resizes the picture with the current background color as the fill, as one undo step (REQ-0004-20, REQ-0004-22), and
+   makes the canvas and the status bar show it. UNCHANGED (same size) adds no step. If the memory is not there it shows
+   the error dialog of REQ-0004-26 and changes nothing. */
+EaselResizeResult easel_window_resize_picture (EaselWindow *self, int width, int height);
+
 G_END_DECLS

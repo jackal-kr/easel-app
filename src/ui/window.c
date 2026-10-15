@@ -5,6 +5,7 @@
 #include <string.h>
 
 #include "config.h"
+#include "attributes-dialog.h"
 #include "grid-dialog.h"
 #include "canvas.h"
 #include "palette-bar.h"
@@ -95,19 +96,32 @@ window_monitor (EaselWindow *self)
 /* An auto size depends on the visible canvas area, known once the scrolled area is first allocated:
    the adjustments' page sizes are that area in logical pixels. On Wayland a HiDPI surface learns its
    scale only after its first frame, so the monitor's scale converts to device pixels. */
-static void
-on_page_size_changed (EaselWindow *self)
+/* The visible canvas area in device pixels, from the adjustments' page sizes; false until it is known. */
+static gboolean
+canvas_area_device (EaselWindow *self, int *width, int *height)
 {
   double w = gtk_adjustment_get_page_size (gtk_scrolled_window_get_hadjustment (self->scroller));
   double h = gtk_adjustment_get_page_size (gtk_scrolled_window_get_vadjustment (self->scroller));
   g_autoptr (GdkMonitor) monitor = NULL;
   double scale;
 
-  if (self->picture != NULL || w <= 0 || h <= 0)
-    return;
+  if (w <= 0 || h <= 0)
+    return FALSE;
   monitor = window_monitor (self);
   scale = monitor ? gdk_monitor_get_scale (monitor) : easel_canvas_get_scale (self->canvas);
-  create_picture (self, (int) (w * scale), (int) (h * scale));
+  *width = (int) (w * scale);
+  *height = (int) (h * scale);
+  return TRUE;
+}
+
+static void
+on_page_size_changed (EaselWindow *self)
+{
+  int w, h;
+
+  if (self->picture != NULL || !canvas_area_device (self, &w, &h))
+    return;
+  create_picture (self, w, h);
 }
 
 /* The window opens at 75 % of the monitor. Before it appears, Wayland cannot say which monitor that is,
@@ -293,6 +307,7 @@ save (EaselWindow *self, SaveDone done)
 
   /* A stroke in progress is ended first and saved with the picture (REQ-0001-33). */
   easel_canvas_end_stroke (self->canvas);
+  easel_canvas_cancel_resize (self->canvas);
 
   if (self->path != NULL)
     {
@@ -371,6 +386,7 @@ easel_window_close_request (GtkWindow *window)
 
   /* A stroke in progress is ended first (REQ-0001-33); an open color chooser closes as Cancel (REQ-0003-14). */
   easel_canvas_end_stroke (self->canvas);
+  easel_canvas_cancel_resize (self->canvas);
   easel_window_finish_color_choice (self, NULL);
 
   /* One prompt at a time (REQ-0001-38). */
@@ -632,7 +648,7 @@ static gboolean
 view_actions_allowed (EaselWindow *self)
 {
   return self->picture != NULL && !dialog_is_open (self) && !easel_canvas_is_stroking (self->canvas)
-         && !easel_canvas_is_waiting_for_release (self->canvas);
+         && !easel_canvas_is_resizing (self->canvas) && !easel_canvas_is_waiting_for_release (self->canvas);
 }
 
 /* The row's label and which zoom actions can do something (REQ-0004-02). */
@@ -753,11 +769,73 @@ make_zoom_row (EaselWindow *self)
   return row;
 }
 
+/* ---- the picture's size (REQ-0004-20..26) ---- */
+
+static void
+show_resize_error (EaselWindow *self, int width, int height)
+{
+  g_autofree char *body = g_strdup_printf ("There is not enough memory for a picture of %d × %d pixels.", width, height);
+  AdwDialog *dialog = adw_alert_dialog_new ("Could Not Resize the Picture", body);
+
+  adw_alert_dialog_add_response (ADW_ALERT_DIALOG (dialog), "close", "Close");
+  adw_dialog_present (dialog, GTK_WIDGET (self));
+}
+
+/* The pixel buffer was replaced: the canvas builds its tiles again (zoom and scroll stay, GTK clamps the scroll to the
+   new size, REQ-0004-25) and the status bar shows the size. */
+static void
+picture_size_changed (EaselWindow *self)
+{
+  easel_canvas_set_image (self->canvas, self->picture);
+  easel_status_bar_set_size (self->status_bar, TRUE, self->picture->width, self->picture->height);
+  sync_zoom_ui (self);
+}
+
+EaselResizeResult
+easel_window_resize_picture (EaselWindow *self, int width, int height)
+{
+  EaselResizeResult r;
+
+  if (self->picture == NULL)
+    return EASEL_RESIZE_BAD_SIZE;
+  r = easel_resize_edit (self->picture, self->history, width, height, self->background);
+  if (r == EASEL_RESIZE_NO_MEMORY)
+    show_resize_error (self, width, height);
+  if (r == EASEL_RESIZE_OK)
+    {
+      picture_size_changed (self);
+      sync_history_ui (self);
+    }
+  return r;
+}
+
+static void
+attributes_applied (int width, int height, gpointer data)
+{
+  easel_window_resize_picture (data, width, height);
+}
+
+static void
+attributes_activated (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+  EaselWindow *self = user_data;
+  int area_w = 0, area_h = 0, default_w, default_h;
+
+  if (!view_actions_allowed (self))
+    return;
+  canvas_area_device (self, &area_w, &area_h);
+  easel_settings_resolve_size (&self->settings, area_w, area_h, &default_w, &default_h);
+  easel_attributes_dialog_present (GTK_WIDGET (self), self->picture->width, self->picture->height, default_w, default_h,
+                                   attributes_applied, self);
+}
+
 /* Undo and redo change only the picture: the view, tool and colors stay (REQ-0002-08). */
 static void
 step_history (EaselWindow *self, gboolean undo)
 {
-  if (self->picture == NULL || dialog_is_open (self))
+  int old_w, old_h;
+
+  if (self->picture == NULL || dialog_is_open (self) || easel_canvas_is_resizing (self->canvas))
     return;
 
   /* Undo during a stroke cancels it, as the other mouse button does; until the button is released, further
@@ -770,9 +848,21 @@ step_history (EaselWindow *self, gboolean undo)
     }
   if (easel_canvas_is_waiting_for_release (self->canvas))
     return;
+  old_w = self->picture->width;
+  old_h = self->picture->height;
   if (!(undo ? easel_history_undo (self->history, self->picture) : easel_history_redo (self->history, self->picture)))
-    return;
-  easel_canvas_update (self->canvas);
+    {
+      int w, h;
+
+      /* Not enough memory for the size the step restores: nothing changed (AS-30). */
+      if (easel_history_refused (self->history, &w, &h))
+        show_resize_error (self, w, h);
+      return;
+    }
+  if (self->picture->width != old_w || self->picture->height != old_h)
+    picture_size_changed (self);
+  else
+    easel_canvas_update (self->canvas);
   sync_history_ui (self);
 }
 
@@ -786,6 +876,23 @@ static void
 redo_activated (GSimpleAction *action, GVariant *parameter, gpointer user_data)
 {
   step_history (EASEL_WINDOW (user_data), FALSE);
+}
+
+/* A handle drag ended on a new size (REQ-0004-18). */
+static void
+on_resize_requested (EaselWindow *self, int width, int height)
+{
+  easel_window_resize_picture (self, width, height);
+}
+
+/* Esc cancels a handle drag (REQ-0004-19); at any other time it is not ours. */
+static gboolean
+on_key_pressed (EaselWindow *self, guint keyval, guint keycode, GdkModifierType state, GtkEventControllerKey *controller)
+{
+  if (keyval != GDK_KEY_Escape || !easel_canvas_is_resizing (self->canvas))
+    return GDK_EVENT_PROPAGATE;
+  easel_canvas_cancel_resize (self->canvas);
+  return GDK_EVENT_STOP;
 }
 
 /* Losing focus ends a stroke and keeps it (REQ-0001-25), and stops waiting for a release that may never come
@@ -803,8 +910,8 @@ change_tool_state (GSimpleAction *action, GVariant *value, gpointer user_data)
   EaselWindow *self = user_data;
   EaselTool tool;
 
-  /* A tool cannot change during a stroke (REQ-0001-09). */
-  if (easel_canvas_is_stroking (self->canvas))
+  /* A tool cannot change during a stroke (REQ-0001-09) or a handle drag. */
+  if (easel_canvas_is_stroking (self->canvas) || easel_canvas_is_resizing (self->canvas))
     return;
   if (!easel_tool_from_name (g_variant_get_string (value, NULL), &tool))
     return;
@@ -827,6 +934,7 @@ static const GActionEntry win_actions[] = {
   { .name = "zoom-fit", .activate = zoom_fit_activated },
   { .name = "grid", .state = "false", .change_state = grid_state_changed },
   { .name = "grid-dialog", .activate = grid_dialog_activated },
+  { .name = "attributes", .activate = attributes_activated },
   { .name = "show-toolbox", .state = "true", .change_state = show_panel_state_changed },
   { .name = "show-colorbox", .state = "true", .change_state = show_panel_state_changed },
   { .name = "show-statusbar", .state = "true", .change_state = show_panel_state_changed },
@@ -991,6 +1099,14 @@ easel_window_init (EaselWindow *self)
   g_signal_connect_object (self->palette_bar, "swatch-edit", G_CALLBACK (on_swatch_edit), self, G_CONNECT_SWAPPED);
   g_signal_connect_object (self->palette_bar, "indicator-pressed", G_CALLBACK (on_indicator_pressed), self,
                            G_CONNECT_SWAPPED);
+  g_signal_connect_object (self->canvas, "resize-requested", G_CALLBACK (on_resize_requested), self, G_CONNECT_SWAPPED);
+  {
+    GtkEventController *keys = gtk_event_controller_key_new ();
+
+    gtk_event_controller_set_propagation_phase (keys, GTK_PHASE_CAPTURE);
+    g_signal_connect_swapped (keys, "key-pressed", G_CALLBACK (on_key_pressed), self);
+    gtk_widget_add_controller (GTK_WIDGET (self), keys);
+  }
   g_signal_connect_object (self->canvas, "stroke-finished", G_CALLBACK (on_stroke_finished), self, G_CONNECT_SWAPPED);
   g_signal_connect (self, "notify::is-active", G_CALLBACK (on_active_changed), NULL);
 

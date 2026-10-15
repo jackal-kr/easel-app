@@ -35,6 +35,8 @@ struct _EaselHistory
   bool saved_reachable;   /* false once the saved state's step is gone */
   size_t budget;
   size_t bytes;           /* what the kept steps need, see easel_history_bytes () */
+  bool refused;           /* the last undo or redo could not allocate; refused_w x refused_h was the size */
+  int refused_w, refused_h;
 };
 
 /* Per step: the pixels it changed and the step itself (REQ-0002-16). */
@@ -139,6 +141,7 @@ make_room (EaselHistory *h)
 static void
 commit_step (EaselHistory *h, Step step)
 {
+  h->refused = false;
   for (size_t i = h->applied; i < h->len; i++)
     {
       if (h->steps[i].id == h->saved_id)
@@ -253,10 +256,26 @@ apply_step (const Step *s, EaselImage *img, bool undo)
   return true;
 }
 
+/* Applies steps[i] one way; on failure remembers the size that could not be had. */
+static bool
+move (EaselHistory *h, EaselImage *img, size_t i, bool undo)
+{
+  const Step *s = &h->steps[i];
+
+  h->refused = false;
+  if (apply_step (s, img, undo))
+    return true;
+  h->refused = true;
+  h->refused_w = undo ? s->old_w : s->new_w;
+  h->refused_h = undo ? s->old_h : s->new_h;
+  return false;
+}
+
 bool
 easel_history_undo (EaselHistory *h, EaselImage *img)
 {
-  if (h->applied == h->first || !apply_step (&h->steps[h->applied - 1], img, true))
+  h->refused = false;
+  if (h->applied == h->first || !move (h, img, h->applied - 1, true))
     return false;
   h->applied--;
   return true;
@@ -265,10 +284,22 @@ easel_history_undo (EaselHistory *h, EaselImage *img)
 bool
 easel_history_redo (EaselHistory *h, EaselImage *img)
 {
-  if (h->applied == h->len || !apply_step (&h->steps[h->applied], img, false))
+  h->refused = false;
+  if (h->applied == h->len || !move (h, img, h->applied, false))
     return false;
   h->applied++;
   return true;
+}
+
+bool
+easel_history_refused (const EaselHistory *h, int *w, int *h_out)
+{
+  if (h->refused)
+    {
+      *w = h->refused_w;
+      *h_out = h->refused_h;
+    }
+  return h->refused;
 }
 
 bool

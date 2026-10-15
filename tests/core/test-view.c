@@ -178,6 +178,48 @@ as7_pinch_accumulator (void)
   CHECK (easel_view_pinch (&base, 0.9, 10) == 1 && base == 0.9);
 }
 
+/* AS-17: the size a handle drag gives, from the movement since the press (REQ-0004-18). */
+static void
+as17_size_from_movement (void)
+{
+  int w, h;
+
+  w = 300; h = 200;
+  easel_view_resize_by (EASEL_HANDLE_RIGHT, 100.4, 77, &w, &h);       /* the other axis is ignored */
+  CHECK (w == 400 && h == 200);
+  w = 300; h = 200;
+  easel_view_resize_by (EASEL_HANDLE_BOTTOM, 55, -50, &w, &h);
+  CHECK (w == 300 && h == 150);
+  w = 300; h = 200;
+  easel_view_resize_by (EASEL_HANDLE_CORNER, 200, 100, &w, &h);
+  CHECK (w == 500 && h == 300);
+  /* Nearest boundary: .5 goes up, as the pointer is as close to either. */
+  w = 300; h = 200;
+  easel_view_resize_by (EASEL_HANDLE_CORNER, 0.49, -0.51, &w, &h);
+  CHECK (w == 300 && h == 199);
+  w = 300; h = 200;
+  easel_view_resize_by (EASEL_HANDLE_CORNER, 0.5, 0.5, &w, &h);
+  CHECK (w == 301 && h == 201);
+  /* No movement: the same size, which adds no step. */
+  w = 300; h = 200;
+  easel_view_resize_by (EASEL_HANDLE_CORNER, 0, 0, &w, &h);
+  CHECK (w == 300 && h == 200);
+  /* Limits 1 to 10000. */
+  w = 300; h = 200;
+  easel_view_resize_by (EASEL_HANDLE_CORNER, -5000, -1e9, &w, &h);
+  CHECK (w == 1 && h == 1);
+  w = 300; h = 200;
+  easel_view_resize_by (EASEL_HANDLE_CORNER, 20000, 1e12, &w, &h);
+  CHECK (w == 10000 && h == 10000);
+  w = 300; h = 200;
+  easel_view_resize_by (EASEL_HANDLE_RIGHT, -299.4, 0, &w, &h);
+  CHECK (w == 1 && h == 200);
+  /* Not a handle: nothing changes. */
+  w = 300; h = 200;
+  easel_view_resize_by (EASEL_HANDLE_NONE, 50, 50, &w, &h);
+  CHECK (w == 300 && h == 200);
+}
+
 int
 main (void)
 {
@@ -188,6 +230,7 @@ main (void)
   RUN (as6_fit_level);
   RUN (as7_pinch_accumulator);
   RUN (as17_zoomed_click_maps_to_pixel);
+  RUN (as17_size_from_movement);
   RUN (content_size_covers_picture);
   return 0;
 }

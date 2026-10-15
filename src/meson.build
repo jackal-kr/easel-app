@@ -48,6 +48,7 @@ easel_ui_inc = include_directories('.', 'ui')
 
 easel_ui = static_library('easel-ui',
   'ui/application.c',
+  'ui/attributes-dialog.c',
   'ui/canvas.c',
   'ui/grid-dialog.c',
   'ui/palette-bar.c',

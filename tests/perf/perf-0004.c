@@ -30,6 +30,80 @@ report (const char *what, int w, int h, double *ms, double *work, int n)
            what, w, h, work[n / 2], work[n - 1], ms[n / 2], ms[n - 1], n);
 }
 
+/* A frame with the grid on: cell 1 at 800 % (a line at every picture pixel, the most lines), and an axonometric grid with
+   cell 4 (the diagonals are the most expensive to draw). The frames are forced by a redraw each time. */
+static void
+measure_grid (EaselWindow *win, int w, int h)
+{
+  enum { N_FRAMES = 30 };
+  static const struct { const char *what; int cell; gboolean axonometric; } cases[] = {
+    { "frame with the grid, cell 1 at 800 %", 1, FALSE },
+    { "frame with the axonometric grid, cell 4 at 800 %", 4, TRUE },
+  };
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  double ms[N_FRAMES], work[N_FRAMES];
+
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-fit", NULL);
+  for (int i = 0; i < 8; i++)
+    g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-in", NULL);
+  wait_for_paint (win);
+  for (guint c = 0; c < G_N_ELEMENTS (cases); c++)
+    {
+      easel_canvas_set_grid (canvas, TRUE, cases[c].cell, cases[c].axonometric);
+      wait_for_paint (win);
+      for (int i = 0; i < N_FRAMES; i++)
+        {
+          gint64 start = g_get_monotonic_time ();
+
+          gtk_widget_queue_draw (GTK_WIDGET (canvas));
+          work[i] = (g_get_monotonic_time () - start) / 1000.0;
+          wait_for_paint (win);
+          ms[i] = (g_get_monotonic_time () - start) / 1000.0;
+        }
+      report (cases[c].what, w, h, ms, work, N_FRAMES);
+    }
+  easel_canvas_set_grid (canvas, FALSE, 1, FALSE);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-normal", NULL);
+  wait_for_paint (win);
+}
+
+/* A resize that removes about 50,000 pixels (whole columns), then its undo and redo. */
+static void
+measure_resize (EaselWindow *win, int w, int h)
+{
+  enum { N_PAIRS = 10 };
+  double r_ms[N_PAIRS], r_work[N_PAIRS], u_ms[N_PAIRS], u_work[N_PAIRS], d_ms[N_PAIRS], d_work[N_PAIRS];
+  int cut = (50000 + h / 2) / h;     /* columns to remove: the nearest to 50,000 pixels */
+  gint64 start;
+
+  for (int i = 0; i < N_PAIRS; i++)
+    {
+      start = g_get_monotonic_time ();
+      easel_window_resize_picture (win, w - cut, h);
+      r_work[i] = (g_get_monotonic_time () - start) / 1000.0;
+      wait_for_paint (win);
+      r_ms[i] = (g_get_monotonic_time () - start) / 1000.0;
+
+      start = g_get_monotonic_time ();
+      g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+      u_work[i] = (g_get_monotonic_time () - start) / 1000.0;
+      wait_for_paint (win);
+      u_ms[i] = (g_get_monotonic_time () - start) / 1000.0;
+
+      start = g_get_monotonic_time ();
+      g_action_group_activate_action (G_ACTION_GROUP (win), "redo", NULL);
+      d_work[i] = (g_get_monotonic_time () - start) / 1000.0;
+      wait_for_paint (win);
+      d_ms[i] = (g_get_monotonic_time () - start) / 1000.0;
+      g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);   /* back to the full size for the next run */
+      wait_for_paint (win);
+    }
+  g_print ("resize removing %d pixels:\n", cut * h);
+  report ("  resize", w, h, r_ms, r_work, N_PAIRS);
+  report ("  undo of the resize", w, h, u_ms, u_work, N_PAIRS);
+  report ("  redo of the resize", w, h, d_ms, d_work, N_PAIRS);
+}
+
 static void
 measure (const char *config_dir, int w, int h)
 {
@@ -82,6 +156,8 @@ measure (const char *config_dir, int w, int h)
     }
   report ("undo of a 50,000-pixel stroke", w, h, undo_ms, undo_work, N_PAIRS);
   report ("redo of a 50,000-pixel stroke", w, h, redo_ms, redo_work, N_PAIRS);
+  measure_grid (win, w, h);
+  measure_resize (win, w, h);
   g_print ("bytes of the picture copied by the canvas, %dx%d: %" G_GSIZE_FORMAT "\n", w, h,
            easel_canvas_get_bytes_copied (canvas));
   gtk_window_destroy (GTK_WINDOW (win));

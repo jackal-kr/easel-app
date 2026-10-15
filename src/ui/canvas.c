@@ -42,6 +42,13 @@ struct _EaselCanvas
   int grid_cell;
   GtkWidget *area;        /* ancestor that feeds input; not owned */
 
+  EaselHandle hover;      /* the handle under the pointer, for the cursor */
+  EaselHandle resizing;   /* the handle being dragged, or NONE */
+  guint resize_button;
+  double resize_x, resize_y;  /* canvas point where the drag began */
+  int resize_w, resize_h;     /* the picture's size at the press */
+  int outline_w, outline_h;   /* the size the drag gives now */
+
   gboolean panning;
   double pan_x, pan_y;    /* canvas point under the pointer when the pan began */
   double notch_acc;       /* touchpad scrolling not yet a whole notch */
@@ -59,12 +66,32 @@ enum
   SIGNAL_ZOOM_CHANGED,
   SIGNAL_POINTER_MOVED,
   SIGNAL_POINTER_LEFT,
+  SIGNAL_RESIZE_REQUESTED,
   N_SIGNALS
 };
 
 static guint signals[N_SIGNALS];
 
 static GtkAdjustment *adjustment (EaselCanvas *self, GtkOrientation orientation);
+static void update_cursor (EaselCanvas *self);
+
+/* Resize handles (REQ-0004-16): 5 x 5 logical pixels touching the picture, a hit area of 9 x 9 around the center, and
+   room to the right of and below the picture for the part of the hit area outside the handle (5 + 2). */
+#define HANDLE_SIZE 5.0
+#define HANDLE_HIT 9.0
+#define HANDLE_REACH 7
+
+static gboolean
+handles_shown (EaselCanvas *self)
+{
+  return self->img != NULL && self->tool != EASEL_TOOL_PAN;
+}
+
+static double
+logical_per_pixel (EaselCanvas *self)
+{
+  return self->zoom / (100.0 * easel_canvas_get_scale (self));
+}
 
 G_DEFINE_FINAL_TYPE (EaselCanvas, easel_canvas, GTK_TYPE_WIDGET)
 
@@ -128,6 +155,8 @@ easel_canvas_set_image (EaselCanvas *self, EaselImage *img)
 
   free_tiles (self);
   self->img = img;
+  self->resizing = EASEL_HANDLE_NONE;
+  self->hover = EASEL_HANDLE_NONE;
   self->tiles_rebuilt = 0;
   if (img != NULL)
     {
@@ -173,6 +202,91 @@ easel_canvas_get_scale (EaselCanvas *self)
   return surface ? gdk_surface_get_scale (surface) : 1.0;
 }
 
+gboolean
+easel_canvas_get_handle_rect (EaselCanvas *self, EaselHandle handle, graphene_rect_t *rect)
+{
+  double l, pw, ph, x, y;
+
+  if (!handles_shown (self) || handle == EASEL_HANDLE_NONE)
+    return FALSE;
+  l = logical_per_pixel (self);
+  pw = self->img->width * l;
+  ph = self->img->height * l;
+  x = handle == EASEL_HANDLE_BOTTOM ? pw / 2 - HANDLE_SIZE / 2 : pw;
+  y = handle == EASEL_HANDLE_RIGHT ? ph / 2 - HANDLE_SIZE / 2 : ph;
+  *rect = GRAPHENE_RECT_INIT ((float) x, (float) y, HANDLE_SIZE, HANDLE_SIZE);
+  return TRUE;
+}
+
+EaselHandle
+easel_canvas_handle_at (EaselCanvas *self, double x, double y)
+{
+  /* The corner first: where hit areas overlap it wins. */
+  static const EaselHandle order[] = { EASEL_HANDLE_CORNER, EASEL_HANDLE_RIGHT, EASEL_HANDLE_BOTTOM };
+
+  for (guint i = 0; i < G_N_ELEMENTS (order); i++)
+    {
+      graphene_rect_t r;
+      double cx, cy;
+
+      if (!easel_canvas_get_handle_rect (self, order[i], &r))
+        return EASEL_HANDLE_NONE;
+      cx = r.origin.x + r.size.width / 2;
+      cy = r.origin.y + r.size.height / 2;
+      if (fabs (x - cx) <= HANDLE_HIT / 2 && fabs (y - cy) <= HANDLE_HIT / 2)
+        return order[i];
+    }
+  return EASEL_HANDLE_NONE;
+}
+
+gboolean
+easel_canvas_is_resizing (EaselCanvas *self)
+{
+  return self->resizing != EASEL_HANDLE_NONE;
+}
+
+gboolean
+easel_canvas_get_resize_outline (EaselCanvas *self, int *width, int *height)
+{
+  if (self->resizing == EASEL_HANDLE_NONE)
+    return FALSE;
+  *width = self->outline_w;
+  *height = self->outline_h;
+  return TRUE;
+}
+
+/* A drag that ends or is cancelled: forget it and show the tool's cursor again. */
+static void
+stop_resizing (EaselCanvas *self)
+{
+  self->resizing = EASEL_HANDLE_NONE;
+  update_cursor (self);
+  gtk_widget_queue_draw (GTK_WIDGET (self));
+}
+
+void
+easel_canvas_cancel_resize (EaselCanvas *self)
+{
+  if (self->resizing == EASEL_HANDLE_NONE)
+    return;
+  /* The press is over for good, but its button may still be held (REQ-0004-19). */
+  self->cancelled_button = self->resize_button;
+  stop_resizing (self);
+}
+
+/* The size a drag to the canvas point (x, y) gives: the movement since the press, in picture pixels (REQ-0004-18). */
+static void
+resize_to (EaselCanvas *self, double x, double y)
+{
+  double l = logical_per_pixel (self);
+
+  self->outline_w = self->resize_w;
+  self->outline_h = self->resize_h;
+  easel_view_resize_by (self->resizing, (x - self->resize_x) / l, (y - self->resize_y) / l, &self->outline_w,
+                        &self->outline_h);
+  gtk_widget_queue_draw (GTK_WIDGET (self));
+}
+
 static void
 easel_canvas_measure (GtkWidget *widget, GtkOrientation orientation, int for_size,
                       int *minimum, int *natural, int *minimum_baseline, int *natural_baseline)
@@ -182,7 +296,8 @@ easel_canvas_measure (GtkWidget *widget, GtkOrientation orientation, int for_siz
 
   if (self->img != NULL)
     size = easel_view_content_size (orientation == GTK_ORIENTATION_HORIZONTAL ? self->img->width : self->img->height,
-                                    self->zoom, easel_canvas_get_scale (self));
+                                    self->zoom, easel_canvas_get_scale (self))
+           + (handles_shown (self) ? HANDLE_REACH : 0);
   *minimum = *natural = size;
 }
 
@@ -255,6 +370,31 @@ append_grid (EaselCanvas *self, GtkSnapshot *snapshot)
   cairo_destroy (d.cr);
 }
 
+/* The handles as small dark blue squares and, during a drag, the new picture's outline as a thin line (REQ-0004-16,
+   REQ-0004-18). */
+static void
+append_handles (EaselCanvas *self, GtkSnapshot *snapshot)
+{
+  static const EaselHandle all[] = { EASEL_HANDLE_RIGHT, EASEL_HANDLE_BOTTOM, EASEL_HANDLE_CORNER };
+  static const GdkRGBA navy = { 0.0f, 0.0f, 0.5f, 1.0f };
+  graphene_rect_t r;
+
+  for (guint i = 0; i < G_N_ELEMENTS (all); i++)
+    if (easel_canvas_get_handle_rect (self, all[i], &r))
+      gtk_snapshot_append_color (snapshot, &navy, &r);
+  if (self->resizing != EASEL_HANDLE_NONE)
+    {
+      double l = logical_per_pixel (self), t = 1.0 / easel_canvas_get_scale (self);
+      double w = self->outline_w * l, h = self->outline_h * l;
+      static const GdkRGBA black = { 0, 0, 0, 1 };
+
+      gtk_snapshot_append_color (snapshot, &black, &GRAPHENE_RECT_INIT (0, 0, (float) w, (float) t));
+      gtk_snapshot_append_color (snapshot, &black, &GRAPHENE_RECT_INIT (0, (float) (h - t), (float) w, (float) t));
+      gtk_snapshot_append_color (snapshot, &black, &GRAPHENE_RECT_INIT (0, 0, (float) t, (float) h));
+      gtk_snapshot_append_color (snapshot, &black, &GRAPHENE_RECT_INIT ((float) (w - t), 0, (float) t, (float) h));
+    }
+}
+
 static void
 easel_canvas_snapshot (GtkWidget *widget, GtkSnapshot *snapshot)
 {
@@ -282,6 +422,7 @@ easel_canvas_snapshot (GtkWidget *widget, GtkSnapshot *snapshot)
       }
   if (easel_canvas_grid_is_drawn (self))
     append_grid (self, snapshot);
+  append_handles (self, snapshot);
 }
 
 static GdkCursor *
@@ -307,7 +448,12 @@ update_cursor (EaselCanvas *self)
 {
   g_autoptr (GdkCursor) cursor = NULL;
 
-  if (self->tool == EASEL_TOOL_PENCIL)
+  EaselHandle handle = self->resizing != EASEL_HANDLE_NONE ? self->resizing : self->hover;
+
+  if (handle != EASEL_HANDLE_NONE)
+    cursor = gdk_cursor_new_from_name (handle == EASEL_HANDLE_RIGHT ? "ew-resize"
+                                       : handle == EASEL_HANDLE_BOTTOM ? "ns-resize" : "nwse-resize", NULL);
+  else if (self->tool == EASEL_TOOL_PENCIL)
     cursor = g_object_ref (pencil_cursor ());
   else
     cursor = gdk_cursor_new_from_name (self->panning ? "grabbing" : "grab", NULL);
@@ -333,7 +479,9 @@ void
 easel_canvas_set_tool (EaselCanvas *self, EaselTool tool)
 {
   self->tool = tool;
+  self->hover = EASEL_HANDLE_NONE;
   update_cursor (self);
+  gtk_widget_queue_resize (GTK_WIDGET (self));   /* the handles come and go with the room they need */
 }
 
 void
@@ -381,6 +529,8 @@ easel_canvas_reset_pointer (EaselCanvas *self)
 {
   easel_canvas_end_stroke (self);
   self->cancelled_button = 0;
+  if (self->resizing != EASEL_HANDLE_NONE)
+    stop_resizing (self);
   if (self->panning)
     {
       self->panning = FALSE;
@@ -427,6 +577,35 @@ easel_canvas_press (EaselCanvas *self, guint button, double x, double y)
       return;
     }
 
+  /* A drag of a handle: the other button cancels it (REQ-0004-19). */
+  if (self->resizing != EASEL_HANDLE_NONE)
+    {
+      if (button != self->resize_button)
+        easel_canvas_cancel_resize (self);
+      return;
+    }
+  if (handles_shown (self))
+    {
+      EaselHandle handle = easel_canvas_handle_at (self, x, y);
+
+      if (handle != EASEL_HANDLE_NONE)
+        {
+          /* Only the primary button starts a resize; the other does nothing, and does not draw (REQ-0004-16). */
+          if (button == GDK_BUTTON_PRIMARY)
+            {
+              self->resizing = handle;
+              self->resize_button = button;
+              self->resize_x = x;
+              self->resize_y = y;
+              self->resize_w = self->outline_w = self->img->width;
+              self->resize_h = self->outline_h = self->img->height;
+              update_cursor (self);
+              gtk_widget_queue_draw (GTK_WIDGET (self));
+            }
+          return;
+        }
+    }
+
   if (self->tool == EASEL_TOOL_PAN)
     {
       /* Only a primary drag pans (REQ-0001-14). */
@@ -459,6 +638,11 @@ easel_canvas_motion (EaselCanvas *self, double x, double y)
 {
   int px, py;
 
+  if (self->resizing != EASEL_HANDLE_NONE)
+    {
+      resize_to (self, x, y);
+      return;
+    }
   if (self->panning)
     {
       /* Keep the canvas point grabbed at the press under the pointer; the adjustments stop at the
@@ -483,6 +667,16 @@ easel_canvas_release (EaselCanvas *self, guint button)
 {
   if (button == self->cancelled_button)
     self->cancelled_button = 0;
+  if (self->resizing != EASEL_HANDLE_NONE && button == self->resize_button)
+    {
+      int w = self->outline_w, h = self->outline_h;
+      gboolean changed = w != self->resize_w || h != self->resize_h;
+
+      stop_resizing (self);
+      if (changed)
+        g_signal_emit (self, signals[SIGNAL_RESIZE_REQUESTED], 0, w, h);
+      return;
+    }
   if (self->panning && button == GDK_BUTTON_PRIMARY)
     {
       self->panning = FALSE;
@@ -605,8 +799,16 @@ easel_canvas_pointer_at (EaselCanvas *self, double x, double y)
 {
   int px, py;
 
+  EaselHandle hover;
+
   if (self->img == NULL)
     return;
+  hover = easel_canvas_handle_at (self, x, y);
+  if (hover != self->hover)
+    {
+      self->hover = hover;
+      update_cursor (self);
+    }
   to_pixel (self, x, y, &px, &py);
   g_signal_emit (self, signals[SIGNAL_POINTER_MOVED], 0, px, py);
 }
@@ -871,6 +1073,8 @@ easel_canvas_class_init (EaselCanvasClass *klass)
                                                NULL, NULL, G_TYPE_NONE, 0);
   signals[SIGNAL_ZOOM_CHANGED] = g_signal_new ("zoom-changed", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST, 0, NULL, NULL,
                                                NULL, G_TYPE_NONE, 1, G_TYPE_INT);
+  signals[SIGNAL_RESIZE_REQUESTED] = g_signal_new ("resize-requested", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST, 0,
+                                                   NULL, NULL, NULL, G_TYPE_NONE, 2, G_TYPE_INT, G_TYPE_INT);
   signals[SIGNAL_STROKE_FINISHED] = g_signal_new ("stroke-finished", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST,
                                                   0, NULL, NULL, NULL, G_TYPE_NONE, 1, G_TYPE_UINT);
 }

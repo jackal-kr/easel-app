@@ -351,6 +351,70 @@ as27_resize_refused (void)
   easel_image_free (img);
 }
 
+/* AS-30: undo and redo of a resize that cannot get its memory change nothing and can be tried again. */
+static void
+as30_undo_redo_refused (void)
+{
+  EaselImage *img = pattern_image (6000, 3000);
+  EaselHistory *h = easel_history_new ((size_t) 512 << 20);
+  Copy start = copy_of (img);
+  struct rlimit old, tight;
+  long vm;
+  int w = 0, ht = 0;
+
+  CHECK (easel_resize_edit (img, h, 1, 1, 0xFF112233u) == EASEL_RESIZE_OK);
+  CHECK (!easel_history_refused (h, &w, &ht));
+  vm = vm_size_kb ();
+  CHECK (vm > 0 && getrlimit (RLIMIT_AS, &old) == 0);
+  tight = old;
+  tight.rlim_cur = (rlim_t) vm * 1024 + (rlim_t) 4 * 1024 * 1024;   /* 72 MB for the picture would not fit */
+  if (old.rlim_max != RLIM_INFINITY && tight.rlim_cur > old.rlim_max)
+    tight.rlim_cur = old.rlim_max;
+  CHECK (setrlimit (RLIMIT_AS, &tight) == 0);
+  {
+    bool undone = easel_history_undo (h, img);
+
+    CHECK (setrlimit (RLIMIT_AS, &old) == 0);
+    CHECK (!undone);
+  }
+  CHECK (img->width == 1 && img->height == 1 && img->px[0] == start.px[0]);
+  CHECK (easel_history_can_undo (h) && !easel_history_can_redo (h));
+  CHECK (easel_history_refused (h, &w, &ht) && w == 6000 && ht == 3000);
+
+  /* Memory is back: the same undo works, and the refusal is forgotten. */
+  CHECK (easel_history_undo (h, img) && same_as (img, &start));
+  CHECK (!easel_history_refused (h, &w, &ht));
+
+  /* Redo of a resize that grows: refused the same way, and the redo stays available. */
+  free (start.px);
+  easel_history_free (h);
+  easel_image_free (img);
+  img = pattern_image (10, 10);
+  h = easel_history_new ((size_t) 512 << 20);
+  start = copy_of (img);
+  CHECK (easel_resize_edit (img, h, 6000, 3000, 0xFF445566u) == EASEL_RESIZE_OK);
+  CHECK (easel_history_undo (h, img) && same_as (img, &start));
+  vm = vm_size_kb ();
+  tight.rlim_cur = (rlim_t) vm * 1024 + (rlim_t) 4 * 1024 * 1024;
+  if (old.rlim_max != RLIM_INFINITY && tight.rlim_cur > old.rlim_max)
+    tight.rlim_cur = old.rlim_max;
+  CHECK (setrlimit (RLIMIT_AS, &tight) == 0);
+  {
+    bool redone = easel_history_redo (h, img);
+
+    CHECK (setrlimit (RLIMIT_AS, &old) == 0);
+    CHECK (!redone);
+  }
+  CHECK (same_as (img, &start) && easel_history_can_redo (h));
+  CHECK (easel_history_refused (h, &w, &ht) && w == 6000 && ht == 3000);
+  CHECK (easel_history_redo (h, img) && img->width == 6000 && img->height == 3000);
+  CHECK (!easel_history_refused (h, &w, &ht));
+
+  free (start.px);
+  easel_history_free (h);
+  easel_image_free (img);
+}
+
 int
 main (void)
 {
@@ -360,5 +424,6 @@ main (void)
   RUN (as24_resize_step_budget);
   RUN (as29_oversized_resize_kept_alone);
   RUN (as27_resize_refused);
+  RUN (as30_undo_redo_refused);
   return 0;
 }

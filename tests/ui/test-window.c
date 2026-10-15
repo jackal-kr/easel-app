@@ -4,7 +4,9 @@
 #include <adwaita.h>
 #include <gdk-pixbuf/gdk-pixbuf.h>
 #include <glib/gstdio.h>
+#include <stdio.h>
 #include <string.h>
+#include <sys/resource.h>
 #include <unistd.h>
 
 #include "application.h"
@@ -13,6 +15,7 @@
 #include "palette-file.h"
 #include "status-bar.h"
 #include "settings-file.h"
+#include "settings.h"
 #include "view.h"
 #include "window.h"
 
@@ -2524,6 +2527,672 @@ as35_input_ignored_before_picture (void)
   write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
 }
 
+/* ---- 0004: changing the picture's size ---- */
+
+static GtkEditable *
+find_row (GtkWidget *root, const char *title)
+{
+  for (GtkWidget *child = gtk_widget_get_first_child (root); child; child = gtk_widget_get_next_sibling (child))
+    {
+      GtkEditable *found;
+
+      if (ADW_IS_SPIN_ROW (child)
+          && g_strcmp0 (adw_preferences_row_get_title (ADW_PREFERENCES_ROW (child)), title) == 0)
+        return GTK_EDITABLE (child);
+      found = find_row (child, title);
+      if (found != NULL)
+        return found;
+    }
+  return NULL;
+}
+
+static void
+open_attributes (EaselWindow *win, AdwAlertDialog **dialog, GtkEditable **width, GtkEditable **height)
+{
+  g_action_group_activate_action (G_ACTION_GROUP (win), "attributes", NULL);
+  wait_for_dialogs (win, 1);
+  *dialog = open_alert (win);
+  g_assert_nonnull (*dialog);
+  *width = find_row (GTK_WIDGET (*dialog), "Width");
+  *height = find_row (GTK_WIDGET (*dialog), "Height");
+  g_assert_nonnull (*width);
+  g_assert_nonnull (*height);
+}
+
+/* The picture, the canvas's tiles and the status bar all have the size. */
+static void
+assert_size (EaselWindow *win, int w, int h)
+{
+  const EaselImage *img = easel_window_get_picture (win);
+  GdkTexture *tile = easel_canvas_get_tile_texture (easel_window_get_canvas (win), 0, 0);
+  g_autofree char *text = g_strdup_printf ("%d × %d", w, h);
+
+  g_assert_cmpint (img->width, ==, w);
+  g_assert_cmpint (img->height, ==, h);
+  g_assert_cmpint (gdk_texture_get_width (tile), ==, MIN (w, EASEL_CANVAS_TILE));
+  g_assert_cmpint (gdk_texture_get_height (tile), ==, MIN (h, EASEL_CANVAS_TILE));
+  g_assert_nonnull (strstr (easel_status_bar_get_text (easel_window_get_status_bar (win), EASEL_STATUS_SIZE), text));
+}
+
+/* Limits the address space to what the process uses now plus extra_mb, to make a big allocation fail. */
+static gboolean
+limit_memory (struct rlimit *old, long extra_mb)
+{
+  struct rlimit tight;
+  FILE *f = fopen ("/proc/self/statm", "r");
+  long pages = 0;
+
+  if (f == NULL)
+    return FALSE;
+  if (fscanf (f, "%ld", &pages) != 1)
+    pages = 0;
+  fclose (f);
+  if (pages <= 0 || getrlimit (RLIMIT_AS, old) != 0)
+    return FALSE;
+  tight = *old;
+  tight.rlim_cur = (rlim_t) pages * (rlim_t) sysconf (_SC_PAGESIZE) + (rlim_t) extra_mb * 1024 * 1024;
+  if (old->rlim_max != RLIM_INFINITY && tight.rlim_cur > old->rlim_max)
+    tight.rlim_cur = old->rlim_max;
+  return setrlimit (RLIMIT_AS, &tight) == 0;
+}
+
+static int
+field_value (GtkEditable *row)
+{
+  return (int) adw_spin_row_get_value (ADW_SPIN_ROW (row));
+}
+
+/* Types text into a spin row and commits it, as leaving the field or pressing Enter does. */
+static void
+type_into (GtkEditable *row, const char *text)
+{
+  gtk_editable_set_text (row, text);
+  adw_spin_row_update (ADW_SPIN_ROW (row));
+}
+
+/* REQ-0004-21, REQ-0004-20: the Attributes dialog. */
+static void
+as20_attributes_dialog (void)
+{
+  static const struct { const char *typed; int expected; } typed[] = {
+    { "0", 1 }, { "-3", 1 }, { "10001", 10000 }, { "99999999999999999999", 10000 }, { "10000", 10000 },
+    { "1", 1 }, { "640", 640 }, { "abc", 640 }, { "1.5", 640 }, { "", 640 }, { "007", 7 },
+  };
+  EaselWindow *win = start_window ();
+  AdwAlertDialog *dialog;
+  GtkEditable *width, *height;
+  int area_w, area_h, dw, dh;
+
+  wait_for_layout (win);
+  open_attributes (win, &dialog, &width, &height);
+  g_assert_cmpstr (adw_alert_dialog_get_heading (dialog), ==, "Attributes");
+  g_assert_cmpstr (adw_alert_dialog_get_body (dialog), ==,
+                   "New area is filled with the background color; a smaller size crops the picture.");
+  g_assert_cmpint (field_value (width), ==, 300);
+  g_assert_cmpint (field_value (height), ==, 200);
+  g_assert_cmpstr (adw_alert_dialog_get_default_response (dialog), ==, "ok");
+  g_assert_cmpstr (adw_alert_dialog_get_close_response (dialog), ==, "cancel");
+  g_assert_true (adw_alert_dialog_get_response_enabled (dialog, "ok"));
+  g_assert_nonnull (find_button (GTK_WIDGET (dialog), "Default"));
+
+  /* Plus and minus step by 1; the fields run from 1 to 10000. */
+  {
+    GtkAdjustment *adj = adw_spin_row_get_adjustment (ADW_SPIN_ROW (width));
+
+    g_assert_cmpfloat (gtk_adjustment_get_step_increment (adj), ==, 1);
+    g_assert_cmpfloat (gtk_adjustment_get_lower (adj), ==, 1);
+    g_assert_cmpfloat (gtk_adjustment_get_upper (adj), ==, 10000);
+    gtk_adjustment_set_value (adj, gtk_adjustment_get_value (adj) + gtk_adjustment_get_step_increment (adj));
+    gtk_adjustment_set_value (adw_spin_row_get_adjustment (ADW_SPIN_ROW (height)),
+                              200 - gtk_adjustment_get_step_increment (adj));
+    g_assert_cmpint (field_value (width), ==, 301);
+    g_assert_cmpint (field_value (height), ==, 199);
+  }
+
+  /* Typed numbers are clamped, other text goes back; OK is always usable. */
+  for (guint i = 0; i < G_N_ELEMENTS (typed); i++)
+    {
+      type_into (width, typed[i].typed);
+      g_assert_cmpint (field_value (width), ==, typed[i].expected);
+      type_into (height, typed[i].typed);
+      g_assert_cmpint (field_value (height), ==, typed[i].expected);
+      g_assert_true (adw_alert_dialog_get_response_enabled (dialog, "ok"));
+    }
+
+  /* Cancel and Esc change nothing. */
+  type_into (width, "640");
+  type_into (height, "480");
+  adw_dialog_close (ADW_DIALOG (dialog));
+  wait_for_dialogs (win, 0);
+  assert_size (win, 300, 200);
+  g_assert_false (easel_window_get_modified (win));
+
+  /* Enter is OK; the added area has the current background color (REQ-0004-20), here the swapped one. */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "swap-colors", NULL);
+  open_attributes (win, &dialog, &width, &height);
+  type_into (width, "640");
+  type_into (height, "480");
+  g_signal_emit_by_name (gtk_editable_get_delegate (height), "activate");
+  wait_for_dialogs (win, 0);
+  assert_size (win, 640, 480);
+  g_assert_cmpuint (easel_image_get (easel_window_get_picture (win), 0, 0), ==, 0xFFFFFF00u);
+  g_assert_cmpuint (easel_image_get (easel_window_get_picture (win), 639, 479), ==, 0xFF000000u);
+  g_assert_true (easel_window_get_modified (win));
+
+  /* The OK response applies what the fields hold. */
+  open_attributes (win, &dialog, &width, &height);
+  g_assert_cmpint (field_value (width), ==, 640);
+  type_into (width, "20");
+  g_signal_emit_by_name (dialog, "response", "ok");
+  adw_dialog_close (ADW_DIALOG (dialog));
+  wait_for_dialogs (win, 0);
+  assert_size (win, 20, 480);
+
+  /* Default: the size a new picture would get now; here the settings say 300 x 200. */
+  open_attributes (win, &dialog, &width, &height);
+  g_signal_emit_by_name (find_button (GTK_WIDGET (dialog), "Default"), "clicked");
+  g_assert_cmpint (field_value (width), ==, 300);
+  g_assert_cmpint (field_value (height), ==, 200);
+  adw_dialog_close (ADW_DIALOG (dialog));
+  wait_for_dialogs (win, 0);
+  assert_size (win, 20, 480);
+  close_windows ();
+
+  /* With auto the answer depends on the canvas area at that moment. */
+  write_settings ("[new-picture]\nwidth=auto\nheight=auto\n");
+  win = start_window ();
+  wait_for_layout (win);
+  canvas_area (win, &area_w, &area_h);
+  easel_settings_resolve_size (&(EaselSettings) { .width = EASEL_SIZE_AUTO, .height = EASEL_SIZE_AUTO }, area_w, area_h,
+                               &dw, &dh);
+  open_attributes (win, &dialog, &width, &height);
+  type_into (width, "5");
+  type_into (height, "5");
+  g_signal_emit_by_name (find_button (GTK_WIDGET (dialog), "Default"), "clicked");
+  g_assert_cmpint (field_value (width), ==, dw);
+  g_assert_cmpint (field_value (height), ==, dh);
+  adw_dialog_close (ADW_DIALOG (dialog));
+  wait_for_dialogs (win, 0);
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* REQ-0004-22: a resize is one step between strokes, and undo and redo go through it with the right size and pixels. */
+static void
+as22_undo_through_resize (void)
+{
+  EaselWindow *win = start_window ();
+  const EaselImage *img = easel_window_get_picture (win);
+
+  use_pencil (win);
+  stroke (win, 10.5, 10.5, 10.5, 10.5);                        /* A: black */
+  g_assert_cmpuint (easel_image_get (img, 10, 10), ==, 0xFF000000u);
+  g_assert_cmpint (easel_window_resize_picture (win, 8, 8), ==, EASEL_RESIZE_OK);     /* the stroke is cropped away */
+  assert_size (win, 8, 8);
+  stroke (win, 5.5, 5.5, 5.5, 5.5);                            /* B */
+  g_assert_cmpuint (easel_image_get (img, 5, 5), ==, 0xFF000000u);
+
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);   /* B */
+  assert_size (win, 8, 8);
+  g_assert_cmpuint (easel_image_get (img, 5, 5), ==, 0xFFFFFF00u);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);   /* the resize */
+  assert_size (win, 300, 200);
+  g_assert_cmpuint (easel_image_get (img, 10, 10), ==, 0xFF000000u);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);   /* A */
+  g_assert_cmpuint (easel_image_get (img, 10, 10), ==, 0xFFFFFF00u);
+  g_assert_false (action_enabled (win, "undo"));
+  for (int i = 0; i < 3; i++)
+    g_action_group_activate_action (G_ACTION_GROUP (win), "redo", NULL);
+  assert_size (win, 8, 8);
+  g_assert_cmpuint (easel_image_get (img, 5, 5), ==, 0xFF000000u);
+  g_assert_false (action_enabled (win, "redo"));
+  close_windows ();
+}
+
+/* REQ-0004-22: the modified mark follows the history across a resize. */
+static void
+as23_modified_across_resize (void)
+{
+  EaselWindow *win = start_window ();
+  g_autofree char *dir = g_dir_make_tmp ("easel-ui-XXXXXX", NULL);
+  g_autofree char *path = g_build_filename (dir, "a.png", NULL);
+
+  g_assert_true (easel_window_save_to (win, path));
+  g_assert_cmpstr (gtk_window_get_title (GTK_WINDOW (win)), ==, "a.png – Easel");
+  g_assert_cmpint (easel_window_resize_picture (win, 120, 90), ==, EASEL_RESIZE_OK);
+  g_assert_cmpstr (gtk_window_get_title (GTK_WINDOW (win)), ==, "• a.png – Easel");
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_cmpstr (gtk_window_get_title (GTK_WINDOW (win)), ==, "a.png – Easel");
+  g_assert_false (easel_window_get_modified (win));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "redo", NULL);
+  g_assert_true (easel_window_get_modified (win));
+  close_windows ();
+}
+
+/* REQ-0004-24: the same size adds no step. */
+static void
+as25_same_size_no_step (void)
+{
+  EaselWindow *win = start_window ();
+  AdwAlertDialog *dialog;
+  GtkEditable *width, *height;
+
+  wait_for_layout (win);
+  open_attributes (win, &dialog, &width, &height);
+  g_signal_emit_by_name (dialog, "response", "ok");
+  adw_dialog_close (ADW_DIALOG (dialog));
+  wait_for_dialogs (win, 0);
+  g_assert_false (action_enabled (win, "undo"));
+  g_assert_false (easel_window_get_modified (win));
+  g_assert_cmpint (easel_window_resize_picture (win, 300, 200), ==, EASEL_RESIZE_UNCHANGED);
+  g_assert_false (action_enabled (win, "undo"));
+  close_windows ();
+}
+
+/* REQ-0004-25: the scroll position is kept as far as the new size allows; the zoom and the window size stay. */
+static void
+as26_scroll_clamp_after_resize (void)
+{
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  GtkScrolledWindow *scroller;
+  GtkAdjustment *h, *v;
+  double page_w, page_h;
+  int win_w, win_h;
+
+  write_settings ("[new-picture]\nwidth=2000\nheight=2000\n");
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  scroller = GTK_SCROLLED_WINDOW (gtk_widget_get_ancestor (GTK_WIDGET (canvas), GTK_TYPE_SCROLLED_WINDOW));
+  h = gtk_scrolled_window_get_hadjustment (scroller);
+  v = gtk_scrolled_window_get_vadjustment (scroller);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-normal", NULL);
+  wait_for_layout (win);
+  page_w = gtk_adjustment_get_page_size (h);
+  page_h = gtk_adjustment_get_page_size (v);
+  gtk_adjustment_set_value (h, 1500);
+  gtk_adjustment_set_value (v, 1500);
+  wait_for_layout (win);
+  win_w = gtk_widget_get_width (GTK_WIDGET (win));
+  win_h = gtk_widget_get_height (GTK_WIDGET (win));
+
+  g_assert_cmpint (easel_window_resize_picture (win, 1700, 1700), ==, EASEL_RESIZE_OK);
+  wait_for_layout (win);
+  g_assert_cmpint (easel_canvas_get_zoom (canvas), ==, 100);
+  g_assert_cmpfloat_with_epsilon (gtk_adjustment_get_value (h), MAX (0, MIN (1500, 1700 - page_w)), 1.0);
+  g_assert_cmpfloat_with_epsilon (gtk_adjustment_get_value (v), MAX (0, MIN (1500, 1700 - page_h)), 1.0);
+  g_assert_cmpint (gtk_widget_get_width (GTK_WIDGET (win)), ==, win_w);
+  g_assert_cmpint (gtk_widget_get_height (GTK_WIDGET (win)), ==, win_h);
+
+  g_assert_cmpint (easel_window_resize_picture (win, 100, 100), ==, EASEL_RESIZE_OK);
+  wait_for_layout (win);
+  g_assert_cmpfloat (gtk_adjustment_get_value (h), ==, 0);
+  g_assert_cmpfloat (gtk_adjustment_get_value (v), ==, 0);
+
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  wait_for_layout (win);
+  assert_size (win, 2000, 2000);
+  g_assert_cmpint (easel_canvas_get_zoom (canvas), ==, 100);
+  g_assert_cmpfloat (gtk_adjustment_get_value (h), ==, 0);
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* REQ-0004-26: a resize that cannot be allocated shows the dialog and changes nothing. */
+static void
+as27_error_dialog (void)
+{
+  EaselWindow *win = start_window ();
+  AdwAlertDialog *dialog;
+  struct rlimit old;
+  EaselResizeResult r;
+
+  g_assert_true (limit_memory (&old, 200));
+  r = easel_window_resize_picture (win, 10000, 10000);
+  g_assert_cmpint (setrlimit (RLIMIT_AS, &old), ==, 0);
+  g_assert_cmpint (r, ==, EASEL_RESIZE_NO_MEMORY);
+  wait_for_dialogs (win, 1);
+  dialog = open_alert (win);
+  g_assert_cmpstr (adw_alert_dialog_get_heading (dialog), ==, "Could Not Resize the Picture");
+  g_assert_cmpstr (adw_alert_dialog_get_body (dialog), ==, "There is not enough memory for a picture of 10000 × 10000 pixels.");
+  assert_size (win, 300, 200);
+  g_assert_false (action_enabled (win, "undo"));
+  g_assert_false (easel_window_get_modified (win));
+  adw_dialog_close (ADW_DIALOG (dialog));
+  wait_for_dialogs (win, 0);
+  close_windows ();
+}
+
+/* REQ-0004-26 through the Attributes dialog: OK on a size that cannot be had leaves one dialog, the error. */
+static void
+as27_error_through_attributes (void)
+{
+  EaselWindow *win = start_window ();
+  AdwAlertDialog *dialog;
+  GtkEditable *width, *height;
+  struct rlimit old;
+
+  wait_for_layout (win);
+  open_attributes (win, &dialog, &width, &height);
+  type_into (width, "10000");
+  type_into (height, "10000");
+  g_assert_true (limit_memory (&old, 200));
+  g_signal_emit_by_name (dialog, "response", "ok");
+  g_assert_cmpint (setrlimit (RLIMIT_AS, &old), ==, 0);
+  adw_dialog_close (ADW_DIALOG (dialog));
+  wait_for_dialogs (win, 1);
+  dialog = open_alert (win);
+  g_assert_nonnull (dialog);
+  g_assert_cmpstr (adw_alert_dialog_get_heading (dialog), ==, "Could Not Resize the Picture");
+  assert_size (win, 300, 200);
+  g_assert_false (action_enabled (win, "undo"));
+  adw_dialog_close (ADW_DIALOG (dialog));
+  wait_for_dialogs (win, 0);
+  close_windows ();
+}
+
+/* AS-30: undo that cannot be allocated shows the same dialog and leaves picture and history position as they are. */
+static void
+as30_undo_error_dialog (void)
+{
+  EaselWindow *win = start_window ();
+  AdwAlertDialog *dialog;
+  struct rlimit old;
+
+  g_assert_cmpint (easel_window_resize_picture (win, 10000, 5000), ==, EASEL_RESIZE_OK);
+  g_assert_cmpint (easel_window_resize_picture (win, 1, 1), ==, EASEL_RESIZE_OK);
+  g_assert_true (limit_memory (&old, 64));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_cmpint (setrlimit (RLIMIT_AS, &old), ==, 0);
+  wait_for_dialogs (win, 1);
+  dialog = open_alert (win);
+  g_assert_cmpstr (adw_alert_dialog_get_heading (dialog), ==, "Could Not Resize the Picture");
+  g_assert_cmpstr (adw_alert_dialog_get_body (dialog), ==, "There is not enough memory for a picture of 10000 × 5000 pixels.");
+  assert_size (win, 1, 1);
+  g_assert_true (action_enabled (win, "undo"));
+  g_assert_false (action_enabled (win, "redo"));
+  adw_dialog_close (ADW_DIALOG (dialog));
+  wait_for_dialogs (win, 0);
+
+  /* Memory is back: the same undo works. */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  assert_size (win, 10000, 5000);
+  g_assert_true (action_enabled (win, "redo"));
+  close_windows ();
+}
+
+/* ---- 0004: the resize handles ---- */
+
+/* Logical pixels per picture pixel at the canvas's zoom. */
+static double
+logical_per_pixel (EaselCanvas *canvas)
+{
+  return easel_canvas_get_zoom (canvas) / (100.0 * easel_canvas_get_scale (canvas));
+}
+
+static void
+handle_center (EaselCanvas *canvas, EaselHandle handle, double *x, double *y)
+{
+  graphene_rect_t r;
+
+  g_assert_true (easel_canvas_get_handle_rect (canvas, handle, &r));
+  *x = r.origin.x + r.size.width / 2;
+  *y = r.origin.y + r.size.height / 2;
+}
+
+/* One drag of a handle by dx, dy picture pixels, as the pointer would make it. */
+static void
+drag_handle (EaselWindow *win, EaselHandle handle, double dx, double dy)
+{
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  double x, y, l = logical_per_pixel (canvas);
+
+  handle_center (canvas, handle, &x, &y);
+  easel_canvas_press (canvas, 1, x, y);
+  easel_canvas_motion (canvas, x + dx * l, y + dy * l);
+  easel_canvas_release (canvas, 1);
+}
+
+/* REQ-0004-16: where the handles are, and when. */
+static void
+as15_handles (void)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  graphene_rect_t r;
+  int min_pan, min_pencil, ignored;
+
+  wait_for_layout (win);
+  /* Pan, the start-up tool: no handles. */
+  g_assert_false (easel_canvas_get_handle_rect (canvas, EASEL_HANDLE_RIGHT, &r));
+  g_assert_cmpint (easel_canvas_handle_at (canvas, 302.5, 100), ==, EASEL_HANDLE_NONE);
+  gtk_widget_measure (GTK_WIDGET (canvas), GTK_ORIENTATION_HORIZONTAL, -1, &min_pan, &ignored, NULL, NULL);
+
+  use_pencil (win);
+  wait_for_layout (win);
+  /* 300x200 at 100 %: just outside the right middle, bottom middle and corner, 5x5 each, touching the picture. */
+  g_assert_true (easel_canvas_get_handle_rect (canvas, EASEL_HANDLE_RIGHT, &r));
+  g_assert_cmpfloat_with_epsilon (r.origin.x * easel_canvas_get_scale (canvas), 300, 0.01);
+  g_assert_cmpfloat_with_epsilon ((r.origin.y + 2.5) * easel_canvas_get_scale (canvas), 100, 0.01);
+  g_assert_cmpfloat_with_epsilon (r.size.width, 5, 0.001);
+  g_assert_cmpfloat_with_epsilon (r.size.height, 5, 0.001);
+  g_assert_true (easel_canvas_get_handle_rect (canvas, EASEL_HANDLE_BOTTOM, &r));
+  g_assert_cmpfloat_with_epsilon ((r.origin.x + 2.5) * easel_canvas_get_scale (canvas), 150, 0.01);
+  g_assert_cmpfloat_with_epsilon (r.origin.y * easel_canvas_get_scale (canvas), 200, 0.01);
+  g_assert_true (easel_canvas_get_handle_rect (canvas, EASEL_HANDLE_CORNER, &r));
+  g_assert_cmpfloat_with_epsilon (r.origin.x * easel_canvas_get_scale (canvas), 300, 0.01);
+  g_assert_cmpfloat_with_epsilon (r.origin.y * easel_canvas_get_scale (canvas), 200, 0.01);
+  g_assert_cmpfloat_with_epsilon (r.size.width, 5, 0.001);
+
+  /* The hit area is 9x9 around the center. */
+  {
+    double rx, ry, bx, by, cx, cy;
+
+    handle_center (canvas, EASEL_HANDLE_RIGHT, &rx, &ry);
+    handle_center (canvas, EASEL_HANDLE_BOTTOM, &bx, &by);
+    handle_center (canvas, EASEL_HANDLE_CORNER, &cx, &cy);
+    g_assert_cmpint (easel_canvas_handle_at (canvas, rx, ry), ==, EASEL_HANDLE_RIGHT);
+    g_assert_cmpint (easel_canvas_handle_at (canvas, rx + 4.4, ry - 4.4), ==, EASEL_HANDLE_RIGHT);
+    g_assert_cmpint (easel_canvas_handle_at (canvas, rx + 4.6, ry), ==, EASEL_HANDLE_NONE);
+    g_assert_cmpint (easel_canvas_handle_at (canvas, rx, ry + 4.6), ==, EASEL_HANDLE_NONE);
+    g_assert_cmpint (easel_canvas_handle_at (canvas, 10, 10), ==, EASEL_HANDLE_NONE);   /* inside the picture */
+    g_assert_cmpint (easel_canvas_handle_at (canvas, bx, by), ==, EASEL_HANDLE_BOTTOM);
+    g_assert_cmpint (easel_canvas_handle_at (canvas, cx, cy), ==, EASEL_HANDLE_CORNER);
+  }
+
+  /* The scrollable area includes them, only while they show. */
+  gtk_widget_measure (GTK_WIDGET (canvas), GTK_ORIENTATION_HORIZONTAL, -1, &min_pencil, &ignored, NULL, NULL);
+  g_assert_cmpint (min_pencil, ==, min_pan + 7);
+
+  /* Where the hit areas overlap, the corner wins: an 8x8 picture. */
+  g_assert_cmpint (easel_window_resize_picture (win, 8, 8), ==, EASEL_RESIZE_OK);
+  wait_for_layout (win);
+  {
+    double rx, ry, cx, cy;
+
+    handle_center (canvas, EASEL_HANDLE_RIGHT, &rx, &ry);
+    handle_center (canvas, EASEL_HANDLE_CORNER, &cx, &cy);
+    g_assert_cmpint (easel_canvas_handle_at (canvas, rx, (ry + cy) / 2), ==, EASEL_HANDLE_CORNER);
+    g_assert_cmpint (easel_canvas_handle_at (canvas, rx, ry - 3.9), ==, EASEL_HANDLE_RIGHT);
+  }
+
+  /* Back to Pan: hidden again. */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "tool", g_variant_new_string ("pan"));
+  g_assert_false (easel_canvas_get_handle_rect (canvas, EASEL_HANDLE_CORNER, &r));
+  close_windows ();
+}
+
+/* REQ-0004-18, REQ-0004-24: dragging a handle resizes by the movement. */
+static void
+as17_handle_drag (void)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  double x, y;
+  int ow = 0, oh = 0;
+
+  use_pencil (win);
+  wait_for_layout (win);
+
+  /* While dragging the outline shows the new size and the picture waits. */
+  handle_center (canvas, EASEL_HANDLE_RIGHT, &x, &y);
+  easel_canvas_press (canvas, 1, x, y);
+  g_assert_true (easel_canvas_is_resizing (canvas));
+  g_assert_true (easel_canvas_get_resize_outline (canvas, &ow, &oh));
+  g_assert_cmpint (ow, ==, 300);
+  easel_canvas_motion (canvas, x + 100.4 / easel_canvas_get_scale (canvas), y + 30);
+  g_assert_true (easel_canvas_get_resize_outline (canvas, &ow, &oh));
+  g_assert_cmpint (ow, ==, 400);
+  g_assert_cmpint (oh, ==, 200);
+  assert_size (win, 300, 200);
+  easel_canvas_release (canvas, 1);
+  g_assert_false (easel_canvas_is_resizing (canvas));
+  g_assert_false (easel_canvas_get_resize_outline (canvas, &ow, &oh));
+  assert_size (win, 400, 200);
+  wait_for_layout (win);
+
+  drag_handle (win, EASEL_HANDLE_BOTTOM, 20, -50);
+  assert_size (win, 400, 150);
+  wait_for_layout (win);
+  drag_handle (win, EASEL_HANDLE_CORNER, 100, 150);
+  assert_size (win, 500, 300);
+  wait_for_layout (win);
+  drag_handle (win, EASEL_HANDLE_CORNER, -100000, -100000);
+  assert_size (win, 1, 1);
+  wait_for_layout (win);
+  drag_handle (win, EASEL_HANDLE_CORNER, 100000, 100000);
+  assert_size (win, 10000, 10000);
+  /* One step each: five resizes, then nothing more to undo. */
+  for (int i = 0; i < 5; i++)
+    g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  assert_size (win, 300, 200);
+  g_assert_false (action_enabled (win, "undo"));
+  wait_for_layout (win);
+
+  /* A click, or a drag that ends where it started, adds no step. */
+  handle_center (canvas, EASEL_HANDLE_CORNER, &x, &y);
+  easel_canvas_press (canvas, 1, x, y);
+  easel_canvas_release (canvas, 1);
+  drag_handle (win, EASEL_HANDLE_RIGHT, 0, 0);
+  {
+    double l = logical_per_pixel (canvas);
+
+    easel_canvas_press (canvas, 1, x, y);
+    easel_canvas_motion (canvas, x + 40 * l, y + 40 * l);
+    easel_canvas_motion (canvas, x, y);
+    easel_canvas_release (canvas, 1);
+  }
+  assert_size (win, 300, 200);
+  g_assert_false (action_enabled (win, "undo"));
+  g_assert_false (easel_window_get_modified (win));
+
+  /* The same at another zoom: the movement is in picture pixels. */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-large", NULL);
+  wait_for_layout (win);
+  drag_handle (win, EASEL_HANDLE_RIGHT, 40.4, 0);
+  assert_size (win, 340, 200);
+  /* Drawing is not hindered: a press inside the picture is a stroke, one on a handle is not. */
+  g_assert_cmpint (easel_canvas_handle_at (canvas, 10, 10), ==, EASEL_HANDLE_NONE);
+  close_windows ();
+}
+
+static void
+press_escape (EaselWindow *win)
+{
+  g_autoptr (GListModel) controllers = gtk_widget_observe_controllers (GTK_WIDGET (win));
+
+  for (guint i = 0; i < g_list_model_get_n_items (controllers); i++)
+    {
+      g_autoptr (GtkEventController) c = g_list_model_get_item (controllers, i);
+      gboolean handled = FALSE;
+
+      if (GTK_IS_EVENT_CONTROLLER_KEY (c))
+        g_signal_emit_by_name (c, "key-pressed", GDK_KEY_Escape, 0, 0, &handled);
+    }
+}
+
+/* REQ-0004-19: what cancels a handle drag, and what is ignored until the button is released. */
+static void
+as18_drag_cancel_rules (void)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  g_autofree char *dir = g_dir_make_tmp ("easel-ui-XXXXXX", NULL);
+  g_autofree char *path = g_build_filename (dir, "a.png", NULL);
+  double x, y;
+  gboolean grid_before;
+
+  use_pencil (win);
+  stroke (win, 5.5, 5.5, 20.5, 5.5);              /* something to undo */
+  wait_for_layout (win);
+  grid_before = panel_checked (win, "grid");
+  handle_center (canvas, EASEL_HANDLE_CORNER, &x, &y);
+
+  /* Esc cancels; the release afterwards changes nothing. */
+  easel_canvas_press (canvas, 1, x, y);
+  easel_canvas_motion (canvas, x + 50, y + 50);
+  press_escape (win);
+  g_assert_false (easel_canvas_is_resizing (canvas));
+  g_assert_false (easel_canvas_get_resize_outline (canvas, &(int) { 0 }, &(int) { 0 }));
+  /* Until the release: undo, zoom and the grid shortcut do nothing. */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-large", NULL);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "grid", NULL);
+  g_assert_cmpint (easel_canvas_get_zoom (canvas), ==, 100);
+  g_assert_cmpuint (easel_image_get (easel_window_get_picture (win), 10, 5), ==, 0xFF000000u);
+  g_assert_cmpint (panel_checked (win, "grid"), ==, grid_before);
+  easel_canvas_motion (canvas, x + 80, y + 80);
+  easel_canvas_release (canvas, 1);
+  assert_size (win, 300, 200);
+
+  /* The other button cancels, also while the pointer is far away. */
+  easel_canvas_press (canvas, 1, x, y);
+  easel_canvas_motion (canvas, x - 5000, y + 5000);
+  easel_canvas_press (canvas, 3, x - 5000, y + 5000);
+  g_assert_false (easel_canvas_is_resizing (canvas));
+  easel_canvas_release (canvas, 3);
+  easel_canvas_release (canvas, 1);
+  assert_size (win, 300, 200);
+
+  /* A press of the other button on a handle starts nothing. */
+  easel_canvas_press (canvas, 3, x, y);
+  g_assert_false (easel_canvas_is_resizing (canvas));
+  easel_canvas_release (canvas, 3);
+
+  /* Losing the focus cancels. */
+  easel_canvas_press (canvas, 1, x, y);
+  easel_canvas_motion (canvas, x + 30, y + 30);
+  easel_canvas_reset_pointer (canvas);
+  g_assert_false (easel_canvas_is_resizing (canvas));
+  easel_canvas_release (canvas, 1);
+  assert_size (win, 300, 200);
+
+  /* Save cancels: the picture is saved at its old size. */
+  g_assert_true (easel_window_save_to (win, path));
+  easel_canvas_press (canvas, 1, x, y);
+  easel_canvas_motion (canvas, x + 30, y + 30);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "save", NULL);
+  g_assert_false (easel_canvas_is_resizing (canvas));
+  easel_canvas_release (canvas, 1);
+  assert_size (win, 300, 200);
+  g_assert_false (easel_window_get_modified (win));
+
+  /* While the drag is in progress, undo and the view actions do nothing, and the tool cannot change. */
+  easel_canvas_press (canvas, 1, x, y);
+  easel_canvas_motion (canvas, x + 30, y + 30);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-large", NULL);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "tool", g_variant_new_string ("pan"));
+  g_assert_true (easel_canvas_is_resizing (canvas));
+  g_assert_cmpint (easel_canvas_get_zoom (canvas), ==, 100);
+  g_assert_cmpint (easel_window_get_tool (win), ==, EASEL_TOOL_PENCIL);
+  g_assert_cmpuint (easel_image_get (easel_window_get_picture (win), 10, 5), ==, 0xFF000000u);   /* undo did nothing */
+  easel_canvas_release (canvas, 1);
+  assert_size (win, 330, 230);
+  close_windows ();
+}
+
 int
 main (int argc, char **argv)
 {
@@ -2586,6 +3255,17 @@ main (int argc, char **argv)
   g_test_add_func ("/0004/as10_grid_pixels", as10_grid_pixels);
   g_test_add_func ("/0004/as12_grid_dialog", as12_grid_dialog);
   g_test_add_func ("/0004/as14_grid_starts_as_settings_say", as14_grid_starts_as_settings_say);
+  g_test_add_func ("/0004/as20_attributes_dialog", as20_attributes_dialog);
+  g_test_add_func ("/0004/as22_undo_through_resize", as22_undo_through_resize);
+  g_test_add_func ("/0004/as23_modified_across_resize", as23_modified_across_resize);
+  g_test_add_func ("/0004/as25_same_size_no_step", as25_same_size_no_step);
+  g_test_add_func ("/0004/as26_scroll_clamp_after_resize", as26_scroll_clamp_after_resize);
+  g_test_add_func ("/0004/as27_error_dialog", as27_error_dialog);
+  g_test_add_func ("/0004/as27_error_through_attributes", as27_error_through_attributes);
+  g_test_add_func ("/0004/as30_undo_error_dialog", as30_undo_error_dialog);
+  g_test_add_func ("/0004/as15_handles", as15_handles);
+  g_test_add_func ("/0004/as17_handle_drag", as17_handle_drag);
+  g_test_add_func ("/0004/as18_drag_cancel_rules", as18_drag_cancel_rules);
   g_test_add_func ("/0004/as28_panel_toggles", as28_panel_toggles);
   g_test_add_func ("/0004/as28_panels_start_as_settings_say", as28_panels_start_as_settings_say);
   g_test_add_func ("/0004/as7_pinch_in_window", as7_pinch_in_window);

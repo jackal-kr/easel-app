@@ -32,3 +32,17 @@ int easel_view_pinch (double *base, double scale, int pct);
 
 /* Adds a scroll delta (1.0 = one wheel notch down) to *acc and returns whole notches, positive = zoom in. */
 int easel_view_take_notches (double *acc, double delta);
+
+/* The resize handles (REQ-0004-16). */
+typedef enum
+{
+  EASEL_HANDLE_NONE,
+  EASEL_HANDLE_RIGHT,
+  EASEL_HANDLE_BOTTOM,
+  EASEL_HANDLE_CORNER
+} EaselHandle;
+
+/* The size after dragging a handle by dx, dy picture pixels (REQ-0004-18). *w and *h are the size at the press and
+   become the new size: the right handle moves the right edge by dx, the bottom handle the bottom edge by dy, the corner
+   both; each edge goes to the nearest pixel boundary (.5 rounds up) and is limited to 1 to 10000. */
+void easel_view_resize_by (EaselHandle handle, double dx, double dy, int *w, int *h);

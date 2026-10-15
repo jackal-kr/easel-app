@@ -115,3 +115,23 @@ easel_view_pinch (double *base, double scale, int pct)
     }
   return 0;
 }
+
+/* One edge: start plus the movement, rounded and limited. The limits apply before the conversion to int. */
+static int
+moved_edge (int start, double delta)
+{
+  double edge = floor (start + delta + 0.5);
+
+  if (!(edge >= 1))       /* also catches NaN */
+    return 1;
+  return edge > 10000 ? 10000 : (int) edge;
+}
+
+void
+easel_view_resize_by (EaselHandle handle, double dx, double dy, int *w, int *h)
+{
+  if (handle == EASEL_HANDLE_RIGHT || handle == EASEL_HANDLE_CORNER)
+    *w = moved_edge (*w, dx);
+  if (handle == EASEL_HANDLE_BOTTOM || handle == EASEL_HANDLE_CORNER)
+    *h = moved_edge (*h, dy);
+}
