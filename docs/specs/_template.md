@@ -11,6 +11,7 @@ Observable behavior only, never files or libraries. Forms: "When X, the app shal
 Number as `- REQ-NNNN-01 ...`.
 A size or cost bound, or a numeric guarantee, states its assumptions and limits, and must hold for the smallest case
 (one item), including any fixed cost per container.
+A drag states where the grab point sits relative to what moves, and maps pointer movement, not position, to the result.
 
 <!--
     - REQ-NNNN-01 When the user presses the primary button on the canvas with the pencil, the app shall set the pixel under the pointer to the foreground color.

@@ -9,7 +9,8 @@ Input: feature number or name from `docs/specs/INDEX.md`.
 
 1. Read `docs/constitution.md`, `docs/product.md`, `docs/reference/*`, `docs/design.md` (reference it, do not repeat it)
    and the specs this one depends on. If the spec file already exists, compare it with its INDEX row first; the row may
-   have changed since the draft.
+   have changed since the draft. If the spec settles a phrase that `design.md` or another doc words differently, fix that doc
+   in the same change.
 2. If the file does not exist: `tools/spec.sh new NNNN slug` (slug from the INDEX).
 3. Fill Why, Requirements (`REQ-NNNN-xx`, "When/While/If ... the app shall ..."), Scenarios (`AS-n`, Given/When/Then, cite the
    REQ ids, end with `Verified by:`), Edge cases, Out of scope. **Behavior only**: no files, functions, libraries, data structures.
@@ -19,7 +20,9 @@ Input: feature number or name from `docs/specs/INDEX.md`.
    source code of an existing implementation. If behavior is unknown or has several reasonable answers, do not decide:
    add `- [NEEDS CLARIFICATION: question and the options you see]`.
 5. Run the `spec-reviewer` agent once and merge its findings.
-6. Ask JOD the open questions with AskUserQuestion: at most 4 per round, a recommended option first, concrete examples;
+6. For a menu, dialog or bar, ask the user for a reference screenshot or mock-up before drafting, and when a widget choice
+   changes a rule (a spin row clamps where a text row disables OK), say so in the same question.
+   Ask JOD the open questions with AskUserQuestion: at most 4 per round, a recommended option first, concrete examples;
    for a default the user sees, show the result on JOD's own screen (e.g. 1920x1200 -> window 1440x900 -> picture 1024x768).
    Write each answer into the spec as a requirement or edge case and delete the question.
 7. `tools/spec.sh lint`. Show JOD the short spec. When JOD says "go" and lint is clean: `Status: accepted`. Stop: no plan, no code.
