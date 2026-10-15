@@ -35,6 +35,15 @@ bool easel_history_can_redo (const EaselHistory *h);
 /* What the history stores: per step 12 bytes per changed pixel plus 64 bytes for the step itself (REQ-0002-16). */
 size_t easel_history_bytes (const EaselHistory *h);
 
+/* A resize of the picture as one undo step (REQ-0004-22..24, REQ-0004-26), with everything it needs:
+   - allocates what the step needs first, then resizes img (easel_image_resize), then records the step, so a failure at
+     any point changes neither the picture nor the history;
+   - returns UNCHANGED, with no step, if the picture already has that size;
+   - a step counts 4 bytes per removed pixel plus 64 for the budget; adding pixels needs no storage.
+   Undo gives back the old size and every pixel, including the removed ones; redo resizes again with the same fill.
+   Undo and redo of a resize allocate the new pixel buffer; if that fails they return false and change nothing. */
+EaselResizeResult easel_resize_edit (EaselImage *img, EaselHistory *h, int width, int height, uint32_t fill);
+
 /* The current state becomes the saved one. Modified means the current state differs from the saved one, or the saved
    one can no longer be reached (REQ-0002-12, REQ-0002-14). */
 void easel_history_mark_saved (EaselHistory *h);

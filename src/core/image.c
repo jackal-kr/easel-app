@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 
 #include <stdlib.h>
+#include <string.h>
 
 #include "image.h"
 
@@ -82,4 +83,42 @@ easel_image_take_dirty (EaselImage *img, EaselRect *r)
   *r = img->dirty;
   img->dirty = (EaselRect) { 0, 0, 0, 0 };
   return true;
+}
+
+EaselResizeResult
+easel_image_resize (EaselImage *img, int width, int height, uint32_t fill)
+{
+  size_t n;
+  uint32_t *px;
+  int kept_w, kept_h;
+
+  if (width < 1 || height < 1 || width > EASEL_IMAGE_MAX_SIZE || height > EASEL_IMAGE_MAX_SIZE)
+    return EASEL_RESIZE_BAD_SIZE;
+  n = (size_t) width * (size_t) height;
+  px = malloc (n * sizeof (uint32_t));
+  if (px == NULL)
+    return EASEL_RESIZE_NO_MEMORY;
+
+  /* The part both sizes share stays, in the top-left corner; the rest is new. */
+  kept_w = width < img->width ? width : img->width;
+  kept_h = height < img->height ? height : img->height;
+  for (int y = 0; y < height; y++)
+    {
+      uint32_t *row = px + (size_t) y * (size_t) width;
+      int from = 0;
+
+      if (y < kept_h)
+        {
+          memcpy (row, img->px + (size_t) y * (size_t) img->width, (size_t) kept_w * sizeof (uint32_t));
+          from = kept_w;
+        }
+      for (int x = from; x < width; x++)
+        row[x] = fill;
+    }
+  free (img->px);
+  img->px = px;
+  img->width = width;
+  img->height = height;
+  img->dirty = (EaselRect) { 0, 0, 0, 0 };
+  return EASEL_RESIZE_OK;
 }

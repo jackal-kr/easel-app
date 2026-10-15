@@ -5,11 +5,24 @@
 
 #include "history.h"
 
+typedef enum
+{
+  STEP_CHANGES,           /* pixels that changed: changes, n */
+  STEP_RESIZE,            /* a new size: the fields below */
+} StepKind;
+
 typedef struct
 {
   unsigned long id;       /* unique and increasing; 0 is the start state, which has no step */
+  StepKind kind;
   EaselChange *changes;
   size_t n;
+  /* A resize: the sizes before and after, the color of the added area, and the removed pixels, 4 bytes each, in the
+     row-major order of the old picture, skipping the part that stayed (REQ-0004-22, REQ-0004-23). */
+  int old_w, old_h, new_w, new_h;
+  uint32_t fill;
+  uint32_t *removed;
+  size_t n_removed;
 } Step;
 
 struct _EaselHistory
@@ -45,8 +58,11 @@ static void
 free_step (Step *s)
 {
   free (s->changes);
+  free (s->removed);
   s->changes = NULL;
+  s->removed = NULL;
   s->n = 0;
+  s->n_removed = 0;
 }
 
 void
@@ -69,6 +85,8 @@ current_id (const EaselHistory *h)
 static size_t
 step_bytes (const Step *s)
 {
+  if (s->kind == STEP_RESIZE)
+    return s->n_removed * sizeof (uint32_t) + BYTES_PER_STEP;
   return s->n * BYTES_PER_CHANGE + BYTES_PER_STEP;
 }
 
@@ -115,6 +133,30 @@ make_room (EaselHistory *h)
   return true;
 }
 
+/* Adds a finished step: room in the array was made before, so this cannot fail. A new edit discards the redoable
+   steps, the saved state going with its step (REQ-0002-05, REQ-0002-14); over the budget, the oldest steps go first,
+   but the newest always stays, even if it alone is over (REQ-0002-16, REQ-0002-17). */
+static void
+commit_step (EaselHistory *h, Step step)
+{
+  for (size_t i = h->applied; i < h->len; i++)
+    {
+      if (h->steps[i].id == h->saved_id)
+        h->saved_reachable = false;
+      h->bytes -= step_bytes (&h->steps[i]);
+      free_step (&h->steps[i]);
+    }
+  h->len = h->applied;
+
+  step.id = h->next_id++;
+  h->steps[h->len++] = step;
+  h->applied = h->len;
+  h->bytes += step_bytes (&h->steps[h->len - 1]);
+
+  while (h->bytes > h->budget && h->len - h->first > 1)
+    drop_oldest (h);
+}
+
 bool
 easel_history_push (EaselHistory *h, EaselChange *changes, size_t n)
 {
@@ -125,31 +167,82 @@ easel_history_push (EaselHistory *h, EaselChange *changes, size_t n)
     }
   if (n > (SIZE_MAX - BYTES_PER_STEP) / BYTES_PER_CHANGE || !make_room (h))
     return false;
-
-  /* A new edit discards the redoable steps; the saved state goes with its step (REQ-0002-05, REQ-0002-14). */
-  for (size_t i = h->applied; i < h->len; i++)
-    {
-      if (h->steps[i].id == h->saved_id)
-        h->saved_reachable = false;
-      h->bytes -= step_bytes (&h->steps[i]);
-      free_step (&h->steps[i]);
-    }
-  h->len = h->applied;
-
-  h->steps[h->len++] = (Step) { h->next_id++, changes, n };
-  h->applied = h->len;
-  h->bytes += step_bytes (&h->steps[h->len - 1]);
-
-  /* Over the budget: the oldest steps go first, but the newest step always stays, even if it alone is over
-     (REQ-0002-16, REQ-0002-17). */
-  while (h->bytes > h->budget && h->len - h->first > 1)
-    drop_oldest (h);
+  commit_step (h, (Step) { .kind = STEP_CHANGES, .changes = changes, .n = n });
   return true;
 }
 
-static void
-write_step (const Step *s, EaselImage *img, bool undo)
+EaselResizeResult
+easel_resize_edit (EaselImage *img, EaselHistory *h, int width, int height, uint32_t fill)
 {
+  int old_w = img->width, old_h = img->height;
+  int kept_w, kept_h;
+  size_t n_removed;
+  uint32_t *removed = NULL;
+  EaselResizeResult r;
+
+  if (width < 1 || height < 1 || width > EASEL_IMAGE_MAX_SIZE || height > EASEL_IMAGE_MAX_SIZE)
+    return EASEL_RESIZE_BAD_SIZE;
+  if (width == old_w && height == old_h)
+    return EASEL_RESIZE_UNCHANGED;
+
+  /* Everything that can fail comes before anything changes: the removed pixels, room for the step, the new buffer. */
+  kept_w = width < old_w ? width : old_w;
+  kept_h = height < old_h ? height : old_h;
+  n_removed = (size_t) old_w * (size_t) old_h - (size_t) kept_w * (size_t) kept_h;
+  if (n_removed > 0)
+    {
+      size_t i = 0;
+
+      removed = malloc (n_removed * sizeof (uint32_t));
+      if (removed == NULL)
+        return EASEL_RESIZE_NO_MEMORY;
+      for (int y = 0; y < old_h; y++)
+        for (int x = 0; x < old_w; x++)
+          if (x >= kept_w || y >= kept_h)
+            removed[i++] = img->px[(size_t) y * (size_t) old_w + (size_t) x];
+    }
+  if (!make_room (h))
+    {
+      free (removed);
+      return EASEL_RESIZE_NO_MEMORY;
+    }
+  r = easel_image_resize (img, width, height, fill);
+  if (r != EASEL_RESIZE_OK)
+    {
+      free (removed);
+      return r;
+    }
+  commit_step (h, (Step) { .kind = STEP_RESIZE, .old_w = old_w, .old_h = old_h, .new_w = width, .new_h = height,
+                           .fill = fill, .removed = removed, .n_removed = n_removed });
+  return EASEL_RESIZE_OK;
+}
+
+/* Applies a step (redo) or reverts it (undo). A step is only ever applied or reverted while the picture has the size it
+   had when the step was recorded, so the indexes of a change step are valid (Plan, "A size change and the undo
+   history"). False only if a resize cannot allocate the new buffer; then nothing changed. */
+static bool
+apply_step (const Step *s, EaselImage *img, bool undo)
+{
+  if (s->kind == STEP_RESIZE)
+    {
+      if (!undo)
+        return easel_image_resize (img, s->new_w, s->new_h, s->fill) == EASEL_RESIZE_OK;
+
+      /* Back to the old size; the part that stayed is already in place, the removed pixels fill the rest. */
+      {
+        int kept_w = s->new_w < s->old_w ? s->new_w : s->old_w, kept_h = s->new_h < s->old_h ? s->new_h : s->old_h;
+        size_t i = 0;
+
+        if (easel_image_resize (img, s->old_w, s->old_h, 0) != EASEL_RESIZE_OK)
+          return false;
+        for (int y = 0; y < s->old_h; y++)
+          for (int x = 0; x < s->old_w; x++)
+            if (x >= kept_w || y >= kept_h)
+              img->px[(size_t) y * (size_t) s->old_w + (size_t) x] = s->removed[i++];
+      }
+      return true;
+    }
+
   for (size_t i = 0; i < s->n; i++)
     {
       const EaselChange *c = &s->changes[i];
@@ -157,23 +250,24 @@ write_step (const Step *s, EaselImage *img, bool undo)
       easel_image_set (img, (int) (c->index % (uint32_t) img->width), (int) (c->index / (uint32_t) img->width),
                        undo ? c->old_value : c->new_value);
     }
+  return true;
 }
 
 bool
 easel_history_undo (EaselHistory *h, EaselImage *img)
 {
-  if (h->applied == h->first)
+  if (h->applied == h->first || !apply_step (&h->steps[h->applied - 1], img, true))
     return false;
-  write_step (&h->steps[--h->applied], img, true);
+  h->applied--;
   return true;
 }
 
 bool
 easel_history_redo (EaselHistory *h, EaselImage *img)
 {
-  if (h->applied == h->len)
+  if (h->applied == h->len || !apply_step (&h->steps[h->applied], img, false))
     return false;
-  write_step (&h->steps[h->applied++], img, false);
+  h->applied++;
   return true;
 }
 
