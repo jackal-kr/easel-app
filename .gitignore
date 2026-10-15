@@ -1,0 +1,9 @@
+/build/
+/build-flatpak/
+/build-deb/
+/build-appimage/
+/dist/
+/.cache/
+.scratch/
+.flatpak-builder/
+.claude/settings.local.json

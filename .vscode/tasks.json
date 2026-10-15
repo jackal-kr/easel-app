@@ -1,0 +1,27 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Spec: status of all features",
+      "type": "shell",
+      "command": "tools/spec-status.sh",
+      "problemMatcher": []
+    },
+    {
+      "label": "Spec: lint (traceability)",
+      "type": "shell",
+      "command": "tools/check-trace.sh",
+      "problemMatcher": []
+    },
+    {
+      "label": "Spec: new feature folder",
+      "type": "shell",
+      "command": "tools/new-feature.sh ${input:number} ${input:slug}",
+      "problemMatcher": []
+    }
+  ],
+  "inputs": [
+    { "id": "number", "type": "promptString", "description": "Feature number from docs/specs/INDEX.md (4 digits)" },
+    { "id": "slug", "type": "promptString", "description": "Short kebab-case slug" }
+  ]
+}
