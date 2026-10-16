@@ -5428,11 +5428,43 @@ as10_numpad_steps (void)
   close_windows ();
 }
 
+/* The pid of another Easel or test-window process (not this one), or 0. A second window on the display changes the layout
+   of the test windows, so the ui tests fail with it open for reasons that are not in the code (docs/engineering.md, Testing). */
+static int
+other_easel_process (void)
+{
+  g_autoptr (GDir) proc = g_dir_open ("/proc", 0, NULL);
+  const char *entry;
+
+  while (proc != NULL && (entry = g_dir_read_name (proc)) != NULL)
+    {
+      g_autofree char *path = g_strdup_printf ("/proc/%s/comm", entry);
+      g_autofree char *comm = NULL;
+      int pid = atoi (entry);
+
+      if (pid > 0 && pid != getpid () && g_file_get_contents (path, &comm, NULL, NULL)
+          && (g_str_has_prefix (comm, "easel\n") || g_str_has_prefix (comm, "test-window\n")))
+        return pid;
+    }
+  return 0;
+}
+
 int
 main (int argc, char **argv)
 {
   g_autofree char *config_dir = NULL;
-  int ret;
+  gboolean is_subprocess = FALSE;
+  int ret, other;
+
+  /* A GTest subprocess (g_test_trap_subprocess) runs next to its parent, which is a test-window too. */
+  for (int i = 1; i < argc; i++)
+    is_subprocess |= g_str_equal (argv[i], "--GTestSubprocess");
+  if (!is_subprocess && (other = other_easel_process ()) != 0)
+    {
+      g_printerr ("Close every Easel window first: process %d is an Easel or a ui test, and a second window changes "
+                  "the layout of the test windows.\n", other);
+      return 1;
+    }
 
   /* Keep the real settings file out of reach. G_TEST_OPTION_ISOLATE_DIRS would also hide the GSettings
      schemas libadwaita needs, so only the config dir is redirected, before anything reads it. */

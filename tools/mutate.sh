@@ -4,6 +4,8 @@
 #
 #   tools/mutate.sh                 every mutant of tests/mutants.txt
 #   tools/mutate.sh REQ-0005-03     only the mutants of that requirement (several IDs may be given)
+#   tools/mutate.sh --lint          only checks that the find text of every mutant still occurs once in the working tree
+#                                   (seconds, builds nothing); a stale mutant is listed and the exit status is 1
 #   MUTANTS=other.txt tools/mutate.sh   another mutant list
 #
 # The working tree is never touched: everything happens under .scratch/mutate (git-ignored), which is deleted and made
@@ -13,7 +15,10 @@ set -u
 cd "$(dirname "$0")/.."
 ROOT=$PWD
 MUTANTS=${MUTANTS:-tests/mutants.txt}
+LINT=0
+if [ "${1:-}" = "--lint" ]; then LINT=1; shift; fi
 SCRATCH=$ROOT/.scratch/mutate
+[ "$LINT" -eq 1 ] && SCRATCH=$ROOT/.scratch/mutate-lint     # a lint never disturbs a mutation run
 TREE=$SCRATCH/tree
 BUILD=$SCRATCH/build
 WANTED=("$@")
@@ -67,6 +72,34 @@ open(scratch + "/index.tsv", "w", encoding="utf-8").write("\n".join(rows) + ("\n
 if wanted and not rows:
     sys.exit("no mutant for: " + " ".join(sorted(wanted)))
 PY
+
+if [ "$LINT" -eq 1 ]; then
+  stale=0
+  while IFS=$'\t' read -r n req file tests name; do
+    count=$(python3 - "$ROOT/$file" "$SCRATCH/m/$n.find" <<'PY'
+import sys
+try:
+    print(open(sys.argv[1], encoding="utf-8").read().count(open(sys.argv[2], encoding="utf-8").read()))
+except OSError:
+    print(-1)
+PY
+)
+    if [ "$count" != 1 ]; then
+      echo "stale   $req  $name  ($file: the find text occurs $count times)"
+      stale=$((stale + 1))
+    fi
+  done < "$SCRATCH/index.tsv"
+  echo "lint: $(wc -l < "$SCRATCH/index.tsv") mutants, $stale stale"
+  [ "$stale" -eq 0 ]
+  exit
+fi
+
+# A mutant tested by a ui test needs a display without another Easel or test window (docs/engineering.md, Testing): such a
+# window changes the layout of the test windows, and every ui test would "kill" its mutant for that reason.
+if cut -f4 "$SCRATCH/index.tsv" | grep -q 'ui-' && pgrep -x 'easel|test-window' >/dev/null; then
+  echo "close every Easel and test-window window first (pid: $(pgrep -x 'easel|test-window' | tr '\n' ' '))" >&2
+  exit 2
+fi
 
 # One copy of the sources and one build directory, reused by every mutant: only the mutated file is built again.
 rsync -a --exclude /build --exclude /builddir --exclude /.git --exclude /.scratch --exclude /.cache --exclude /docs \

@@ -31,7 +31,7 @@ cmd_status() {
 # an accepted/implemented spec may have no open "- [NEEDS CLARIFICATION" lines.
 # Draft specs only get warnings; the exit code is 1 only for accepted/implemented specs.
 cmd_lint() {
-  local rc=0 s st r p
+  local rc=0 s st r p t
   for s in "${specs[@]}"; do
     st=$(status_of "$s")
     local problems=()
@@ -39,6 +39,10 @@ cmd_lint() {
       grep -E '^- AS-[0-9]+' "$s" | grep -q "$r" || problems+=("$r has no scenario")
     done
     grep -E '^- AS-[0-9]+' "$s" | grep -vq 'Verified by:' && problems+=("a scenario has no 'Verified by:'")
+    # A test named in the scenario-to-test map must exist in tests/ (the names drift when a test is split or moved).
+    for t in $(sed -n '/^### Scenario-to-test map/,/^### /p' "$s" | grep -oE '`[a-z][a-z0-9]*_[a-z0-9_]*`' | tr -d '`' | sort -u); do
+      grep -rqw -- "$t" tests/ || problems+=("the scenario map names a test that does not exist: $t")
+    done
     if [ "$st" != draft ] && grep -q '^- \[NEEDS CLARIFICATION' "$s"; then
       problems+=("open NEEDS CLARIFICATION in a $st spec")
     fi

@@ -84,12 +84,18 @@ Defined by feature 0017.
   group boundary and at `/sdd-check`. The ui tests do not run in parallel (`is_parallel: false`): run in parallel, the
   ui windows failed `as5_zoom_keeps_center` with a stale layout in 2 of 3 runs. That is all that was shown; earlier
   one-off failures of the ui tests (run as a single executable) are unexplained and not fixed.
+  Close every Easel window (and any other test or probe window of ours) before running the ui tests or `tools/mutate.sh`:
+  with one open from a manual check, three ui cases failed in every run until it was closed (learning log, 2026-10-16).
+  `test-window` refuses to start, and `tools/mutate.sh` refuses to run a mutant of a ui test, while another `easel` or
+  `test-window` process exists (the core and io tests do not check).
+- **A probe or throwaway window** is started with its pid saved and stopped with `kill <pid>`, never `pkill -f` (the pattern
+  can match the shell that runs it, and the window stays open and spoils the next ui run).
 - **Mutation tool (`tools/mutate.sh`):** puts one deliberate bug at a time into a scratch copy of the sources, builds, runs
   the tests that must catch it, and prints `killed` or `SURVIVED` (a hole in the tests) with the requirement ID and the
   time, then a total; the exit status is non-zero if any mutant survived or did not build. It never touches the working
   tree: it works in `.scratch/mutate` (git-ignored, deleted and made again at each start) with one build directory, so each
   mutant rebuilds one file.
-  - `tools/mutate.sh` runs every mutant of `tests/mutants.txt` (61 mutants, 285 s, all killed; a mutant killed only by a crash counts as a test gap, so the cases for rules that lose work run in a subprocess or come first); `tools/mutate.sh
+  - `tools/mutate.sh` runs every mutant of `tests/mutants.txt` (100 mutants, 495 s, all killed; a mutant killed only by a crash counts as a test gap, so the cases for rules that lose work run in a subprocess or come first); `tools/mutate.sh
     REQ-0005-03` runs the mutants of one requirement (several IDs may be given); `MUTANTS=file tools/mutate.sh` uses
     another list. The ui tests need the display, as always.
   - To add a mutant, append a block to `tests/mutants.txt`: `=== REQ-NNNN-xx what the bug does`, then `file:` (from the
@@ -99,12 +105,13 @@ Defined by feature 0017.
     change) does not belong in the list.
 - **What to run when (the skills point here):** after a task, the tests of the feature touched (`meson test -C build
   --print-errorlogs ui-NNNN`, plus the core and io tests) and the mutants of the task's requirements (`tools/mutate.sh
-  REQ-NNNN-xx`); at a group boundary, the full `meson test -C build --print-errorlogs`; at `/sdd-check`, everything: the
+  REQ-NNNN-xx`, and `tools/mutate.sh --lint`, seconds, which lists mutants whose find text no longer occurs, for example
+  after the task edited a block a mutant quotes); at a group boundary, the full `meson test -C build --print-errorlogs`; at `/sdd-check`, everything: the
   full `meson test` and the whole mutation list.
 - **Code that can abort the process** (a failed allocation in GLib, gdk-pixbuf or glycin) is tested in a subprocess
   (`g_test_trap_subprocess`, as `as19_save_without_memory` and `as8_open_without_memory` do), so that an abort is a failed
   assertion of the test and not a crash of the run.
-- **Gates:** build warning-free, all tests green after each task; `tools/spec.sh lint` clean before a spec is accepted.
+- **Gates:** build warning-free, all tests green after each task; `tools/spec.sh lint` clean before a spec is accepted (it also checks that every test named in a scenario-to-test map exists in `tests/`).
 - **Later:** CI in a container or the Flatpak SDK (libadwaita >= 1.8 needed); screenshot checks only if they prove worth the upkeep.
 
 ## Performance budgets

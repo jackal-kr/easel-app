@@ -20,7 +20,8 @@ Precondition: `Status: accepted` in the spec. Otherwise stop and say so.
    what this feature touches, add a task to measure it and record the numbers in the Plan.
    Put that task in the same group as any speed fix that relies on how a library behaves, and name the fallback in the Plan. Show ids and titles. Wait for "go".
 3. **Implement**, one task at a time:
-   - write the failing test from the scenario text first, then the smallest code that passes; a ui test of anything that
+   - write the test from the scenario text first, run it and see it fail before writing the code (and say so in the task
+     report), then the smallest code that passes; a ui test of anything that
      moves the view also checks where the picture is drawn, by rendering the window; a new case also passes when run alone;
    - `ninja -C build` must be warning-free and the tests green as the Testing section of `docs/engineering.md` says for a task
      and for the end of a group. A test that fails once and then passes is logged with its values and how it was hunted,
