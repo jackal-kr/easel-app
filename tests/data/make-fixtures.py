@@ -128,3 +128,34 @@ open(path("sos-first.jpg"), "wb").write(
     b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00"
     b"\xff\xda\x00\x08\x01\x01\x00\x00\x3f\x00"
     b"\xff\xc0\x00\x0b\x08\x00\x10\x00\x10\x01\x01\x11\x00\xff\xd9")
+
+# An interlaced (Adam7) PNG of the same pattern as rgba.png, written by hand because Pillow cannot write interlaced
+# PNGs, and a two-frame WebP (red, then green); opening gives the pattern and the first frame (0005 AS-5).
+import zlib
+
+
+def interlaced_png(file, im):
+    w, h = im.size
+    px = im.load()
+    raw = bytearray()
+    for xs, ys, dx, dy in ((0, 0, 8, 8), (4, 0, 8, 8), (0, 4, 4, 8), (2, 0, 4, 4), (0, 2, 2, 4), (1, 0, 2, 2), (0, 1, 1, 2)):
+        if xs >= w or ys >= h:
+            continue
+        for y in range(ys, h, dy):
+            raw.append(0)                                   # no filter
+            for x in range(xs, w, dx):
+                raw += bytes(px[x, y])
+
+    def chunk(kind, data):
+        body = kind + data
+        return struct.pack(">I", len(data)) + body + struct.pack(">I", zlib.crc32(body))
+
+    ihdr = struct.pack(">IIBBBBB", w, h, 8, 6, 0, 0, 1)      # 8 bit RGBA, interlace method 1
+    with open(file, "wb") as f:
+        f.write(b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", ihdr) + chunk(b"IDAT", zlib.compress(bytes(raw))) + chunk(b"IEND", b""))
+
+
+interlaced_png(path("interlaced.png"), pattern_image("RGBA"))
+w1 = Image.new("RGB", (6, 4), (255, 0, 0))
+w2 = Image.new("RGB", (6, 4), (0, 255, 0))
+w1.save(path("anim.webp"), save_all=True, append_images=[w2], duration=100, loop=0, lossless=True)

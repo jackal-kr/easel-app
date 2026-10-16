@@ -176,7 +176,7 @@ test: io-picture-file
 file: src/io/picture-file.c
 test: io-picture-file
 --- find
-  if (!memory_for (w, h))
+  if (!memory_for (w, h, 2))
 --- replace
   if (0)
 
@@ -300,6 +300,8 @@ test: ui-0005
   easel_canvas_set_history (self->canvas, history);
   easel_canvas_set_image (self->canvas, img);
 --- replace
+  easel_canvas_set_history (self->canvas, old_history);
+  old_history = NULL;     /* kept alive, so that the bug is a wrong history and not a crash */
   easel_canvas_set_image (self->canvas, img);
 
 === REQ-0005-02 the file actions work while a dialog or prompt is open
@@ -421,17 +423,16 @@ test: ui-0005
 --- replace
   /* One prompt
 
-=== REQ-0005-17 a picture that is too big replaces the current one
+=== REQ-0005-17 a picture that is too big is refused without telling the user why
 file: src/ui/window.c
 test: ui-0005
 --- find
-  if (result == EASEL_OPEN_OK)
-    {
-      if (!replace_picture
+    case EASEL_OPEN_TOO_BIG:
+      show_save_error (self, heading, "The picture is bigger than 10000 pixels in width or height.");
+      break;
 --- replace
-  if (result == EASEL_OPEN_OK || result == EASEL_OPEN_TOO_BIG)
-    {
-      if (!replace_picture
+    case EASEL_OPEN_TOO_BIG:
+      break;
 
 === REQ-0005-15 a start-up file that cannot be opened shows no error
 file: src/ui/window.c
@@ -516,3 +517,58 @@ test: ui-0005
 save_format (path), self->settings.jpeg_quality
 --- replace
 save_format (path), 90
+
+# ---- Save without memory, and the rules around a failed save (0005 T013) ----
+
+=== REQ-0005-18 Save does not look for the memory before encoding
+file: src/io/picture-file.c
+test: io-picture-file ui-0005
+--- find
+  if (memory_for (img->width, img->height, 3))
+--- replace
+  if (1)
+
+=== REQ-0005-18 Save looks for the memory of two buffers instead of three
+file: src/io/picture-file.c
+test: io-picture-file
+--- find
+  if (memory_for (img->width, img->height, 3))
+--- replace
+  if (memory_for (img->width, img->height, 2))
+
+=== REQ-0005-18 Save looks for the memory of one buffer instead of three
+file: src/io/picture-file.c
+test: io-picture-file
+--- find
+  if (memory_for (img->width, img->height, 3))
+--- replace
+  if (memory_for (img->width, img->height, 1))
+
+=== REQ-0001-31 a failed save marks the picture as saved
+file: src/ui/window.c
+test: ui-0005 ui-0001
+--- find
+  if (!easel_picture_save (self->picture, path, save_format (path), self->settings.jpeg_quality, &error))
+--- replace
+  easel_history_mark_saved (self->history);
+  if (!easel_picture_save (self->picture, path, save_format (path), self->settings.jpeg_quality, &error))
+
+=== REQ-0005-12 a failed Save As already made the new file the picture's file
+file: src/ui/window.c
+test: ui-0005 ui-0001
+--- find
+  if (!easel_picture_save (self->picture, path, save_format (path), self->settings.jpeg_quality, &error))
+--- replace
+  g_free (self->path);
+  self->path = g_strdup (path);
+  if (!easel_picture_save (self->picture, path, save_format (path), self->settings.jpeg_quality, &error))
+
+=== REQ-0005-04 Cancel in the unsaved-changes prompt goes on like Discard
+file: src/ui/window.c
+test: ui-0005
+--- find
+  if (g_strcmp0 (response, "discard") == 0)
+    then (self);
+--- replace
+  if (then != NULL)       /* a second answer to the same prompt has no action left: not a crash */
+    then (self);

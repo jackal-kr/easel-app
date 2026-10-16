@@ -78,6 +78,7 @@ as5_open_formats (void)
   assert_pattern ("rgba.tiff");
   assert_pattern ("rgba.webp");
   assert_pattern ("named.dat");                      /* a PNG with another name opens */
+  assert_pattern ("interlaced.png");                 /* Adam7 */
 
   /* BMP: 24 bit, and 32 bit whose alpha channel is ignored; every pixel opaque. */
   img = open_ok ("opaque.bmp");
@@ -140,6 +141,11 @@ as5_open_formats (void)
   g_assert_cmpint (img->height, ==, 4);
   g_assert_cmphex (easel_image_get (img, 2, 2), ==, 0xFFFF0000u);
   easel_image_free (img);
+  img = open_ok ("anim.webp");                       /* two frames: red, then green; the first is the picture */
+  g_assert_cmpint (img->width, ==, 6);
+  g_assert_cmpint (img->height, ==, 4);
+  g_assert_cmphex (easel_image_get (img, 2, 2), ==, 0xFFFF0000u);
+  easel_image_free (img);
 }
 
 /* AS-8: every reason has its result and leaves nothing behind. */
@@ -180,9 +186,21 @@ as8_open_errors (void)
   g_assert_cmpint (w, ==, 10001);
   g_assert_cmpint (h, ==, 1);
 
-  /* A picture that decodes but cannot get its memory: the address space is limited to a little more than the process
-     uses now, and it is 6000 x 6000 pixels (144 MB for the picture alone). */
-  {
+  /* The picture that cannot get its memory is as8_open_without_memory, which runs apart. */
+  (void) g_chmod (locked, 0600);
+}
+
+/* AS-8, the memory case: a picture that decodes but cannot get its memory. The address space is limited to a little more
+   than the process uses now, and the picture is 6000 x 6000 pixels (144 MB for the picture alone). Without the check
+   before decoding, the decoder aborts the process, so the case runs in a subprocess: an abort is a failed assertion of
+   the parent and not a crash of the test run. */
+static void
+as8_open_without_memory_subprocess (void)
+{
+  EaselImage *img;
+  int w = 0, h = 0;
+
+    {
     struct rlimit old, tight;
     FILE *f = fopen ("/proc/self/statm", "r");
     long pages = 0;
@@ -207,7 +225,13 @@ as8_open_errors (void)
     g_assert_cmpint (img->width, ==, 6000);
     easel_image_free (img);
   }
-  (void) g_chmod (locked, 0600);
+}
+
+static void
+as8_open_without_memory (void)
+{
+  g_test_trap_subprocess ("/0005/as8_open_without_memory/subprocess", 0, G_TEST_SUBPROCESS_DEFAULT);
+  g_test_trap_assert_passed ();
 }
 
 /* AS-17: 10000 opens, 10001 is refused from the header, also after the orientation turns it, and without decoding. */
@@ -324,7 +348,7 @@ sniff_sizes_match_decoder (void)
     { "indexed.png", "png", 7, 5 }, { "gray16.png", "png", 7, 5 }, { "w10001.png", "png", 10001, 1 },
     { "big10001.png", "png", 10001, 10001 }, { "flat6000.png", "png", 6000, 6000 },
     { "rgba.tiff", "tiff", 7, 5 }, { "rgba.webp", "webp", 7, 5 }, { "opaque.bmp", "bmp", 7, 5 },
-    { "rgba.bmp", "bmp", 7, 5 }, { "flat.jpg", "jpeg", 16, 16 }, { "orient-6.jpg", "jpeg", 32, 16 },
+    { "rgba.bmp", "bmp", 7, 5 }, { "interlaced.png", "png", 7, 5 }, { "anim.webp", "webp", 6, 4 }, { "flat.jpg", "jpeg", 16, 16 }, { "orient-6.jpg", "jpeg", 32, 16 },
     { "wide-rot6.jpg", "jpeg", 10001, 3 }, { "transparent.gif", "gif", 7, 5 }, { "anim.gif", "gif", 6, 4 },
   };
 
@@ -567,6 +591,55 @@ as16_quality_changes_size (void)
   easel_image_free (img);
 }
 
+/* AS-19: with the address space limited, Save returns an error for every format and the process stays alive. This is the
+   subprocess: GLib and the encoders abort the process when an allocation fails, so the test runs it apart, and an abort
+   is a failed assertion of the parent and not a crash of the test run. The picture is 6000 x 6000 (144 MB); the limits
+   leave 100, 200 and 300 MB, which is not enough for the three buffers the encoding needs (432 MB) but is enough for the
+   first of them or the first two, the cases that aborted before the check existed. */
+static void
+as19_save_without_memory_subprocess (void)
+{
+  static const EaselFormat formats[] = { EASEL_FORMAT_PNG, EASEL_FORMAT_JPEG, EASEL_FORMAT_BMP, EASEL_FORMAT_TIFF,
+                                         EASEL_FORMAT_WEBP };
+  static const long headroom_mb[] = { 100, 200, 300 };
+  g_autofree char *dir = g_dir_make_tmp ("easel-pf-XXXXXX", NULL);
+  EaselImage *img = easel_image_new (6000, 6000, 0xFF336699u);
+
+  for (gsize f = 0; f < G_N_ELEMENTS (formats); f++)
+    for (gsize h = 0; h < G_N_ELEMENTS (headroom_mb); h++)
+      {
+        g_autofree char *path = g_build_filename (dir, "out.bin", NULL);
+        g_autoptr (GError) error = NULL;
+        struct rlimit old, tight;
+        FILE *statm = fopen ("/proc/self/statm", "r");
+        long pages = 0;
+        gboolean saved;
+
+        g_assert_nonnull (statm);
+        g_assert_cmpint (fscanf (statm, "%ld", &pages), ==, 1);
+        fclose (statm);
+        g_assert_cmpint (getrlimit (RLIMIT_AS, &old), ==, 0);
+        tight = old;
+        tight.rlim_cur = (rlim_t) pages * (rlim_t) sysconf (_SC_PAGESIZE) + (rlim_t) headroom_mb[h] * 1024 * 1024;
+        if (old.rlim_max != RLIM_INFINITY && tight.rlim_cur > old.rlim_max)
+          tight.rlim_cur = old.rlim_max;
+        g_assert_cmpint (setrlimit (RLIMIT_AS, &tight), ==, 0);
+        saved = easel_picture_save (img, path, formats[f], 90, &error);
+        g_assert_cmpint (setrlimit (RLIMIT_AS, &old), ==, 0);
+        g_assert_false (saved);
+        g_assert_nonnull (error);
+        g_assert_false (g_file_test (path, G_FILE_TEST_EXISTS));
+      }
+  easel_image_free (img);
+}
+
+static void
+as19_save_without_memory (void)
+{
+  g_test_trap_subprocess ("/0005/as19_save_without_memory/subprocess", 0, G_TEST_SUBPROCESS_DEFAULT);
+  g_test_trap_assert_passed ();
+}
+
 /* A format that cannot be saved (not installed): the error is gdk-pixbuf's own, nothing is written, and an existing
    file keeps its bytes (REQ-0001-31). */
 static void
@@ -597,6 +670,8 @@ main (int argc, char **argv)
   g_test_init (&argc, &argv, NULL);
   g_test_add_func ("/0005/as5_open_formats", as5_open_formats);
   g_test_add_func ("/0005/as8_open_errors", as8_open_errors);
+  g_test_add_func ("/0005/as8_open_without_memory", as8_open_without_memory);
+  g_test_add_func ("/0005/as8_open_without_memory/subprocess", as8_open_without_memory_subprocess);
   g_test_add_func ("/0005/as17_too_big_refused", as17_too_big_refused);
   g_test_add_func ("/0005/as18_orientation", as18_orientation);
   g_test_add_func ("/0005/sniff_sizes_match_decoder", sniff_sizes_match_decoder);
@@ -604,6 +679,8 @@ main (int argc, char **argv)
   g_test_add_func ("/0005/as10_round_trips", as10_round_trips);
   g_test_add_func ("/0005/as10_failed_save_keeps_old_file", as10_failed_save_keeps_old_file);
   g_test_add_func ("/0005/as16_quality_changes_size", as16_quality_changes_size);
+  g_test_add_func ("/0005/as19_save_without_memory", as19_save_without_memory);
+  g_test_add_func ("/0005/as19_save_without_memory/subprocess", as19_save_without_memory_subprocess);
   g_test_add_func ("/0005/missing_saver_reports_reason", missing_saver_reports_reason);
   g_test_add_func ("/0005/missing_loader_is_not_a_picture", missing_loader_is_not_a_picture);
   g_test_add_func ("/0005/unknown_format_is_not_a_picture", unknown_format_is_not_a_picture);

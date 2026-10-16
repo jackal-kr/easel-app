@@ -267,17 +267,24 @@ easel_picture_sniff (const char *path, const char **format, int *width, int *hei
   return ok;
 }
 
-/* True if two buffers of w x h RGBA pixels can be had at once. */
+/* True if that many buffers of w x h RGBA pixels can be had at once. They are let go again at once: memory that is not
+   touched costs nothing, and the point is to find out here, with an error to give, and not in an allocation that aborts
+   the process. */
 static gboolean
-memory_for (int w, int h)
+memory_for (int w, int h, int buffers)
 {
   gsize bytes = (gsize) w * (gsize) h * 4;
-  void *first = g_try_malloc (bytes);
-  void *second = first ? g_try_malloc (bytes) : NULL;
-  gboolean ok = first != NULL && second != NULL;
+  void *held[3] = { NULL, NULL, NULL };
+  gboolean ok = TRUE;
 
-  g_free (first);
-  g_free (second);
+  g_assert (buffers <= 3);
+  for (int i = 0; i < buffers && ok; i++)
+    {
+      held[i] = g_try_malloc (bytes);
+      ok = held[i] != NULL;
+    }
+  for (int i = 0; i < buffers; i++)
+    g_free (held[i]);
   return ok;
 }
 
@@ -324,7 +331,7 @@ easel_picture_open (const char *path, EaselImage **img, int *width, int *height)
   /* gdk-pixbuf decodes with glycin, a Rust library that aborts the whole process when an allocation fails, so a lack of
      memory must be found here, before it is asked for: reserve what the decoder's pixels and the picture need at most
      (4 bytes per pixel each), and let both go again (untouched memory costs nothing). */
-  if (!memory_for (w, h))
+  if (!memory_for (w, h, 2))
     {
       *width = w;
       *height = h;
@@ -416,13 +423,17 @@ format_name (EaselFormat format)
 gboolean
 easel_picture_save (const EaselImage *img, const char *path, EaselFormat format, int jpeg_quality, GError **error)
 {
-  g_autoptr (GdkPixbuf) pb = to_pixbuf (img, easel_format_is_flat (format));
+  g_autoptr (GdkPixbuf) pb = NULL;
   g_autofree char *buffer = NULL;
   g_autofree char *quality = g_strdup_printf ("%d", jpeg_quality);
   const char *name = format_name (format);
   gboolean encoded;
   gsize size;
 
+  /* The encoders abort the process when an allocation fails, so the memory they need is looked for first (REQ-0005-18):
+     the pixbuf, the encoder's own copy and its output, 4 bytes per pixel each at most. Best effort. */
+  if (memory_for (img->width, img->height, 3))
+    pb = to_pixbuf (img, easel_format_is_flat (format));
   if (pb == NULL)
     {
       g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_NO_SPACE, g_strerror (ENOMEM));

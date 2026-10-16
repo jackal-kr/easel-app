@@ -3878,7 +3878,9 @@ as15_quit_around_open (void)
   EaselWindow *win = start_window ();
   g_autofree char *path = fixture_copy ("rgba.png");
   g_autoptr (GFile) file = g_file_new_for_path (path);
+  EaselWindow *alive = win;
 
+  g_object_add_weak_pointer (G_OBJECT (win), (gpointer *) &alive);
   wait_for_layout (win);
   g_action_group_activate_action (G_ACTION_GROUP (win), "open", NULL);
   wait_for_layout (win);
@@ -3895,6 +3897,7 @@ as15_quit_around_open (void)
   easel_window_open_file (win, file);
   g_assert_true (easel_window_is_loading (win));
   gtk_window_close (GTK_WINDOW (win));
+  g_assert_nonnull (alive);                          /* still there: the quit waits, it does not close the window now */
   g_assert_true (easel_window_is_loading (win));
   g_assert_true (gtk_widget_get_visible (GTK_WIDGET (win)));
   {
@@ -4260,6 +4263,111 @@ as15_actions_ignored_and_stroke_ended (void)
   close_windows ();
 }
 
+/* REQ-0005-03: strokes after New go into the new history: Undo undoes only them, and Redo brings them back. */
+static void
+as2_new_history_records_strokes (void)
+{
+  EaselWindow *win = start_window ();
+  const EaselImage *picture;
+
+  wait_for_layout (win);
+  use_pencil (win);
+  A_STROKE (win);                                              /* a stroke of the old picture, to be left behind */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "new", NULL);
+  wait_for_dialogs (win, 1);
+  respond (win, "discard");
+  picture = easel_window_get_picture (win);
+  g_assert_false (action_enabled (win, "undo"));
+
+  stroke (win, 3.5, 20.5, 9.5, 20.5);                          /* the first new stroke */
+  stroke (win, 3.5, 30.5, 9.5, 30.5);                          /* the second */
+  g_assert_true (easel_window_get_modified (win));
+  g_assert_true (action_enabled (win, "undo"));
+  g_assert_cmphex (easel_image_get (picture, 5, 30), ==, 0xFF000000u);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_cmphex (easel_image_get (picture, 5, 30), ==, 0xFFFFFF00u);
+  g_assert_cmphex (easel_image_get (picture, 5, 20), ==, 0xFF000000u);
+  g_assert_true (action_enabled (win, "undo"));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_cmphex (easel_image_get (picture, 5, 20), ==, 0xFFFFFF00u);
+  g_assert_false (action_enabled (win, "undo"));               /* the stroke before New is not there to undo */
+  g_assert_false (easel_window_get_modified (win));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "redo", NULL);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "redo", NULL);
+  g_assert_cmphex (easel_image_get (picture, 5, 30), ==, 0xFF000000u);
+  g_assert_false (action_enabled (win, "redo"));
+  close_windows ();
+}
+
+/* REQ-0005-04: Cancel in the unsaved-changes prompt leaves the picture, its history and its unsaved state as they were. */
+static void
+as3_cancel_leaves_everything (void)
+{
+  EaselWindow *win = start_window ();
+  const EaselImage *picture;
+
+  wait_for_layout (win);
+  use_pencil (win);
+  picture = easel_window_get_picture (win);
+  stroke (win, 3.5, 3.5, 9.5, 3.5);                            /* A */
+  stroke (win, 3.5, 8.5, 9.5, 8.5);                            /* B, then undone: a redo step is waiting */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_true (action_enabled (win, "undo"));
+  g_assert_true (action_enabled (win, "redo"));
+  g_assert_true (easel_window_get_modified (win));
+
+  g_action_group_activate_action (G_ACTION_GROUP (win), "new", NULL);
+  wait_for_dialogs (win, 1);
+  respond (win, "cancel");
+
+  g_assert_true (easel_window_get_picture (win) == picture);                       /* the same picture */
+  g_assert_cmphex (easel_image_get (picture, 5, 3), ==, 0xFF000000u);               /* A is there */
+  g_assert_cmphex (easel_image_get (picture, 5, 8), ==, 0xFFFFFF00u);               /* B is undone */
+  g_assert_true (easel_window_get_modified (win));
+  g_assert_cmpstr (gtk_window_get_title (GTK_WINDOW (win)), ==, "• Untitled – Easel");
+  /* The history is whole: Redo brings B back, and two Undos go back to the start. */
+  g_assert_true (action_enabled (win, "undo"));
+  g_assert_true (action_enabled (win, "redo"));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "redo", NULL);
+  g_assert_cmphex (easel_image_get (picture, 5, 8), ==, 0xFF000000u);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_cmphex (easel_image_get (picture, 5, 3), ==, 0xFFFFFF00u);
+  g_assert_false (easel_window_get_modified (win));
+  close_windows ();
+}
+
+/* REQ-0005-18: a Save that cannot get the memory shows the save error and changes nothing. */
+static void
+as19_save_memory_error_dialog (void)
+{
+  EaselWindow *win;
+  g_autofree char *dir = g_dir_make_tmp ("easel-ui-XXXXXX", NULL);
+  g_autofree char *path = g_build_filename (dir, "big.png", NULL);
+  AdwAlertDialog *dialog;
+  struct rlimit old;
+
+  write_settings ("[new-picture]\nwidth=6000\nheight=6000\n");
+  win = start_window ();
+  wait_for_layout (win);
+  use_pencil (win);
+  stroke (win, 3.5, 3.5, 9.5, 3.5);
+  g_assert_true (limit_memory (&old, 100));
+  easel_window_save_chosen (win, path);
+  g_assert_cmpint (setrlimit (RLIMIT_AS, &old), ==, 0);
+  wait_for_dialogs (win, 1);
+  dialog = open_alert (win);
+  g_assert_cmpstr (adw_alert_dialog_get_heading (dialog), ==, "Could Not Save “big.png”");
+  g_assert_nonnull (g_strstr_len (adw_alert_dialog_get_body (dialog), -1, "Cannot allocate memory"));
+  g_assert_false (g_file_test (path, G_FILE_TEST_EXISTS));
+  g_assert_true (easel_window_get_modified (win));
+  g_assert_cmpstr (gtk_window_get_title (GTK_WINDOW (win)), ==, "• Untitled – Easel");
+  adw_dialog_close (ADW_DIALOG (dialog));
+  wait_for_dialogs (win, 0);
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
 /* REQ-0005-12: a Save As that fails keeps the file, the title and the modified state. */
 static void
 as11_save_as_fails (void)
@@ -4471,6 +4579,10 @@ main (int argc, char **argv)
   g_application_set_flags (G_APPLICATION (app), G_APPLICATION_NON_UNIQUE | G_APPLICATION_HANDLES_OPEN);
   g_assert_true (g_application_register (G_APPLICATION (app), NULL, NULL));
 
+  /* Every case starts from the same settings, whatever ran before it (the cases of one feature may be run alone, or in
+     another order): the size and background most of them expect. A case that needs others writes them and restores these. */
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+
   g_test_add_func ("/0001/as1_starts_with_settings", as1_starts_with_settings);
   g_test_add_func ("/0001/as2_auto_fits_view", as2_auto_fits_view);
   g_test_add_func ("/0001/as8_one_window", as8_one_window);
@@ -4513,6 +4625,13 @@ main (int argc, char **argv)
   g_test_add_func ("/0004/as12_grid_dialog", as12_grid_dialog);
   g_test_add_func ("/0004/as14_grid_starts_as_settings_say", as14_grid_starts_as_settings_say);
   g_test_add_func ("/0005/as1_file_menu", as1_file_menu);
+  /* The cases that end the work of the user if they fail come first, so that a broken rule is found by an assertion
+     before anything else can crash. */
+  g_test_add_func ("/0005/as2_new_picture", as2_new_picture);
+  g_test_add_func ("/0005/as2_new_history_records_strokes", as2_new_history_records_strokes);
+  g_test_add_func ("/0005/as3_cancel_leaves_everything", as3_cancel_leaves_everything);
+  g_test_add_func ("/0005/as3_new_save_fails", as3_new_save_fails);
+  g_test_add_func ("/0005/as11_save_as_fails", as11_save_as_fails);
   g_test_add_func ("/0005/busy_cursor_before_decoding", busy_cursor_before_decoding);
   g_test_add_func ("/0005/as6_open_replaces_picture", as6_open_replaces_picture);
   g_test_add_func ("/0005/as7_prompt_before_open_dialog", as7_prompt_before_open_dialog);
@@ -4525,18 +4644,16 @@ main (int argc, char **argv)
   g_test_add_func ("/0005/as9_unknown_extension_error", as9_unknown_extension_error);
   g_test_add_func ("/0005/as10_save_clears_modified", as10_save_clears_modified);
   g_test_add_func ("/0005/as11_save_as", as11_save_as);
-  g_test_add_func ("/0005/as11_save_as_fails", as11_save_as_fails);
   g_test_add_func ("/0005/as12_save_keeps_format", as12_save_keeps_format);
   g_test_add_func ("/0005/as16_quality_setting_reaches_save", as16_quality_setting_reaches_save);
+  g_test_add_func ("/0005/as19_save_memory_error_dialog", as19_save_memory_error_dialog);
   g_test_add_func ("/0005/missing_saver_error_dialog", missing_saver_error_dialog);
   g_test_add_func ("/0005/as14_save_as_moves_the_saved_state", as14_save_as_moves_the_saved_state);
   g_test_add_func ("/0005/as13_command_line", as13_command_line);
   g_test_add_func ("/0005/as13_command_line_error", as13_command_line_error);
-  g_test_add_func ("/0005/as2_new_picture", as2_new_picture);
   g_test_add_func ("/0005/as2_new_resets_the_view", as2_new_resets_the_view);
   g_test_add_func ("/0005/as2_new_memory_error", as2_new_memory_error);
   g_test_add_func ("/0005/as3_new_and_open_prompt", as3_new_and_open_prompt);
-  g_test_add_func ("/0005/as3_new_save_fails", as3_new_save_fails);
   g_test_add_func ("/0005/as14_new_starts_a_history", as14_new_starts_a_history);
   g_test_add_func ("/0005/as15_new_before_picture", as15_new_before_picture);
   g_test_add_func ("/0004/as20_attributes_dialog", as20_attributes_dialog);
