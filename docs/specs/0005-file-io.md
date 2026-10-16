@@ -1,6 +1,6 @@
 # 0005 File I/O
 
-Status: accepted
+Status: implemented
 Depends on: 0001, 0002, 0004
 
 ## Why
@@ -371,3 +371,18 @@ D. Save and the edge rules (T011, T012): M4 (Save As and the system's replace co
 - [x] T011 Save and Save As in every format (REQ-0005-10, REQ-0005-11, REQ-0005-12, REQ-0005-13, REQ-0005-16; AS-9, AS-10, AS-11, AS-12, AS-14) - done when ui `as9_unknown_extension_error`, `as10_save_clears_modified`, `as11_save_as`, `as12_save_keeps_format`, `missing_saver_error_dialog` and the Save As part of `as14_saved_state_across_open_and_save_as` pass, `docs/engineering.md` lists the new modules, and manual M4 passes
 - [x] T012 Strokes, drags and quit around the file actions (REQ-0005-02; AS-15) - done when the rest of ui `as15_actions_ignored_and_stroke_ended` passes (Save and New end a stroke first, Open cancels a resize drag, quit does nothing while the New or Open prompt or a file dialog is open)
 - [x] T013 Close the gaps of the first check: Save without memory, two missing tests, two fixtures (REQ-0005-18, REQ-0005-03, REQ-0005-04, REQ-0005-06; AS-3, AS-5, AS-19) - done when io `as19_save_without_memory` passes (5 formats, three limits, in a subprocess), ui `as19_save_memory_error_dialog`, `as2_new_history_records_strokes` (Undo after New undoes only the new strokes) and `as3_cancel_leaves_everything` (Cancel leaves the picture, its history and its unsaved state untouched) pass, io `as5_open_formats` opens the interlaced PNG and the first frame of the animated WebP, `tests/mutants.txt` has a mutant for each new rule and for "a failed save marks the picture saved" and "a failed Save As already changes the file", each killed by an assertion and not by a crash, and `/sdd-check 0005` is repeated
+
+## Check
+(second `/sdd-check 0005`, after T013; the first one found the findings below)
+- Date and commit: 2026-10-16, `5308217`
+- Tests: `meson test` 19 of 19 pass (the ui cases: 97 in all, 27 of them of 0005)
+- Mutants: 61 of 61 killed (285 s); none killed only by a crash
+- Warnings: 0; lint clean; 18 requirements, 19 scenarios and 13 tasks all traced
+- Findings and how each was settled:
+  - Save could abort the whole process when memory is short (the Plan had said it was a save error): fixed in T013, REQ-0005-18, io test in a subprocess
+  - No test that strokes after New go into the new history, or that Cancel leaves the picture alone: tests added in T013
+  - The spec promised interlaced PNG and animated WebP, which had no fixture, and relative paths: fixtures added, relative-path wording narrowed (AS-13)
+  - Five mutants killed only by a crash, one stale mutant text: rewritten so that an assertion kills them
+  - Saving an opened file is silent (a JPEG is re-encoded without asking): decided by the owner to keep, recorded for 0013 (Out of scope, INDEX)
+  - Earlier one-off failures of two ui scroll and zoom cases, unexplained and not reproduced in 22 full runs: left open; the ui tests run one at a time
+
