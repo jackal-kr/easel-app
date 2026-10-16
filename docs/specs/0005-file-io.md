@@ -74,7 +74,7 @@ do any of it.
 - Open a symbolic link: it opens what it points to.
 
 ## Out of scope
-Recent files; drag and drop of files onto the window; opening several files or several windows; the folder choice remembered between runs; colour profiles; animated GIF frames; saving GIF; a quality dialog for JPEG; Print (0014); Paste from / Copy to file (0010); a Preferences entry for the formats (0013).
+A question before Save overwrites the file of an opened picture (the owner decided on 2026-10-16 to keep XP Paint's silent save, REQ-0005-13; a lossy JPEG is re-encoded without asking; to revisit, as a setting of Preferences, 0013); recent files; drag and drop of files onto the window; opening several files or several windows; the folder choice remembered between runs; colour profiles; animated GIF frames; saving GIF; a quality dialog for JPEG; Print (0014); Paste from / Copy to file (0010); a Preferences entry for the formats (0013).
 
 ## Open questions
 (none)

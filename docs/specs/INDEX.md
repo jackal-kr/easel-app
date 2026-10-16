@@ -17,7 +17,7 @@ Vertical slices first (a thin end-to-end feature), breadth later.
 | 0010 | clipboard | Cut, copy, paste, oversize paste, paste from / copy to file | |
 | 0011 | text | Text box, fonts, styles, per-selection fonts | |
 | 0012 | image-transforms | Flip, rotate, stretch, skew, invert, clear, black and white | |
-| 0013 | preferences | Appearance, new-picture and drawing defaults, palette persistence, undo budget | Dialog edits the same configuration file the app already reads |
+| 0013 | preferences | Appearance, new-picture and drawing defaults, palette persistence, undo budget | Dialog edits the same configuration file the app already reads. Open question from 0005: ask before Save overwrites an opened file (today silent, as in XP)? Candidates: a setting, once per opened file, or only for lossy formats; also `[save] jpeg-quality` |
 | 0014 | window-extras | Shortcuts window, thumbnail, frame time, print, context menus, About with acknowledgements (XP Paint, JS Paint) | Adds the View menu's Show Thumbnail item (not in 0004); Frame Time has no View item, only a Preferences setting (0013) |
 | 0015 | accessibility | Names/roles, keyboard-only drawing and palette | |
 | 0016 | i18n | UI languages (pl, uk, ru, de, cs, it, es, pt + English) | Mark the 0001 strings (title, quit and save prompts, errors) translatable; deferred from the 0001 check |
