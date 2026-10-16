@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 
+#include <stdbool.h>
 #include <stdlib.h>
 
 #include "stroke.h"
@@ -11,6 +12,9 @@ struct _EaselStroke
 {
   EaselImage *img;
   uint32_t color;
+  EaselFootprint footprint;   /* what one position paints; a square of 1 is the Pencil's pixel */
+  bool has_only;              /* the color eraser: only pixels equal to `only` are changed */
+  uint32_t only;
   int x, y;
   EaselChange *log;       /* each changed pixel once, in change order; becomes the undo step */
   size_t n_log, log_cap;
@@ -32,7 +36,7 @@ plot (EaselStroke *s, int x, int y)
   if (x < 0 || y < 0 || x >= img->width || y >= img->height)
     return;
   index = (size_t) y * (size_t) img->width + (size_t) x;
-  if (img->px[index] == s->color)
+  if (img->px[index] == s->color || (s->has_only && img->px[index] != s->only))
     return;
 
   if (s->n_log == s->log_cap)
@@ -50,6 +54,19 @@ plot (EaselStroke *s, int x, int y)
   easel_image_set (img, x, y, s->color);
 }
 
+/* One position of the stroke: the footprint with the pointer's pixel at its anchor (REQ-0006-05). A pixel that several
+   stamps cover is changed, and logged, once, because the next stamp finds it already of the color. */
+static void
+stamp (EaselStroke *s, int x, int y)
+{
+  int anchor = easel_footprint_anchor (s->footprint.size);
+
+  for (int row = 0; row < s->footprint.size; row++)
+    for (int col = 0; col < s->footprint.size; col++)
+      if (easel_footprint_has (s->footprint, col, row))
+        plot (s, x - anchor + col, y - anchor + row);
+}
+
 /* Bresenham: 8-connected, one pixel per step along the major axis, both ends included. */
 static void
 line (EaselStroke *s, int x0, int y0, int x1, int y1)
@@ -62,7 +79,7 @@ line (EaselStroke *s, int x0, int y0, int x1, int y1)
     {
       long long e2 = 2 * err;
 
-      plot (s, x0, y0);
+      stamp (s, x0, y0);
       if (x0 == x1 && y0 == y1)
         break;
       if (e2 >= dy)
@@ -81,6 +98,12 @@ line (EaselStroke *s, int x0, int y0, int x1, int y1)
 EaselStroke *
 easel_stroke_begin (EaselImage *img, int x, int y, uint32_t color)
 {
+  return easel_stroke_begin_stamp (img, x, y, color, (EaselFootprint) { EASEL_SHAPE_SQUARE, 1 }, NULL);
+}
+
+EaselStroke *
+easel_stroke_begin_stamp (EaselImage *img, int x, int y, uint32_t color, EaselFootprint f, const uint32_t *only)
+{
   EaselStroke *s = calloc (1, sizeof *s);
 
   if (s == NULL)
@@ -93,9 +116,12 @@ easel_stroke_begin (EaselImage *img, int x, int y, uint32_t color)
     }
   s->img = img;
   s->color = color;
+  s->footprint = f;
+  s->has_only = only != NULL;
+  s->only = only ? *only : 0;
   s->x = clamp_coord (x);
   s->y = clamp_coord (y);
-  plot (s, s->x, s->y);
+  stamp (s, s->x, s->y);
   return s;
 }
 

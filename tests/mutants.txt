@@ -572,3 +572,93 @@ test: ui-0005
 --- replace
   if (then != NULL)       /* a second answer to the same prompt has no action left: not a crash */
     then (self);
+
+# ---- the stroke rules of 0001 and 0002, kept while the stroke grows into stamps and sprays (0006 T001) ----
+
+=== REQ-0002-01 a finished stroke adds no undo step
+file: src/core/stroke.c
+test: core-stroke ui-0002
+--- find
+  if (history != NULL && changed > 0)
+--- replace
+  if (0)
+
+=== REQ-0002-01 the undo step of a stroke keeps the wrong old value of each pixel
+file: src/core/stroke.c
+test: core-stroke ui-0002
+--- find
+  s->log[s->n_log++] = (EaselChange) { (uint32_t) index, img->px[index], s->color };
+--- replace
+  s->log[s->n_log++] = (EaselChange) { (uint32_t) index, s->color, s->color };
+
+=== REQ-0002-02 a pixel that already has the color is changed and logged again
+file: src/core/stroke.c
+test: core-stroke ui-0002
+--- find
+  if (img->px[index] == s->color || (s->has_only && img->px[index] != s->only))
+    return;
+--- replace
+  if (s->has_only && img->px[index] != s->only)
+    return;
+
+=== REQ-0001-23 a cancelled stroke does not put the pixels back
+file: src/core/stroke.c
+test: core-stroke ui-0001
+--- find
+easel_stroke_cancel (EaselStroke *s)
+{
+  restore (s);
+--- replace
+easel_stroke_cancel (EaselStroke *s)
+{
+  (void) restore;
+
+=== REQ-0001-23 the other mouse button does not cancel the stroke
+file: src/ui/canvas.c
+test: ui-0001
+--- find
+      if (button != self->stroke_button)
+        {
+          easel_stroke_cancel (self->stroke);
+          self->stroke = NULL;
+          easel_canvas_update (self);
+        }
+      return;
+--- replace
+      return;
+
+=== REQ-0002-01 a finished stroke is not handed to the history
+file: src/ui/canvas.c
+test: ui-0002
+--- find
+  changed = easel_stroke_end (self->stroke, self->history);
+--- replace
+  changed = easel_stroke_end (self->stroke, NULL);
+
+# ---- the stamping strokes of 0006 (T003) ----
+
+=== REQ-0006-06 the brush paints only the pixel under the pointer, not its footprint
+file: src/core/stroke.c
+test: core-stroke
+--- find
+        plot (s, x - anchor + col, y - anchor + row);
+--- replace
+        plot (s, x, y);
+
+=== REQ-0006-12 the color eraser changes pixels of any color
+file: src/core/stroke.c
+test: core-stroke
+--- find
+  if (img->px[index] == s->color || (s->has_only && img->px[index] != s->only))
+    return;
+--- replace
+  if (img->px[index] == s->color)
+    return;
+
+=== REQ-0006-12 the color eraser compares only the color channels, not the alpha
+file: src/core/stroke.c
+test: core-stroke
+--- find
+  s->only = only ? *only : 0;
+--- replace
+  s->only = only ? (*only | 0xFF000000u) : 0;

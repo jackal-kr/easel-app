@@ -5,6 +5,7 @@
 #include <string.h>
 
 #include "check.h"
+#include "footprint.h"
 #include "image.h"
 #include "history.h"
 #include "stroke.h"
@@ -240,6 +241,239 @@ as6_transparent_stroke_exact (void)
   easel_image_free (img);
 }
 
+/* ---- 0006: stamping strokes (Brush, Eraser) ---- */
+
+#define RED 0xFFFF0000u
+#define BLUE 0xFF0000FFu
+
+/* A picture of w x h pixels of one color, and a mask of the pixels the test expects to have been painted. */
+typedef struct { int w, h; unsigned char *on; } Expect;
+
+static Expect
+expect_new (int w, int h)
+{
+  return (Expect) { w, h, calloc ((size_t) w * (size_t) h, 1) };
+}
+
+static void
+expect_stamp (Expect *e, EaselFootprint f, int x, int y)
+{
+  int a = easel_footprint_anchor (f.size);
+
+  for (int row = 0; row < f.size; row++)
+    for (int col = 0; col < f.size; col++)
+      {
+        int px = x - a + col, py = y - a + row;
+
+        if (easel_footprint_has (f, col, row) && px >= 0 && py >= 0 && px < e->w && py < e->h)
+          e->on[py * e->w + px] = 1;
+      }
+}
+
+/* The picture has `color` exactly where the expectation is set, and `other` everywhere else. */
+static void
+check_painted (const EaselImage *img, const Expect *e, uint32_t color, uint32_t other)
+{
+  for (int y = 0; y < img->height; y++)
+    for (int x = 0; x < img->width; x++)
+      CHECK (easel_image_get (img, x, y) == (e->on[y * e->w + x] ? color : other));
+}
+
+/* AS-4: a click paints one footprint, a drag the footprint at every pixel of the line, with either button's color, clipped. */
+static void
+as4_brush_stroke (void)
+{
+  EaselFootprint c7 = { EASEL_SHAPE_CIRCLE, 7 };
+  EaselImage *img = easel_image_new (100, 100, WHITE);
+  Expect e = expect_new (100, 100);
+  EaselStroke *s;
+
+  /* A click: exactly the mask of AS-3, 37 pixels, with the pointer pixel at column 3, row 3. */
+  s = easel_stroke_begin_stamp (img, 20, 20, BLACK, c7, NULL);
+  expect_stamp (&e, c7, 20, 20);
+  CHECK (easel_stroke_end (s, NULL) == 37);
+  check_painted (img, &e, BLACK, WHITE);
+  CHECK (easel_image_get (img, 20, 17) == BLACK && easel_image_get (img, 20, 23) == BLACK);
+  CHECK (easel_image_get (img, 17, 20) == BLACK && easel_image_get (img, 23, 20) == BLACK);
+  CHECK (easel_image_get (img, 17, 17) == WHITE);                       /* a corner of the box is not in the circle */
+  free (e.on);
+
+  /* A drag from (10, 60) to (40, 60). */
+  easel_image_free (img);
+  img = easel_image_new (100, 100, WHITE);
+  e = expect_new (100, 100);
+  s = easel_stroke_begin_stamp (img, 10, 60, RED, c7, NULL);
+  easel_stroke_to (s, 40, 60);
+  for (int x = 10; x <= 40; x++)
+    expect_stamp (&e, c7, x, 60);
+  easel_stroke_end (s, NULL);
+  check_painted (img, &e, RED, WHITE);
+  free (e.on);
+  easel_image_free (img);
+
+  /* Two far positions with nothing between: a stamp at every pixel of the line, no gap (the footprint's own pixel included). */
+  img = easel_image_new (100, 100, WHITE);
+  s = easel_stroke_begin_stamp (img, 10, 10, BLACK, c7, NULL);
+  easel_stroke_to (s, 90, 80);
+  easel_stroke_end (s, NULL);
+  for (int i = 0; i <= 80; i++)
+    {
+      int x = 10 + (80 * i + 40) / 80, y = 10 + (70 * i + 40) / 80;       /* the line, rounded to the nearest pixel */
+
+      CHECK (easel_image_get (img, x, y) == BLACK);
+    }
+  easel_image_free (img);
+
+  /* A stroke that starts outside the picture paints only the part inside. */
+  img = easel_image_new (100, 100, WHITE);
+  e = expect_new (100, 100);
+  s = easel_stroke_begin_stamp (img, -5, 20, BLUE, c7, NULL);
+  easel_stroke_to (s, 5, 20);
+  for (int x = -5; x <= 5; x++)
+    expect_stamp (&e, c7, x, 20);
+  easel_stroke_end (s, NULL);
+  check_painted (img, &e, BLUE, WHITE);
+  free (e.on);
+  easel_image_free (img);
+}
+
+/* AS-5: slanted brushes, exact pixels, and the stripes of XP. */
+static void
+as5_slanted_brush (void)
+{
+  EaselFootprint slash8 = { EASEL_SHAPE_SLASH, 8 };
+  EaselImage *img = easel_image_new (100, 100, WHITE);
+  Expect e = expect_new (100, 100);
+  EaselStroke *s;
+
+  /* Horizontally, a band 8 pixels tall. */
+  s = easel_stroke_begin_stamp (img, 10, 20, BLACK, slash8, NULL);
+  easel_stroke_to (s, 30, 20);
+  for (int x = 10; x <= 30; x++)
+    expect_stamp (&e, slash8, x, 20);
+  easel_stroke_end (s, NULL);
+  check_painted (img, &e, BLACK, WHITE);
+  CHECK (easel_image_get (img, 20, 17) == BLACK && easel_image_get (img, 20, 24) == BLACK);
+  CHECK (easel_image_get (img, 20, 16) == WHITE && easel_image_get (img, 20, 25) == WHITE);
+  free (e.on);
+  easel_image_free (img);
+
+  /* Along its own direction, from (20, 40) to (30, 30): one diagonal, x + y = 61, from (17, 44) to (34, 27). */
+  img = easel_image_new (100, 100, WHITE);
+  s = easel_stroke_begin_stamp (img, 20, 40, BLACK, slash8, NULL);
+  easel_stroke_to (s, 30, 30);
+  CHECK (easel_stroke_end (s, NULL) == 18);
+  for (int y = 0; y < 100; y++)
+    for (int x = 0; x < 100; x++)
+      CHECK ((easel_image_get (img, x, y) == BLACK) == (x + y == 61 && x >= 17 && x <= 34));
+  easel_image_free (img);
+
+  /* Across its direction, along "\": the stamps leave the diagonals between them empty (XP's stripes): only the
+     diagonals x + y = 71, 73, ..., 91 are painted. */
+  img = easel_image_new (100, 100, WHITE);
+  s = easel_stroke_begin_stamp (img, 10, 60, BLACK, slash8, NULL);
+  easel_stroke_to (s, 20, 70);
+  easel_stroke_end (s, NULL);
+  for (int y = 0; y < 100; y++)
+    for (int x = 0; x < 100; x++)
+      if (easel_image_get (img, x, y) == BLACK)
+        CHECK ((x + y) % 2 == 1 && x + y >= 71 && x + y <= 91);
+  CHECK (easel_image_get (img, 14, 57) == BLACK);                        /* x + y = 71: a stripe */
+  CHECK (easel_image_get (img, 15, 57) == WHITE);                        /* x + y = 72, 74: between the stripes */
+  CHECK (easel_image_get (img, 20, 54) == WHITE);
+  easel_image_free (img);
+}
+
+/* AS-7: the eraser paints its square with the background color, or with transparency. */
+static void
+as7_eraser (void)
+{
+  EaselFootprint sq8 = { EASEL_SHAPE_SQUARE, 8 };
+  EaselImage *img = easel_image_new (100, 100, BLACK);
+  Expect e = expect_new (100, 100);
+  EaselStroke *s;
+  uint32_t yellow = 0xFFFFFF00u;
+
+  /* Opaque: a click is one 8 x 8 square, the pointer pixel at column 3, row 3; a drag a path 8 wide. */
+  s = easel_stroke_begin_stamp (img, 30, 30, yellow, sq8, NULL);
+  CHECK (easel_stroke_end (s, NULL) == 64);
+  CHECK (easel_image_get (img, 27, 27) == yellow && easel_image_get (img, 34, 34) == yellow);
+  CHECK (easel_image_get (img, 26, 30) == BLACK && easel_image_get (img, 35, 30) == BLACK);
+  s = easel_stroke_begin_stamp (img, 10, 70, yellow, sq8, NULL);
+  easel_stroke_to (s, 50, 70);
+  for (int x = 10; x <= 50; x++)
+    expect_stamp (&e, sq8, x, 70);
+  easel_stroke_end (s, NULL);
+  for (int y = 40; y < 100; y++)
+    for (int x = 0; x < 100; x++)
+      CHECK (easel_image_get (img, x, y) == (e.on[y * 100 + x] ? yellow : BLACK));
+  free (e.on);
+
+  /* Transparent: the pixels become #00000000. */
+  s = easel_stroke_begin_stamp (img, 80, 10, 0x00000000u, sq8, NULL);
+  easel_stroke_to (s, 90, 10);
+  easel_stroke_end (s, NULL);
+  CHECK (easel_image_get (img, 85, 7) == 0x00000000u && easel_image_get (img, 85, 14) == 0x00000000u);   /* rows 7 to 14 */
+  CHECK (easel_image_get (img, 85, 6) == BLACK && easel_image_get (img, 85, 15) == BLACK);
+  easel_image_free (img);
+}
+
+/* AS-8: the color eraser changes only pixels equal to the foreground color in all four channels. */
+static void
+as8_color_eraser (void)
+{
+  EaselFootprint sq8 = { EASEL_SHAPE_SQUARE, 8 };
+  EaselImage *img = easel_image_new (40, 40, BLUE);
+  EaselStroke *s;
+  uint32_t red = RED;
+
+  for (int y = 0; y < 40; y++)
+    for (int x = 0; x < 20; x++)
+      easel_image_set (img, x, y, red);
+
+  /* Red becomes white where the footprint passes; blue stays. */
+  s = easel_stroke_begin_stamp (img, 5, 20, WHITE, sq8, &red);
+  easel_stroke_to (s, 30, 20);
+  easel_stroke_end (s, NULL);
+  CHECK (easel_image_get (img, 10, 20) == WHITE && easel_image_get (img, 19, 20) == WHITE);
+  CHECK (easel_image_get (img, 25, 20) == BLUE);                         /* in the path, but not red */
+  CHECK (easel_image_get (img, 10, 10) == red);                           /* outside the path */
+  easel_image_free (img);
+
+  /* Transparent mode: the same pixels become #00000000. */
+  img = easel_image_new (40, 40, BLUE);
+  easel_image_set (img, 10, 10, red);
+  s = easel_stroke_begin_stamp (img, 10, 10, 0x00000000u, sq8, &red);
+  CHECK (easel_stroke_end (s, NULL) == 1);
+  CHECK (easel_image_get (img, 10, 10) == 0x00000000u && easel_image_get (img, 11, 10) == BLUE);
+  easel_image_free (img);
+
+  /* All four channels: a fully transparent pixel with other color channels is not the transparent foreground. */
+  img = easel_image_new (20, 20, 0x00FF0000u);
+  easel_image_set (img, 5, 5, 0x00000000u);
+  {
+    uint32_t clear = 0x00000000u;
+
+    s = easel_stroke_begin_stamp (img, 5, 5, WHITE, sq8, &clear);
+    CHECK (easel_stroke_end (s, NULL) == 1);
+    CHECK (easel_image_get (img, 5, 5) == WHITE && easel_image_get (img, 6, 5) == 0x00FF0000u);
+  }
+  easel_image_free (img);
+
+  /* Foreground and background equal: nothing changes and no step is made. */
+  img = easel_image_new (20, 20, RED);
+  {
+    EaselHistory *h = easel_history_new (1 << 20);
+
+    s = easel_stroke_begin_stamp (img, 10, 10, RED, sq8, &red);
+    CHECK (easel_stroke_end (s, h) == 0);
+    CHECK (!easel_history_can_undo (h));
+    easel_history_free (h);
+  }
+  CHECK (count (img, RED) == 400);
+  easel_image_free (img);
+}
+
 int
 main (void)
 {
@@ -253,5 +487,9 @@ main (void)
   RUN (stroke_without_change_adds_no_step);
   RUN (stroke_refuses_huge_picture);
   RUN (as6_transparent_stroke_exact);
+  RUN (as4_brush_stroke);
+  RUN (as5_slanted_brush);
+  RUN (as7_eraser);
+  RUN (as8_color_eraser);
   return 0;
 }
