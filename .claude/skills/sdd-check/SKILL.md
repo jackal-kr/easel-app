@@ -7,8 +7,8 @@ description: Step 3 of the loop, also usable any time. Read-only check of a feat
 
 1. `tools/spec.sh lint` and `tools/spec.sh status`.
 2. Coverage: for every REQ and AS -> task -> test or manual check -> passing? Flag any requirement without code or test, any test
-   without a requirement, any task without a trace. For each rule that guards against data loss, break it in a scratch copy
-   and confirm a test fails; a rule that no test catches is a finding. If none does, first check whether any input
+   without a requirement, any task without a trace. Run `tools/mutate.sh` (the whole list); a rule that guards against
+   data loss and has no mutant in `tests/mutants.txt` gets one, and a mutant that survives is a finding. If none does, first check whether any input
    could observe the change; an equivalent mutant is not a finding.
 3. Drift: behavior in code that is not in the spec; Plan items not built; spec statements contradicted by tests.
 4. Constitution: layering, warnings, tests shipped with the change, no AI trailers in commits.

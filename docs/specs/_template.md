@@ -12,6 +12,8 @@ Number as `- REQ-NNNN-01 ...`.
 A size or cost bound, or a numeric guarantee, states its assumptions and limits, and must hold for the smallest case
 (one item), including any fixed cost per container.
 A drag states where the grab point sits relative to what moves, and maps pointer movement, not position, to the result.
+A requirement about a whole class (any dialog, any file, any picture) lists the earlier requirements that already say something about its members, and says only what is new.
+A requirement that allocates (a picture, a buffer) says what happens when the memory cannot be had, as REQ-0004-26 does.
 
 <!--
     - REQ-NNNN-01 When the user presses the primary button on the canvas with the pencil, the app shall set the pixel under the pointer to the foreground color.
@@ -19,6 +21,7 @@ A drag states where the grab point sits relative to what moves, and maps pointer
 
 ## Scenarios
 Each cites the requirement(s) it covers and how it is verified (automated test or manual check).
+A rule that picks from a fixed list has a scenario with a realistic input (a photo bigger than the window), not only round numbers.
 
 <!--
     - AS-1 (REQ-NNNN-01) Given a blank canvas, When ..., Then ... | Verified by: automated (core | io | ui: the layer that owns the behavior) / manual M1
