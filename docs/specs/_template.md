@@ -43,3 +43,11 @@ Open items start a line with `- [NEEDS CLARIFICATION` and a question. Resolve al
 
 ## Tasks
 (added by /sdd-build after the plan is agreed: `- [ ] T001 title (REQ-..., AS-...) - done when ...`)
+
+## Check
+(written by /sdd-check as its last step, about ten lines)
+- Date and commit: YYYY-MM-DD, `abc1234`
+- Tests: `meson test` N of N pass (the cases of this feature: M)
+- Mutants: K of K killed (seconds); none killed only by a crash
+- Warnings: 0
+- Findings, each with how it was settled (fixed in T0NN, decided by the owner, left open and why)

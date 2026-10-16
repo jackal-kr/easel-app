@@ -97,7 +97,13 @@ Defined by feature 0017.
     (it must occur once in the file; no blank line), `--- replace` with the text that takes its place. Write the mutant
     that breaks the rule, run it, and fix the tests until it is killed; a mutant that is equivalent (no input can see the
     change) does not belong in the list.
-  - Run the mutants of the requirements you worked on at each group boundary, and the whole list at `/sdd-check`.
+- **What to run when (the skills point here):** after a task, the tests of the feature touched (`meson test -C build
+  --print-errorlogs ui-NNNN`, plus the core and io tests) and the mutants of the task's requirements (`tools/mutate.sh
+  REQ-NNNN-xx`); at a group boundary, the full `meson test -C build --print-errorlogs`; at `/sdd-check`, everything: the
+  full `meson test` and the whole mutation list.
+- **Code that can abort the process** (a failed allocation in GLib, gdk-pixbuf or glycin) is tested in a subprocess
+  (`g_test_trap_subprocess`, as `as19_save_without_memory` and `as8_open_without_memory` do), so that an abort is a failed
+  assertion of the test and not a crash of the run.
 - **Gates:** build warning-free, all tests green after each task; `tools/spec.sh lint` clean before a spec is accepted.
 - **Later:** CI in a container or the Flatpak SDK (libadwaita >= 1.8 needed); screenshot checks only if they prove worth the upkeep.
 

@@ -3,15 +3,18 @@ name: sdd-check
 description: Step 3 of the loop, also usable any time. Read-only check of a feature against its spec, the constitution and the code. Use after building, or before changing a spec.
 ---
 
-# Check (read-only; propose, do not edit)
+# Check (read-only, except the Check section of the spec; propose, do not edit anything else)
 
 1. `tools/spec.sh lint` and `tools/spec.sh status`.
 2. Coverage: for every REQ and AS -> task -> test or manual check -> passing? Flag any requirement without code or test, any test
-   without a requirement, any task without a trace. Run `tools/mutate.sh` (the whole list); a rule that guards against
-   data loss and has no mutant in `tests/mutants.txt` gets one, and a mutant that survives is a finding. If none does, first check whether any input
-   could observe the change; an equivalent mutant is not a finding.
+   without a requirement, any task without a trace. Run everything as the Testing section of `docs/engineering.md` says for
+   `/sdd-check` (all tests, the whole mutation list); a rule that guards against data loss and has no mutant in
+   `tests/mutants.txt` gets one, a mutant that survives is a finding, and so is one killed only by a crash (add an
+   assertion). If none does, first check whether any input could observe the change; an equivalent mutant is not a finding.
 3. Drift: behavior in code that is not in the spec; Plan items not built; spec statements contradicted by tests.
 4. Constitution: layering, warnings, tests shipped with the change, no AI trailers in commits.
 5. Read `git diff` for correctness: pixel bounds and overflow, GTK object lifetime, one undo step per user-visible edit.
 6. Report findings ranked by severity with file and id references, then a one-line verdict. If clean and JOD agrees, propose
    `Status: implemented` and any lines worth adding to `docs/learning-log.md`.
+7. Last, write the `## Check` section of the spec (see `docs/specs/_template.md`): date, commit, tests, mutants, warnings, and
+   each finding with how it was settled. A repeated check replaces the section and keeps the earlier findings in it.
