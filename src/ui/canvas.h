@@ -5,6 +5,7 @@
 
 #include "history.h"
 #include "image.h"
+#include "footprint.h"
 #include "tool.h"
 #include "view.h"
 
@@ -52,7 +53,16 @@ void easel_canvas_set_busy (EaselCanvas *self, gboolean busy);
 /* Shows the picture from its start: zoom 100 %, scrolled to the top-left corner (REQ-0005-03, REQ-0005-07). */
 void easel_canvas_reset_view (EaselCanvas *self);
 
-/* A pencil stroke is in progress. */
+/* What the Brush, the Airbrush and the Eraser paint with, as the options panel has it (REQ-0006-04..11): the footprint of
+   the active tool, and whether the Eraser erases to transparency. */
+void easel_canvas_set_footprint (EaselCanvas *self, EaselFootprint footprint);
+void easel_canvas_set_eraser_transparent (EaselCanvas *self, gboolean transparent);
+
+/* Test hook: how many sprays the current or the last Airbrush stroke has made. */
+int easel_canvas_get_spray_count (EaselCanvas *self);
+
+/* A pencil stroke is in progress. Signal "stroking-changed" (gboolean stroking) comes when one starts, and when it ends or
+   is cancelled. */
 gboolean easel_canvas_is_stroking (EaselCanvas *self);
 
 /* Cancels a stroke in progress, restoring the picture, and ignores the rest of that mouse press (REQ-0002-09). */

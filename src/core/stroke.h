@@ -4,6 +4,7 @@
 #pragma once
 
 #include <stddef.h>
+#include <stdint.h>
 
 #include "footprint.h"
 #include "history.h"
@@ -21,6 +22,23 @@ EaselStroke *easel_stroke_begin (EaselImage *img, int x, int y, uint32_t color);
    Same end and cancel as the Pencil's; a pixel is changed and logged at most once. */
 EaselStroke *easel_stroke_begin_stamp (EaselImage *img, int x, int y, uint32_t color, EaselFootprint f,
                                        const uint32_t *only);
+
+/* The Airbrush's spray (REQ-0006-08, REQ-0006-09). The stroke paints `color` at random pixels of the disc of the given
+   diameter (the circle footprint of that size) around the positions it is told of, per_spray pixels at each spray, chosen
+   independently and with equal chance (a pixel can be chosen twice); seed starts the random sequence (any value, also 0).
+   Same end and cancel as the others. */
+EaselStroke *easel_stroke_begin_spray (EaselImage *img, uint32_t color, int diameter, int per_spray, uint64_t seed);
+
+/* Makes `sprays` sprays with the pointer at (x, y); a spray whose pixel is outside the picture paints nothing. Does
+   nothing for a stroke that is not a spray; easel_stroke_to does nothing for a spray. */
+void easel_stroke_spray (EaselStroke *s, int x, int y, int sprays);
+
+/* How many sprays are due when the button has been held for held_us microseconds: one at the press and one for every full
+   5 ms since, so that a late timer catches up (REQ-0006-08). The caller makes due - made sprays. */
+int easel_spray_due (int64_t held_us);
+
+/* Pixels per spray for a disc: 1 for 9 and 16, 3 for 24 (REQ-0006-08). */
+int easel_spray_pixels (int diameter);
 
 /* Draws the line from the previous position to (x, y). */
 void easel_stroke_to (EaselStroke *s, int x, int y);

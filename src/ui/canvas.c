@@ -4,6 +4,7 @@
 
 #include "config.h"
 #include "canvas.h"
+#include "cursor-shape.h"
 #include "grid.h"
 #include "stroke.h"
 #include "view.h"
@@ -35,6 +36,15 @@ struct _EaselCanvas
   uint32_t background;
   EaselHistory *history;  /* not owned */
   EaselStroke *stroke;
+  EaselFootprint footprint;   /* of the Brush, the Airbrush or the Eraser, whichever is active */
+  guint spray_source;         /* the 5 ms timer of a spray stroke, 0 when none runs */
+  gint64 spray_start_us;      /* when the button was pressed */
+  int sprays_made;
+  int spray_x, spray_y;       /* the pointer's pixel, where the next sprays land */
+  gboolean eraser_transparent;
+  GdkCursor *outline_cursor;  /* the footprint's outline for cursor_footprint at cursor_zoom, NULL until made */
+  EaselFootprint cursor_footprint;
+  int cursor_zoom;
   guint stroke_button;
   guint cancelled_button; /* button of a stroke cancelled by Undo, until it is released; 0 if none */
   gboolean input_blocked;
@@ -64,6 +74,7 @@ struct _EaselCanvas
 enum
 {
   SIGNAL_STROKE_FINISHED,
+  SIGNAL_STROKING_CHANGED,
   SIGNAL_ZOOM_CHANGED,
   SIGNAL_POINTER_MOVED,
   SIGNAL_POINTER_LEFT,
@@ -75,6 +86,8 @@ static guint signals[N_SIGNALS];
 
 static GtkAdjustment *adjustment (EaselCanvas *self, GtkOrientation orientation);
 static void update_cursor (EaselCanvas *self);
+static void stop_spray (EaselCanvas *self);
+static gboolean on_spray_tick (gpointer data);
 
 /* Resize handles (REQ-0004-16): 5 x 5 logical pixels touching the picture, a hit area of 9 x 9 around the center, and
    room to the right of and below the picture for the part of the hit area outside the handle (5 + 2). */
@@ -443,6 +456,49 @@ pencil_cursor (void)
   return pencil;
 }
 
+static GdkCursor *
+airbrush_cursor (void)
+{
+  static GdkCursor *spray_can;
+
+  if (spray_can == NULL)
+    {
+      g_autoptr (GdkTexture) texture = gdk_texture_new_from_resource (RESOURCE_PATH "/cursors/airbrush.svg");
+      g_autoptr (GdkCursor) fallback = gdk_cursor_new_from_name ("crosshair", NULL);
+
+      spray_can = gdk_cursor_new_from_texture (texture, 7, 26, fallback);
+    }
+  return spray_can;
+}
+
+/* The outline of the Brush's or the Eraser's footprint at the current zoom (REQ-0006-16); made again only when the
+   footprint or the zoom changed. The scale is 1: how GDK maps a cursor texture on a scaled screen is not known here. */
+static GdkCursor *
+outline_cursor (EaselCanvas *self)
+{
+  if (self->outline_cursor == NULL || self->cursor_zoom != self->zoom
+      || self->cursor_footprint.shape != self->footprint.shape || self->cursor_footprint.size != self->footprint.size)
+    {
+      EaselCursorShape shape = easel_cursor_shape (self->footprint, self->zoom, 1);
+      g_autofree uint32_t *argb = g_new (uint32_t, (gsize) shape.width * shape.height);
+      g_autoptr (GBytes) bytes = NULL;
+      g_autoptr (GdkTexture) texture = NULL;
+      g_autoptr (GdkCursor) fallback = gdk_cursor_new_from_name ("crosshair", NULL);
+
+      easel_cursor_render (self->footprint, self->zoom, 1, argb);
+      /* 0xAARRGGBB in a native 32 bit word is what GDK calls B8G8R8A8 premultiplied on little endian; the pixels are
+         only opaque black, opaque white or transparent, which premultiplied and straight alpha share. */
+      bytes = g_bytes_new (argb, (gsize) shape.width * shape.height * sizeof *argb);
+      texture = gdk_memory_texture_new (shape.width, shape.height, GDK_MEMORY_B8G8R8A8_PREMULTIPLIED, bytes,
+                                        (gsize) shape.width * sizeof *argb);
+      g_clear_object (&self->outline_cursor);
+      self->outline_cursor = gdk_cursor_new_from_texture (texture, shape.hot_x, shape.hot_y, fallback);
+      self->cursor_zoom = self->zoom;
+      self->cursor_footprint = self->footprint;
+    }
+  return self->outline_cursor;
+}
+
 /* The cursor shows the tool over the whole canvas area, not only over the picture (REQ-0001-10). */
 static void
 update_cursor (EaselCanvas *self)
@@ -458,6 +514,10 @@ update_cursor (EaselCanvas *self)
                                        : handle == EASEL_HANDLE_BOTTOM ? "ns-resize" : "nwse-resize", NULL);
   else if (self->tool == EASEL_TOOL_PENCIL)
     cursor = g_object_ref (pencil_cursor ());
+  else if (self->tool == EASEL_TOOL_BRUSH || self->tool == EASEL_TOOL_ERASER)
+    cursor = g_object_ref (outline_cursor (self));
+  else if (self->tool == EASEL_TOOL_AIRBRUSH)
+    cursor = g_object_ref (airbrush_cursor ());
   else
     cursor = gdk_cursor_new_from_name (self->panning ? "grabbing" : "grab", NULL);
 
@@ -492,6 +552,19 @@ easel_canvas_set_tool (EaselCanvas *self, EaselTool tool)
   self->hover = EASEL_HANDLE_NONE;
   update_cursor (self);
   gtk_widget_queue_resize (GTK_WIDGET (self));   /* the handles come and go with the room they need */
+}
+
+void
+easel_canvas_set_footprint (EaselCanvas *self, EaselFootprint footprint)
+{
+  self->footprint = footprint;
+  update_cursor (self);
+}
+
+void
+easel_canvas_set_eraser_transparent (EaselCanvas *self, gboolean transparent)
+{
+  self->eraser_transparent = transparent;
 }
 
 void
@@ -530,6 +603,8 @@ easel_canvas_cancel_stroke (EaselCanvas *self)
     return;
   easel_stroke_cancel (self->stroke);
   self->stroke = NULL;
+  stop_spray (self);
+  g_signal_emit (self, signals[SIGNAL_STROKING_CHANGED], 0, FALSE);
   self->cancelled_button = self->stroke_button;
   easel_canvas_update (self);
 }
@@ -554,6 +629,46 @@ easel_canvas_is_waiting_for_release (EaselCanvas *self)
   return self->cancelled_button != 0;
 }
 
+static void
+stop_spray (EaselCanvas *self)
+{
+  if (self->spray_source != 0)
+    {
+      g_source_remove (self->spray_source);
+      self->spray_source = 0;
+    }
+}
+
+int
+easel_canvas_get_spray_count (EaselCanvas *self)
+{
+  return self->sprays_made;
+}
+
+/* Every 5 ms: the sprays that are due for the time the button has been held and are not made yet, at the pointer's pixel
+   now (REQ-0006-08). A late timer catches up; it never runs ahead of the clock. */
+static gboolean
+on_spray_tick (gpointer data)
+{
+  EaselCanvas *self = data;
+  int due, n;
+
+  if (self->stroke == NULL)
+    {
+      self->spray_source = 0;
+      return G_SOURCE_REMOVE;
+    }
+  due = easel_spray_due (g_get_monotonic_time () - self->spray_start_us);
+  n = due - self->sprays_made;
+  if (n > 0)
+    {
+      easel_stroke_spray (self->stroke, self->spray_x, self->spray_y, n);
+      self->sprays_made = due;
+      easel_canvas_update (self);
+    }
+  return G_SOURCE_CONTINUE;
+}
+
 void
 easel_canvas_end_stroke (EaselCanvas *self)
 {
@@ -563,6 +678,8 @@ easel_canvas_end_stroke (EaselCanvas *self)
     return;
   changed = easel_stroke_end (self->stroke, self->history);
   self->stroke = NULL;
+  stop_spray (self);
+  g_signal_emit (self, signals[SIGNAL_STROKING_CHANGED], 0, FALSE);
   g_signal_emit (self, signals[SIGNAL_STROKE_FINISHED], 0, (guint) changed);
 }
 
@@ -582,6 +699,8 @@ easel_canvas_press (EaselCanvas *self, guint button, double x, double y)
         {
           easel_stroke_cancel (self->stroke);
           self->stroke = NULL;
+          stop_spray (self);
+          g_signal_emit (self, signals[SIGNAL_STROKING_CHANGED], 0, FALSE);
           easel_canvas_update (self);
         }
       return;
@@ -629,17 +748,52 @@ easel_canvas_press (EaselCanvas *self, guint button, double x, double y)
       return;
     }
 
-  if (self->tool != EASEL_TOOL_PENCIL || self->img == NULL)
+  if (self->img == NULL || self->tool == EASEL_TOOL_PAN)
     return;
   to_pixel (self, x, y, &px, &py);
-  self->stroke = easel_stroke_begin (self->img, px, py,
-                                     button == GDK_BUTTON_PRIMARY ? self->foreground : self->background);
+  if (self->tool == EASEL_TOOL_AIRBRUSH)
+    {
+      /* The random sequence starts differently each time (REQ-0006-09). */
+      uint64_t seed = (uint64_t) g_get_monotonic_time () * UINT64_C (0x9E3779B97F4A7C15) ^ (uint64_t) g_get_real_time ();
+
+      self->stroke = easel_stroke_begin_spray (self->img, button == GDK_BUTTON_PRIMARY ? self->foreground : self->background,
+                                               self->footprint.size, easel_spray_pixels (self->footprint.size), seed);
+      if (self->stroke != NULL)
+        {
+          self->spray_x = px;
+          self->spray_y = py;
+          self->spray_start_us = g_get_monotonic_time ();
+          self->sprays_made = 0;
+          self->stroke_button = button;
+          g_signal_emit (self, signals[SIGNAL_STROKING_CHANGED], 0, TRUE);
+          on_spray_tick (self);                                 /* the spray of the press */
+          self->spray_source = g_timeout_add (5, on_spray_tick, self);
+          return;
+        }
+    }
+  else if (self->tool == EASEL_TOOL_PENCIL)
+    self->stroke = easel_stroke_begin (self->img, px, py, button == GDK_BUTTON_PRIMARY ? self->foreground : self->background);
+  else if (self->tool == EASEL_TOOL_BRUSH)
+    self->stroke = easel_stroke_begin_stamp (self->img, px, py,
+                                             button == GDK_BUTTON_PRIMARY ? self->foreground : self->background,
+                                             self->footprint, NULL);
+  else
+    {
+      /* The Eraser paints the background color, or transparency; with the secondary button (XP's color eraser) only
+         where the foreground color is (REQ-0006-11, REQ-0006-12). */
+      uint32_t color = self->eraser_transparent ? 0x00000000u : self->background;
+      uint32_t only = self->foreground;
+
+      self->stroke = easel_stroke_begin_stamp (self->img, px, py, color, self->footprint,
+                                               button == GDK_BUTTON_PRIMARY ? NULL : &only);
+    }
   if (self->stroke == NULL)
     {
       g_critical ("Out of memory starting a stroke");
       return;
     }
   self->stroke_button = button;
+  g_signal_emit (self, signals[SIGNAL_STROKING_CHANGED], 0, TRUE);
   easel_canvas_update (self);
 }
 
@@ -668,6 +822,8 @@ easel_canvas_motion (EaselCanvas *self, double x, double y)
   if (self->stroke == NULL)
     return;
   to_pixel (self, x, y, &px, &py);
+  self->spray_x = px;                  /* where the next sprays land (nothing else uses these two) */
+  self->spray_y = py;
   easel_stroke_to (self->stroke, px, py);
   easel_canvas_update (self);
 }
@@ -706,6 +862,7 @@ commit_zoom (EaselCanvas *self, int zoom, double scroll_h, double scroll_v)
   self->anchor_pending = TRUE;
   self->zoom = zoom;
   gtk_widget_queue_resize (GTK_WIDGET (self));
+  update_cursor (self);
   g_signal_emit (self, signals[SIGNAL_ZOOM_CHANGED], 0, zoom);
 }
 
@@ -1061,6 +1218,7 @@ easel_canvas_dispose (GObject *object)
 {
   EaselCanvas *self = EASEL_CANVAS (object);
 
+  stop_spray (self);
   if (self->stroke != NULL)
     {
       easel_stroke_cancel (self->stroke);
@@ -1070,6 +1228,7 @@ easel_canvas_dispose (GObject *object)
   self->history = NULL;
   self->area = NULL;
   free_tiles (self);
+  g_clear_object (&self->outline_cursor);
   g_clear_object (&self->builder);
   G_OBJECT_CLASS (easel_canvas_parent_class)->dispose (object);
 }
@@ -1095,6 +1254,8 @@ easel_canvas_class_init (EaselCanvasClass *klass)
                                                NULL, G_TYPE_NONE, 1, G_TYPE_INT);
   signals[SIGNAL_RESIZE_REQUESTED] = g_signal_new ("resize-requested", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST, 0,
                                                    NULL, NULL, NULL, G_TYPE_NONE, 2, G_TYPE_INT, G_TYPE_INT);
+  signals[SIGNAL_STROKING_CHANGED] = g_signal_new ("stroking-changed", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST, 0, NULL,
+                                                   NULL, NULL, G_TYPE_NONE, 1, G_TYPE_BOOLEAN);
   signals[SIGNAL_STROKE_FINISHED] = g_signal_new ("stroke-finished", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST,
                                                   0, NULL, NULL, NULL, G_TYPE_NONE, 1, G_TYPE_UINT);
 }

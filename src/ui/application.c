@@ -67,6 +67,8 @@ easel_application_new (void)
                                          (const char *[]) { "<Control>equal", "<Control>plus", "<Control>KP_Add", NULL });
   gtk_application_set_accels_for_action (GTK_APPLICATION (app), "win.zoom-out",
                                          (const char *[]) { "<Control>minus", "<Control>KP_Subtract", NULL });
+  gtk_application_set_accels_for_action (GTK_APPLICATION (app), "win.preset-larger", (const char *[]) { "KP_Add", NULL });
+  gtk_application_set_accels_for_action (GTK_APPLICATION (app), "win.preset-smaller", (const char *[]) { "KP_Subtract", NULL });
   gtk_application_set_accels_for_action (GTK_APPLICATION (app), "win.zoom-normal", (const char *[]) { "<Control>Page_Up", NULL });
   gtk_application_set_accels_for_action (GTK_APPLICATION (app), "win.zoom-large", (const char *[]) { "<Control>Page_Down", NULL });
   gtk_application_set_accels_for_action (GTK_APPLICATION (app), "win.zoom-fit", (const char *[]) { "<Control>0", NULL });

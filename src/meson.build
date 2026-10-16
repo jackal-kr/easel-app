@@ -3,6 +3,7 @@ libm = meson.get_compiler('c').find_library('m', required: false)
 # Core: libc only (no GLib, GTK or Cairo), so it is built without those dependencies.
 easel_core_inc = include_directories('core')
 easel_core = static_library('easel-core',
+  'core/cursor-shape.c',
   'core/footprint.c',
   'core/format.c',
   'core/history.c',
@@ -54,6 +55,7 @@ easel_ui = static_library('easel-ui',
   'ui/grid-dialog.c',
   'ui/palette-bar.c',
   'ui/status-bar.c',
+  'ui/tool-options.c',
   'ui/tool.c',
   'ui/window.c',
   ui_resources,

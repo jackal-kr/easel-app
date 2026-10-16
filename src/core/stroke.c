@@ -15,6 +15,12 @@ struct _EaselStroke
   EaselFootprint footprint;   /* what one position paints; a square of 1 is the Pencil's pixel */
   bool has_only;              /* the color eraser: only pixels equal to `only` are changed */
   uint32_t only;
+  /* The spray: the offsets (column, row in the disc's box) of the disc's pixels, how many pixels a spray paints, and the
+     state of the random generator. */
+  uint16_t *disc;             /* NULL for a stamping stroke; 2 values (column, row) per pixel */
+  size_t n_disc;
+  int per_spray;
+  uint64_t rng;
   int x, y;
   EaselChange *log;       /* each changed pixel once, in change order; becomes the undo step */
   size_t n_log, log_cap;
@@ -67,6 +73,31 @@ stamp (EaselStroke *s, int x, int y)
         plot (s, x - anchor + col, y - anchor + row);
 }
 
+/* xorshift64*: small, fast, and good enough to pick pixels; a seed of 0 would stay 0, so it is replaced. */
+static uint64_t
+next_random (EaselStroke *s)
+{
+  uint64_t x = s->rng;
+
+  x ^= x >> 12;
+  x ^= x << 25;
+  x ^= x >> 27;
+  s->rng = x;
+  return x * UINT64_C (2685821657736338717);
+}
+
+/* A number from 0 to n - 1, each with the same chance (the few values that would make some more likely are thrown away). */
+static size_t
+random_below (EaselStroke *s, size_t n)
+{
+  uint64_t limit = UINT64_MAX - UINT64_MAX % n, v;
+
+  do
+    v = next_random (s);
+  while (v >= limit);
+  return (size_t) (v % n);
+}
+
 /* Bresenham: 8-connected, one pixel per step along the major axis, both ends included. */
 static void
 line (EaselStroke *s, int x0, int y0, int x1, int y1)
@@ -101,8 +132,9 @@ easel_stroke_begin (EaselImage *img, int x, int y, uint32_t color)
   return easel_stroke_begin_stamp (img, x, y, color, (EaselFootprint) { EASEL_SHAPE_SQUARE, 1 }, NULL);
 }
 
-EaselStroke *
-easel_stroke_begin_stamp (EaselImage *img, int x, int y, uint32_t color, EaselFootprint f, const uint32_t *only)
+/* A stroke that has painted nothing yet; the callers stamp or spray. */
+static EaselStroke *
+stroke_alloc (EaselImage *img, int x, int y, uint32_t color, EaselFootprint f, const uint32_t *only)
 {
   EaselStroke *s = calloc (1, sizeof *s);
 
@@ -121,13 +153,85 @@ easel_stroke_begin_stamp (EaselImage *img, int x, int y, uint32_t color, EaselFo
   s->only = only ? *only : 0;
   s->x = clamp_coord (x);
   s->y = clamp_coord (y);
-  stamp (s, s->x, s->y);
   return s;
+}
+
+EaselStroke *
+easel_stroke_begin_stamp (EaselImage *img, int x, int y, uint32_t color, EaselFootprint f, const uint32_t *only)
+{
+  EaselStroke *s = stroke_alloc (img, x, y, color, f, only);
+
+  if (s != NULL)
+    stamp (s, s->x, s->y);
+  return s;
+}
+
+int
+easel_spray_due (int64_t held_us)
+{
+  return held_us < 0 ? 1 : (int) (1 + held_us / 5000);
+}
+
+int
+easel_spray_pixels (int diameter)
+{
+  return diameter >= 24 ? 3 : 1;
+}
+
+EaselStroke *
+easel_stroke_begin_spray (EaselImage *img, uint32_t color, int diameter, int per_spray, uint64_t seed)
+{
+  EaselFootprint disc = { EASEL_SHAPE_CIRCLE, diameter };
+  EaselStroke *s;
+
+  if (diameter < 1 || diameter > 64 || per_spray < 1)
+    return NULL;
+  s = stroke_alloc (img, 0, 0, color, disc, NULL);
+  if (s == NULL)
+    return NULL;
+  s->disc = malloc ((size_t) diameter * (size_t) diameter * 2 * sizeof *s->disc);
+  if (s->disc == NULL)
+    {
+      easel_stroke_cancel (s);
+      return NULL;
+    }
+  for (int row = 0; row < diameter; row++)
+    for (int col = 0; col < diameter; col++)
+      if (easel_footprint_has (disc, col, row))
+        {
+          s->disc[2 * s->n_disc] = (uint16_t) col;
+          s->disc[2 * s->n_disc + 1] = (uint16_t) row;
+          s->n_disc++;
+        }
+  s->per_spray = per_spray;
+  s->rng = seed ? seed : UINT64_C (0x9E3779B97F4A7C15);
+  return s;
+}
+
+void
+easel_stroke_spray (EaselStroke *s, int x, int y, int sprays)
+{
+  int anchor;
+
+  if (s->disc == NULL || s->n_disc == 0)
+    return;
+  anchor = easel_footprint_anchor (s->footprint.size);
+  x = clamp_coord (x);
+  y = clamp_coord (y);
+  for (int i = 0; i < sprays; i++)
+    for (int k = 0; k < s->per_spray; k++)
+      {
+        size_t pick = random_below (s, s->n_disc);
+
+        plot (s, x - anchor + s->disc[2 * pick], y - anchor + s->disc[2 * pick + 1]);
+      }
 }
 
 void
 easel_stroke_to (EaselStroke *s, int x, int y)
 {
+  if (s->disc != NULL)
+    return;
   x = clamp_coord (x);
   y = clamp_coord (y);
   line (s, s->x, s->y, x, y);
@@ -167,6 +271,7 @@ easel_stroke_end (EaselStroke *s, EaselHistory *history)
         }
     }
   free (s->log);
+  free (s->disc);
   free (s);
   return changed;
 }
@@ -176,5 +281,6 @@ easel_stroke_cancel (EaselStroke *s)
 {
   restore (s);
   free (s->log);
+  free (s->disc);
   free (s);
 }

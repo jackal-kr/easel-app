@@ -4,6 +4,10 @@
     <file preprocess="xml-stripblanks">window.ui</file>
     <file preprocess="xml-stripblanks">icons/scalable/actions/easel-tool-pan-symbolic.svg</file>
     <file preprocess="xml-stripblanks">icons/scalable/actions/easel-tool-pencil-symbolic.svg</file>
+    <file preprocess="xml-stripblanks">icons/scalable/actions/easel-tool-brush-symbolic.svg</file>
+    <file preprocess="xml-stripblanks">icons/scalable/actions/easel-tool-airbrush-symbolic.svg</file>
+    <file preprocess="xml-stripblanks">icons/scalable/actions/easel-tool-eraser-symbolic.svg</file>
     <file preprocess="xml-stripblanks">cursors/pencil.svg</file>
+    <file preprocess="xml-stripblanks">cursors/airbrush.svg</file>
   </gresource>
 </gresources>

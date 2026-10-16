@@ -85,9 +85,12 @@
             <child>
               <object class="GtkBox" id="toolbox_panel">
                 <child>
-                  <object class="GtkBox">
+                  <object class="GtkBox" id="tools_column">
                     <property name="orientation">vertical</property>
-                    <property name="spacing">6</property>
+                    <child>
+                  <object class="GtkGrid">
+                    <property name="row-spacing">6</property>
+                    <property name="column-spacing">6</property>
                     <property name="margin-start">6</property>
                     <property name="margin-end">6</property>
                     <property name="margin-top">6</property>
@@ -98,6 +101,25 @@
                         <property name="tooltip-text" translatable="yes">Pan</property>
                         <property name="action-name">win.tool</property>
                         <property name="action-target">'pan'</property>
+                        <layout>
+                          <property name="column">0</property>
+                          <property name="row">0</property>
+                        </layout>
+                        <style>
+                          <class name="flat"/>
+                        </style>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkToggleButton">
+                        <property name="icon-name">easel-tool-eraser-symbolic</property>
+                        <property name="tooltip-text" translatable="yes">Eraser</property>
+                        <property name="action-name">win.tool</property>
+                        <property name="action-target">'eraser'</property>
+                        <layout>
+                          <property name="column">1</property>
+                          <property name="row">0</property>
+                        </layout>
                         <style>
                           <class name="flat"/>
                         </style>
@@ -109,10 +131,46 @@
                         <property name="tooltip-text" translatable="yes">Pencil</property>
                         <property name="action-name">win.tool</property>
                         <property name="action-target">'pencil'</property>
+                        <layout>
+                          <property name="column">0</property>
+                          <property name="row">1</property>
+                        </layout>
                         <style>
                           <class name="flat"/>
                         </style>
                       </object>
+                    </child>
+                    <child>
+                      <object class="GtkToggleButton">
+                        <property name="icon-name">easel-tool-brush-symbolic</property>
+                        <property name="tooltip-text" translatable="yes">Brush</property>
+                        <property name="action-name">win.tool</property>
+                        <property name="action-target">'brush'</property>
+                        <layout>
+                          <property name="column">1</property>
+                          <property name="row">1</property>
+                        </layout>
+                        <style>
+                          <class name="flat"/>
+                        </style>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkToggleButton">
+                        <property name="icon-name">easel-tool-airbrush-symbolic</property>
+                        <property name="tooltip-text" translatable="yes">Airbrush</property>
+                        <property name="action-name">win.tool</property>
+                        <property name="action-target">'airbrush'</property>
+                        <layout>
+                          <property name="column">0</property>
+                          <property name="row">2</property>
+                        </layout>
+                        <style>
+                          <class name="flat"/>
+                        </style>
+                      </object>
+                    </child>
+                  </object>
                     </child>
                   </object>
                 </child>

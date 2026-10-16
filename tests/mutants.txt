@@ -621,6 +621,8 @@ test: ui-0001
         {
           easel_stroke_cancel (self->stroke);
           self->stroke = NULL;
+          stop_spray (self);
+          g_signal_emit (self, signals[SIGNAL_STROKING_CHANGED], 0, FALSE);
           easel_canvas_update (self);
         }
       return;
@@ -662,3 +664,257 @@ test: core-stroke
   s->only = only ? *only : 0;
 --- replace
   s->only = only ? (*only | 0xFF000000u) : 0;
+
+# ---- the spray of 0006 (T004) ----
+
+=== REQ-0006-08 the spray comes every 10 ms instead of every 5 ms
+file: src/core/stroke.c
+test: core-spray
+--- find
+  return held_us < 0 ? 1 : (int) (1 + held_us / 5000);
+--- replace
+  return held_us < 0 ? 1 : (int) (1 + held_us / 10000);
+
+=== REQ-0006-08 there is no spray at the press
+file: src/core/stroke.c
+test: core-spray
+--- find
+  return held_us < 0 ? 1 : (int) (1 + held_us / 5000);
+--- replace
+  return held_us < 0 ? 0 : (int) (held_us / 5000);
+
+=== REQ-0006-08 the spray always lands on the same pixel of the disc
+file: src/core/stroke.c
+test: core-spray
+--- find
+        size_t pick = random_below (s, s->n_disc);
+--- replace
+        size_t pick = 0;
+
+=== REQ-0006-09 the spray does not depend on the seed
+file: src/core/stroke.c
+test: core-spray
+--- find
+  s->rng = seed ? seed : UINT64_C (0x9E3779B97F4A7C15);
+--- replace
+  s->rng = UINT64_C (0x9E3779B97F4A7C15);
+
+=== REQ-0006-08 the big disc sprays one pixel at a time
+file: src/core/stroke.c
+test: core-spray
+--- find
+  return diameter >= 24 ? 3 : 1;
+--- replace
+  return 1;
+
+=== REQ-0006-08 the spray is not limited to the disc
+file: src/core/stroke.c
+test: core-spray
+--- find
+        plot (s, x - anchor + s->disc[2 * pick], y - anchor + s->disc[2 * pick + 1]);
+--- replace
+        plot (s, x - anchor + s->disc[2 * pick] + 1, y - anchor + s->disc[2 * pick + 1]);
+
+# ---- Brush and Eraser on the canvas (0006 T007) ----
+
+=== REQ-0006-12 the color eraser erases every color
+file: src/ui/canvas.c
+test: ui-0006
+--- find
+                                               button == GDK_BUTTON_PRIMARY ? NULL : &only);
+--- replace
+                                               NULL);
+
+=== REQ-0006-11 the Transparent mode of the Eraser is ignored
+file: src/ui/canvas.c
+test: ui-0006
+--- find
+      uint32_t color = self->eraser_transparent ? 0x00000000u : self->background;
+--- replace
+      uint32_t color = self->background;
+
+=== REQ-0006-11 the Eraser paints with the foreground color
+file: src/ui/canvas.c
+test: ui-0006
+--- find
+      uint32_t color = self->eraser_transparent ? 0x00000000u : self->background;
+--- replace
+      uint32_t color = self->eraser_transparent ? 0x00000000u : self->foreground;
+
+=== REQ-0006-06 the Brush paints one pixel, not its footprint
+file: src/ui/canvas.c
+test: ui-0006
+--- find
+                                             self->footprint, NULL);
+--- replace
+                                             (EaselFootprint) { EASEL_SHAPE_SQUARE, 1 }, NULL);
+
+=== REQ-0006-03 a preset can be chosen during a stroke
+file: src/ui/window.c
+test: ui-0006
+--- find
+  easel_tool_options_set_busy (self->tool_options, stroking);
+--- replace
+  (void) stroking;
+
+=== REQ-0006-03 the canvas does not follow a change of preset
+file: src/ui/window.c
+test: ui-0006
+--- find
+  g_signal_connect_swapped (self->tool_options, "preset-changed", G_CALLBACK (sync_canvas_options), self);
+--- replace
+  (void) 0;
+
+# ---- the Airbrush on the canvas (0006 T008) ----
+
+=== REQ-0006-08 the spray lands where the pointer was pressed, not where it is
+file: src/ui/canvas.c
+test: ui-0006
+--- find
+  self->spray_x = px;                  /* where the next sprays land (nothing else uses these two) */
+  self->spray_y = py;
+--- replace
+  (void) 0;
+
+=== REQ-0006-08 the spray runs ahead of the clock
+file: src/ui/canvas.c
+test: ui-0006
+--- find
+  due = easel_spray_due (g_get_monotonic_time () - self->spray_start_us);
+--- replace
+  due = easel_spray_due (g_get_monotonic_time () - self->spray_start_us + 300000);
+
+=== REQ-0006-08 the primary button sprays with the background color
+file: src/ui/canvas.c
+test: ui-0006
+--- find
+      self->stroke = easel_stroke_begin_spray (self->img, button == GDK_BUTTON_PRIMARY ? self->foreground : self->background,
+--- replace
+      self->stroke = easel_stroke_begin_spray (self->img, button == GDK_BUTTON_PRIMARY ? self->background : self->foreground,
+
+=== REQ-0006-09 every spray starts with the same random sequence
+file: src/ui/canvas.c
+test: ui-0006
+--- find
+      uint64_t seed = (uint64_t) g_get_monotonic_time () * UINT64_C (0x9E3779B97F4A7C15) ^ (uint64_t) g_get_real_time ();
+--- replace
+      uint64_t seed = 12345;
+
+=== REQ-0006-13 a cancelled spray keeps what it sprayed
+file: src/ui/canvas.c
+test: ui-0006
+--- find
+          easel_stroke_cancel (self->stroke);
+          self->stroke = NULL;
+          stop_spray (self);
+--- replace
+          easel_stroke_end (self->stroke, NULL);
+          self->stroke = NULL;
+          stop_spray (self);
+
+=== REQ-0006-14 the keypad keys also work during a stroke or with a dialog open
+file: src/ui/window.c
+test: ui-0006
+--- find
+  if (view_actions_allowed (self) && self->tool != EASEL_TOOL_PAN && self->tool != EASEL_TOOL_PENCIL)
+--- replace
+  if (self->tool != EASEL_TOOL_PAN && self->tool != EASEL_TOOL_PENCIL)
+
+=== REQ-0006-14 Numpad + steps down and Numpad - steps up
+file: src/ui/window.c
+test: ui-0006
+--- find
+  step_preset (user_data, 1);
+--- replace
+  step_preset (user_data, -1);
+
+=== REQ-0006-14 the main keyboard's + also steps the presets
+file: src/ui/application.c
+test: ui-0006
+--- find
+(const char *[]) { "KP_Add", NULL });
+--- replace
+(const char *[]) { "KP_Add", "plus", NULL });
+
+=== REQ-0006-16 the cursor outline is smaller than 5 x 5
+file: src/core/cursor-shape.c
+test: core-cursor
+--- find
+  *plain = side < MIN_OUTLINE;
+--- replace
+  *plain = side < MIN_OUTLINE - 1;
+
+=== REQ-0006-16 the cursor's hotspot is the corner, not the pointer's pixel
+file: src/core/cursor-shape.c
+test: core-cursor
+--- find
+  s.hot_x = s.hot_y = 1 + hot;
+--- replace
+  s.hot_x = s.hot_y = 1 + hot / 2;
+
+=== REQ-0006-16 the cursor has no white line, so it cannot be seen on black
+file: src/core/cursor-shape.c
+test: core-cursor
+--- find
+                c = 0xFFFFFFFFu;
+--- replace
+                c = 0;
+
+=== REQ-0006-16 the outline ignores the zoom
+file: src/core/cursor-shape.c
+test: core-cursor
+--- find
+  long side = ((long) f.size * zoom * scale + 50) / 100;
+--- replace
+  long side = ((long) f.size * 100 * scale + 50) / 100;
+
+=== REQ-0006-16 the cursor does not follow the preset
+file: src/ui/canvas.c
+test: ui-0006
+--- find
+  self->footprint = footprint;
+  update_cursor (self);
+--- replace
+  self->footprint = footprint;
+
+=== REQ-0006-16 the cursor does not follow the zoom
+file: src/ui/canvas.c
+test: ui-0006
+--- find
+  update_cursor (self);
+  g_signal_emit (self, signals[SIGNAL_ZOOM_CHANGED], 0, zoom);
+--- replace
+  g_signal_emit (self, signals[SIGNAL_ZOOM_CHANGED], 0, zoom);
+
+=== REQ-0006-16 the cursor of the Eraser is the hand
+file: src/ui/canvas.c
+test: ui-0006
+--- find
+  else if (self->tool == EASEL_TOOL_BRUSH || self->tool == EASEL_TOOL_ERASER)
+--- replace
+  else if (self->tool == EASEL_TOOL_BRUSH)
+
+=== REQ-0006-17 the Eraser's hint does not follow the mode
+file: src/ui/window.c
+test: ui-0006
+--- find
+      return transparent ? "Erase to transparency. The secondary button erases only the foreground color."
+--- replace
+      return !transparent ? "Erase to transparency. The secondary button erases only the foreground color."
+
+=== REQ-0006-17 a change of mode leaves the old hint
+file: src/ui/window.c
+test: ui-0006
+--- find
+  easel_status_bar_set_hint (self->status_bar, tool_hint (self->tool, easel_tool_options_get_transparent (self->tool_options)));
+}
+--- replace
+}
+
+=== REQ-0006-17 the Airbrush shows the Brush's hint
+file: src/ui/window.c
+test: ui-0006
+--- find
+      return "Spray with the foreground color. The secondary button uses the background color.";
+--- replace
+      return "Paint with the foreground color. The secondary button uses the background color.";

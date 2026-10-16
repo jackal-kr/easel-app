@@ -13,6 +13,7 @@
 #include "picture-file.h"
 #include "format.h"
 #include "settings-file.h"
+#include "tool-options.h"
 #include "view.h"
 #include "window.h"
 
@@ -24,7 +25,9 @@ struct _EaselWindow
   EaselCanvas *canvas;
   EaselPaletteBar *palette_bar;
   EaselStatusBar *status_bar;
-  GtkWidget *toolbox_panel;   /* the tool buttons and their separator */
+  GtkWidget *toolbox_panel;   /* the tool buttons, the options below them, and their separator */
+  GtkWidget *tools_column;    /* the tool grid, and below it the options panel */
+  EaselToolOptions *tool_options;
   GtkMenuButton *main_menu_button;
   GtkMenuButton *image_button;
   GtkMenuButton *view_button;
@@ -974,10 +977,22 @@ swap_colors_activated (GSimpleAction *action, GVariant *parameter, gpointer user
 /* ---- the status bar (REQ-0004-09..11) ---- */
 
 static const char *
-tool_hint (EaselTool tool)
+tool_hint (EaselTool tool, gboolean transparent)
 {
-  return tool == EASEL_TOOL_PENCIL ? "Draw with the foreground color. The secondary button uses the background color."
-                                   : "Drag to pan. Ctrl+wheel zooms.";
+  switch (tool)
+    {
+    case EASEL_TOOL_PENCIL:
+      return "Draw with the foreground color. The secondary button uses the background color.";
+    case EASEL_TOOL_BRUSH:
+      return "Paint with the foreground color. The secondary button uses the background color.";
+    case EASEL_TOOL_AIRBRUSH:
+      return "Spray with the foreground color. The secondary button uses the background color.";
+    case EASEL_TOOL_ERASER:
+      return transparent ? "Erase to transparency. The secondary button erases only the foreground color."
+                         : "Erase to the background color. The secondary button changes only the foreground color.";
+    default:
+      return "Drag to pan. Ctrl+wheel zooms.";
+    }
 }
 
 static void
@@ -1331,6 +1346,23 @@ on_active_changed (EaselWindow *self)
     easel_canvas_reset_pointer (self->canvas);
 }
 
+/* What the canvas paints with follows the options panel (REQ-0006-03). */
+static void
+sync_canvas_options (EaselWindow *self)
+{
+  if (self->tool == EASEL_TOOL_BRUSH || self->tool == EASEL_TOOL_AIRBRUSH || self->tool == EASEL_TOOL_ERASER)
+    easel_canvas_set_footprint (self->canvas, easel_tool_options_get_footprint (self->tool_options, self->tool));
+  easel_canvas_set_eraser_transparent (self->canvas, easel_tool_options_get_transparent (self->tool_options));
+  easel_status_bar_set_hint (self->status_bar, tool_hint (self->tool, easel_tool_options_get_transparent (self->tool_options)));
+}
+
+/* Choosing a preset is not possible while a stroke is in progress (REQ-0006-03). */
+static void
+on_stroking_changed (EaselWindow *self, gboolean stroking)
+{
+  easel_tool_options_set_busy (self->tool_options, stroking);
+}
+
 static void
 change_tool_state (GSimpleAction *action, GVariant *value, gpointer user_data)
 {
@@ -1344,8 +1376,31 @@ change_tool_state (GSimpleAction *action, GVariant *value, gpointer user_data)
     return;
   self->tool = tool;
   easel_canvas_set_tool (self->canvas, tool);
-  easel_status_bar_set_hint (self->status_bar, tool_hint (tool));
+  easel_status_bar_set_hint (self->status_bar, tool_hint (tool, easel_tool_options_get_transparent (self->tool_options)));
+  easel_tool_options_show_tool (self->tool_options, tool);
+  sync_canvas_options (self);
   g_simple_action_set_state (action, value);
+}
+
+/* Numpad + and -: the next larger or smaller preset of the tool; like the View actions, not during a stroke or while a
+   dialog is open (REQ-0006-14, REQ-0004-03). Pan and Pencil have no presets, so nothing changes. */
+static void
+step_preset (EaselWindow *self, int direction)
+{
+  if (view_actions_allowed (self) && self->tool != EASEL_TOOL_PAN && self->tool != EASEL_TOOL_PENCIL)
+    easel_tool_options_step (self->tool_options, self->tool, direction);
+}
+
+static void
+preset_larger_activated (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+  step_preset (user_data, 1);
+}
+
+static void
+preset_smaller_activated (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+  step_preset (user_data, -1);
 }
 
 static const GActionEntry win_actions[] = {
@@ -1357,6 +1412,8 @@ static const GActionEntry win_actions[] = {
   { .name = "undo", .activate = undo_activated },
   { .name = "redo", .activate = redo_activated },
   { .name = "swap-colors", .activate = swap_colors_activated },
+  { .name = "preset-larger", .activate = preset_larger_activated },
+  { .name = "preset-smaller", .activate = preset_smaller_activated },
   { .name = "zoom-in", .activate = zoom_in_activated },
   { .name = "zoom-out", .activate = zoom_out_activated },
   { .name = "zoom-normal", .activate = zoom_normal_activated },
@@ -1370,6 +1427,12 @@ static const GActionEntry win_actions[] = {
   { .name = "show-statusbar", .state = "true", .change_state = show_panel_state_changed },
   { .name = "close", .activate = close_activated },
 };
+
+EaselToolOptions *
+easel_window_get_tool_options (EaselWindow *self)
+{
+  return self->tool_options;
+}
 
 const EaselImage *
 easel_window_get_picture (EaselWindow *self)
@@ -1448,6 +1511,8 @@ easel_window_dispose (GObject *object)
   self->palette_bar = NULL;
   self->status_bar = NULL;
   self->toolbox_panel = NULL;
+  self->tools_column = NULL;
+  self->tool_options = NULL;
   self->image_button = NULL;
   self->main_menu_button = NULL;
   self->view_button = NULL;
@@ -1525,6 +1590,7 @@ easel_window_class_init (EaselWindowClass *klass)
   gtk_widget_class_bind_template_child (widget_class, EaselWindow, palette_bar);
   gtk_widget_class_bind_template_child (widget_class, EaselWindow, status_bar);
   gtk_widget_class_bind_template_child (widget_class, EaselWindow, toolbox_panel);
+  gtk_widget_class_bind_template_child (widget_class, EaselWindow, tools_column);
   gtk_widget_class_bind_template_child (widget_class, EaselWindow, image_button);
   gtk_widget_class_bind_template_child (widget_class, EaselWindow, main_menu_button);
   gtk_widget_class_bind_template_child (widget_class, EaselWindow, view_button);
@@ -1552,7 +1618,7 @@ easel_window_init (EaselWindow *self)
   g_signal_connect_object (self->canvas, "zoom-changed", G_CALLBACK (on_zoom_changed), self, G_CONNECT_SWAPPED);
   g_signal_connect_object (self->canvas, "pointer-moved", G_CALLBACK (on_pointer_moved), self, G_CONNECT_SWAPPED);
   g_signal_connect_object (self->canvas, "pointer-left", G_CALLBACK (on_pointer_left), self, G_CONNECT_SWAPPED);
-  easel_status_bar_set_hint (self->status_bar, tool_hint (self->tool));
+  easel_status_bar_set_hint (self->status_bar, tool_hint (self->tool, FALSE));
   sync_zoom_ui (self);
   easel_canvas_set_history (self->canvas, self->history);
   easel_canvas_listen_on (self->canvas, GTK_WIDGET (self->scroller));
@@ -1567,6 +1633,11 @@ easel_window_init (EaselWindow *self)
   easel_canvas_set_grid (self->canvas, self->settings.grid, self->settings.grid_size, self->settings.grid_axonometric);
   g_simple_action_set_state (G_SIMPLE_ACTION (g_action_map_lookup_action (G_ACTION_MAP (self), "grid")),
                              g_variant_new_boolean (self->settings.grid));
+  /* The options panel sits below the tool buttons and shows only for the tools that have options. */
+  self->tool_options = easel_tool_options_new ();
+  gtk_box_append (GTK_BOX (self->tools_column), GTK_WIDGET (self->tool_options));
+  g_signal_connect_swapped (self->tool_options, "preset-changed", G_CALLBACK (sync_canvas_options), self);
+  g_signal_connect_object (self->canvas, "stroking-changed", G_CALLBACK (on_stroking_changed), self, G_CONNECT_SWAPPED);
   set_panel_state (self, "show-toolbox", self->toolbox_panel, self->settings.show_toolbox);
   set_panel_state (self, "show-colorbox", GTK_WIDGET (self->palette_bar), self->settings.show_colorbox);
   set_panel_state (self, "show-statusbar", GTK_WIDGET (self->status_bar), self->settings.show_statusbar);

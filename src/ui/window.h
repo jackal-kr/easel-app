@@ -6,6 +6,7 @@
 #include "canvas.h"
 #include "palette-bar.h"
 #include "status-bar.h"
+#include "tool-options.h"
 #include "image.h"
 #include "tool.h"
 
@@ -29,6 +30,7 @@ uint32_t easel_window_get_background (EaselWindow *self);
 gboolean easel_window_get_modified (EaselWindow *self);
 EaselCanvas *easel_window_get_canvas (EaselWindow *self);
 EaselPaletteBar *easel_window_get_palette_bar (EaselWindow *self);
+EaselToolOptions *easel_window_get_tool_options (EaselWindow *self);
 EaselStatusBar *easel_window_get_status_bar (EaselWindow *self);
 
 GtkMenuButton *easel_window_get_main_menu_button (EaselWindow *self);

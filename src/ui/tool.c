@@ -5,6 +5,9 @@
 static const char *const names[] = {
   [EASEL_TOOL_PAN] = "pan",
   [EASEL_TOOL_PENCIL] = "pencil",
+  [EASEL_TOOL_BRUSH] = "brush",
+  [EASEL_TOOL_AIRBRUSH] = "airbrush",
+  [EASEL_TOOL_ERASER] = "eraser",
 };
 
 gboolean

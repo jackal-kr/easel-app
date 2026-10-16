@@ -15,6 +15,7 @@
 #include "picture-file.h"
 #include "palette-file.h"
 #include "status-bar.h"
+#include "stroke.h"
 #include "settings-file.h"
 #include "settings.h"
 #include "view.h"
@@ -2202,6 +2203,17 @@ as13_offset_is_displayed (void)
       g_action_group_activate_action (G_ACTION_GROUP (win), actions[i], NULL);
       wait_for_layout (win);
       g_assert_true (gtk_widget_compute_bounds (GTK_WIDGET (canvas), scroller, &r));
+      /* A failure here has not been reproduced on demand: say what the view looked like (docs/learning-log.md). */
+      if (fabs (r.origin.x + gtk_adjustment_get_value (h)) > 1.0 || fabs (r.origin.y + gtk_adjustment_get_value (v)) > 1.0)
+        {
+          GdkFrameClock *clock = gtk_widget_get_frame_clock (GTK_WIDGET (win));
+
+          g_printerr ("as13 diagnostic: step %u (%s) zoom %d, origin %.1f,%.1f, scroll %.1f,%.1f, window %dx%d, frame %" G_GINT64_FORMAT "\n",
+                      i, actions[i], easel_canvas_get_zoom (canvas), r.origin.x, r.origin.y,
+                      gtk_adjustment_get_value (h), gtk_adjustment_get_value (v),
+                      gtk_widget_get_width (GTK_WIDGET (win)), gtk_widget_get_height (GTK_WIDGET (win)),
+                      clock ? gdk_frame_clock_get_frame_counter (clock) : (gint64) -1);
+        }
       g_assert_cmpfloat_with_epsilon (r.origin.x, -gtk_adjustment_get_value (h), 1.0);   /* GTK places it at whole pixels */
       g_assert_cmpfloat_with_epsilon (r.origin.y, -gtk_adjustment_get_value (v), 1.0);
     }
@@ -3207,6 +3219,694 @@ as18_drag_cancel_rules (void)
   g_assert_cmpuint (easel_image_get (easel_window_get_picture (win), 10, 5), ==, 0xFF000000u);   /* undo did nothing */
   easel_canvas_release (canvas, 1);
   assert_size (win, 330, 230);
+  close_windows ();
+}
+
+/* ---- 0006: the freehand tools ---- */
+
+/* REQ-0006-01: the toolbox is two columns of toggle buttons, Pan and Eraser, Pencil and Brush, Airbrush. */
+static void
+as1_toolbox_and_options (void)
+{
+  static const struct { const char *name, *tip; int col, row; EaselTool tool; } tools[] = {
+    { "pan", "Pan", 0, 0, EASEL_TOOL_PAN }, { "eraser", "Eraser", 1, 0, EASEL_TOOL_ERASER },
+    { "pencil", "Pencil", 0, 1, EASEL_TOOL_PENCIL }, { "brush", "Brush", 1, 1, EASEL_TOOL_BRUSH },
+    { "airbrush", "Airbrush", 0, 2, EASEL_TOOL_AIRBRUSH },
+  };
+  EaselWindow *win = start_window ();
+  GtkToggleButton *buttons[5];
+  graphene_rect_t first, r;
+
+  wait_for_layout (win);
+  for (guint i = 0; i < G_N_ELEMENTS (tools); i++)
+    {
+      buttons[i] = find_tool_button (GTK_WIDGET (win), tools[i].name);
+      g_assert_nonnull (buttons[i]);
+      g_assert_cmpstr (gtk_widget_get_tooltip_text (GTK_WIDGET (buttons[i])), ==, tools[i].tip);
+      g_assert_cmpstr (gtk_button_get_icon_name (GTK_BUTTON (buttons[i])), !=, NULL);
+    }
+  /* The grid: the second column is to the right of the first, rows are below each other, in this order. */
+  first = bounds_in (GTK_WIDGET (buttons[0]), GTK_WIDGET (win));
+  for (guint i = 1; i < G_N_ELEMENTS (tools); i++)
+    {
+      r = bounds_in (GTK_WIDGET (buttons[i]), GTK_WIDGET (win));
+      if (tools[i].col == 0)
+        g_assert_cmpfloat_with_epsilon (r.origin.x, first.origin.x, 1.0);
+      else
+        g_assert_cmpfloat (r.origin.x, >, first.origin.x + first.size.width - 1);
+      if (tools[i].row > tools[i - 1].row)
+        g_assert_cmpfloat (r.origin.y, >, bounds_in (GTK_WIDGET (buttons[i - 1]), GTK_WIDGET (win)).origin.y + 1);
+      else
+        g_assert_cmpfloat_with_epsilon (r.origin.y, bounds_in (GTK_WIDGET (buttons[i - 1]), GTK_WIDGET (win)).origin.y, 1.0);
+    }
+  /* Each tool can be chosen, shows selected, and the others do not. */
+  for (guint i = 0; i < G_N_ELEMENTS (tools); i++)
+    {
+      g_signal_emit_by_name (buttons[i], "clicked");
+      g_assert_cmpint (easel_window_get_tool (win), ==, tools[i].tool);
+      for (guint j = 0; j < G_N_ELEMENTS (tools); j++)
+        g_assert_true (gtk_toggle_button_get_active (buttons[j]) == (i == j));
+    }
+  close_windows ();
+}
+
+/* The widget under root whose tooltip is text, or NULL. */
+static GtkWidget *
+find_by_tooltip (GtkWidget *root, const char *text)
+{
+  for (GtkWidget *child = gtk_widget_get_first_child (root); child; child = gtk_widget_get_next_sibling (child))
+    {
+      GtkWidget *found;
+
+      if (g_strcmp0 (gtk_widget_get_tooltip_text (child), text) == 0)
+        return child;
+      found = find_by_tooltip (child, text);
+      if (found != NULL)
+        return found;
+    }
+  return NULL;
+}
+
+/* Is there a widget with this tooltip that is on screen (mapped)? */
+static gboolean
+on_screen (EaselWindow *win, const char *tip)
+{
+  GtkWidget *w = find_by_tooltip (GTK_WIDGET (win), tip);
+
+  return w != NULL && gtk_widget_get_mapped (w);
+}
+
+static void
+use_tool (EaselWindow *win, const char *tool)
+{
+  g_action_group_activate_action (G_ACTION_GROUP (win), "tool", g_variant_new_string (tool));
+}
+
+/* The preset buttons of a tool, by their tooltips, in the order of the spec; the one that is on is returned (or -1). */
+static int
+check_presets (EaselWindow *win, const char *const *tips, int n, int columns)
+{
+  int on = -1;
+  graphene_rect_t prev = { { 0, 0 }, { 0, 0 } };
+
+  for (int i = 0; i < n; i++)
+    {
+      GtkWidget *b = find_by_tooltip (GTK_WIDGET (win), tips[i]);
+      graphene_rect_t r;
+
+      g_assert_nonnull (b);
+      g_assert_true (GTK_IS_TOGGLE_BUTTON (b));
+      g_assert_true (gtk_widget_get_mapped (b));
+      r = bounds_in (b, GTK_WIDGET (win));
+      if (i > 0)
+        {
+          /* Row by row: the next one is to the right in the same row, or the first of the next row. */
+          if (i % columns != 0)
+            {
+              g_assert_cmpfloat_with_epsilon (r.origin.y, prev.origin.y, 1.0);
+              g_assert_cmpfloat (r.origin.x, >, prev.origin.x + 1);
+            }
+          else
+            g_assert_cmpfloat (r.origin.y, >, prev.origin.y + 1);
+        }
+      prev = r;
+      if (gtk_toggle_button_get_active (GTK_TOGGLE_BUTTON (b)))
+        {
+          g_assert_cmpint (on, ==, -1);                      /* only one is on */
+          on = i;
+        }
+    }
+  return on;
+}
+
+static const char *const brush_tips[12] = {
+  "Circle, 7 pixels", "Circle, 4 pixels", "Circle, 1 pixel", "Square, 8 pixels", "Square, 5 pixels", "Square, 2 pixels",
+  "Slash, 8 pixels", "Slash, 5 pixels", "Slash, 2 pixels", "Backslash, 8 pixels", "Backslash, 5 pixels", "Backslash, 2 pixels",
+};
+static const char *const airbrush_tips[3] = { "Spray, 9 pixels", "Spray, 16 pixels", "Spray, 24 pixels" };
+static const char *const eraser_tips[4] = { "Eraser, 4 pixels", "Eraser, 6 pixels", "Eraser, 8 pixels", "Eraser, 10 pixels" };
+static const char *const eraser_mode_tips[2] = { "Opaque: erase to the background color", "Transparent: erase to transparency" };
+
+/* REQ-0006-02: the options panel of each tool, its defaults, and when it shows. */
+static void
+as1_options_panel (void)
+{
+  EaselWindow *win = start_window ();
+  GtkWidget *brush_default;
+
+  wait_for_layout (win);
+  /* Pan and Pencil have no options: no preset button is on screen. */
+  g_assert_false (on_screen (win, "Circle, 4 pixels"));
+  g_assert_false (gtk_widget_get_mapped (GTK_WIDGET (easel_window_get_tool_options (win))));      /* nor its line */
+  use_tool (win, "pencil");
+  wait_for_layout (win);
+  g_assert_false (on_screen (win, "Circle, 4 pixels"));
+  g_assert_false (gtk_widget_get_mapped (GTK_WIDGET (easel_window_get_tool_options (win))));
+
+  /* The Brush: twelve presets in two columns, the 4-pixel circle on. */
+  use_tool (win, "brush");
+  wait_for_layout (win);
+  g_assert_cmpint (check_presets (win, brush_tips, 12, 2), ==, 1);
+  brush_default = find_by_tooltip (GTK_WIDGET (win), "Circle, 4 pixels");
+  g_assert_true (gtk_toggle_button_get_active (GTK_TOGGLE_BUTTON (brush_default)));
+
+  /* The Airbrush: three, the 16 on. */
+  use_tool (win, "airbrush");
+  wait_for_layout (win);
+  g_assert_cmpint (check_presets (win, airbrush_tips, 3, 2), ==, 1);
+  g_assert_false (on_screen (win, "Circle, 4 pixels"));
+
+  /* The Eraser: four sizes (8 on), a line, and the two modes (Opaque on). */
+  use_tool (win, "eraser");
+  wait_for_layout (win);
+  g_assert_cmpint (check_presets (win, eraser_tips, 4, 2), ==, 2);
+  g_assert_cmpint (check_presets (win, eraser_mode_tips, 2, 1), ==, 0);
+  {
+    GtkWidget *last_size = find_by_tooltip (GTK_WIDGET (win), "Eraser, 10 pixels");
+    GtkWidget *opaque = find_by_tooltip (GTK_WIDGET (win), eraser_mode_tips[0]);
+    graphene_rect_t rs = bounds_in (last_size, GTK_WIDGET (win)), ro = bounds_in (opaque, GTK_WIDGET (win));
+
+    g_assert_cmpfloat (ro.origin.y, >, rs.origin.y + rs.size.height);
+    /* A separator, drawn on screen, lies between the last size and the modes. */
+    {
+      gboolean line = FALSE;
+
+      for (GtkWidget *w = gtk_widget_get_first_child (gtk_widget_get_ancestor (opaque, GTK_TYPE_BOX)); w;
+           w = gtk_widget_get_next_sibling (w))
+        if (GTK_IS_SEPARATOR (w) && gtk_widget_get_mapped (w))
+          {
+            graphene_rect_t rl = bounds_in (w, GTK_WIDGET (win));
+
+            line = line || (rl.origin.y > rs.origin.y + rs.size.height - 1 && rl.origin.y < ro.origin.y + 1);
+          }
+      g_assert_true (line);
+    }
+  }
+
+  /* Hiding the Tool Box hides the options with it, showing it brings them back. */
+  g_action_group_change_action_state (G_ACTION_GROUP (win), "show-toolbox", g_variant_new_boolean (FALSE));
+  wait_for_layout (win);
+  g_assert_false (on_screen (win, "Eraser, 8 pixels"));
+  g_action_group_change_action_state (G_ACTION_GROUP (win), "show-toolbox", g_variant_new_boolean (TRUE));
+  wait_for_layout (win);
+  g_assert_cmpint (check_presets (win, eraser_tips, 4, 2), ==, 2);
+
+  /* Back to Pan: gone again. */
+  use_tool (win, "pan");
+  wait_for_layout (win);
+  g_assert_false (on_screen (win, "Eraser, 8 pixels"));
+  g_assert_false (gtk_widget_get_mapped (GTK_WIDGET (easel_window_get_tool_options (win))));
+  close_windows ();
+}
+
+/* REQ-0006-03: each tool keeps its own selected preset while the session lasts, and the defaults come back at a restart. */
+static void
+as2_presets_kept (void)
+{
+  EaselWindow *win = start_window ();
+
+  wait_for_layout (win);
+  use_tool (win, "brush");
+  wait_for_layout (win);
+  g_signal_emit_by_name (find_by_tooltip (GTK_WIDGET (win), "Slash, 5 pixels"), "clicked");
+  g_assert_cmpint (check_presets (win, brush_tips, 12, 2), ==, 7);
+  use_tool (win, "eraser");
+  wait_for_layout (win);
+  g_signal_emit_by_name (find_by_tooltip (GTK_WIDGET (win), "Eraser, 4 pixels"), "clicked");
+  g_signal_emit_by_name (find_by_tooltip (GTK_WIDGET (win), eraser_mode_tips[1]), "clicked");
+  g_assert_cmpint (check_presets (win, eraser_tips, 4, 2), ==, 0);
+  g_assert_cmpint (check_presets (win, eraser_mode_tips, 2, 1), ==, 1);
+
+  /* What the canvas will use: the footprint and the mode of each tool, kept apart. */
+  {
+    EaselToolOptions *o = easel_window_get_tool_options (win);
+
+    g_assert_true (easel_tool_options_get_footprint (o, EASEL_TOOL_BRUSH).shape == EASEL_SHAPE_SLASH
+                   && easel_tool_options_get_footprint (o, EASEL_TOOL_BRUSH).size == 5);
+    g_assert_true (easel_tool_options_get_footprint (o, EASEL_TOOL_ERASER).shape == EASEL_SHAPE_SQUARE
+                   && easel_tool_options_get_footprint (o, EASEL_TOOL_ERASER).size == 4);
+    g_assert_cmpint (easel_tool_options_get_footprint (o, EASEL_TOOL_AIRBRUSH).size, ==, 16);
+    g_assert_true (easel_tool_options_get_transparent (o));
+  }
+
+  /* Away and back: the same presets, the size and the mode kept apart. */
+  use_tool (win, "pencil");
+  use_tool (win, "airbrush");
+  wait_for_layout (win);
+  g_signal_emit_by_name (find_by_tooltip (GTK_WIDGET (win), "Spray, 24 pixels"), "clicked");
+  use_tool (win, "brush");
+  wait_for_layout (win);
+  g_assert_cmpint (check_presets (win, brush_tips, 12, 2), ==, 7);
+  use_tool (win, "eraser");
+  wait_for_layout (win);
+  g_assert_cmpint (check_presets (win, eraser_tips, 4, 2), ==, 0);
+  g_assert_cmpint (check_presets (win, eraser_mode_tips, 2, 1), ==, 1);
+  use_tool (win, "airbrush");
+  wait_for_layout (win);
+  g_assert_cmpint (check_presets (win, airbrush_tips, 3, 2), ==, 2);
+
+  /* A new window (a restart) has the defaults again. */
+  close_windows ();
+  win = start_window ();
+  wait_for_layout (win);
+  use_tool (win, "brush");
+  wait_for_layout (win);
+  g_assert_cmpint (check_presets (win, brush_tips, 12, 2), ==, 1);
+  use_tool (win, "eraser");
+  wait_for_layout (win);
+  g_assert_cmpint (check_presets (win, eraser_tips, 4, 2), ==, 2);
+  g_assert_cmpint (check_presets (win, eraser_mode_tips, 2, 1), ==, 0);
+  close_windows ();
+}
+
+/* ---- 0006: drawing with the Brush and the Eraser ---- */
+
+static int
+count_color (const EaselImage *img, uint32_t color)
+{
+  int n = 0;
+
+  for (int y = 0; y < img->height; y++)
+    for (int x = 0; x < img->width; x++)
+      n += easel_image_get (img, x, y) == color;
+  return n;
+}
+
+/* One stroke with the given button, as the pointer would make it, in picture pixels at 100 % (the center of each pixel). */
+static void
+stroke_with (EaselWindow *win, guint button, double x0, double y0, double x1, double y1)
+{
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+
+  easel_canvas_press (canvas, button, x0 + 0.5, y0 + 0.5);
+  easel_canvas_motion (canvas, x1 + 0.5, y1 + 0.5);
+  easel_canvas_release (canvas, button);
+}
+
+static void
+choose_preset (EaselWindow *win, const char *tip)
+{
+  GtkWidget *b = find_by_tooltip (GTK_WIDGET (win), tip);
+
+  g_assert_nonnull (b);
+  g_signal_emit_by_name (b, "clicked");
+}
+
+/* AS-4: the Brush paints its footprint on a click and along a drag, with either button's color, one undo step each. */
+static void
+as4_brush_on_canvas (void)
+{
+  EaselWindow *win = start_window ();
+  const EaselImage *img = easel_window_get_picture (win);
+  uint32_t bg = easel_window_get_background (win), fg = easel_window_get_foreground (win);
+
+  wait_for_layout (win);
+  use_tool (win, "brush");
+  wait_for_layout (win);
+  choose_preset (win, "Circle, 7 pixels");
+
+  /* A click: the 37 pixels of the circle, the pointer's pixel at column 3, row 3. */
+  stroke_with (win, 1, 20, 20, 20, 20);
+  g_assert_cmpint (count_color (img, fg), ==, 37);
+  g_assert_cmphex (easel_image_get (img, 20, 17), ==, fg);
+  g_assert_cmphex (easel_image_get (img, 23, 20), ==, fg);
+  g_assert_cmphex (easel_image_get (img, 17, 17), ==, bg);
+  g_assert_true (easel_window_get_modified (win));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);       /* one step */
+  g_assert_cmpint (count_color (img, fg), ==, 0);
+  g_assert_false (action_enabled (win, "undo"));
+
+  /* A drag, 7 pixels thick; the secondary button paints with the background color (here swapped to see it). */
+  stroke_with (win, 1, 10, 60, 40, 60);
+  g_assert_cmphex (easel_image_get (img, 25, 57), ==, fg);
+  g_assert_cmphex (easel_image_get (img, 25, 63), ==, fg);
+  g_assert_cmphex (easel_image_get (img, 25, 56), ==, bg);
+  g_assert_cmphex (easel_image_get (img, 25, 64), ==, bg);
+  g_assert_cmphex (easel_image_get (img, 7, 60), ==, fg);                  /* the footprint reaches 3 left of the start */
+  g_assert_cmphex (easel_image_get (img, 6, 60), ==, bg);
+  /* A stroke that starts outside the picture paints only the inside. */
+  stroke_with (win, 1, -5, 100, 5, 100);
+  g_assert_cmphex (easel_image_get (img, 2, 100), ==, fg);
+  g_assert_cmphex (easel_image_get (img, 8, 100), ==, fg);                 /* 5 plus the 3 the footprint reaches */
+  g_assert_cmphex (easel_image_get (img, 9, 100), ==, bg);
+
+  /* The secondary button paints with the background color: after a swap that is the former foreground (black). */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "swap-colors", NULL);
+  g_assert_cmphex (easel_window_get_background (win), ==, fg);
+  stroke_with (win, 3, 10, 80, 20, 80);
+  g_assert_cmphex (easel_image_get (img, 15, 80), ==, fg);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_cmphex (easel_image_get (img, 15, 80), ==, bg);                 /* one step took all of it */
+  g_assert_cmphex (easel_image_get (img, 25, 57), ==, fg);                 /* the first drag is still there */
+  close_windows ();
+}
+
+/* AS-7: the Eraser paints its square with the background color, or with transparency; a click is one square. */
+static void
+as7_eraser_on_canvas (void)
+{
+  EaselWindow *win = start_window ();
+  const EaselImage *img = easel_window_get_picture (win);
+  uint32_t bg = easel_window_get_background (win), fg = easel_window_get_foreground (win);
+
+  wait_for_layout (win);
+  /* Black everything with a big brush first, so that erasing can be seen. */
+  use_tool (win, "brush");
+  wait_for_layout (win);
+  choose_preset (win, "Square, 8 pixels");
+  for (int y = 0; y <= 100; y += 8)
+    stroke_with (win, 1, 0, y, 150, y);
+  use_tool (win, "eraser");
+  wait_for_layout (win);
+
+  /* Opaque, 8: a click is an 8 x 8 square with the pointer pixel at column 3, row 3. */
+  stroke_with (win, 1, 30, 30, 30, 30);
+  g_assert_cmphex (easel_image_get (img, 27, 27), ==, bg);
+  g_assert_cmphex (easel_image_get (img, 34, 34), ==, bg);
+  g_assert_cmphex (easel_image_get (img, 26, 30), ==, fg);
+  g_assert_cmphex (easel_image_get (img, 35, 30), ==, fg);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_cmphex (easel_image_get (img, 30, 30), ==, fg);
+
+  /* Transparent: the pixels become #00000000. */
+  choose_preset (win, "Transparent: erase to transparency");
+  stroke_with (win, 1, 60, 50, 80, 50);
+  g_assert_cmphex (easel_image_get (img, 70, 50), ==, 0x00000000u);
+  g_assert_cmphex (easel_image_get (img, 70, 47), ==, 0x00000000u);       /* rows 47 to 54: the pointer's row is 50 */
+  g_assert_cmphex (easel_image_get (img, 70, 46), ==, fg);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_cmphex (easel_image_get (img, 70, 50), ==, fg);
+  close_windows ();
+}
+
+/* AS-8: the color eraser (the secondary button) changes only the foreground color, to the background color or to
+   transparency. */
+static void
+as8_color_eraser_on_canvas (void)
+{
+  EaselWindow *win = start_window ();
+  EaselPaletteBar *bar = easel_window_get_palette_bar (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  uint32_t red, other, bg = easel_window_get_background (win);
+
+  wait_for_layout (win);
+  use_tool (win, "brush");
+  wait_for_layout (win);
+  choose_preset (win, "Square, 8 pixels");
+  easel_palette_bar_press (bar, 17, 1, 1);
+  red = easel_window_get_foreground (win);
+  stroke_with (win, 1, 20, 20, 20, 20);                                    /* a red square, columns 17..24 */
+  easel_palette_bar_press (bar, 21, 1, 1);
+  other = easel_window_get_foreground (win);
+  g_assert_cmphex (other, !=, red);
+  stroke_with (win, 1, 28, 20, 28, 20);                                    /* another color, columns 25..32 */
+  g_assert_cmpint (count_color (img, red), ==, 64);
+  g_assert_cmpint (count_color (img, other), ==, 64);
+
+  /* The foreground is red again; the color eraser passes over both squares. */
+  easel_palette_bar_press (bar, 17, 1, 1);
+  use_tool (win, "eraser");
+  wait_for_layout (win);
+  stroke_with (win, 3, 14, 20, 36, 20);
+  g_assert_cmpint (count_color (img, red), ==, 0);
+  g_assert_cmpint (count_color (img, other), ==, 64);                      /* untouched */
+  g_assert_cmphex (easel_image_get (img, 20, 20), ==, bg);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_cmpint (count_color (img, red), ==, 64);
+
+  /* Transparent mode: the red pixels become transparent instead. */
+  choose_preset (win, "Transparent: erase to transparency");
+  stroke_with (win, 3, 14, 20, 36, 20);
+  g_assert_cmpint (count_color (img, red), ==, 0);
+  g_assert_cmphex (easel_image_get (img, 20, 20), ==, 0x00000000u);
+  g_assert_cmpint (count_color (img, other), ==, 64);
+  close_windows ();
+}
+
+/* AS-9: a stroke is one undo step; the other button cancels it; Brush and Eraser. */
+static void
+as9_brush_and_eraser_steps (void)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  uint32_t fg = easel_window_get_foreground (win);
+
+  wait_for_layout (win);
+  use_tool (win, "brush");
+  wait_for_layout (win);
+  stroke_with (win, 1, 10, 10, 60, 40);
+  g_assert_true (action_enabled (win, "undo"));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_false (action_enabled (win, "undo"));                           /* one step took all of it */
+  g_assert_cmpint (count_color (img, fg), ==, 0);
+  g_assert_false (easel_window_get_modified (win));
+
+  /* The other button during a stroke cancels it. */
+  easel_canvas_press (canvas, 1, 10.5, 10.5);
+  easel_canvas_motion (canvas, 40.5, 10.5);
+  g_assert_cmpint (count_color (img, fg), >, 0);
+  easel_canvas_press (canvas, 3, 40.5, 10.5);
+  g_assert_cmpint (count_color (img, fg), ==, 0);
+  easel_canvas_release (canvas, 3);
+  easel_canvas_release (canvas, 1);
+  g_assert_false (action_enabled (win, "undo"));
+
+  /* The Eraser too. */
+  use_tool (win, "eraser");
+  wait_for_layout (win);
+  easel_canvas_press (canvas, 1, 10.5, 10.5);
+  easel_canvas_motion (canvas, 40.5, 10.5);
+  easel_canvas_press (canvas, 3, 40.5, 10.5);
+  easel_canvas_release (canvas, 3);
+  easel_canvas_release (canvas, 1);
+  g_assert_false (easel_window_get_modified (win));
+  close_windows ();
+}
+
+/* AS-11: choosing a preset is not an edit, and is not possible during a stroke. */
+static void
+as11_presets_are_not_edits_in_a_stroke (void)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  GtkWidget *other;
+
+  wait_for_layout (win);
+  use_tool (win, "brush");
+  wait_for_layout (win);
+  choose_preset (win, "Square, 5 pixels");
+  choose_preset (win, "Circle, 1 pixel");
+  g_assert_false (easel_window_get_modified (win));
+  g_assert_false (action_enabled (win, "undo"));
+
+  other = find_by_tooltip (GTK_WIDGET (win), "Circle, 7 pixels");
+  g_assert_true (gtk_widget_is_sensitive (other));
+  easel_canvas_press (canvas, 1, 10.5, 10.5);
+  g_assert_false (gtk_widget_is_sensitive (other));                         /* not while the button is held */
+  easel_canvas_release (canvas, 1);
+  g_assert_true (gtk_widget_is_sensitive (other));
+  /* Also after a cancelled stroke. */
+  easel_canvas_press (canvas, 1, 10.5, 10.5);
+  easel_canvas_press (canvas, 3, 10.5, 10.5);
+  g_assert_true (gtk_widget_is_sensitive (other));
+  easel_canvas_release (canvas, 3);
+  easel_canvas_release (canvas, 1);
+  close_windows ();
+}
+
+/* ---- 0006: the Airbrush on the canvas, with the real timer ---- */
+
+/* Runs the main loop for ms milliseconds (of the monotonic clock). */
+static void
+run_for (int ms)
+{
+  gint64 end = g_get_monotonic_time () + ms * 1000;
+
+  while (g_get_monotonic_time () < end)
+    g_main_context_iteration (NULL, FALSE);
+}
+
+/* AS-6: held for a second, the spray makes at most one spray per 5 ms of the time held (never ahead of the clock) and at
+   least 100; a second spray at the same place differs; the middle button does nothing; the release stops it. The exact
+   count (201 in 1000 ms) is the core's test, with a simulated clock. */
+static void
+as6_airbrush_sprays (void)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  uint32_t fg = easel_window_get_foreground (win);
+  gint64 start, held_us;
+  int made, first_count;
+
+  wait_for_layout (win);
+  use_tool (win, "airbrush");
+  wait_for_layout (win);
+  choose_preset (win, "Spray, 16 pixels");
+
+  start = g_get_monotonic_time ();
+  easel_canvas_press (canvas, 1, 150.5, 100.5);
+  run_for (1000);
+  held_us = g_get_monotonic_time () - start;
+  made = easel_canvas_get_spray_count (canvas);
+  easel_canvas_release (canvas, 1);
+  g_assert_cmpint (made, >=, 100);
+  g_assert_cmpint (made, <=, easel_spray_due (held_us));                  /* never more than the time held allows */
+  first_count = count_color (img, fg);
+  g_assert_cmpint (first_count, >, 60);                                    /* about 125 different pixels of 208 */
+  for (int y = 0; y < img->height; y++)
+    for (int x = 0; x < img->width; x++)
+      if (easel_image_get (img, x, y) == fg)
+        {
+          /* In the disc around (150, 100): the box 16 wide with the pointer pixel at column 7. */
+          g_assert_cmpint (x, >=, 150 - 7);
+          g_assert_cmpint (x, <=, 150 + 8);
+          g_assert_cmpint (y, >=, 100 - 7);
+          g_assert_cmpint (y, <=, 100 + 8);
+        }
+
+  /* Released: no more sprays, however long we wait. */
+  run_for (100);
+  g_assert_cmpint (count_color (img, fg), ==, first_count);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_cmpint (count_color (img, fg), ==, 0);                          /* one step */
+  g_assert_false (action_enabled (win, "undo"));
+
+  /* The middle button does nothing. */
+  easel_canvas_press (canvas, 2, 150.5, 100.5);
+  run_for (50);
+  easel_canvas_release (canvas, 2);
+  g_assert_cmpint (count_color (img, fg), ==, 0);
+  g_assert_false (easel_window_get_modified (win));
+  close_windows ();
+}
+
+/* REQ-0006-09: the random choice starts differently each time: ten clicks at the same pixel (one spray each) do not
+   all paint the same pixel (by chance, with odds of failing of one in 208 to the ninth power). */
+static void
+as6_airbrush_clicks_differ (void)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  uint32_t fg = easel_window_get_foreground (win);
+  int first_x = -1, first_y = -1;
+  gboolean differ = FALSE;
+
+  wait_for_layout (win);
+  use_tool (win, "airbrush");
+  wait_for_layout (win);
+  choose_preset (win, "Spray, 16 pixels");
+  for (int i = 0; i < 10; i++)
+    {
+      int n = 0, px = -1, py = -1;
+
+      easel_canvas_press (canvas, 1, 100.5, 100.5);
+      easel_canvas_release (canvas, 1);                                   /* nothing can fire in between: one spray */
+      for (int y = 0; y < img->height; y++)
+        for (int x = 0; x < img->width; x++)
+          if (easel_image_get (img, x, y) == fg)
+            {
+              n++;
+              px = x;
+              py = y;
+            }
+      g_assert_cmpint (n, ==, 1);
+      if (i == 0)
+        {
+          first_x = px;
+          first_y = py;
+        }
+      else
+        differ = differ || px != first_x || py != first_y;
+      g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+    }
+  g_assert_true (differ);
+  close_windows ();
+}
+
+/* The spray lands where the pointer is, also when it moved, and nothing is painted while it is held off the picture. */
+static void
+as6_airbrush_follows_the_pointer (void)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  uint32_t fg = easel_window_get_foreground (win);
+
+  wait_for_layout (win);
+  use_tool (win, "airbrush");
+  wait_for_layout (win);
+  choose_preset (win, "Spray, 9 pixels");
+
+  easel_canvas_press (canvas, 1, 40.5, 40.5);
+  easel_canvas_motion (canvas, 200.5, 120.5);
+  run_for (300);
+  easel_canvas_release (canvas, 1);
+  for (int y = 0; y < img->height; y++)
+    for (int x = 0; x < img->width; x++)
+      if (easel_image_get (img, x, y) == fg)
+        {
+          gboolean near_start = abs (x - 40) <= 5 && abs (y - 40) <= 5;
+          gboolean near_end = abs (x - 200) <= 5 && abs (y - 120) <= 5;
+
+          g_assert_true (near_start || near_end);
+        }
+  g_assert_cmpint (count_color (img, fg), >, 20);                          /* the held pointer at the end painted much */
+  {
+    int at_end = 0;
+
+    for (int y = 115; y <= 125; y++)
+      for (int x = 195; x <= 205; x++)
+        at_end += easel_image_get (img, x, y) == fg;
+    g_assert_cmpint (at_end, >, 10);                                       /* it landed where the pointer went */
+  }
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+
+  /* Held outside the picture: the spray runs, paints nothing and adds no step. */
+  easel_canvas_press (canvas, 1, -60.5, 50.5);
+  run_for (100);
+  easel_canvas_release (canvas, 1);
+  g_assert_cmpint (count_color (img, fg), ==, 0);
+  g_assert_false (action_enabled (win, "undo"));
+  close_windows ();
+}
+
+/* AS-9, the spray: held and released is one step; the other button cancels it and the spray stops. */
+static void
+as9_spray_one_step_and_cancel (void)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  uint32_t fg = easel_window_get_foreground (win);
+  int after_cancel;
+
+  wait_for_layout (win);
+  use_tool (win, "airbrush");
+  wait_for_layout (win);
+  easel_canvas_press (canvas, 1, 60.5, 60.5);
+  run_for (200);
+  g_assert_cmpint (count_color (img, fg), >, 0);
+  easel_canvas_press (canvas, 3, 60.5, 60.5);                              /* the other button cancels */
+  after_cancel = count_color (img, fg);
+  g_assert_cmpint (after_cancel, ==, 0);
+  run_for (100);
+  g_assert_cmpint (count_color (img, fg), ==, 0);                          /* the spray stopped with the stroke */
+  easel_canvas_release (canvas, 3);
+  easel_canvas_release (canvas, 1);
+  g_assert_false (action_enabled (win, "undo"));
+
+  /* Losing the focus ends the stroke and keeps what was sprayed. */
+  easel_canvas_press (canvas, 1, 60.5, 60.5);
+  run_for (100);
+  easel_canvas_reset_pointer (canvas);
+  after_cancel = count_color (img, fg);
+  g_assert_cmpint (after_cancel, >, 0);
+  run_for (100);
+  g_assert_cmpint (count_color (img, fg), ==, after_cancel);
+  g_assert_true (action_enabled (win, "undo"));
   close_windows ();
 }
 
@@ -4558,6 +5258,176 @@ as14_save_as_moves_the_saved_state (void)
   close_windows ();
 }
 
+/* ---- 0006: the cursors ---- */
+
+/* The size of the canvas's cursor texture, or 0 when it is a named cursor. */
+static int
+cursor_width (EaselWindow *win)
+{
+  GdkCursor *cursor = gtk_widget_get_cursor (GTK_WIDGET (easel_window_get_canvas (win)));
+  GdkTexture *texture = cursor != NULL ? gdk_cursor_get_texture (cursor) : NULL;
+
+  return texture != NULL ? gdk_texture_get_width (texture) : 0;
+}
+
+/* AS-12 (REQ-0006-16), the wiring: the cursor over the canvas follows the tool, the preset and the zoom; its geometry is
+   checked in the core (as12_cursor_geometry), how it looks is the manual check M3. */
+static void
+as12_cursor_follows_tool_preset_and_zoom (void)
+{
+  EaselWindow *win = start_window ();
+
+  wait_for_layout (win);
+  g_assert_cmpint (cursor_width (win), ==, 0);                              /* Pan: the hand */
+  use_tool (win, "pencil");
+  g_assert_cmpint (cursor_width (win), ==, 32);                             /* the pencil's picture */
+  use_tool (win, "eraser");
+  choose_preset (win, "Eraser, 10 pixels");
+  g_assert_cmpint (cursor_width (win), ==, 12);                             /* 10 at 100 %, and the white line */
+  choose_preset (win, "Eraser, 6 pixels");
+  g_assert_cmpint (cursor_width (win), ==, 8);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-large", NULL);
+  g_assert_cmpint (cursor_width (win), ==, 26);                             /* 6 at 400 % */
+  use_tool (win, "brush");
+  choose_preset (win, "Circle, 7 pixels");
+  g_assert_cmpint (cursor_width (win), ==, 30);                             /* 7 at 400 % */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-normal", NULL);
+  g_assert_cmpint (cursor_width (win), ==, 9);
+  use_tool (win, "airbrush");
+  g_assert_cmpint (cursor_width (win), ==, 32);                             /* the spray can's picture */
+  close_windows ();
+}
+
+/* ---- 0006: the hints ---- */
+
+/* AS-13 (REQ-0006-17): the status bar hint of each new tool, and of the Eraser's two modes. */
+static void
+as13_hints (void)
+{
+  EaselWindow *win = start_window ();
+  EaselStatusBar *bar = easel_window_get_status_bar (win);
+
+  wait_for_layout (win);
+  use_tool (win, "brush");
+  g_assert_cmpstr (easel_status_bar_get_text (bar, EASEL_STATUS_HINT), ==,
+                   "Paint with the foreground color. The secondary button uses the background color.");
+  use_tool (win, "airbrush");
+  g_assert_cmpstr (easel_status_bar_get_text (bar, EASEL_STATUS_HINT), ==,
+                   "Spray with the foreground color. The secondary button uses the background color.");
+  use_tool (win, "eraser");
+  g_assert_cmpstr (easel_status_bar_get_text (bar, EASEL_STATUS_HINT), ==,
+                   "Erase to the background color. The secondary button changes only the foreground color.");
+  /* The mode changes the hint at once, and back. */
+  choose_preset (win, eraser_mode_tips[1]);
+  g_assert_cmpstr (easel_status_bar_get_text (bar, EASEL_STATUS_HINT), ==,
+                   "Erase to transparency. The secondary button erases only the foreground color.");
+  /* Leaving and coming back keeps the mode, so the hint. */
+  use_tool (win, "brush");
+  use_tool (win, "eraser");
+  g_assert_cmpstr (easel_status_bar_get_text (bar, EASEL_STATUS_HINT), ==,
+                   "Erase to transparency. The secondary button erases only the foreground color.");
+  choose_preset (win, eraser_mode_tips[0]);
+  g_assert_cmpstr (easel_status_bar_get_text (bar, EASEL_STATUS_HINT), ==,
+                   "Erase to the background color. The secondary button changes only the foreground color.");
+  /* A change of the size leaves it. */
+  choose_preset (win, "Eraser, 4 pixels");
+  g_assert_cmpstr (easel_status_bar_get_text (bar, EASEL_STATUS_HINT), ==,
+                   "Erase to the background color. The secondary button changes only the foreground color.");
+  /* The other tools still have theirs. */
+  use_tool (win, "pencil");
+  g_assert_cmpstr (easel_status_bar_get_text (bar, EASEL_STATUS_HINT), ==, PENCIL_HINT);
+  use_tool (win, "pan");
+  g_assert_cmpstr (easel_status_bar_get_text (bar, EASEL_STATUS_HINT), ==, PAN_HINT);
+  close_windows ();
+}
+
+/* ---- 0006: Numpad + and - ---- */
+
+/* AS-10 (REQ-0006-14, REQ-0006-15): the keypad keys step the presets of the active tool. */
+static void
+as10_numpad_steps (void)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+
+  /* The keys, bare: the keypad ones, not the main keyboard's + and -; Ctrl+keypad still zooms. */
+  g_assert_true (has_accel ("win.preset-larger", GDK_KEY_KP_Add, 0));
+  g_assert_true (has_accel ("win.preset-smaller", GDK_KEY_KP_Subtract, 0));
+  g_assert_false (has_accel ("win.preset-larger", GDK_KEY_plus, 0));
+  g_assert_false (has_accel ("win.preset-larger", GDK_KEY_equal, 0));
+  g_assert_false (has_accel ("win.preset-smaller", GDK_KEY_minus, 0));
+  g_assert_true (has_accel ("win.zoom-in", GDK_KEY_KP_Add, GDK_CONTROL_MASK));
+  g_assert_true (has_accel ("win.zoom-out", GDK_KEY_KP_Subtract, GDK_CONTROL_MASK));
+
+  wait_for_layout (win);
+  /* The Brush: 4 -> 7, the end stays, 7 -> 4 -> 1, the end stays. */
+  use_tool (win, "brush");
+  wait_for_layout (win);
+  g_assert_cmpint (check_presets (win, brush_tips, 12, 2), ==, 1);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "preset-larger", NULL);
+  g_assert_cmpint (check_presets (win, brush_tips, 12, 2), ==, 0);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "preset-larger", NULL);
+  g_assert_cmpint (check_presets (win, brush_tips, 12, 2), ==, 0);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "preset-smaller", NULL);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "preset-smaller", NULL);
+  g_assert_cmpint (check_presets (win, brush_tips, 12, 2), ==, 2);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "preset-smaller", NULL);
+  g_assert_cmpint (check_presets (win, brush_tips, 12, 2), ==, 2);
+  /* Within the shape: the slashes go 8, 5, 2. */
+  choose_preset (win, "Slash, 5 pixels");
+  g_action_group_activate_action (G_ACTION_GROUP (win), "preset-larger", NULL);
+  g_assert_cmpint (check_presets (win, brush_tips, 12, 2), ==, 6);
+
+  /* The Airbrush: 16 -> 24, the end stays, then 16 -> 9. */
+  use_tool (win, "airbrush");
+  wait_for_layout (win);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "preset-larger", NULL);
+  g_assert_cmpint (check_presets (win, airbrush_tips, 3, 2), ==, 2);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "preset-larger", NULL);
+  g_assert_cmpint (check_presets (win, airbrush_tips, 3, 2), ==, 2);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "preset-smaller", NULL);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "preset-smaller", NULL);
+  g_assert_cmpint (check_presets (win, airbrush_tips, 3, 2), ==, 0);
+
+  /* The Eraser keeps its mode: 8 Transparent -> 10 Transparent. */
+  use_tool (win, "eraser");
+  wait_for_layout (win);
+  choose_preset (win, eraser_mode_tips[1]);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "preset-larger", NULL);
+  g_assert_cmpint (check_presets (win, eraser_tips, 4, 2), ==, 3);
+  g_assert_cmpint (check_presets (win, eraser_mode_tips, 2, 1), ==, 1);
+  g_assert_true (easel_tool_options_get_transparent (easel_window_get_tool_options (win)));
+
+  /* Not an edit (REQ-0006-15). */
+  g_assert_false (easel_window_get_modified (win));
+  g_assert_false (action_enabled (win, "undo"));
+
+  /* During a stroke nothing happens. */
+  easel_canvas_press (canvas, 1, 10.5, 10.5);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "preset-smaller", NULL);
+  easel_canvas_release (canvas, 1);
+  g_assert_cmpint (check_presets (win, eraser_tips, 4, 2), ==, 3);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "preset-smaller", NULL);
+  g_assert_cmpint (check_presets (win, eraser_tips, 4, 2), ==, 2);
+
+  /* Pencil and Pan do nothing, and the presets of the others are kept. */
+  use_tool (win, "pencil");
+  g_action_group_activate_action (G_ACTION_GROUP (win), "preset-larger", NULL);
+  use_tool (win, "pan");
+  g_action_group_activate_action (G_ACTION_GROUP (win), "preset-larger", NULL);
+  use_tool (win, "eraser");
+  wait_for_layout (win);
+  g_assert_cmpint (check_presets (win, eraser_tips, 4, 2), ==, 2);
+
+  /* The color chooser open: nothing happens. */
+  easel_palette_bar_press_indicator (easel_window_get_palette_bar (win), TRUE);
+  g_assert_true (easel_window_is_choosing_color (win));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "preset-larger", NULL);
+  g_assert_cmpint (check_presets (win, eraser_tips, 4, 2), ==, 2);
+  easel_window_finish_color_choice (win, NULL);
+  close_windows ();
+}
+
 int
 main (int argc, char **argv)
 {
@@ -4656,6 +5526,21 @@ main (int argc, char **argv)
   g_test_add_func ("/0005/as3_new_and_open_prompt", as3_new_and_open_prompt);
   g_test_add_func ("/0005/as14_new_starts_a_history", as14_new_starts_a_history);
   g_test_add_func ("/0005/as15_new_before_picture", as15_new_before_picture);
+  g_test_add_func ("/0006/as1_toolbox_and_options", as1_toolbox_and_options);
+  g_test_add_func ("/0006/as1_options_panel", as1_options_panel);
+  g_test_add_func ("/0006/as2_presets_kept", as2_presets_kept);
+  g_test_add_func ("/0006/as4_brush_on_canvas", as4_brush_on_canvas);
+  g_test_add_func ("/0006/as7_eraser_on_canvas", as7_eraser_on_canvas);
+  g_test_add_func ("/0006/as8_color_eraser_on_canvas", as8_color_eraser_on_canvas);
+  g_test_add_func ("/0006/as9_brush_and_eraser_steps", as9_brush_and_eraser_steps);
+  g_test_add_func ("/0006/as11_presets_are_not_edits_in_a_stroke", as11_presets_are_not_edits_in_a_stroke);
+  g_test_add_func ("/0006/as6_airbrush_sprays", as6_airbrush_sprays);
+  g_test_add_func ("/0006/as6_airbrush_clicks_differ", as6_airbrush_clicks_differ);
+  g_test_add_func ("/0006/as6_airbrush_follows_the_pointer", as6_airbrush_follows_the_pointer);
+  g_test_add_func ("/0006/as9_spray_one_step_and_cancel", as9_spray_one_step_and_cancel);
+  g_test_add_func ("/0006/as10_numpad_steps", as10_numpad_steps);
+  g_test_add_func ("/0006/as13_hints", as13_hints);
+  g_test_add_func ("/0006/as12_cursor_follows_tool_preset_and_zoom", as12_cursor_follows_tool_preset_and_zoom);
   g_test_add_func ("/0004/as20_attributes_dialog", as20_attributes_dialog);
   g_test_add_func ("/0004/as22_undo_through_resize", as22_undo_through_resize);
   g_test_add_func ("/0004/as23_modified_across_resize", as23_modified_across_resize);
