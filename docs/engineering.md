@@ -76,6 +76,28 @@ Defined by feature 0017.
   and modified state. Needs a display: skip with exit code 77 otherwise; run headless with `GSK_RENDERER=cairo`.
 - **Layer 3, manual:** short numbered checklists at each checkpoint in the spec's Tasks section for look and feel. Say plainly what cannot be tested headless.
 - **Test first** where feasible; a bug fix starts with a failing test.
+- **Running the ui cases of one feature:** the ui cases are in one executable, registered as `/0001/...` to `/0005/...`, and
+  each feature is its own meson test (`ui-0001` to `ui-0005`, suite `ui`, each running `test-window -p /NNNN`), so
+  `meson test -C build --print-errorlogs ui-0005` runs one feature (about 15 s; 0004: 19 s, 0001: 7.5 s, 0003: 4.6 s,
+  0002: 3 s; 97 cases in all, each in exactly one test). The core and io tests take about one second in all. Run the
+  tests of the feature you touched after each task, the full `meson test -C build --print-errorlogs` (about 46 s) at each
+  group boundary and at `/sdd-check`. The ui tests do not run in parallel (`is_parallel: false`): run in parallel, the
+  ui windows failed `as5_zoom_keeps_center` with a stale layout in 2 of 3 runs. That is all that was shown; earlier
+  one-off failures of the ui tests (run as a single executable) are unexplained and not fixed.
+- **Mutation tool (`tools/mutate.sh`):** puts one deliberate bug at a time into a scratch copy of the sources, builds, runs
+  the tests that must catch it, and prints `killed` or `SURVIVED` (a hole in the tests) with the requirement ID and the
+  time, then a total; the exit status is non-zero if any mutant survived or did not build. It never touches the working
+  tree: it works in `.scratch/mutate` (git-ignored, deleted and made again at each start) with one build directory, so each
+  mutant rebuilds one file.
+  - `tools/mutate.sh` runs every mutant of `tests/mutants.txt` (55 mutants, 304 s, all killed); `tools/mutate.sh
+    REQ-0005-03` runs the mutants of one requirement (several IDs may be given); `MUTANTS=file tools/mutate.sh` uses
+    another list. The ui tests need the display, as always.
+  - To add a mutant, append a block to `tests/mutants.txt`: `=== REQ-NNNN-xx what the bug does`, then `file:` (from the
+    project root), `test:` (the meson test names that must fail, tried one after the other), `--- find` with the exact text
+    (it must occur once in the file; no blank line), `--- replace` with the text that takes its place. Write the mutant
+    that breaks the rule, run it, and fix the tests until it is killed; a mutant that is equivalent (no input can see the
+    change) does not belong in the list.
+  - Run the mutants of the requirements you worked on at each group boundary, and the whole list at `/sdd-check`.
 - **Gates:** build warning-free, all tests green after each task; `tools/spec.sh lint` clean before a spec is accepted.
 - **Later:** CI in a container or the Flatpak SDK (libadwaita >= 1.8 needed); screenshot checks only if they prove worth the upkeep.
 

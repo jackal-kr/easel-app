@@ -1,0 +1,518 @@
+# Mutants for tools/mutate.sh: one deliberate bug each, for the rules that guard against losing the user's work.
+# Block format (see docs/engineering.md, "Mutation tool"):
+#   === REQ-NNNN-xx short name of the bug
+#   file: path of the source file, from the project root
+#   test: the meson test names (space separated) that must fail, for example core-resize or ui-0005
+#   --- find
+#   the exact text to find (must occur once; may span lines)
+#   --- replace
+#   the text that takes its place
+# The text of a mutant has no blank line (a blank line ends the block). A mutant is KILLED when one of its tests fails,
+# and SURVIVES when they all pass.
+
+# ---- resize and its removed pixels, the undo history (0002, 0004) ----
+
+=== REQ-0004-22 undo of a resize does not put the removed pixels back
+file: src/core/history.c
+test: core-resize
+--- find
+              img->px[(size_t) y * (size_t) s->old_w + (size_t) x] = s->removed[i++];
+--- replace
+              i++;
+
+=== REQ-0004-22 redo of a resize forgets the fill color
+file: src/core/history.c
+test: core-resize
+--- find
+        return easel_image_resize (img, s->new_w, s->new_h, s->fill) == EASEL_RESIZE_OK;
+--- replace
+        return easel_image_resize (img, s->new_w, s->new_h, 0) == EASEL_RESIZE_OK;
+
+=== REQ-0004-23 a resize step costs 12 bytes per removed pixel instead of 4
+file: src/core/history.c
+test: core-resize
+--- find
+    return s->n_removed * sizeof (uint32_t) + BYTES_PER_STEP;
+--- replace
+    return s->n_removed * 12 + BYTES_PER_STEP;
+
+=== REQ-0004-24 a resize to the same size makes an undo step
+file: src/core/history.c
+test: core-resize
+--- find
+    return EASEL_RESIZE_UNCHANGED;
+--- replace
+    (void) 0;
+
+=== REQ-0004-20 a shrink keeps the wrong corner of the picture
+file: src/core/image.c
+test: core-resize
+--- find
+          memcpy (row, img->px + (size_t) y * (size_t) img->width, (size_t) kept_w * sizeof (uint32_t));
+--- replace
+          memcpy (row, img->px + (size_t) y * (size_t) img->width + (img->width - kept_w), (size_t) kept_w * sizeof (uint32_t));
+
+=== REQ-0004-26 a resize that fails still records an undo step
+file: src/core/history.c
+test: core-resize
+--- find
+  if (r != EASEL_RESIZE_OK)
+--- replace
+  if (0)
+
+=== REQ-0002-17 a lone step bigger than the history budget is dropped
+file: src/core/history.c
+test: core-resize
+--- find
+  while (h->bytes > h->budget && h->len - h->first > 1)
+--- replace
+  while (h->bytes > h->budget && h->len - h->first > 0)
+
+# ---- resize in the window (0004) ----
+
+=== REQ-0004-22 undo and redo do not rebuild the canvas after a size change
+file: src/ui/window.c
+test: ui-0004 ui-0005
+--- find
+  if (self->picture->width != old_w || self->picture->height != old_h)
+    picture_size_changed (self);
+  else
+    easel_canvas_update (self->canvas);
+--- replace
+  easel_canvas_update (self->canvas);
+
+=== REQ-0004-26 a refused undo or redo shows no error
+file: src/ui/window.c
+test: ui-0004
+--- find
+      if (easel_history_refused (self->history, &w, &h))
+        show_resize_error (self, w, h);
+--- replace
+      (void) w;
+
+=== REQ-0004-20 the added area ignores the current background color
+file: src/ui/window.c
+test: ui-0004 ui-0005
+--- find
+  r = easel_resize_edit (self->picture, self->history, width, height, self->background);
+--- replace
+  r = easel_resize_edit (self->picture, self->history, width, height, self->settings.background);
+
+=== REQ-0004-22 the title and the modified mark are not updated after a resize
+file: src/ui/window.c
+test: ui-0004
+--- find
+      picture_size_changed (self);
+      sync_history_ui (self);
+--- replace
+      picture_size_changed (self);
+
+# ---- the settings file is never rewritten (0004) ----
+
+=== REQ-0004-15 an existing settings file is rewritten
+file: src/io/settings-file.c
+test: io-settings-file
+--- find
+      easel_settings_parse (text, len, s);
+      return;
+--- replace
+      easel_settings_parse (text, len, s);
+      create_default_file (path);
+      return;
+
+# ---- atomic save, every format (0001, 0005) ----
+
+=== REQ-0001-31 a save is not atomic: the target can be left half written
+file: src/io/picture-file.c
+test: io-picture-file io-png
+--- find
+G_FILE_SET_CONTENTS_CONSISTENT
+--- replace
+G_FILE_SET_CONTENTS_NONE
+
+=== REQ-0005-11 BMP is saved without flattening on white
+file: src/io/picture-file.c
+test: io-picture-file
+--- find
+to_pixbuf (img, easel_format_is_flat (format))
+--- replace
+to_pixbuf (img, format == EASEL_FORMAT_JPEG)
+
+=== REQ-0005-14 the JPEG quality is ignored
+file: src/io/picture-file.c
+test: io-picture-file
+--- find
+"quality", quality, NULL
+--- replace
+"quality", "90", NULL
+
+=== REQ-0005-10 the test hook for a missing saver is ignored
+file: src/io/picture-file.c
+test: io-picture-file
+--- find
+    name = "not-installed";
+--- replace
+    name = format_name (format);
+
+# ---- opening: size limit, memory, orientation (0005) ----
+
+=== REQ-0005-17 a picture exactly 10000 pixels wide is refused
+file: src/io/picture-file.c
+test: io-picture-file
+--- find
+  if (w > EASEL_IMAGE_MAX_SIZE || h > EASEL_IMAGE_MAX_SIZE)
+--- replace
+  if (w >= EASEL_IMAGE_MAX_SIZE || h >= EASEL_IMAGE_MAX_SIZE)
+
+=== REQ-0005-17 the height is not checked against the size limit
+file: src/io/picture-file.c
+test: io-picture-file
+--- find
+  if (w > EASEL_IMAGE_MAX_SIZE || h > EASEL_IMAGE_MAX_SIZE)
+--- replace
+  if (w > EASEL_IMAGE_MAX_SIZE)
+
+=== REQ-0005-09 the memory is not checked before decoding
+file: src/io/picture-file.c
+test: io-picture-file
+--- find
+  if (!memory_for (w, h))
+--- replace
+  if (0)
+
+=== REQ-0005-06 the header sniffer reads on past the start of scan
+file: src/io/picture-file.c
+test: io-picture-file
+--- find
+      if (marker == 0xD9 || marker == 0xDA)
+        return FALSE;
+--- replace
+      if (marker == 0xD9)
+        return FALSE;
+
+=== REQ-0005-06 a picture with a zero size is accepted by the sniffer
+file: src/io/picture-file.c
+test: io-picture-file
+--- find
+  if (name != NULL && w > 0 && h > 0 &&
+--- replace
+  if (name != NULL &&
+
+=== REQ-0005-06 the orientation of a photo is ignored
+file: src/io/picture-file.c
+test: io-picture-file
+--- find
+orientation ? atoi (orientation) : 1
+--- replace
+1
+
+=== REQ-0005-06 orientation 6 turns the picture the wrong way
+file: src/core/image.c
+test: core-image
+--- find
+      case 6: base = H - 1;                     col_step = ow;          row_step = (size_t) -1; break;
+--- replace
+      case 6: base = H - 1;                     col_step = ow;          row_step = (size_t) -2; break;
+
+=== REQ-0005-06 orientation 8 mirrors instead of turning
+file: src/core/image.c
+test: core-image
+--- find
+      default: base = (W - 1) * ow;             col_step = (size_t) -(ptrdiff_t) ow; row_step = 1; break;
+--- replace
+      default: base = (W - 1) * ow;             col_step = ow; row_step = 1; break;
+
+=== REQ-0005-06 orientation 2 does not mirror
+file: src/core/image.c
+test: core-image
+--- find
+      case 2: base = W - 1;
+--- replace
+      case 2: base = 0;
+
+=== REQ-0005-11 flattening on white rounds down
+file: src/core/image.c
+test: core-image
+--- find
+      rgb[3 * i + 0] = (uint8_t) ((((c >> 16) & 0xFF) * a + rest + 127) / 255);
+--- replace
+      rgb[3 * i + 0] = (uint8_t) ((((c >> 16) & 0xFF) * a + rest) / 255);
+
+=== REQ-0005-06 a fully transparent pixel keeps its color
+file: src/core/image.c
+test: core-image
+--- find
+          img->px[d] = a == 0 ? 0 :
+--- replace
+          img->px[d] = a == 0 ? ((uint32_t) p[0] << 16) :
+
+=== REQ-0005-06 a picture without an alpha channel is not opaque
+file: src/core/image.c
+test: core-image
+--- find
+          uint32_t a = channels == 4 ? p[3] : 255;
+--- replace
+          uint32_t a = channels == 4 ? p[3] : 254;
+
+# ---- New and the unsaved-changes prompt, shared with Quit (0001, 0005) ----
+
+=== REQ-0005-04 after a failed save in the prompt the action goes on and the picture is lost
+file: src/ui/window.c
+test: ui-0005
+--- find
+  if (saved)
+    then (self);
+--- replace
+  then (self);
+
+=== REQ-0005-04 New on a modified picture does not ask
+file: src/ui/window.c
+test: ui-0005
+--- find
+  if (easel_history_is_modified (self->history))
+    ask_unsaved (self, new_picture);
+  else
+    new_picture (self);
+--- replace
+  new_picture (self);
+
+=== REQ-0005-03 the view is not reset after New or Open
+file: src/ui/window.c
+test: ui-0005
+--- find
+  easel_canvas_reset_view (self->canvas);
+  easel_status_bar_set_size
+--- replace
+  easel_status_bar_set_size
+
+=== REQ-0005-03 a new picture ignores the background of the settings
+file: src/ui/window.c
+test: ui-0005
+--- find
+  img = easel_image_new (w, h, self->settings.background);
+--- replace
+  img = easel_image_new (w, h, 0xFFFFFFFFu);
+
+=== REQ-0005-03 the canvas keeps recording into the old history after New
+file: src/ui/window.c
+test: ui-0005
+--- find
+  easel_canvas_set_history (self->canvas, history);
+  easel_canvas_set_image (self->canvas, img);
+--- replace
+  easel_canvas_set_image (self->canvas, img);
+
+=== REQ-0005-02 the file actions work while a dialog or prompt is open
+file: src/ui/window.c
+test: ui-0005
+--- find
+  if (self->picture == NULL || dialog_is_open (self))
+    return FALSE;
+--- replace
+  if (self->picture == NULL)
+    return FALSE;
+
+=== REQ-0005-02 New does not end a stroke in progress
+file: src/ui/window.c
+test: ui-0005
+--- find
+  if (self->picture == NULL || dialog_is_open (self))
+    return FALSE;
+  easel_canvas_end_stroke (self->canvas);
+--- replace
+  if (self->picture == NULL || dialog_is_open (self))
+    return FALSE;
+
+=== REQ-0005-02 Open does not cancel a resize drag
+file: src/ui/window.c
+test: ui-0005
+--- find
+  easel_canvas_end_stroke (self->canvas);
+  easel_canvas_cancel_resize (self->canvas);
+  return TRUE;
+--- replace
+  easel_canvas_end_stroke (self->canvas);
+  return TRUE;
+
+=== REQ-0005-02 Save is not held back while a dialog is open
+file: src/ui/window.c
+test: ui-0005
+--- find
+  if (file_action_allowed (self))
+    save (self, NULL, FALSE);
+--- replace
+  save (self, NULL, FALSE);
+
+# ---- Open (0005) ----
+
+=== REQ-0005-08 Open from a request does not ask about unsaved changes
+file: src/ui/window.c
+test: ui-0005
+--- find
+  if (easel_history_is_modified (self->history))
+    {
+      g_set_object (&self->pending_file, file);
+--- replace
+  if (0)
+    {
+      g_set_object (&self->pending_file, file);
+
+=== REQ-0005-08 the Open action does not ask about unsaved changes
+file: src/ui/window.c
+test: ui-0005
+--- find
+  if (easel_history_is_modified (self->history))
+    ask_unsaved (self, show_open_dialog);
+--- replace
+  if (0)
+    ask_unsaved (self, show_open_dialog);
+
+=== REQ-0005-02 the busy cursor is not on screen before the decode starts
+file: src/ui/window.c
+test: ui-0005
+--- find
+  if (clock != NULL)
+    {
+      self->paint_handler
+--- replace
+  if (0)
+    {
+      self->paint_handler
+
+=== REQ-0005-02 the window does not show the busy cursor while loading
+file: src/ui/window.c
+test: ui-0005
+--- find
+  gtk_widget_set_cursor_from_name (GTK_WIDGET (self), "wait");
+--- replace
+  (void) 0;
+
+=== REQ-0005-02 the canvas does not show the busy cursor while loading
+file: src/ui/window.c
+test: ui-0005
+--- find
+  easel_canvas_set_busy (self->canvas, TRUE);
+--- replace
+  (void) 0;
+
+=== REQ-0005-02 a quit during loading is not held until the picture is shown
+file: src/ui/window.c
+test: ui-0005
+--- find
+  if (self->loading)
+    {
+      self->close_after_loading = TRUE;
+      return TRUE;
+    }
+--- replace
+  if (0)
+    {
+      self->close_after_loading = TRUE;
+      return TRUE;
+    }
+
+=== REQ-0005-02 a quit while the Open dialog is open is not ignored
+file: src/ui/window.c
+test: ui-0005
+--- find
+  if (self->open_dialog_open)
+    return TRUE;
+  /* One prompt
+--- replace
+  /* One prompt
+
+=== REQ-0005-17 a picture that is too big replaces the current one
+file: src/ui/window.c
+test: ui-0005
+--- find
+  if (result == EASEL_OPEN_OK)
+    {
+      if (!replace_picture
+--- replace
+  if (result == EASEL_OPEN_OK || result == EASEL_OPEN_TOO_BIG)
+    {
+      if (!replace_picture
+
+=== REQ-0005-15 a start-up file that cannot be opened shows no error
+file: src/ui/window.c
+test: ui-0005
+--- find
+  if (opened != EASEL_OPEN_OK)
+    show_open_error (self, startup, opened, width, height);
+--- replace
+  (void) opened;
+
+=== REQ-0005-15 the start-up file does not become the picture's file
+file: src/ui/window.c
+test: ui-0005
+--- find
+      if (opened == EASEL_OPEN_OK)
+        self->path = g_steal_pointer (&file_path);
+--- replace
+      (void) 0;
+
+=== REQ-0005-15 a second launch replaces the window of the first
+file: src/ui/application.c
+test: ui-0005
+--- find
+  if (window == NULL && n_files > 0)
+--- replace
+  if (n_files > 0)
+
+=== REQ-0005-15 the last file on the command line opens instead of the first
+file: src/ui/application.c
+test: ui-0005
+--- find
+easel_window_new_with_file (GTK_APPLICATION (app), files[0])
+--- replace
+easel_window_new_with_file (GTK_APPLICATION (app), files[n_files - 1])
+
+# ---- Save and Save As (0005) ----
+
+=== REQ-0005-13 Save writes every format as PNG
+file: src/ui/window.c
+test: ui-0005
+--- find
+  return format == EASEL_FORMAT_UNKNOWN ? EASEL_FORMAT_PNG : format;
+--- replace
+  return EASEL_FORMAT_PNG;
+
+=== REQ-0005-13 Save overwrites a file whose extension cannot be saved
+file: src/ui/window.c
+test: ui-0005
+--- find
+  if (!as_new && self->path != NULL && easel_format_of_name (self->path) != EASEL_FORMAT_UNKNOWN)
+--- replace
+  if (!as_new && self->path != NULL)
+
+=== REQ-0005-12 Save As writes the file without asking for a name
+file: src/ui/window.c
+test: ui-0005
+--- find
+  if (!as_new && self->path != NULL &&
+--- replace
+  if (self->path != NULL &&
+
+=== REQ-0005-10 the error for an unsaveable extension has the wrong text
+file: src/ui/window.c
+test: ui-0005
+--- find
+      show_save_error (req->self, "Cannot Save This Kind of File"
+--- replace
+      show_save_error (req->self, "Only PNG"
+
+=== REQ-0001-42 an existing file is replaced without the question when .png was added
+file: src/ui/window.c
+test: ui-0005 ui-0001
+--- find
+  if (strcmp (req->path, chosen) != 0 && g_file_test (req->path, G_FILE_TEST_EXISTS))
+--- replace
+  if (0)
+
+=== REQ-0005-14 the JPEG quality of the settings does not reach Save
+file: src/ui/window.c
+test: ui-0005
+--- find
+save_format (path), self->settings.jpeg_quality
+--- replace
+save_format (path), 90

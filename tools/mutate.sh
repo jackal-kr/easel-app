@@ -1,0 +1,148 @@
+#!/usr/bin/env bash
+# Mutation tool: puts one deliberate bug at a time into a scratch copy of the sources, builds, runs the tests that must
+# catch it, and says whether the bug was KILLED (a test failed) or SURVIVED (all passed: a hole in the tests).
+#
+#   tools/mutate.sh                 every mutant of tests/mutants.txt
+#   tools/mutate.sh REQ-0005-03     only the mutants of that requirement (several IDs may be given)
+#   MUTANTS=other.txt tools/mutate.sh   another mutant list
+#
+# The working tree is never touched: everything happens under .scratch/mutate (git-ignored), which is deleted and made
+# again at each start, so an interrupted run leaves nothing to clean up. Exit status: 0 if every mutant was killed.
+# Format of the list and how to add a mutant: docs/engineering.md, "Mutation tool".
+set -u
+cd "$(dirname "$0")/.."
+ROOT=$PWD
+MUTANTS=${MUTANTS:-tests/mutants.txt}
+SCRATCH=$ROOT/.scratch/mutate
+TREE=$SCRATCH/tree
+BUILD=$SCRATCH/build
+WANTED=("$@")
+
+[ -f "$MUTANTS" ] || { echo "no mutant list: $MUTANTS" >&2; exit 2; }
+command -v python3 >/dev/null || { echo "python3 is needed to read the mutant list" >&2; exit 2; }
+
+# The list, split into one numbered record per mutant: SCRATCH/m/N.find, N.replace and a line "N<TAB>REQ<TAB>file<TAB>tests<TAB>name"
+# in SCRATCH/index.tsv (only the wanted requirements).
+rm -rf "$SCRATCH"
+mkdir -p "$SCRATCH/m" "$TREE"
+python3 - "$MUTANTS" "$SCRATCH" "${WANTED[@]}" <<'PY' || exit 2
+import re, sys
+path, scratch, wanted = sys.argv[1], sys.argv[2], set(sys.argv[3:])
+blocks, cur, mode = [], None, None
+for raw in open(path, encoding="utf-8").read().split("\n"):
+    if mode is None and raw.startswith("#"):
+        continue
+    m = re.match(r"=== (REQ-\d{4}-\d{2}) (.+)$", raw)
+    if m:
+        cur = {"req": m.group(1), "name": m.group(2), "file": None, "test": None, "find": [], "replace": []}
+        blocks.append(cur); mode = "head"; continue
+    if cur is None:
+        continue
+    if raw == "--- find":
+        mode = "find"; continue
+    if raw == "--- replace":
+        mode = "replace"; continue
+    if mode == "head":
+        k = re.match(r"(file|test): (.+)$", raw)
+        if k:
+            cur[k.group(1)] = k.group(2).strip()
+    elif mode in ("find", "replace"):
+        if raw == "":            # a blank line ends the block: the text of a mutant has none
+            mode = None
+        else:
+            cur[mode].append(raw)
+rows = []
+for n, b in enumerate(blocks, 1):
+    for key in ("file", "test"):
+        if not b[key]:
+            sys.exit("mutant %d (%s %s): no %s:" % (n, b["req"], b["name"], key))
+    if not b["find"]:
+        sys.exit("mutant %d (%s %s): empty find text" % (n, b["req"], b["name"]))
+    if wanted and b["req"] not in wanted:
+        continue
+    open("%s/m/%d.find" % (scratch, n), "w", encoding="utf-8").write("\n".join(b["find"]))
+    open("%s/m/%d.replace" % (scratch, n), "w", encoding="utf-8").write("\n".join(b["replace"]))
+    rows.append("%d\t%s\t%s\t%s\t%s" % (n, b["req"], b["file"], b["test"], b["name"]))
+open(scratch + "/index.tsv", "w", encoding="utf-8").write("\n".join(rows) + ("\n" if rows else ""))
+if wanted and not rows:
+    sys.exit("no mutant for: " + " ".join(sorted(wanted)))
+PY
+
+# One copy of the sources and one build directory, reused by every mutant: only the mutated file is built again.
+rsync -a --exclude /build --exclude /builddir --exclude /.git --exclude /.scratch --exclude /.cache --exclude /docs \
+      --exclude /.claude --exclude /.vscode ./ "$TREE/" || exit 2
+echo "building the scratch copy ..."
+meson setup "$BUILD" "$TREE" >"$SCRATCH/setup.log" 2>&1 || { cat "$SCRATCH/setup.log"; exit 2; }
+ninja -C "$BUILD" >"$SCRATCH/build.log" 2>&1 || { tail -20 "$SCRATCH/build.log"; echo "the unmodified sources do not build" >&2; exit 2; }
+
+# The tests of a mutant, by their meson names, one meson call for the lot (without a rebuild: ninja has built them).
+run_tests () {
+  local t
+  for t in $1; do                       # one after the other: the first test that fails is the kill, the rest are spared
+    if ! meson test -C "$BUILD" --no-rebuild --print-errorlogs "$t" >"$SCRATCH/test.log" 2>&1; then
+      FAILED_TEST=$t
+      return 1
+    fi
+  done
+}
+
+# Which case of the failing test died, and what it said. A GTest case prints "not ok /path - message". A core test prints
+# "file:line: CHECK failed: ..." and the case is the function around that line. A crash prints neither, so the case is the
+# one after the last "ok" line.
+why_failed () {
+  local line loc func last
+  line=$(grep -m1 -E '^not ok ' "$SCRATCH/test.log")
+  if [ -z "$line" ]; then
+    line=$(grep -m1 -E 'CHECK failed' "$SCRATCH/test.log")
+    if [ -n "$line" ]; then
+      loc=${line%%: CHECK failed*}                      # ../tree/tests/core/test-resize.c:135
+      func=$(awk -v n="${loc##*:}" 'NR <= n && /^[a-z_0-9]+ \(void\)$/ { f = $1 } END { print f }' "$TREE/${loc%:*}" 2>/dev/null)
+      [ -n "$func" ] && line="case $func: $line"
+    fi
+  fi
+  if [ -z "$line" ]; then
+    line=$(grep -m1 -E 'killed by|TIMEOUT|Segmentation|Abort|failed|ERROR' "$SCRATCH/test.log")
+    last=$(grep -E '^ok [0-9]+ ' "$SCRATCH/test.log" | tail -1)
+    [ -n "$last" ] && line="the case after \"$last\" died: $line"
+  fi
+  [ -n "$line" ] || line="(no message; see $SCRATCH/test.log)"
+  printf '%s' "$line" | cut -c1-230
+}
+
+killed=0; survived=0; errors=0
+FAILED_TEST=
+reason=
+total_start=$(date +%s)
+while IFS=$'\t' read -r n req file tests name; do
+  start=$(date +%s)
+  target=$TREE/$file
+  cp "$target" "$SCRATCH/original"
+  verdict=$(python3 - "$target" "$SCRATCH/m/$n.find" "$SCRATCH/m/$n.replace" <<'PY'
+import sys
+target, fpath, rpath = sys.argv[1:4]
+text = open(target, encoding="utf-8").read()
+find = open(fpath, encoding="utf-8").read()
+count = text.count(find)
+if count != 1:
+    print("ERROR the text to find occurs %d times, not once" % count)
+    sys.exit(0)
+open(target, "w", encoding="utf-8").write(text.replace(find, open(rpath, encoding="utf-8").read(), 1))
+print("OK")
+PY
+)
+  if [ "$verdict" != "OK" ]; then
+    result="ERROR   ($verdict)"; errors=$((errors + 1))
+  elif ! ninja -C "$BUILD" >"$SCRATCH/build.log" 2>&1; then
+    result="ERROR   (the mutant does not build)"; errors=$((errors + 1))
+  elif run_tests "$tests"; then
+    result="SURVIVED"; survived=$((survived + 1))
+  else
+    result="killed"; killed=$((killed + 1)); reason="by $FAILED_TEST: $(why_failed)"
+  fi
+  cp "$SCRATCH/original" "$target"          # the original text back, before the next mutant
+  printf '%-9s %s  %s  (%d s)\n' "$result" "$req" "$name" $(( $(date +%s) - start ))
+  [ "$result" = killed ] && printf '          %s\n' "$reason"
+done < "$SCRATCH/index.tsv"
+
+echo "$((killed + survived + errors)) mutants: $killed killed, $survived survived, $errors errors in $(( $(date +%s) - total_start )) s"
+[ "$survived" -eq 0 ] && [ "$errors" -eq 0 ]
