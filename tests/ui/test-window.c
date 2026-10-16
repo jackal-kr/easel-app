@@ -12,6 +12,7 @@
 #include "application.h"
 #include "canvas.h"
 #include "palette-bar.h"
+#include "picture-file.h"
 #include "palette-file.h"
 #include "status-bar.h"
 #include "settings-file.h"
@@ -4008,6 +4009,447 @@ as13_command_line_error (void)
   write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
 }
 
+/* ---- 0005: Save and Save As ---- */
+
+static gboolean
+file_starts_with (const char *path, const guint8 *magic, gsize n)
+{
+  g_autofree char *contents = NULL;
+  gsize len;
+
+  return g_file_get_contents (path, &contents, &len, NULL) && len >= n && memcmp (contents, magic, n) == 0;
+}
+
+static const guint8 jpeg_magic[] = { 0xFF, 0xD8, 0xFF };
+static const guint8 png_magic[] = { 0x89, 'P', 'N', 'G' };
+
+/* REQ-0005-10: the extension decides; the names that cannot be saved give one error and write nothing. */
+static void
+as9_unknown_extension_error (void)
+{
+  static const char *bad[] = { "c.gif", "d.xyz", "report 2024.05.10", "e.jpg.bak" };
+  EaselWindow *win = start_window ();
+  g_autofree char *dir = g_dir_make_tmp ("easel-ui-XXXXXX", NULL);
+  g_autofree char *title = NULL;
+  g_autofree char *base = NULL;
+
+  wait_for_layout (win);
+  use_pencil (win);
+  A_STROKE (win);
+  title = g_strdup (gtk_window_get_title (GTK_WINDOW (win)));
+  for (gsize i = 0; i < G_N_ELEMENTS (bad); i++)
+    {
+      g_autofree char *path = g_build_filename (dir, bad[i], NULL);
+      AdwAlertDialog *dialog;
+
+      easel_window_save_chosen (win, path);
+      wait_for_dialogs (win, 1);
+      dialog = open_alert (win);
+      g_assert_cmpstr (adw_alert_dialog_get_heading (dialog), ==, "Cannot Save This Kind of File");
+      g_assert_cmpstr (adw_alert_dialog_get_body (dialog), ==, "Pictures can be saved as PNG, JPEG, BMP, TIFF or WebP.");
+      adw_dialog_close (ADW_DIALOG (dialog));
+      wait_for_dialogs (win, 0);
+      g_assert_false (g_file_test (path, G_FILE_TEST_EXISTS));
+      g_assert_true (easel_window_get_modified (win));
+      g_assert_cmpstr (gtk_window_get_title (GTK_WINDOW (win)), ==, title);
+    }
+
+  /* Names without an extension get .png; the others are written in their format. */
+  base = g_build_filename (dir, "b", NULL);
+  easel_window_save_chosen (win, base);
+  {
+    g_autofree char *png = g_build_filename (dir, "b.png", NULL);
+
+    g_assert_true (file_starts_with (png, png_magic, sizeof png_magic));
+    g_assert_cmpstr (gtk_window_get_title (GTK_WINDOW (win)), ==, "b.png – Easel");
+  }
+  {
+    g_autofree char *upper = g_build_filename (dir, "E.JPG", NULL);
+
+    easel_window_save_chosen (win, upper);
+    g_assert_true (file_starts_with (upper, jpeg_magic, sizeof jpeg_magic));
+  }
+  close_windows ();
+}
+
+/* REQ-0005-11: a save in any format clears the modified mark; the picture in the window keeps its transparency. */
+static void
+as10_save_clears_modified (void)
+{
+  static const char *names[] = { "a.png", "a.jpg", "a.bmp", "a.tif", "a.webp" };
+  EaselWindow *win = start_window ();
+  g_autofree char *dir = g_dir_make_tmp ("easel-ui-XXXXXX", NULL);
+
+  wait_for_layout (win);
+  use_pencil (win);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "swap-colors", NULL);    /* the stroke is yellow on yellow...  */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "swap-colors", NULL);
+  for (gsize i = 0; i < G_N_ELEMENTS (names); i++)
+    {
+      g_autofree char *path = g_build_filename (dir, names[i], NULL);
+      g_autofree char *title = g_strdup_printf ("%s – Easel", names[i]);
+      g_autofree char *dirty = g_strdup_printf ("• %s – Easel", names[i]);
+
+      stroke (win, 3.5, 3.5 + (double) i, 9.5, 3.5 + (double) i);
+      g_assert_true (easel_window_get_modified (win));
+      easel_window_save_chosen (win, path);
+      g_assert_true (g_file_test (path, G_FILE_TEST_EXISTS));
+      g_assert_false (easel_window_get_modified (win));
+      g_assert_cmpstr (gtk_window_get_title (GTK_WINDOW (win)), ==, title);
+      /* Undo goes to before the saved state: modified again, and the mark is the bullet. */
+      g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+      g_assert_cmpstr (gtk_window_get_title (GTK_WINDOW (win)), ==, dirty);
+      g_action_group_activate_action (G_ACTION_GROUP (win), "redo", NULL);
+      g_assert_cmpstr (gtk_window_get_title (GTK_WINDOW (win)), ==, title);
+    }
+  close_windows ();
+}
+
+/* REQ-0005-12: Save As, with its dialog, its replace question, and a failure that changes nothing. */
+static void
+as11_save_as (void)
+{
+  EaselWindow *win = start_window ();
+  g_autofree char *start = fixture_copy ("rgba.png");
+  g_autofree char *dir = g_path_get_dirname (start);
+  g_autofree char *jpg = g_build_filename (dir, "b.jpg", NULL);
+  g_autofree char *png = g_build_filename (dir, "b.png", NULL);
+  g_autofree char *plain = g_build_filename (dir, "b", NULL);
+
+  wait_for_layout (win);
+  open_and_wait (win, start);
+  use_pencil (win);
+  stroke (win, 1.5, 1.5, 3.5, 1.5);
+
+  /* The dialog is titled "Save Picture As" and suggests the file's name. */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "save-as", NULL);
+  wait_for_layout (win);
+  {
+    GtkWindow *chooser = other_toplevel (win);
+
+    g_assert_nonnull (chooser);
+    g_assert_cmpstr (gtk_window_get_title (chooser), ==, "Save Picture As");
+    gtk_window_close (chooser);
+  }
+  wait_for_layout (win);
+  g_assert_cmpstr (gtk_window_get_title (GTK_WINDOW (win)), ==, "• rgba.png – Easel");        /* cancelled: nothing changed */
+  g_assert_true (easel_window_get_modified (win));
+
+  /* A typed b.jpg: written as JPEG, and from now on it is the picture's file. */
+  easel_window_save_chosen (win, jpg);
+  g_assert_true (file_starts_with (jpg, jpeg_magic, sizeof jpeg_magic));
+  g_assert_cmpstr (gtk_window_get_title (GTK_WINDOW (win)), ==, "b.jpg – Easel");
+  g_assert_false (easel_window_get_modified (win));
+  stroke (win, 1.5, 2.5, 3.5, 2.5);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "save", NULL);                       /* no dialog */
+  g_assert_null (other_toplevel (win));
+  g_assert_false (easel_window_get_modified (win));
+  g_assert_cmpstr (gtk_window_get_title (GTK_WINDOW (win)), ==, "b.jpg – Easel");
+
+  /* A typed name without an extension: b.png, and an existing one asks (REQ-0001-42). */
+  g_assert_true (g_file_set_contents (png, "old", -1, NULL));
+  easel_window_save_chosen (win, plain);
+  wait_for_dialogs (win, 1);
+  g_assert_cmpstr (adw_alert_dialog_get_heading (open_alert (win)), ==, "Replace “b.png”?");
+  respond (win, "cancel");
+  wait_for_layout (win);
+  {
+    g_autofree char *contents = NULL;
+
+    g_assert_true (g_file_get_contents (png, &contents, NULL, NULL));
+    g_assert_cmpstr (contents, ==, "old");
+  }
+  g_assert_cmpstr (gtk_window_get_title (GTK_WINDOW (win)), ==, "b.jpg – Easel");
+  easel_window_save_chosen (win, plain);
+  wait_for_dialogs (win, 1);
+  respond (win, "replace");
+  wait_for_layout (win);                                   /* the answer reaches the save on the next iteration */
+  g_assert_true (file_starts_with (png, png_magic, sizeof png_magic));
+  g_assert_cmpstr (gtk_window_get_title (GTK_WINDOW (win)), ==, "b.png – Easel");
+
+  /* A typed b.jpg that exists: the app asks nothing more (the system dialog has asked already). */
+  stroke (win, 1.5, 3.5, 3.5, 3.5);
+  easel_window_save_chosen (win, jpg);
+  g_assert_cmpint (count_alert_dialogs (GTK_WIDGET (win), &(AdwDialog *) { NULL }), ==, 0);
+  g_assert_cmpstr (gtk_window_get_title (GTK_WINDOW (win)), ==, "b.jpg – Easel");
+  close_windows ();
+}
+
+/* REQ-0005-02: the file actions do nothing while any dialog or prompt is open, and end a stroke or cancel a resize drag
+   first. */
+static void
+as15_actions_ignored_and_stroke_ended (void)
+{
+  static const char *actions[] = { "new", "open", "save-as" };
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  EaselPaletteBar *bar = easel_window_get_palette_bar (win);
+  g_autofree char *dir = g_dir_make_tmp ("easel-ui-XXXXXX", NULL);
+  g_autofree char *path = g_build_filename (dir, "a.png", NULL);
+  const EaselImage *before = easel_window_get_picture (win);
+  double x, y;
+
+  wait_for_layout (win);
+  use_pencil (win);
+  A_STROKE (win);
+
+  /* The color chooser is open: nothing happens (REQ-0003-14). */
+  easel_palette_bar_press (bar, 17, 1, 1);
+  easel_palette_bar_press (bar, 17, 1, 2);
+  g_assert_true (easel_window_is_choosing_color (win));
+  for (gsize i = 0; i < G_N_ELEMENTS (actions); i++)
+    g_action_group_activate_action (G_ACTION_GROUP (win), actions[i], NULL);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "save", NULL);
+  wait_for_layout (win);
+  g_assert_cmpint (count_alert_dialogs (GTK_WIDGET (win), &(AdwDialog *) { NULL }), ==, 0);
+  g_assert_false (other_toplevel (win) != NULL && GTK_IS_FILE_CHOOSER (other_toplevel (win)));   /* no file dialog */
+  g_assert_true (easel_window_get_picture (win) == before);
+  g_assert_true (easel_window_get_modified (win));
+  choose (win, NULL);
+
+  /* The New prompt is open: the other actions do nothing, and no second prompt comes. */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "new", NULL);
+  wait_for_dialogs (win, 1);
+  for (gsize i = 0; i < G_N_ELEMENTS (actions); i++)
+    g_action_group_activate_action (G_ACTION_GROUP (win), actions[i], NULL);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "save", NULL);
+  wait_for_layout (win);
+  g_assert_cmpint (count_alert_dialogs (GTK_WIDGET (win), &(AdwDialog *) { NULL }), ==, 1);
+  g_assert_null (other_toplevel (win));
+  /* Quit opens no second prompt: libadwaita closes the open one as Cancel, and the window and the picture stay. */
+  gtk_window_close (GTK_WINDOW (win));
+  wait_for_layout (win);
+  wait_for_dialogs (win, 0);
+  g_assert_cmpint (count_alert_dialogs (GTK_WIDGET (win), &(AdwDialog *) { NULL }), ==, 0);
+  g_assert_true (gtk_widget_get_visible (GTK_WIDGET (win)));
+  g_assert_true (easel_window_get_picture (win) == before);
+  g_assert_true (easel_window_get_modified (win));
+
+  /* A stroke in progress: Save ends it and saves it (REQ-0001-33); New ends it, and asks. */
+  easel_window_save_chosen (win, path);
+  easel_canvas_press (canvas, 1, 3.5, 9.5);
+  easel_canvas_motion (canvas, 9.5, 9.5);
+  g_assert_true (easel_canvas_is_stroking (canvas));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "save", NULL);
+  g_assert_false (easel_canvas_is_stroking (canvas));
+  g_assert_false (easel_window_get_modified (win));                        /* the stroke is in the saved file */
+  easel_canvas_release (canvas, 1);
+  easel_canvas_press (canvas, 1, 3.5, 12.5);
+  easel_canvas_motion (canvas, 9.5, 12.5);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "new", NULL);
+  g_assert_false (easel_canvas_is_stroking (canvas));
+  wait_for_dialogs (win, 1);
+  respond (win, "cancel");
+  easel_canvas_release (canvas, 1);
+  g_assert_true (easel_window_get_picture (win) == before);
+  g_assert_cmphex (easel_image_get (before, 5, 12), ==, 0xFFFF0000u);         /* the ended stroke is kept (red: the swatch picked above) */
+
+  /* A resize drag: Open cancels it first, and the picture keeps its size. */
+  handle_center (canvas, EASEL_HANDLE_CORNER, &x, &y);
+  easel_canvas_press (canvas, 1, x, y);
+  easel_canvas_motion (canvas, x + 40, y + 40);
+  g_assert_true (easel_canvas_is_resizing (canvas));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "open", NULL);
+  g_assert_false (easel_canvas_is_resizing (canvas));
+  wait_for_layout (win);
+  /* The prompt comes first, since the stroke made the picture modified again; answer and close the dialog's remains. */
+  wait_for_dialogs (win, 1);
+  respond (win, "cancel");
+  easel_canvas_release (canvas, 1);
+  assert_size (win, 300, 200);
+  close_windows ();
+}
+
+/* REQ-0005-12: a Save As that fails keeps the file, the title and the modified state. */
+static void
+as11_save_as_fails (void)
+{
+  EaselWindow *win = start_window ();
+  g_autofree char *start = fixture_copy ("rgba.png");
+  g_autofree char *dir = g_path_get_dirname (start);
+  g_autofree char *target = g_build_filename (dir, "x.jpg", NULL);
+
+  if (geteuid () == 0)
+    {
+      g_test_skip ("root ignores folder permissions");
+      close_windows ();
+      return;
+    }
+  wait_for_layout (win);
+  open_and_wait (win, start);
+  use_pencil (win);
+  stroke (win, 1.5, 1.5, 3.5, 1.5);
+  g_assert_cmpint (g_chmod (dir, 0500), ==, 0);
+  easel_window_save_chosen (win, target);
+  wait_for_dialogs (win, 1);
+  g_assert_cmpstr (adw_alert_dialog_get_heading (open_alert (win)), ==, "Could Not Save “x.jpg”");
+  g_assert_cmpstr (gtk_window_get_title (GTK_WINDOW (win)), ==, "• rgba.png – Easel");
+  g_assert_true (easel_window_get_modified (win));
+  g_chmod (dir, 0700);
+  adw_dialog_close (ADW_DIALOG (open_alert (win)));
+  wait_for_dialogs (win, 0);
+  close_windows ();
+}
+
+/* REQ-0005-13: Save writes the file in its own format without asking; a file with no saveable extension asks. */
+static void
+as12_save_keeps_format (void)
+{
+  EaselWindow *win = start_window ();
+  g_autofree char *jpg = fixture_copy ("flat.jpg");
+  g_autofree char *gif = fixture_copy ("transparent.gif");
+  g_autofree char *dat = fixture_copy ("named.dat");
+
+  wait_for_layout (win);
+  use_pencil (win);
+  open_and_wait (win, jpg);
+  stroke (win, 2.5, 2.5, 6.5, 2.5);
+  g_assert_true (easel_window_get_modified (win));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "save", NULL);
+  g_assert_null (other_toplevel (win));                                  /* no dialog */
+  g_assert_false (easel_window_get_modified (win));
+  g_assert_true (file_starts_with (jpg, jpeg_magic, sizeof jpeg_magic));
+  {
+    g_autofree char *contents = NULL;
+    gsize len;
+    g_autoptr (GError) error = NULL;
+    g_autoptr (GdkPixbuf) pb = gdk_pixbuf_new_from_file (jpg, &error);
+
+    g_assert_no_error (error);
+    g_assert_cmpint (gdk_pixbuf_get_width (pb), ==, 16);
+    g_assert_true (g_file_get_contents (jpg, &contents, &len, NULL));
+  }
+
+  /* A GIF, and a PNG named .dat, cannot be saved in place: Save is a Save As with a .png suggestion. */
+  open_and_wait (win, gif);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "save", NULL);
+  wait_for_layout (win);
+  {
+    GtkWindow *chooser = other_toplevel (win);
+    g_autofree char *name = NULL;
+
+    g_assert_nonnull (chooser);
+    g_assert_true (GTK_IS_FILE_CHOOSER (chooser));
+    G_GNUC_BEGIN_IGNORE_DEPRECATIONS   /* the in-process chooser is the only way to read its suggested name */
+    name = gtk_file_chooser_get_current_name (GTK_FILE_CHOOSER (chooser));
+    G_GNUC_END_IGNORE_DEPRECATIONS
+    g_assert_cmpstr (name, ==, "transparent.png");
+    g_assert_cmpstr (gtk_window_get_title (chooser), ==, "Save Picture As");
+    gtk_window_close (chooser);
+  }
+  wait_for_layout (win);
+  open_and_wait (win, dat);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "save", NULL);
+  wait_for_layout (win);
+  {
+    GtkWindow *chooser = other_toplevel (win);
+    g_autofree char *name = NULL;
+
+    g_assert_nonnull (chooser);
+    G_GNUC_BEGIN_IGNORE_DEPRECATIONS   /* the in-process chooser is the only way to read its suggested name */
+    name = gtk_file_chooser_get_current_name (GTK_FILE_CHOOSER (chooser));
+    G_GNUC_END_IGNORE_DEPRECATIONS
+    g_assert_cmpstr (name, ==, "named.png");
+    gtk_window_close (chooser);
+  }
+  wait_for_layout (win);
+  close_windows ();
+}
+
+/* REQ-0005-14: the quality of the settings file reaches the JPEG that Save writes. */
+static void
+as16_quality_setting_reaches_save (void)
+{
+  static const int qualities[] = { 5, 100 };
+  g_autofree char *dir = g_dir_make_tmp ("easel-ui-XXXXXX", NULL);
+  g_autofree char *noise = g_build_filename (dir, "noise.png", NULL);
+  gsize sizes[2];
+  EaselImage *img = easel_image_new (64, 64, 0xFF000000u);
+  g_autoptr (GError) error = NULL;
+
+  for (int y = 0; y < 64; y++)
+    for (int x = 0; x < 64; x++)
+      img->px[y * 64 + x] = 0xFF000000u | (uint32_t) ((x * 37 + y * 11) % 256) << 16 | (uint32_t) ((x * 5 + y * 53) % 256) << 8
+                            | (uint32_t) ((x * y) % 256);
+  g_assert_true (easel_picture_save (img, noise, EASEL_FORMAT_PNG, 90, &error));
+  easel_image_free (img);
+
+  for (gsize i = 0; i < 2; i++)
+    {
+      g_autofree char *settings = g_strdup_printf ("[new-picture]\nwidth=300\nheight=200\n[save]\njpeg-quality=%d\n", qualities[i]);
+      g_autofree char *jpg = g_build_filename (dir, i == 0 ? "low.jpg" : "high.jpg", NULL);
+      g_autofree char *contents = NULL;
+      EaselWindow *win;
+
+      write_settings (settings);
+      win = start_window ();
+      wait_for_layout (win);
+      open_and_wait (win, noise);
+      easel_window_save_chosen (win, jpg);
+      g_assert_true (g_file_get_contents (jpg, &contents, &sizes[i], NULL));
+      close_windows ();
+    }
+  g_assert_cmpuint (sizes[0], <, sizes[1]);
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* A format that is not installed: the save fails with gdk-pixbuf's reason, the old file keeps its bytes and the picture
+   keeps its file, title and modified state (REQ-0001-31, Plan "A missing loader or saver"). */
+static void
+missing_saver_error_dialog (void)
+{
+  EaselWindow *win = start_window ();
+  g_autofree char *dir = g_dir_make_tmp ("easel-ui-XXXXXX", NULL);
+  g_autofree char *path = g_build_filename (dir, "a.webp", NULL);
+  g_autofree char *contents = NULL;
+  AdwAlertDialog *dialog;
+
+  wait_for_layout (win);
+  use_pencil (win);
+  A_STROKE (win);
+  g_assert_true (g_file_set_contents (path, "old webp", -1, NULL));
+  easel_picture_file_hide_format ("webp");
+  easel_window_save_chosen (win, path);
+  easel_picture_file_hide_format (NULL);
+  wait_for_dialogs (win, 1);
+  dialog = open_alert (win);
+  g_assert_cmpstr (adw_alert_dialog_get_heading (dialog), ==, "Could Not Save “a.webp”");
+  g_assert_nonnull (g_strstr_len (adw_alert_dialog_get_body (dialog), -1, "is not supported"));
+  g_assert_true (g_file_get_contents (path, &contents, NULL, NULL));
+  g_assert_cmpstr (contents, ==, "old webp");
+  g_assert_true (easel_window_get_modified (win));
+  g_assert_cmpstr (gtk_window_get_title (GTK_WINDOW (win)), ==, "• Untitled – Easel");
+  adw_dialog_close (ADW_DIALOG (dialog));
+  wait_for_dialogs (win, 0);
+  close_windows ();
+}
+
+/* REQ-0005-16: after Save As the saved state is the new file's; undoing to before it is modified again. */
+static void
+as14_save_as_moves_the_saved_state (void)
+{
+  EaselWindow *win = start_window ();
+  g_autofree char *dir = g_dir_make_tmp ("easel-ui-XXXXXX", NULL);
+  g_autofree char *a = g_build_filename (dir, "a.png", NULL);
+  g_autofree char *b = g_build_filename (dir, "b.bmp", NULL);
+
+  wait_for_layout (win);
+  use_pencil (win);
+  A_STROKE (win);
+  easel_window_save_chosen (win, a);
+  stroke (win, 3.5, 6.5, 9.5, 6.5);
+  easel_window_save_chosen (win, b);                      /* the saved state is now after the second stroke */
+  g_assert_false (easel_window_get_modified (win));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_true (easel_window_get_modified (win));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "redo", NULL);
+  g_assert_false (easel_window_get_modified (win));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_true (easel_window_get_modified (win));
+  close_windows ();
+}
+
 int
 main (int argc, char **argv)
 {
@@ -4079,6 +4521,15 @@ main (int argc, char **argv)
   g_test_add_func ("/0005/as17_too_big_dialog", as17_too_big_dialog);
   g_test_add_func ("/0005/as14_saved_state_across_open_and_save_as", as14_saved_state_across_open_and_save_as);
   g_test_add_func ("/0005/as15_quit_around_open", as15_quit_around_open);
+  g_test_add_func ("/0005/as15_actions_ignored_and_stroke_ended", as15_actions_ignored_and_stroke_ended);
+  g_test_add_func ("/0005/as9_unknown_extension_error", as9_unknown_extension_error);
+  g_test_add_func ("/0005/as10_save_clears_modified", as10_save_clears_modified);
+  g_test_add_func ("/0005/as11_save_as", as11_save_as);
+  g_test_add_func ("/0005/as11_save_as_fails", as11_save_as_fails);
+  g_test_add_func ("/0005/as12_save_keeps_format", as12_save_keeps_format);
+  g_test_add_func ("/0005/as16_quality_setting_reaches_save", as16_quality_setting_reaches_save);
+  g_test_add_func ("/0005/missing_saver_error_dialog", missing_saver_error_dialog);
+  g_test_add_func ("/0005/as14_save_as_moves_the_saved_state", as14_save_as_moves_the_saved_state);
   g_test_add_func ("/0005/as13_command_line", as13_command_line);
   g_test_add_func ("/0005/as13_command_line_error", as13_command_line_error);
   g_test_add_func ("/0005/as2_new_picture", as2_new_picture);

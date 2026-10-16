@@ -40,6 +40,18 @@ format_of_extension (const char *ext)
   return EASEL_FORMAT_UNKNOWN;
 }
 
+EaselFormat
+easel_format_of_name (const char *path)
+{
+  const char *slash = strrchr (path, '/');
+  const char *name = slash ? slash + 1 : path;
+  const char *dot = strrchr (name, '.');
+
+  if (dot == NULL || dot == name || dot[1] == '\0')
+    return EASEL_FORMAT_UNKNOWN;
+  return format_of_extension (dot + 1);
+}
+
 EaselFormatResult
 easel_format_fix_name (const char *path, char **fixed, EaselFormat *format)
 {

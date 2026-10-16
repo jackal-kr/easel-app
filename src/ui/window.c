@@ -217,6 +217,16 @@ show_save_error (EaselWindow *self, const char *heading, const char *body)
   adw_dialog_present (dialog, GTK_WIDGET (self));
 }
 
+/* The format a file is written in: that of its extension, PNG if the extension says nothing (the callers have fixed the
+   name or checked it). */
+static EaselFormat
+save_format (const char *path)
+{
+  EaselFormat format = easel_format_of_name (path);
+
+  return format == EASEL_FORMAT_UNKNOWN ? EASEL_FORMAT_PNG : format;
+}
+
 gboolean
 easel_window_save_to (EaselWindow *self, const char *path)
 {
@@ -224,7 +234,7 @@ easel_window_save_to (EaselWindow *self, const char *path)
 
   if (self->picture == NULL)
     return FALSE;
-  if (!easel_picture_save (self->picture, path, EASEL_FORMAT_PNG, 90, &error))
+  if (!easel_picture_save (self->picture, path, save_format (path), self->settings.jpeg_quality, &error))
     {
       g_autofree char *name = g_path_get_basename (path);
       g_autofree char *heading = g_strdup_printf ("Could Not Save “%s”", name);
@@ -291,29 +301,17 @@ ask_replace (SaveRequest *req)
                            (GAsyncReadyCallback) on_replace_response, req);
 }
 
+/* The name the user typed or chose, with the rules of REQ-0005-10 and REQ-0001-42; ends the request. */
 static void
-on_save_dialog_done (GtkFileDialog *dialog, GAsyncResult *result, SaveRequest *req)
+save_chosen (SaveRequest *req, const char *chosen)
 {
-  g_autoptr (GFile) file = gtk_file_dialog_save_finish (dialog, result, NULL);
-  g_autofree char *chosen = file ? g_file_get_path (file) : NULL;
   char *fixed = NULL;
   EaselFormat format;
 
-  req->self->save_dialog_open = FALSE;
-
-  /* Cancelled: nothing is saved and nothing changes (REQ-0001-32). */
-  if (chosen == NULL)
-    {
-      save_request_finish (req, FALSE);
-      return;
-    }
-
-  /* Only PNG can be saved until T011 of 0005 brings the other formats. */
   switch (easel_format_fix_name (chosen, &fixed, &format))
     {
     case EASEL_FORMAT_UNKNOWN_EXTENSION:
-      show_save_error (req->self, "Only PNG Can Be Saved",
-                       "This version of Easel saves pictures as PNG only. Choose a name ending in .png.");
+      show_save_error (req->self, "Cannot Save This Kind of File", "Pictures can be saved as PNG, JPEG, BMP, TIFF or WebP.");
       save_request_finish (req, FALSE);
       return;
     case EASEL_FORMAT_NO_MEMORY:
@@ -323,17 +321,11 @@ on_save_dialog_done (GtkFileDialog *dialog, GAsyncResult *result, SaveRequest *r
     case EASEL_FORMAT_OK:
       break;
     }
-  if (format != EASEL_FORMAT_PNG)
-    {
-      free (fixed);
-      show_save_error (req->self, "Only PNG Can Be Saved",
-                       "This version of Easel saves pictures as PNG only. Choose a name ending in .png.");
-      save_request_finish (req, FALSE);
-      return;
-    }
 
   req->path = g_strdup (fixed);
   free (fixed);
+  /* The system's dialog confirmed the name as typed; once .png is added, an existing file needs its own question
+     (REQ-0001-42). */
   if (strcmp (req->path, chosen) != 0 && g_file_test (req->path, G_FILE_TEST_EXISTS))
     {
       ask_replace (req);
@@ -342,12 +334,52 @@ on_save_dialog_done (GtkFileDialog *dialog, GAsyncResult *result, SaveRequest *r
   save_request_finish (req, easel_window_save_to (req->self, req->path));
 }
 
-/* Saves to the picture's file, or asks for one first (REQ-0001-27, REQ-0001-29). done may be NULL. */
 static void
-save (EaselWindow *self, SaveDone done)
+on_save_dialog_done (GtkFileDialog *dialog, GAsyncResult *result, SaveRequest *req)
+{
+  g_autoptr (GFile) file = gtk_file_dialog_save_finish (dialog, result, NULL);
+  g_autofree char *chosen = file ? g_file_get_path (file) : NULL;
+
+  req->self->save_dialog_open = FALSE;
+
+  /* Cancelled: nothing is saved and nothing changes (REQ-0001-32). */
+  if (chosen == NULL)
+    {
+      save_request_finish (req, FALSE);
+      return;
+    }
+  save_chosen (req, chosen);
+}
+
+void
+easel_window_save_chosen (EaselWindow *self, const char *path)
+{
+  SaveRequest *req = g_new0 (SaveRequest, 1);
+
+  req->self = g_object_ref (self);
+  save_chosen (req, path);
+}
+
+/* The name the dialog suggests for a file that cannot be saved in place: its name without the extension, plus .png
+   (REQ-0005-13). */
+static char *
+png_name_for (const char *path)
+{
+  const char *slash = strrchr (path, '/');
+  const char *name = slash ? slash + 1 : path;
+  const char *dot = strrchr (name, '.');
+  gsize stem = (dot == NULL || dot == name) ? strlen (path) : (gsize) (dot - path);
+
+  return g_strdup_printf ("%.*s.png", (int) stem, path);
+}
+
+/* Saves to the picture's file, or asks for one first (REQ-0001-27, REQ-0001-29, REQ-0005-13). With as_new, always asks
+   (Save As). A file whose extension cannot be saved is asked about too, suggesting a .png. done may be NULL. */
+static void
+save (EaselWindow *self, SaveDone done, gboolean as_new)
 {
   g_autoptr (GtkFileDialog) dialog = NULL;
-  g_autoptr (GFile) folder = NULL;
+  g_autoptr (GFile) suggestion = NULL;
   const char *pictures = g_get_user_special_dir (G_USER_DIRECTORY_PICTURES);
   SaveRequest *req;
 
@@ -355,7 +387,7 @@ save (EaselWindow *self, SaveDone done)
   easel_canvas_end_stroke (self->canvas);
   easel_canvas_cancel_resize (self->canvas);
 
-  if (self->path != NULL)
+  if (!as_new && self->path != NULL && easel_format_of_name (self->path) != EASEL_FORMAT_UNKNOWN)
     {
       gboolean saved = easel_window_save_to (self, self->path);
 
@@ -377,9 +409,24 @@ save (EaselWindow *self, SaveDone done)
   req->done = done;
 
   dialog = gtk_file_dialog_new ();
-  folder = g_file_new_for_path (pictures ? pictures : g_get_home_dir ());
-  gtk_file_dialog_set_initial_folder (dialog, folder);
-  gtk_file_dialog_set_initial_name (dialog, "Untitled.png");
+  if (self->path != NULL)
+    {
+      /* The file's own name, or its name as a .png when it cannot be written as it is. */
+      g_autofree char *suggested = easel_format_of_name (self->path) != EASEL_FORMAT_UNKNOWN ? g_strdup (self->path)
+                                                                                              : png_name_for (self->path);
+
+      suggestion = g_file_new_for_path (suggested);
+      gtk_file_dialog_set_title (dialog, "Save Picture As");
+      gtk_file_dialog_set_initial_file (dialog, suggestion);
+    }
+  else
+    {
+      suggestion = g_file_new_for_path (pictures ? pictures : g_get_home_dir ());
+      gtk_file_dialog_set_initial_folder (dialog, suggestion);
+      gtk_file_dialog_set_initial_name (dialog, "Untitled.png");
+      if (as_new)
+        gtk_file_dialog_set_title (dialog, "Save Picture As");
+    }
   self->save_dialog_open = TRUE;
   gtk_file_dialog_save (dialog, GTK_WINDOW (self), NULL, (GAsyncReadyCallback) on_save_dialog_done, req);
 }
@@ -403,7 +450,7 @@ on_prompt_response (AdwAlertDialog *dialog, const char *response, EaselWindow *s
 
   if (g_strcmp0 (response, "save") == 0)
     {
-      save (self, on_prompt_save_done);
+      save (self, on_prompt_save_done, FALSE);
       return;
     }
   self->prompt_open = FALSE;
@@ -763,7 +810,19 @@ close_activated (GSimpleAction *action, GVariant *parameter, gpointer user_data)
 static void
 save_activated (GSimpleAction *action, GVariant *parameter, gpointer user_data)
 {
-  save (EASEL_WINDOW (user_data), NULL);
+  EaselWindow *self = user_data;
+
+  if (file_action_allowed (self))
+    save (self, NULL, FALSE);
+}
+
+static void
+save_as_activated (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+  EaselWindow *self = user_data;
+
+  if (file_action_allowed (self))
+    save (self, NULL, TRUE);
 }
 
 /* The shortcuts do nothing while the quit prompt or a save, replace or error dialog is open (REQ-0002-11). */
@@ -1294,6 +1353,7 @@ static const GActionEntry win_actions[] = {
   { .name = "new", .activate = new_activated },
   { .name = "open", .activate = open_activated },
   { .name = "save", .activate = save_activated },
+  { .name = "save-as", .activate = save_as_activated },
   { .name = "undo", .activate = undo_activated },
   { .name = "redo", .activate = redo_activated },
   { .name = "swap-colors", .activate = swap_colors_activated },

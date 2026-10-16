@@ -59,7 +59,13 @@ gboolean easel_window_is_loading (EaselWindow *self);
 const char *easel_window_get_cursor_at_decode (EaselWindow *self);
 int easel_window_get_frames_before_decode (EaselWindow *self);
 
-/* Saves the picture as PNG at path without asking; on success it becomes the picture's file.
+/* What happens when the user has typed or chosen path in the save dialog (REQ-0005-10, REQ-0005-12): a name without an
+   extension gets .png, an extension that cannot be saved gives the error "Cannot Save This Kind of File", an existing
+   file whose name had .png added is asked about (REQ-0001-42), and otherwise the picture is written in the format of the
+   extension and becomes the picture's file. Test hook for the part of Save As that follows the system's dialog. */
+void easel_window_save_chosen (EaselWindow *self, const char *path);
+
+/* Saves the picture at path without asking, in the format of its extension (PNG when the extension says nothing); on success it becomes the picture's file.
    On failure shows an error and returns FALSE (REQ-0001-30, REQ-0001-31). */
 gboolean easel_window_save_to (EaselWindow *self, const char *path);
 

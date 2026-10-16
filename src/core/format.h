@@ -27,5 +27,10 @@ typedef enum
    is EASEL_FORMAT_UNKNOWN. */
 EaselFormatResult easel_format_fix_name (const char *path, char **fixed, EaselFormat *format);
 
+/* The format a file name's extension names, without changing the name: EASEL_FORMAT_UNKNOWN for no extension (as for a
+   name ending in a dot, or only a leading dot) and for an extension that cannot be saved. Used for Save, which writes an
+   existing file in the format it has (REQ-0005-13). */
+EaselFormat easel_format_of_name (const char *path);
+
 /* JPEG and BMP cannot keep transparency: they are saved flattened on white (REQ-0005-11). */
 bool easel_format_is_flat (EaselFormat format);

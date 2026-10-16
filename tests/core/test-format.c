@@ -79,6 +79,22 @@ as9_format_by_name (void)
   expect_unknown ("/p/a.web");
 }
 
+/* REQ-0005-13: the format an existing file is saved in, from its extension alone. */
+static void
+as12_format_of_name (void)
+{
+  CHECK (easel_format_of_name ("/p/a.png") == EASEL_FORMAT_PNG);
+  CHECK (easel_format_of_name ("/p/a.JPG") == EASEL_FORMAT_JPEG);
+  CHECK (easel_format_of_name ("/p/a.tiff") == EASEL_FORMAT_TIFF);
+  CHECK (easel_format_of_name ("/p/my.dir/a.webp") == EASEL_FORMAT_WEBP);
+  CHECK (easel_format_of_name ("/p/a") == EASEL_FORMAT_UNKNOWN);            /* no extension: Save asks, it does not add one */
+  CHECK (easel_format_of_name ("/p/a.") == EASEL_FORMAT_UNKNOWN);
+  CHECK (easel_format_of_name ("/p/.png") == EASEL_FORMAT_UNKNOWN);         /* a hidden file, not an extension */
+  CHECK (easel_format_of_name ("/p/my.dir/a") == EASEL_FORMAT_UNKNOWN);
+  CHECK (easel_format_of_name ("/p/a.gif") == EASEL_FORMAT_UNKNOWN);
+  CHECK (easel_format_of_name ("/p/a.dat") == EASEL_FORMAT_UNKNOWN);
+}
+
 /* Which formats lose transparency (REQ-0005-11). */
 static void
 as10_flat_formats (void)
@@ -96,5 +112,6 @@ main (void)
   RUN (as25_save_name_rule);
   RUN (as9_format_by_name);
   RUN (as10_flat_formats);
+  RUN (as12_format_of_name);
   return 0;
 }

@@ -22,13 +22,19 @@ still apply: one source of truth for tool definitions, and no threads or caches 
 
 ### Layers and modules
 - **`src/core`** (libc only, no global state) holds the picture (`EaselImage`, straight-alpha `0xAARRGGBB`, ADR-0002),
-  pencil strokes, line clipping, view math (zoom levels, pointer to pixel), the undo history, the palette, the
-  save-name rule, and the shared syntax of the hand-editable files (`ini`: sections, keys, colors), which settings and
+  pencil strokes, line clipping, view math (zoom levels, fit zoom, pointer to pixel), the undo history, the palette,
+  the saveable formats and the save-name rule (`format`), flattening on white and the one-pass conversion of decoded
+  bytes with EXIF orientation (`image`), and the shared syntax of the hand-editable files (`ini`: sections, keys, colors), which settings and
   palette parsing build on.
 - **`src/io`** (GLib, GIO, gdk-pixbuf; never needs a display) reads and creates the settings file, reads and writes the
-  palette file, and saves PNG files. Every write is atomic (temporary file and rename), so a failure leaves the old file.
-- **`src/ui`** (GTK 4 + libadwaita) has the application, the window (template `window.ui` in a GResource), the
-  `EaselCanvas` widget and the palette bar (indicator, swap button, swatches). It turns input into core calls and draws nothing itself.
+  palette file, and opens and saves pictures (`picture-file`: PNG, JPEG, BMP, TIFF, WebP, and GIF for opening only).
+  Opening starts with a header sniffer of our own, because gdk-pixbuf's `get_file_info` decodes the whole picture
+  through glycin, and a memory pre-check, because glycin aborts the process when an allocation fails (0005 Plan).
+  Every write is atomic (temporary file and rename), so a failure leaves the old file.
+- **`src/ui`** (GTK 4 + libadwaita) has the application, the window (template `window.ui` in a GResource; it owns New,
+  Open, Save and Save As, and the one "Save Changes?" prompt that Quit, New and Open share), the `EaselCanvas` widget
+  (tiles, grid, resize handles, busy cursor), the palette bar (indicator, swap button, swatches), the status bar and
+  the Grid and Attributes dialogs. It turns input into core calls and draws nothing itself.
 
 ### Build layout
 - Meson builds each layer as a static library. `ui` is linked whole into the `easel` executable and into the ui tests.
