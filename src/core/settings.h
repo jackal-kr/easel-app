@@ -25,7 +25,7 @@ typedef struct
 {
   int width;              /* EASEL_SIZE_AUTO or 1..EASEL_SIZE_MAX */
   int height;
-  uint32_t background;    /* 0xAARRGGBB, straight alpha */
+  uint32_t background;    /* a new picture's color, `canvas-color` (or the older `background`), 0xAARRGGBB, straight alpha */
   int undo_budget_mb;     /* EASEL_UNDO_MB_MIN..EASEL_UNDO_MB_MAX (REQ-0002-18) */
   bool grid;              /* the grid starts on (REQ-0004-15) */
   int grid_size;          /* EASEL_GRID_SIZE_MIN..EASEL_GRID_SIZE_MAX picture pixels */

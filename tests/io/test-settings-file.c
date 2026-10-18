@@ -22,7 +22,7 @@ as4_creates_default_file (void)
   g_assert_cmpint (s.height, ==, EASEL_SIZE_AUTO);
   g_assert_cmphex (s.background, ==, 0xFFFFFFFFu);
   g_assert_true (g_file_get_contents (path, &contents, NULL, NULL));
-  g_assert_nonnull (g_strstr_len (contents, -1, "[new-picture]\nwidth=auto\nheight=auto\nbackground=#FFFFFF\n"));
+  g_assert_nonnull (g_strstr_len (contents, -1, "[new-picture]\nwidth=auto\nheight=auto\ncanvas-color=#FFFFFF\n"));
 }
 
 /* REQ-0004-15: a created file also holds the [view] defaults. */

@@ -64,7 +64,7 @@ const char easel_settings_default_text[] =
   "[" SECTION "]\n"
   "width=auto\n"
   "height=auto\n"
-  "background=#FFFFFF\n"
+  "canvas-color=#FFFFFF\n"
   "\n"
   "[" SECTION_HISTORY "]\n"
   "memory=512\n"
@@ -137,11 +137,21 @@ parse_rgb (EaselSpan v, uint32_t *out)
   return true;
 }
 
+/* What the parser keeps while it reads: the settings, and the picture's color under its two names, resolved at the end
+   (REQ-0001-03: a valid `canvas-color` wins, else a valid `background`, else white). */
+typedef struct
+{
+  EaselSettings *s;
+  bool has_canvas_color, has_background;
+  uint32_t canvas_color, background;
+} Parse;
+
 /* An invalid value resets the key to its default, so a later valid repeat still wins. */
 static void
 apply (EaselSpan section, EaselSpan key, EaselSpan value, void *data)
 {
-  EaselSettings *s = data;
+  Parse *p = data;
+  EaselSettings *s = p->s;
 
   if (easel_span_is (section, SECTION))
     {
@@ -149,8 +159,10 @@ apply (EaselSpan section, EaselSpan key, EaselSpan value, void *data)
         s->width = EASEL_SIZE_AUTO;
       else if (easel_span_is (key, "height") && !parse_size (value, &s->height))
         s->height = EASEL_SIZE_AUTO;
-      else if (easel_span_is (key, "background") && !easel_ini_parse_color (value, &s->background))
-        s->background = 0xFFFFFFFFu;
+      else if (easel_span_is (key, "canvas-color"))
+        p->has_canvas_color = easel_ini_parse_color (value, &p->canvas_color);
+      else if (easel_span_is (key, "background"))   /* the name before the rename (REQ-0001-03) */
+        p->has_background = easel_ini_parse_color (value, &p->background);
     }
   else if (easel_span_is (section, SECTION_HISTORY) && easel_span_is (key, "memory")
            && !parse_undo_mb (value, &s->undo_budget_mb))
@@ -201,14 +213,19 @@ void
 easel_settings_parse (const char *text, size_t len, EaselSettings *s)
 {
   EaselSettings parsed;
+  Parse p = { &parsed, false, false, 0, 0 };
 
   easel_settings_defaults (&parsed);
   /* An unparseable file gives every default (REQ-0001-05, REQ-0001-40). */
-  if (!easel_ini_parse (text, len, apply, &parsed))
+  if (!easel_ini_parse (text, len, apply, &p))
     {
       easel_settings_defaults (s);
       return;
     }
+  if (p.has_canvas_color)
+    parsed.background = p.canvas_color;
+  else if (p.has_background)
+    parsed.background = p.background;
   *s = parsed;
 }
 

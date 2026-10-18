@@ -71,10 +71,29 @@ as3_transparent_background (void)
   easel_image_free (img);
 }
 
+/* AS-39, AS-4 (REQ-0001-03 as renamed): `canvas-color` is the picture's color; the older `background` is still read; a
+   valid `canvas-color` wins over `background` in either order, and an invalid one leaves `background` to count. */
+static void
+as39_canvas_color_and_background (void)
+{
+  CHECK (parse ("[new-picture]\ncanvas-color=#0000FF\n").background == 0xFF0000FFu);
+  CHECK (parse ("[new-picture]\nbackground=#00FF00\n").background == 0xFF00FF00u);
+  CHECK (parse ("[new-picture]\ncanvas-color=#0000FF\nbackground=#00FF00\n").background == 0xFF0000FFu);
+  CHECK (parse ("[new-picture]\nbackground=#00FF00\ncanvas-color=#0000FF\n").background == 0xFF0000FFu);
+  CHECK (parse ("[new-picture]\ncanvas-color=red\nbackground=#00FF00\n").background == 0xFF00FF00u);
+  CHECK (parse ("[new-picture]\nbackground=#00FF00\ncanvas-color=red\n").background == 0xFF00FF00u);
+  CHECK (parse ("[new-picture]\ncanvas-color=transparent\n").background == 0x00000000u);
+  CHECK (parse ("[new-picture]\ncanvas-color=red\n").background == 0xFFFFFFFFu);            /* neither valid: white */
+  CHECK (parse ("").background == 0xFFFFFFFFu);
+  /* A new file names the new key and not the old one. */
+  CHECK (strstr (easel_settings_default_text, "canvas-color=#FFFFFF\n") != NULL);
+  CHECK (strstr (easel_settings_default_text, "background=") == NULL);
+}
+
 static void
 as5_invalid_value_falls_back (void)
 {
-  EaselSettings s = parse ("[new-picture]\nwidth=abc\nheight=200\nbackground=#00FF00\n");
+  EaselSettings s = parse ("[new-picture]\nwidth=abc\nheight=200\ncanvas-color=#00FF00\n");
 
   CHECK (s.width == EASEL_SIZE_AUTO);
   CHECK (s.height == 200);
@@ -309,6 +328,7 @@ main (void)
 {
   RUN (as2_auto_size_fits_area);
   RUN (as3_transparent_background);
+  RUN (as39_canvas_color_and_background);
   RUN (as4_default_text_parses_to_defaults);
   RUN (as5_invalid_value_falls_back);
   RUN (as18_budget_setting);

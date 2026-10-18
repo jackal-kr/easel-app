@@ -1538,3 +1538,35 @@ test: ui-0009
   gtk_widget_set_margin_top (GTK_WIDGET (self), EASEL_VIEW_MARGIN);
   gtk_widget_set_margin_bottom (GTK_WIDGET (self), EASEL_VIEW_MARGIN);
 --- replace
+
+# ---- the picture's color under its new name (after 0009) ----
+
+=== REQ-0001-03 canvas-color is not read (only the older background counts)
+file: src/core/settings.c
+test: core-settings
+--- find
+      else if (easel_span_is (key, "canvas-color"))
+        p->has_canvas_color = easel_ini_parse_color (value, &p->canvas_color);
+--- replace
+
+=== REQ-0001-03 background wins over a valid canvas-color
+file: src/core/settings.c
+test: core-settings
+--- find
+  if (p.has_canvas_color)
+    parsed.background = p.canvas_color;
+  else if (p.has_background)
+    parsed.background = p.background;
+--- replace
+  if (p.has_background)
+    parsed.background = p.background;
+  else if (p.has_canvas_color)
+    parsed.background = p.canvas_color;
+
+=== REQ-0001-04 a new settings file still names the old key
+file: src/core/settings.c
+test: io-settings-file core-settings
+--- find
+  "canvas-color=#FFFFFF\n"
+--- replace
+  "background=#FFFFFF\n"
