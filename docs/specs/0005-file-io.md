@@ -76,7 +76,7 @@ do any of it.
 - Open a symbolic link: it opens what it points to.
 
 ## Out of scope
-A question before Save overwrites the file of an opened picture (the owner decided on 2026-10-16 to keep XP Paint's silent save, REQ-0005-13; a lossy JPEG is re-encoded without asking; to revisit, as a setting of Preferences, 0013); recent files; drag and drop of files onto the window; opening several files or several windows; the folder choice remembered between runs; colour profiles; animated GIF frames; saving GIF; a quality dialog for JPEG; Print (0014); Paste from / Copy to file (0010); a Preferences entry for the formats (0013).
+A question before Save overwrites the file of an opened picture (the owner decided on 2026-10-16 to keep XP Paint's silent save, REQ-0005-13; a lossy JPEG is re-encoded without asking; to revisit, as a setting of Preferences); recent files; drag and drop of files onto the window; opening several files or several windows; the folder choice remembered between runs; colour profiles; animated GIF frames; saving GIF; a quality dialog for JPEG; Print (Window Extras); Paste from / Copy to file (Clipboard); a Preferences entry for the formats (Preferences).
 
 ## Open questions
 (none)
@@ -125,7 +125,7 @@ already describes.
   picture), so the option is kept for builds whose saver honours it, and what guards REQ-0005-11 is the exact round-trip
   test on noise, not the option.
 - **A missing loader or saver, for example WebP.** The six formats are what the dev machine and the Flatpak runtime
-  (0017) ship, so a missing one is a broken installation; the app still behaves sensibly and adds no strings:
+  (Packaging) ship, so a missing one is a broken installation; the app still behaves sensibly and adds no strings:
   - the Open dialog's filter lists the six by MIME type whatever is installed; a WebP file then opens with "This is not a
     picture the app can open." (from the app's side it is not one);
   - the Save As dialog has no format list (owner's decision), and the typed-extension rule is about names, not about
@@ -383,6 +383,6 @@ D. Save and the edge rules (T011, T012): M4 (Save As and the system's replace co
   - No test that strokes after New go into the new history, or that Cancel leaves the picture alone: tests added in T013
   - The spec promised interlaced PNG and animated WebP, which had no fixture, and relative paths: fixtures added, relative-path wording narrowed (AS-13)
   - Five mutants killed only by a crash, one stale mutant text: rewritten so that an assertion kills them
-  - Saving an opened file is silent (a JPEG is re-encoded without asking): decided by the owner to keep, recorded for 0013 (Out of scope, INDEX)
+  - Saving an opened file is silent (a JPEG is re-encoded without asking): decided by the owner to keep, recorded for Preferences (Out of scope, INDEX)
   - Earlier one-off failures of two ui scroll and zoom cases, unexplained and not reproduced in 22 full runs: left open; the ui tests run one at a time
 

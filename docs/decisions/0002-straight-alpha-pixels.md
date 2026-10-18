@@ -17,6 +17,6 @@ premultiplied data.
 - Operations such as invert stay simple (255 - channel), and pixel tests compare plain values.
 - Display: the texture is declared `GDK_MEMORY_B8G8R8A8` on little-endian systems (`GDK_MEMORY_A8R8G8B8` on big-endian).
   GDK still converts to premultiplied when drawing; we just don't write that code.
-- Cairo output (text, feature 0011) is premultiplied and needs one conversion into the picture.
+- Cairo output (text, feature Text) is premultiplied and needs one conversion into the picture.
 - Blending (gradient, transparent paste) needs a division by alpha. These are a few core routines, testable headless.
 - The constitution's Technical section states the straight-alpha rule.

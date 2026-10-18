@@ -72,7 +72,7 @@ This replaces the "modified" rule of 0001 (REQ-0001-13, REQ-0001-26): the modifi
 
 ## Out of scope
 History list or panel; undo of view changes (zoom, scroll); clearing history on New or Open (0005); the Preferences
-control for the budget (0013); steps for edits that later features add (each feature adds its own).
+control for the budget (Preferences); steps for edits that later features add (each feature adds its own).
 Deferred idea, not planned: keep old undo steps on disk instead of dropping them. Revisit only if the 512 MB default
 proves too small in practice.
 

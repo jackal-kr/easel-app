@@ -12,16 +12,18 @@ Vertical slices first (a thin end-to-end feature), breadth later.
 | 0005 | file-io | New, Open and Save As, open/save formats (png, jpeg, bmp, tiff, webp; gif open-only), modified tracking for Open and New, a file on the command line, errors | gif open-only; the saved state itself is 0002. Open and New clear the undo history; sizes may differ (a resize inside one picture is a history step, 0004; a different picture is not) |
 | 0006 | freehand-tools | Brush shapes/sizes, airbrush, eraser | |
 | 0007 | fill-pick-magnify | Fill, pick color, magnifier | Magnifier levels 1/10x, 1/4x, 1/2x, 1x, 2x (default), 4x, 6x, 8x, chosen then applied on a click; Pick Color returns to the previous tool |
-| 0008 | lines-curves-shapes | Line, curve, polygon, rectangle, rounded rectangle, ellipse, fill styles, gradient | |
-| 0009 | selection | Rect and free-form select, floating selection, move, smear, stamp, transparent mode | |
-| 0010 | clipboard | Cut, copy, paste, oversize paste, paste from / copy to file | |
-| 0011 | text | Text box, fonts, styles, per-selection fonts | |
-| 0012 | image-transforms | Flip, rotate, stretch, skew, invert, clear, black and white | |
-| 0013 | preferences | Appearance, new-picture and drawing defaults, palette persistence, undo budget | Dialog edits the same configuration file the app already reads. Open question from 0005: ask before Save overwrites an opened file (today silent, as in XP)? Candidates: a setting, once per opened file, or only for lossy formats; also `[save] jpeg-quality` |
-| 0014 | window-extras | Shortcuts window, thumbnail, frame time, print, context menus, About with acknowledgements (XP Paint, JS Paint) | Adds the View menu's Show Thumbnail item (not in 0004); Frame Time has no View item, only a Preferences setting (0013) |
-| 0015 | accessibility | Names/roles, keyboard-only drawing and palette | |
-| 0016 | i18n | UI languages (pl, uk, ru, de, cs, it, es, pt + English) | Mark the 0001 strings (title, quit and save prompts, errors) translatable; deferred from the 0001 check |
-| 0017 | packaging-release | Flatpak, deb, AppImage, metadata | |
+| 0008 | zoom-presets | One list of zoom presets for the Magnifier's options and a new View > Zoom submenu | Accepted 2026-10-18, from JOD's screencast; the lens list (no 300 %) is the preset list, Zoom In and Out keep their own steps with 300 % |
+| 0009 | view-polish | A 12 px margin and a soft shadow around the picture, a workspace color setting | Accepted 2026-10-18, from JOD's reference measurements; touches every rule that maps the pointer to a picture pixel |
+| 0010 | lines-curves-shapes | Line, curve, polygon, rectangle, rounded rectangle, ellipse, fill styles, gradient | |
+| 0011 | selection | Rect and free-form select, floating selection, move, smear, stamp, transparent mode | |
+| 0012 | clipboard | Cut, copy, paste, oversize paste, paste from / copy to file | |
+| 0013 | text | Text box, fonts, styles, per-selection fonts | |
+| 0014 | image-transforms | Flip, rotate, stretch, skew, invert, clear, black and white | |
+| 0015 | preferences | Appearance, new-picture and drawing defaults, palette persistence, undo budget | Dialog edits the same configuration file the app already reads. Open question from 0005: ask before Save overwrites an opened file (today silent, as in XP)? Candidates: a setting, once per opened file, or only for lossy formats; also `[save] jpeg-quality` |
+| 0016 | window-extras | Shortcuts window, thumbnail, frame time, print, context menus, About with acknowledgements (XP Paint, JS Paint) | Adds the View menu's Show Thumbnail item (not in 0004); Frame Time has no View item, only a Preferences setting (0013) |
+| 0017 | accessibility | Names/roles, keyboard-only drawing and palette | |
+| 0018 | i18n | UI languages (pl, uk, ru, de, cs, it, es, pt + English) | Mark the 0001 strings (title, quit and save prompts, errors) translatable; deferred from the 0001 check |
+| 0019 | packaging-release | Flatpak, deb, AppImage, metadata | |
 
 ## Known flakes
 - `/0006/as6_airbrush_follows_the_pointer` (found in 0006, failed again in 0007, cause not found; the log has the data). Read
@@ -40,7 +42,7 @@ Vertical slices first (a thin end-to-end feature), breadth later.
 | Milestone | Features | Outcome |
 |---|---|---|
 | M0 Pilot | 0001 | Whole loop felt once; templates and skills tuned |
-| M1 Core drawing | 0002-0007 | Usable paint program: draw, fill, pick, zoom, undo, open/save |
-| M2 Shapes and selection | 0008-0012 | XP feature parity for editing |
-| M3 Polish | 0013-0016 | Preferences, accessibility, languages |
-| M4 Release | 0017 | Flatpak, deb, AppImage |
+| M1 Core drawing | 0002-0009 | Usable paint program: draw, fill, pick, zoom, undo, open/save |
+| M2 Shapes and selection | 0010-0014 | XP feature parity for editing |
+| M3 Polish | 0015-0018 | Preferences, accessibility, languages |
+| M4 Release | 0019 | Flatpak, deb, AppImage |

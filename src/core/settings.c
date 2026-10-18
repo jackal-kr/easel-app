@@ -184,7 +184,7 @@ void
 easel_settings_resolve_size (const EaselSettings *s, int area_width, int area_height,
                              int *width, int *height)
 {
-  /* Largest last. Preferences (0013) will make this list a setting. */
+  /* Largest last. Preferences will make this list a setting. */
   static const int standard[][2] = { { 640, 480 }, { 800, 600 }, { 1024, 768 } };
 
   if (s->width != EASEL_SIZE_AUTO && s->height != EASEL_SIZE_AUTO)

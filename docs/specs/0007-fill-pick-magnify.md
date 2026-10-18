@@ -10,7 +10,7 @@ app is a usable paint program (milestone M1).
 
 ## Requirements
 - REQ-0007-01 The toolbox shall show Magnifier, Pick Color and Fill with the tooltips "Magnifier", "Pick Color" and "Fill", in the final order of REQ-0006-01, so that the toolbox is, in two columns, row by row: Pan, Magnifier / Eraser, Pick Color / Fill, Pencil / Brush, Airbrush. Clicking one makes it the active tool, as for the other tools (REQ-0001-09).
-- REQ-0007-02 While the Magnifier is active, the options panel (REQ-0006-02) shall show eight toggle buttons labelled "1/10x", "1/4x", "1/2x", "1x", "2x", "4x", "6x" and "8x" in two columns, row by row (1/10x, 1/4x / 1/2x, 1x / 2x, 4x / 6x, 8x), one selected at a time, with the tooltips "10 %", "25 %", "50 %", "100 %", "200 %", "400 %", "600 %" and "800 %" (the first three reduce, so that a big picture can be seen whole). The selected level is 2x at start-up and each later time the app starts, and the choice is kept for the rest of the session when the user switches tools and back (as REQ-0006-03: it is not a setting in this feature; Preferences, 0013, will make it one). Choosing a level only selects it: the zoom does not change. Pick Color and Fill have no options: the panel and its line are hidden for them, as for Pan and Pencil (this amends REQ-0006-02, which names only Pan and Pencil).
+- REQ-0007-02 While the Magnifier is active, the options panel (REQ-0006-02) shall show eight toggle buttons labelled "1/10x", "1/4x", "1/2x", "1x", "2x", "4x", "6x" and "8x" in two columns, row by row (1/10x, 1/4x / 1/2x, 1x / 2x, 4x / 6x, 8x), one selected at a time, with the tooltips "10 %", "25 %", "50 %", "100 %", "200 %", "400 %", "600 %" and "800 %" (the first three reduce, so that a big picture can be seen whole). The selected level is 2x at start-up and each later time the app starts, and the choice is kept for the rest of the session when the user switches tools and back (as REQ-0006-03: it is not a setting in this feature; Preferences will make it one). Choosing a level only selects it: the zoom does not change. Pick Color and Fill have no options: the panel and its line are hidden for them, as for Pan and Pencil (this amends REQ-0006-02, which names only Pan and Pencil).
 - REQ-0007-03 When the user presses the primary or the secondary button on a picture pixel with the Magnifier, the app shall set the zoom to the selected level, unless the zoom already is that level, in which case it sets the zoom to 100 % (so with 1x, a press at any other zoom returns to 100 % and a press at 100 % changes nothing; with a reduction level, 1/10x for example, a press at 100 % gives 10 % and a press at 10 % gives 100 %). The zoom happens at the press: moving the pointer or pressing the other button while it is held does nothing more. The middle button does nothing, and the Magnifier stays the active tool. A press on a resize handle starts a resize (REQ-0004-16). A press outside the picture does nothing (the grey area around a small picture does not zoom). The point of the picture that is the focus (below) shall be at the center of the canvas area as far as the view's edges allow (as REQ-0004-06); a picture smaller than the canvas area stays at its top-left (REQ-0001-11). The focus is the pixel under the pointer, except at 100 % with the preview box shown (REQ-0007-04), where it is the center of that box; where that box touches an edge of the picture, the view goes to that edge (so a press near a corner shows the corner exactly, whether or not a scrollbar appears with the new zoom).
 - REQ-0007-04 While the Magnifier is active, the zoom is 100 % and the pointer is over a picture pixel, the app shall show a box over the picture: the part of the picture that a press would make fill the canvas area, that is, the canvas area's width and height in device pixels (no scrollbars counted, as REQ-0004-07) divided by the selected level (as a whole number of picture pixels, rounded down, at least 1), with its top-left corner at the pointer's pixel minus half its size (rounded down) and moved as far as needed to lie inside the picture; where the picture is smaller than the box, the box spans the whole picture in that direction. It is drawn as the cursors of REQ-0006-16 are, a black line with a white line beside it, so that it shows on any color. At any other zoom, and with 1x or a reduction level selected (a press would not zoom in), no box is shown; when the zoom becomes 100 % again (by a press or by any zoom command) with the pointer over a picture pixel, the box is shown at once. The center of the box, as placed, is the focus of REQ-0007-03.
 - REQ-0007-05 When the user presses the primary button on a picture pixel with Fill, the app shall set to the foreground color every pixel that is connected to it through pixels equal to it in all four channels (connected by edges, not by corners: a diagonal line of different pixels stops the fill), and with the secondary button to the background color. The new value is exactly the color, with no blending (REQ-0003-08), also when it has transparency. The fill happens at the press, is one undo step (REQ-0002-01) and marks the picture modified; the pointer moving or the buttons being held or released afterwards does nothing more.
@@ -59,11 +59,11 @@ app is a usable paint program (milestone M1).
 - Choosing a tool during a pick or a resize is ignored (REQ-0007-16).
 
 ## Out of scope
-- Tolerance, gradient and pattern fills, and fills limited to a selection (0009 adds the selection).
+- Tolerance, gradient and pattern fills, and fills limited to a selection (Selection adds the selection).
 - Picking a color from outside the picture or from other windows; a picked color on the color box's swatches.
 - The Magnifier's rectangle zoom by dragging; Magnifier levels beyond 1/10x, 1/4x, 1/2x, 1x, 2x, 4x, 6x and 8x (the View menu and the zoom row keep all the levels of REQ-0001-16).
-- Keyboard-only use of the three tools (0015).
-- A setting for the Magnifier's default level (Preferences, 0013).
+- Keyboard-only use of the three tools (Accessibility).
+- A setting for the Magnifier's default level (Preferences).
 
 ## Open questions
 None.
@@ -165,7 +165,7 @@ set. If a whole-picture fill at 8000 × 8000 takes longer than a second, a fix i
 
 ### Constitution check
 Layering holds (the fill and the Magnifier rules are libc-only core; the canvas turns input into core calls); no new
-threads or caches (P5); the three tools' defaults are session choices, not settings (P6 is kept for 0013, as in 0006);
+threads or caches (P5); the three tools' defaults are session choices, not settings (P6 is kept for Preferences, as in 0006);
 every REQ has a scenario and every scenario a test or a manual check (S3); the pointer notes on 0001 and 0006 are written.
 
 ### Risks
@@ -181,7 +181,7 @@ every REQ has a scenario and every scenario a test or a manual check (S3); the p
 - **The preview box needs "the pointer is over a picture pixel" and "the pointer left"**: the canvas has no leave handler today;
   a probe in the box task checks that GTK's motion controller reports the leave on this session before the box relies on it.
 - **Cursors:** hotspots are chosen by eye; M1 checks them. The scale-2 question of 0006 applies to the three new textures too.
-- **A tool list that grows** (0008 to 0011 add more): the toolbox grid is a template; each feature adds its buttons in the
+- **A tool list that grows** (Lines, Curves and Shapes, Selection and Text add more): the toolbox grid is a template; each feature adds its buttons in the
   order of REQ-0006-01.
 
 

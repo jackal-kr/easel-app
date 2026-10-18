@@ -62,10 +62,10 @@ From feature 0002 (`src/core/history`):
 ### Settings
 - The file is `~/.config/easel/settings.ini`.
 - The core parses its text and resolves defaults; io finds, reads and creates the file.
-- Preferences (0013) will edit the same file.
+- Preferences will edit the same file.
 
 ### Packaging layout
-Defined by feature 0017.
+Defined by the packaging and release feature.
 
 ## Testing
 - **Every scenario (AS-n) is verified** by an automated test or a numbered manual check named in the spec.

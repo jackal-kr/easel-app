@@ -8,7 +8,7 @@ that could one day sit among the default GNOME apps.
 - **Microsoft Paint in Windows XP**: the original whose functionality and workflow this app follows (XP version specifically, not later Paint releases).
 - **[JS Paint](https://github.com/1j01/jspaint) by Isaiah Odhner**: studied for how the XP behavior works. MIT licensed; no code is copied.
 
-The About dialog credits both (see feature 0014).
+The About dialog credits both (see the window extras feature).
 
 ## Users
 People who want to sketch, crop, annotate or fix a screenshot or photo in seconds, without learning a big editor.

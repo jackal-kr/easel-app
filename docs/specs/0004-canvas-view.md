@@ -15,7 +15,7 @@ the picture). Words used below: the *canvas area* is the scrolled area that show
 *level* is one of the zoom levels 10, 25, 50, 100, 200, 300, 400, 600, 800 % (REQ-0001-16).
 
 ### Menus
-- REQ-0004-01 The header bar shall have an Image menu button and, right after it, a View menu button, each showing a symbolic icon before its label ("Image", "View"), then the primary menu (design.md). Image shall hold one item for now: Attributes… (Ctrl+E); later features add theirs (0012). View shall hold, in order:
+- REQ-0004-01 The header bar shall have an Image menu button and, right after it, a View menu button, each showing a symbolic icon before its label ("Image", "View"), then the primary menu (design.md). Image shall hold one item for now: Attributes… (Ctrl+E); later features add theirs (Image Transforms). View shall hold, in order:
   - a zoom row: a Zoom Out button (tooltip "Zoom Out (Ctrl+-)"), the current zoom as `N%` (for example `100%`), and a Zoom In button (tooltip "Zoom In (Ctrl+=)"); Zoom In also answers to Ctrl++ and the numpad plus with Ctrl, Zoom Out to Ctrl+numpad minus;
   - a separator;
   - Normal Size (Ctrl+PageUp), Large Size (Ctrl+PageDown), Fit to Window (Ctrl+0);
@@ -23,7 +23,7 @@ the picture). Words used below: the *canvas area* is the scrolled area that show
   - Show Grid (Ctrl+G, a check item) and Grid…;
   - a separator;
   - Tool Box, Color Box and Status Bar, check items that are checked while the panel is shown (REQ-0004-27).
-  View has no Frame Time item (it is a Preferences setting, 0013) and no Show Thumbnail item (0014 adds it). Each item shows its shortcut. The numpad plus and minus without Ctrl keep their own meaning (brush size, 0006).
+  View has no Frame Time item (it is a Preferences setting) and no Show Thumbnail item (Window Extras adds it). Each item shows its shortcut. The numpad plus and minus without Ctrl keep their own meaning (brush size, 0006).
 - REQ-0004-02 A control that cannot do anything shall be insensitive: Zoom In at 800 %, Zoom Out at 10 %, Normal Size at 100 %, Large Size at 400 %.
 - REQ-0004-03 The View and Image actions and their shortcuts work wherever keyboard focus is in the window, and do nothing before the picture exists (REQ-0001-39), while a dialog, the quit prompt or the color chooser is open, and while a mouse button is held for a stroke or a resize drag.
 
@@ -35,9 +35,9 @@ the picture). Words used below: the *canvas area* is the scrolled area that show
 - REQ-0004-08 While Pan is active and the user pinches on a touchpad or touch screen, the app shall move one level each time the pinch's scale since the last level change reaches 1.5 (in) or 1/1.5 (out), keeping the pinch center still as far as the edges allow. The scale starts again after each level change, at 800 % and 10 % and when the pinch ends. With any other tool the pinch does nothing. (1.5 is a fixed value of this spec.)
 
 ### Status bar
-- REQ-0004-09 The window shall have a status bar below the palette bar, across the window's full width. At its left it shows a one-line hint for the active tool; at its right edge, in this order, it shows the pointer position as `x, y` in picture pixels, the zoom as `N%`, and the picture size as `W × H px`. The position is shown while the pointer is over the canvas area, also outside the picture (so it can be negative or beyond the size), and is empty elsewhere. Pan's hint is "Drag to pan. Ctrl+wheel zooms." and Pencil's is "Draw with the foreground color. The secondary button uses the background color." All its texts are translatable (0016).
+- REQ-0004-09 The window shall have a status bar below the palette bar, across the window's full width. At its left it shows a one-line hint for the active tool; at its right edge, in this order, it shows the pointer position as `x, y` in picture pixels, the zoom as `N%`, and the picture size as `W × H px`. The position is shown while the pointer is over the canvas area, also outside the picture (so it can be negative or beyond the size), and is empty elsewhere. Pan's hint is "Drag to pan. Ctrl+wheel zooms." and Pencil's is "Draw with the foreground color. The secondary button uses the background color." All its texts are translatable (i18n).
 - REQ-0004-10 Each field shall show a new value within the next frame drawn after it changes. During a resize drag the size field shows the new size; after a cancel it shows the picture's size again. Before the picture exists the position, size and zoom fields are empty.
-- REQ-0004-11 The status bar shall never make the window wider: when there is no room, the hint is shortened with "…" at its end. (0009 adds the selection size next to the picture size.)
+- REQ-0004-11 The status bar shall never make the window wider: when there is no room, the hint is shortened with "…" at its end. (Selection adds the selection size next to the picture size.)
 
 ### Pixel grid
 - REQ-0004-12 When the user chooses Show Grid or presses Ctrl+G, the app shall toggle the grid. While it is on, grid lines are drawn over the picture (and its checkerboard, never outside the picture), 1 device pixel wide, hard-edged, grey #808080 at 50 % opacity, at every x and y that is a positive multiple of the cell size in picture pixels and inside the picture; the picture's own edges get no line. The lines are drawn only while one cell is at least 4 device pixels wide on screen (so the 1-pixel grid first shows at 400 %). The check item stays checked while the lines are hidden, and Ctrl+G still toggles. The grid is not part of the picture: it is not saved, not an edit, and does not change the modified mark.
@@ -71,7 +71,7 @@ the picture). Words used below: the *canvas area* is the scrolled area that show
 - AS-7 (REQ-0004-08) Given Pan active at 100 %, When the pinch scale reaches 1.5, Then the zoom is 200 % and the scale starts at 1 again; When the pinch then shrinks to 1/1.5 of that, Then back to 100 %; with Pencil active a pinch changes nothing | Verified by: automated (core, pinch accumulator) + manual M2
 - AS-8 (REQ-0004-09, REQ-0004-10) Given a 300x200 picture at 200 % with Pan active, When the pointer is over pixel (12, 34), Then the status bar shows Pan's hint at the left and, from left to right at the right edge, "12, 34", "200%" and "300 × 200 px"; When the pointer is over the canvas area outside the picture, Then the position shows negative or beyond-size numbers; When the pointer is over the header bar, Then the position is empty; With Pencil active the hint is Pencil's | Verified by: automated (ui) + manual M3
 - AS-9 (REQ-0004-11) Given the narrowest window, Then the status bar does not widen it and Pencil's hint ends with "…" | Verified by: manual M3
-- AS-10 (REQ-0004-12) Given the grid off at 400 %, When the user presses Ctrl+G, Then Show Grid is checked and 1-pixel grid lines show every picture pixel inside the picture (none on its edges); When the user zooms to 300 %, Then no lines show but Show Grid stays checked; When the user presses Ctrl+G, Then it is unchecked; the file saved meanwhile has no lines and the title has no modified mark | Verified by: automated (core, line positions and visibility) + automated (ui) + manual M4
+- AS-10 (REQ-0004-12) Given the grid off at 400 %, When the user presses Ctrl+G, Then Show Grid is checked and 1-pixel grid lines show every picture pixel inside the picture (none on its edges); When the user zooms to 300 %, Then no lines show but Show Grid stays checked; When the user presses Ctrl+G, Then it is unchecked; the file saved meanwhile has no lines and the title has no modified mark; Given a 3000 × 2000 picture at 400 % (and at 600 % and 800 %) scrolled by more than one page of the view in each direction, When the grid is on, Then the lines show, each on the left or top edge of a picture pixel that is a multiple of the cell, so that in the window the lines are where the picture pixels are drawn, at every scroll position | Verified by: automated (core, line positions and visibility) + automated (ui) + manual M4
 - AS-11 (REQ-0004-12) Given cell size 16, When the zoom is 25 %, Then lines show every 16 picture pixels (4 device pixels apart); at 10 % none | Verified by: automated (core)
 - AS-12 (REQ-0004-13) Given the Grid dialog, When the cell size field holds "", "0", "abc", "1001" or "-3", Then Apply is insensitive; "1000" and " 16 " (spaces) are valid; When the user presses Esc, Then nothing changes; When the user applies 8 while the grid is off, Then the grid stays off | Verified by: automated (ui)
 - AS-13 (REQ-0004-14) Given cell size 4 and Axonometric on, Then the vertical lines are at x = 4, 8, 12 …, and the diagonals are the lines through y = x / 2 + 4k and y = -x / 2 + 4k, clipped to the picture, with no horizontal lines | Verified by: automated (core) + manual M4
@@ -106,17 +106,17 @@ the picture). Words used below: the *canvas area* is the scrolled area that show
 - Pan with the grid on draws it; Pan shows no handles.
 
 ## Out of scope
-Pan's right-click menu with zoom (0010); a thumbnail window and its View menu item (0014); Frame Time (a Preferences setting, 0013, shown by 0014); custom zoom values and a Custom Zoom dialog; keyboard navigation of the
-handles (0015); Stretch, Skew and the other Image menu items (0012); units other than pixels; black-and-white pictures
-(0012); remembering the grid or the panels between runs (Preferences, 0013); scrolling beyond what 0001 gives (wheel, Shift+wheel,
-scrollbars, Pan drag); the selection size in the status bar (0009).
+Pan's right-click menu with zoom (Window Extras); a thumbnail window and its View menu item (Window Extras); Frame Time (a Preferences setting, shown by Window Extras); custom zoom values and a Custom Zoom dialog; keyboard navigation of the
+handles (Accessibility); Stretch, Skew and the other Image menu items (Image Transforms); units other than pixels; black-and-white pictures
+(Image Transforms); remembering the grid or the panels between runs (Preferences); scrolling beyond what 0001 gives (wheel, Shift+wheel,
+scrollbars, Pan drag); the selection size in the status bar (Selection).
 
 ## Open questions
 (none)
 
 ## Behavior reference
 - `docs/reference/new-behaviors.md`: zoom 10 to 800 %; Fit to Window; Ctrl+PageUp / Ctrl+PageDown normal and large size; Grid dialog with cell size and an axonometric grid; the pixel grid from far enough in (XP: 4x); Ctrl+G.
-- JOD's reference View menu (screenshot, 2026-10-15): a zoom row with Zoom Out, the zoom as `100%` and Zoom In; Normal Size, Fit to Window, Custom Zoom…; Grid…, Show Thumbnail; check items Tool Box, Color Box, Status Bar; Frame Time. This spec follows its layout and the zoom row, the panel items and the Image-before-View order, but keeps XP's shortcuts and Large Size, the Show Grid check item, no Custom Zoom, and leaves Show Thumbnail (0014) and Frame Time (Preferences) out.
+- JOD's reference View menu (screenshot, 2026-10-15): a zoom row with Zoom Out, the zoom as `100%` and Zoom In; Normal Size, Fit to Window, Custom Zoom…; Grid…, Show Thumbnail; check items Tool Box, Color Box, Status Bar; Frame Time. This spec follows its layout and the zoom row, the panel items and the Image-before-View order, but keeps XP's shortcuts and Large Size, the Show Grid check item, no Custom Zoom, and leaves Show Thumbnail (Window Extras) and Frame Time (Preferences) out.
 - `docs/design.md`: header bar Image and View menu buttons; status bar with pointer position and a hint per tool; Pan never changes the picture.
 - XP Paint: View > Zoom (Normal Size Ctrl+PageUp, Large Size Ctrl+PageDown), Show Grid Ctrl+G from 4x; three resize handles just outside the right, bottom and bottom-right of the canvas; Image > Attributes (Ctrl+E) with width and height; growing fills with the background color; the status bar shows the pointer position and the picture size.
 - 0001: REQ-0001-04 and REQ-0002-19 (a created settings file also holds `[view]`, REQ-0004-15), REQ-0001-16 and REQ-0001-39 (zoom commands and the other new actions follow the same rules, REQ-0004-03/04), REQ-0002-08 (scroll position kept as far as the size allows, REQ-0004-25), REQ-0002-16 (a resize step is sized by REQ-0004-23).
@@ -273,7 +273,7 @@ leave a faster resize (growing in place, or resizing rows only) unbuilt, per rul
 | 7 | core `as7_pinch_accumulator` + manual M2 (the real gesture) |
 | 8 | ui `as8_status_fields`, ui `as8_status_writes_only_on_change` + manual M3 |
 | 9 | manual M3 |
-| 10 | core `as10_grid_visibility`, ui `as10_grid_toggle`, ui `as10_grid_pixels` (the drawn lines, in a rendered window) + manual M4 |
+| 10 | core `as10_grid_visibility`, ui `as10_grid_toggle`, ui `as10_grid_pixels` (the drawn lines, in a rendered window), ui `as10_grid_at_magnifier_levels` (the lines at a scrolled view, at 4x, 6x and 8x, their places computed from the view's scroll offset and the cell size) + manual M4 |
 | 11 | core `as11_grid_cell_16` |
 | 12 | ui `as12_grid_dialog` |
 | 13 | core `as13_axonometric_lines` + manual M4 |
@@ -353,3 +353,8 @@ Group E, resizing
 - [x] T014 Resize handles: visibility, cursors, drag, cancel rules (REQ-0004-16, REQ-0004-17, REQ-0004-18, REQ-0004-19; AS-15, AS-16, AS-17, AS-18) - done when ui `as15_handles`, `as17_handle_drag` and `as18_drag_cancel_rules` pass and manual M5 passes
 Group F, measuring
 - [x] T015 Measure the grid and the resize (budgets: engineering.md "Pointer event to pixels"; REQ-0004-12, REQ-0004-14, REQ-0004-22) - done when `perf-0004` also times drawing with the grid on (cell 1 at 800 %, and an axonometric grid with cell 4) and a 50,000-pixel resize with its undo and redo at 1920x1080 and 8000x8000, and the numbers are recorded in the Plan
+
+Group G, a fix after the screencast of 2026-10-18 (a tiny change: AS-10 amended, then the test, then the code)
+- [x] T016 The grid at a scrolled view (REQ-0004-12; AS-10) - done when ui `as10_grid_at_magnifier_levels` (4x, 6x and 8x reached with the Magnifier, a white and an orange picture, 3000 × 2000 and 8000 × 6000, the view scrolled by more than a page, the line columns and rows computed from the view's scroll offset and the cell size) passes, `as10_grid_pixels` still passes and the mutant of REQ-0004-12 for the scroll offset is killed
+  Result: the test failed first, at `assert_grid_lines_at_scroll: 'pixel_is (px, w, x, y + step / 2, line)' should be TRUE` (no line where the scroll puts it; 456 stray grey pixels against 20000 needed before the position check was added); `cairo_translate (d.cr, -vx0, -vy0)` removed from `append_grid` and it passes (431576, 301614 and 231898 line pixels at 4x, 6x and 8x on 3000 × 2000); mutant "the grid is drawn shifted by the scroll offset" killed by that assertion (12 s); a second mutant (drawing from the picture's top-left) survived and was dropped: the lines are the same, only more of them are drawn (a speed question, not a result)
+  Result: manual (JOD, 2026-10-18): the 5840 × 5184 photo at 8x, scrolled to a far corner: grid lines visible and glued to the pixels while panning

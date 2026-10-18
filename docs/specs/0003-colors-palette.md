@@ -98,8 +98,8 @@ Look and input rules come from `docs/design.md` (Palette editing; Pointer: prima
 - Confirming a swatch's current color rewrites the file with the same values.
 
 ## Out of scope
-Keyboard navigation of the palette (Tab, arrows, Enter, Space) and screen-reader names (0015); pick color from the
-picture (0007); the Preferences control that resets the palette (0013; until then, deleting `palette.ini` resets it);
+Keyboard navigation of the palette (Tab, arrows, Enter, Space) and screen-reader names (Accessibility); pick color from the
+picture (0007); the Preferences control that resets the palette (until then, deleting `palette.ini` resets it);
 remembering the fore/background colors between runs; an "Edit Colors" menu entry (editing happens in place, see
 REQ-0003-11..13); the third (Ctrl) color slot (product non-goal).
 
@@ -107,8 +107,8 @@ REQ-0003-11..13); the third (Ctrl) color slot (product non-goal).
 (none)
 
 ## Behavior reference
-- `docs/design.md` Palette editing: double-click, F2 or the indicator opens the system color chooser; remembered between runs; Preferences reset (0013); no separate Edit Colors entry (settled here).
-- `docs/reference/new-behaviors.md`: Ctrl+Shift+X swaps the colors; palette keyboard access (0015).
+- `docs/design.md` Palette editing: double-click, F2 or the indicator opens the system color chooser; remembered between runs; Preferences reset (Preferences); no separate Edit Colors entry (settled here).
+- `docs/reference/new-behaviors.md`: Ctrl+Shift+X swaps the colors; palette keyboard access (Accessibility).
 - XP Paint: 28 colors in two rows of 14 at the bottom; left click foreground, right click background; overlapping squares at the left of the palette; double-click opens Edit Colors and the chosen color becomes the foreground.
 
 ## Plan
@@ -127,7 +127,7 @@ REQ-0003-11..13); the third (Ctrl) color slot (product non-goal).
 - **ui:**
   - An `EaselPaletteBar` sits in the window's bottom bar (`AdwToolbarView` bottom). It holds an `EaselColorIndicator`,
     a flat swap button (⇄) and a 2x14 grid of `EaselSwatch` widgets, with the dimensions of REQ-0003-18.
-  - Each swatch is its own focusable widget, so focus, the focus ring and later screen-reader names (0015) come from
+  - Each swatch is its own focusable widget, so focus, the focus ring and later screen-reader names (Accessibility) come from
     GTK. Each has a click gesture for primary, secondary and double click, and an `F2` key binding.
   - The window owns the palette and the two colors and passes them to the canvas.
   - The chooser is GTK's color dialog, modal and with alpha. Because a compositor may not block input to the parent, the

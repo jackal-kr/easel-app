@@ -13,7 +13,7 @@ options panel that later tools will use.
 ### Toolbox and options panel
 - REQ-0006-01 The toolbox shall show Brush, Airbrush and Eraser next to Pan and Pencil, in a grid of two columns, with the tooltips "Brush", "Airbrush" and "Eraser". Only the tools that work are shown, packed in the order of the final layout (Pan, Magnifier, Select, Free-Form Select, Eraser, Pick Color, Fill, Gradient, Pencil, Brush, Airbrush, Text, Line, Curve, Rectangle, Rounded Rectangle, Ellipse, Polygon), so in this feature: Pan, Eraser / Pencil, Brush / Airbrush; each later feature adds its tools in their place in that order. (0007 adds Magnifier, Pick Color and Fill: REQ-0007-01.)
 - REQ-0006-02 Below the toolbox, separated from it by a line, the app shall show an options panel for the active tool, always visible while the toolbox is (Tool Box of REQ-0004-27 hides and shows both) (0007: the panel is also hidden for Pick Color and Fill: REQ-0007-02): the presets of REQ-0006-04, REQ-0006-07 and REQ-0006-10 as toggle buttons in two columns, filled row by row in the order those requirements give (so the Brush's first row is circle 7, circle 4, its second circle 1, square 8), with one selected at a time per group. A size preset shows the tool's footprint drawn at one logical pixel per picture pixel, and has a tooltip naming it ("Circle, 7 pixels", "Circle, 1 pixel" (singular for 1), "Square, 8 pixels", "Slash, 8 pixels", "Backslash, 8 pixels", "Spray, 16 pixels", "Eraser, 8 pixels"), which is also its accessible name. The Eraser's two mode presets show an opaque and a transparent square. Pan and Pencil have no options: the panel and its line are hidden while they are active. Pencil stays one pixel wide, with no options (REQ-0001-20, as XP).
-- REQ-0006-03 Each tool shall keep its own selected preset for the rest of the session: switching to another tool and back shows the same preset. At start-up the presets are the ones REQ-0006-04, REQ-0006-07 and REQ-0006-10 name as the default; they are not settings in this feature: Preferences (0013) will make them settings in the configuration file, as principle P6 asks, by the owner's decision of 2026-10-16. Choosing a preset or mode during a stroke shall be ignored (as REQ-0001-09 does for tools).
+- REQ-0006-03 Each tool shall keep its own selected preset for the rest of the session: switching to another tool and back shows the same preset. At start-up the presets are the ones REQ-0006-04, REQ-0006-07 and REQ-0006-10 name as the default; they are not settings in this feature: Preferences will make them settings in the configuration file, as principle P6 asks, by the owner's decision of 2026-10-16. Choosing a preset or mode during a stroke shall be ignored (as REQ-0001-09 does for tools).
 
 ### Brush
 - REQ-0006-04 The Brush shall have twelve presets, in this order: circles of 7, 4 and 1 pixels; squares of 8, 5 and 2 pixels; lines from bottom-left to top-right ("/") of 8, 5 and 2 pixels; lines from top-left to bottom-right ("\") of 8, 5 and 2 pixels. The default is the 4-pixel circle.
@@ -68,9 +68,9 @@ options panel that later tools will use.
 - With the pointer over a resize handle, a press starts a resize, not a stroke (REQ-0004-16).
 
 ## Out of scope
-Line, Curve, shapes and their widths (0008); selection tools and their Opaque / Transparent option (0009); Text (0011);
+Line, Curve, shapes and their widths (Lines, Curves and Shapes); selection tools and their Opaque / Transparent option (Selection); Text;
 Gradient (new-behaviors.md, its own feature); Magnifier, Fill, Pick Color (0007); brush sizes beyond the presets; keyboard-only
-drawing (0015); setting the start-up presets in Preferences (0013); pressure-sensitive tablets.
+drawing (Accessibility); setting the start-up presets in Preferences; pressure-sensitive tablets.
 
 ## Open questions
 (none)

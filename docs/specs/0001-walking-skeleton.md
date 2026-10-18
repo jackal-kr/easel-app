@@ -114,7 +114,7 @@ Each is covered by the REQ named.
 - Click exactly on the last row or column: REQ-0001-19 (AS-20 checks x = 99).
 - A drag that leaves and re-enters the picture: segments are clipped, REQ-0001-22.
 - Very fast drags: no gaps, REQ-0001-20.
-- Secondary-button drag in Pan mode does nothing (the Pan right-click menu comes with 0010): REQ-0001-14 covers only the primary button.
+- Secondary-button drag in Pan mode does nothing (the Pan right-click menu comes with Window Extras): REQ-0001-14 covers only the primary button.
 - Zoom at a view edge: the anchor point moves as little as the edge limits allow, REQ-0001-16.
 - Save to an existing file through the dialog: the dialog's own overwrite confirmation applies, REQ-0001-27; when `.png` was added, REQ-0001-42.
 - Disk full or file removed mid-save: REQ-0001-31.
@@ -124,8 +124,8 @@ Each is covered by the REQ named.
 ## Out of scope
 Undo/redo (0002), palette, color swatches and color choice (0003), Fit to Window, touchpad pinch zoom, grid, resize handles,
 status bar, Attributes (0004), Open, Save As, other formats, command-line files (0005), every tool except Pan and Pencil
-(0006+), Pan right-click menu (0010), Image and View menus, Preferences dialog (0013; until then the settings file is
-edited by hand), primary menu contents beyond Quit (0014).
+(0006+), Pan right-click menu (Window Extras), Image and View menus, Preferences dialog (until then the settings file is
+edited by hand), primary menu contents beyond Quit (Window Extras).
 
 ## Open questions
 (none)
@@ -274,7 +274,7 @@ instead of the whole picture. Not done in 0001.
 ### Risks
 - **Monitor before the window is shown.** On Wayland the monitor is known only after the window appears, so the
   initial window size uses the first monitor when there are several (REQ-0001-41). An `auto` picture is created on the
-  canvas area's first size allocation; the standard sizes list is a constant until Preferences (0013) makes it a setting. The window may show an
+  canvas area's first size allocation; the standard sizes list is a constant until Preferences makes it a setting. The window may show an
   empty canvas for one frame; REQ-0001-39 makes input in that frame do nothing.
 - **AS-29 "fails partway".** A real mid-write failure cannot be triggered in a test. The test uses a read-only directory with
   the target already in it. This proves the failure is reported and the old file survives; the temp-file-and-rename write

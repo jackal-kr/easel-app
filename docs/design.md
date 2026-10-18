@@ -10,7 +10,7 @@ workflow; JOD to confirm or change each point; mark changes with an ADR if they 
 - Header bar: Open, Save, Undo, Redo, Image menu button, View menu button, slim primary (hamburger) menu.
   No nested XP-style menu bar.
 - Layout: toolbox (18 tools: the 16 XP tools plus Pan and Gradient) with per-tool options below it, canvas in a scrolled viewport, palette bar
-  (fore/background indicator, swap button, 28 swatches), status bar with pointer position, picture size, zoom, selection size (0009) and tool hint.
+  (fore/background indicator, swap button, 28 swatches), status bar with pointer position, picture size, zoom, selection size (Selection) and tool hint.
   The toolbox, the color box (palette bar) and the status bar can each be hidden from the View menu (0004).
 - Dialogs are libadwaita dialogs; destructive actions (discard unsaved changes) are labelled with the action, not "OK".
 - Preferences dialog: appearance, new-picture defaults, drawing defaults, palette persistence, undo memory budget.
@@ -18,7 +18,7 @@ workflow; JOD to confirm or change each point; mark changes with an ADR if they 
 - All user-visible strings are translatable and not built by concatenation.
 
 ### Settings
-All user-adjustable defaults (new-picture size and background, drawing defaults, panel visibility, theme, undo budget, text font and style, palette) are settings kept in a configuration file. The Preferences dialog (feature 0013) edits the same settings; until then the file is edited by hand. Concrete default values are decided in the spec that needs them.
+All user-adjustable defaults (new-picture size and background, drawing defaults, panel visibility, theme, undo budget, text font and style, palette) are settings kept in a configuration file. The Preferences dialog edits the same settings; until then the file is edited by hand. Concrete default values are decided in the spec that needs them.
 
 ### Palette editing
 Palette colors are edited in place: double-click a palette color or press F2 on it, which opens the system color chooser; clicking a square of the fore/background indicator opens it for that color. Changes are remembered between runs; Preferences can reset the palette to the classic 28 colors. There is no separate Edit Colors menu entry (settled in 0003).

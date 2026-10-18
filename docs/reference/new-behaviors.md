@@ -34,7 +34,7 @@ belongs to (see `docs/specs/INDEX.md`). Behavior only.
 - Frame Time display, switchable from View and Preferences.
 - Keyboard shortcuts window (Ctrl+? or Ctrl+F1); Help (F1) opens as a readable page in the default browser.
 - Pictures can be opened from the command line.
-- About with acknowledgements (XP Paint, JS Paint). Nine UI languages, screen-reader labels and announcements, and keyboard-only drawing: covered by features 0014, 0015 and 0016.
+- About with acknowledgements (XP Paint, JS Paint). Nine UI languages, screen-reader labels and announcements, and keyboard-only drawing: covered by features Window Extras, Accessibility and i18n.
 
 ## Decisions
 - Panning happens only in Pan mode; so Ctrl+drag on a selection keeps classic XP behavior: it moves a copy.
