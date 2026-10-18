@@ -50,6 +50,6 @@ or `characterization: <why there was no red run>`. A manual step: one line of wh
 (written by /sdd-check as its last step, about ten lines)
 - Date and commit: YYYY-MM-DD, `abc1234`
 - Tests: `meson test` N of N pass (the cases of this feature: M)
-- Mutants: K of K killed (seconds); none killed only by a crash
+- Mutants: K killed, C killed by crash (test gap), S survived, as `tools/mutate.sh` reports (seconds)
 - Warnings: 0
 - Findings, each with how it was settled (fixed in T0NN, decided by the owner, left open and why)

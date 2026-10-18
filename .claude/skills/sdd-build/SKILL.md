@@ -12,13 +12,16 @@ Precondition: `Status: accepted` in the spec. Otherwise stop and say so.
    A failure-path scenario (write fails, file unreadable) always gets an automated test, never a manual check only.
    A test that a write is never half-written starts from an existing file, since only then do atomic and in-place writes differ.
    A statement in the Plan about how a library behaves (including what happens when an allocation fails) goes in the risks with the test or probe that checks it, run before the code relies on it.
+   A probe that measures a widget measures it after it has been shown in a real frame; a number from a hidden widget is not used.
    For a data structure that grows with use, say what it stores per item and what it copies.
    Write an ADR in `docs/decisions/` only if a choice contradicts the constitution or would be questioned later.
    Show the plan. Wait for JOD's "go".
 2. **Tasks.** Fill `## Tasks`: small ordered slices, each `- [ ] T001 title (REQ-..., AS-...) - done when ...`. Every REQ and AS
    is covered, no task without a trace, a manual check at each user-visible slice. If `docs/engineering.md` has a budget for
    what this feature touches, add a task to measure it and record the numbers in the Plan.
-   Put that task in the same group as any speed fix that relies on how a library behaves, and name the fallback in the Plan. Show ids and titles. Wait for "go".
+   Put that task in the same group as any speed fix that relies on how a library behaves, and name the fallback in the Plan.
+   The first task of a feature that changes the look of a panel ends with a manual look at that panel, before the other
+   tasks build on it. Show ids and titles. Wait for "go".
 3. **Implement**, one task at a time:
    - write the test from the scenario text first, run it and see it fail before writing the code (and say so in the task
      report), then the smallest code that passes; a ui test of anything that

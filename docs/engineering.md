@@ -97,7 +97,7 @@ Defined by the packaging and release feature.
   mutant rebuilds one file.
   - `tools/mutate.sh` runs every mutant of `tests/mutants.txt` (100 mutants, 495 s, all killed; a mutant killed only by a crash counts as a test gap, so the cases for rules that lose work run in a subprocess or come first; the tool reports such a mutant as `crashed`, "killed by crash (test gap)", when the failing test shows no assertion of ours and a FATAL or CRITICAL message, "Aborted" or a signal, counts it apart and fails the run); `tools/mutate.sh
     REQ-0005-03` runs the mutants of one requirement (several IDs may be given); `MUTANTS=file tools/mutate.sh` uses
-    another list. The ui tests need the display, as always.
+    another list. The ui tests need the display, as always. A background run is awaited by its process id or by the summary line `tools/mutate.sh` prints, and its counts are copied from that summary line, never from a search of the log.
   - To add a mutant, append a block to `tests/mutants.txt`: `=== REQ-NNNN-xx what the bug does`, then `file:` (from the
     project root), `test:` (the meson test names that must fail, tried one after the other), `--- find` with the exact text
     (it must occur once in the file; no blank line), `--- replace` with the text that takes its place. Write the mutant
