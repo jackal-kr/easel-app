@@ -52,4 +52,5 @@ or `characterization: <why there was no red run>`. A manual step: one line of wh
 - Tests: `meson test` N of N pass (the cases of this feature: M)
 - Mutants: K killed, C killed by crash (test gap), S survived, as `tools/mutate.sh` reports (seconds)
 - Warnings: 0
+- Scenarios: each AS with its test, marked C for a characterization with how it was proven (the mutant or the manual break that killed it)
 - Findings, each with how it was settled (fixed in T0NN, decided by the owner, left open and why)

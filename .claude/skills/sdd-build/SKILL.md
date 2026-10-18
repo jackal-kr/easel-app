@@ -13,6 +13,8 @@ Precondition: `Status: accepted` in the spec. Otherwise stop and say so.
    A test that a write is never half-written starts from an existing file, since only then do atomic and in-place writes differ.
    A statement in the Plan about how a library behaves (including what happens when an allocation fails) goes in the risks with the test or probe that checks it, run before the code relies on it.
    A probe that measures a widget measures it after it has been shown in a real frame; a number from a hidden widget is not used.
+   A change to the layout lists every reader of it, sizes as well as offsets, in code and in tests.
+   A style rule that must follow the theme lives in `style.css` or is reloaded on `notify::dark`; a media query in the app's own provider is probed where it is used.
    For a data structure that grows with use, say what it stores per item and what it copies.
    Write an ADR in `docs/decisions/` only if a choice contradicts the constitution or would be questioned later.
    Show the plan. Wait for JOD's "go".
@@ -21,11 +23,13 @@ Precondition: `Status: accepted` in the spec. Otherwise stop and say so.
    what this feature touches, add a task to measure it and record the numbers in the Plan.
    Put that task in the same group as any speed fix that relies on how a library behaves, and name the fallback in the Plan.
    The first task of a feature that changes the look of a panel ends with a manual look at that panel, before the other
-   tasks build on it. Show ids and titles. Wait for "go".
+   tasks build on it. A task that changes a core rule the ui depends on carries the ui change as well, so its group's gate can pass. Show ids and titles. Wait for "go".
 3. **Implement**, one task at a time:
    - write the test from the scenario text first, run it and see it fail before writing the code (and say so in the task
      report), then the smallest code that passes; a ui test of anything that
      moves the view also checks where the picture is drawn, by rendering the window; a new case also passes when run alone;
+   - when work from a later task is pulled forward, its tests are written and run red before that code too;
+   - a test of a layout or drawing rule checks what the window lays out or draws, at a scrolled position too, never a value computed from the same constant;
    - `ninja -C build` must be warning-free and the tests green as the Testing section of `docs/engineering.md` says for a task
      and for the end of a group. A test that fails once and then passes is logged with its values and how it was hunted,
      never just re-run until green;
