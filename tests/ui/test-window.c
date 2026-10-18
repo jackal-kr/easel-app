@@ -6191,6 +6191,140 @@ as15_new_tools_ignored_when_blocked (void)
   close_windows ();
 }
 
+/* The next frame the window paints, so that render_pixels shows the state after what was just done (the paintable replays
+   the last frame: a scroll or a zoom that only queued its redraw is not in it yet). */
+static void
+wait_for_next_frame (EaselWindow *win)
+{
+  GdkFrameClock *clock = gtk_widget_get_frame_clock (GTK_WIDGET (win));
+  gint64 before = gdk_frame_clock_get_frame_counter (clock);
+  gint64 deadline = g_get_monotonic_time () + 3 * G_USEC_PER_SEC;
+
+  gtk_widget_queue_draw (GTK_WIDGET (easel_window_get_canvas (win)));
+  while (gdk_frame_clock_get_frame_counter (clock) <= before + 1 && g_get_monotonic_time () < deadline)
+    g_main_context_iteration (NULL, FALSE);
+}
+
+/* The pixel a grid line gives over a base color: #808080 at 50 % (REQ-0004-12), as the window shows it (opaque 0xFFRRGGBB). */
+static uint32_t
+grid_line_over (uint32_t base)
+{
+  uint32_t c = 0xFF000000u;
+
+  for (int shift = 0; shift <= 16; shift += 8)
+    c |= (uint32_t) ((128 + ((base >> shift) & 0xFF) + 1) / 2) << shift;
+  return c;
+}
+
+/* How many rendered pixels are within 2 of the color in every channel. */
+static int
+count_near (const uint32_t *px, int n, uint32_t color)
+{
+  int found = 0;
+
+  for (int i = 0; i < n; i++)
+    {
+      int d = 0;
+
+      for (int shift = 0; shift <= 16; shift += 8)
+        d = MAX (d, abs ((int) ((px[i] >> shift) & 0xFF) - (int) ((color >> shift) & 0xFF)));
+      found += d <= 2;
+    }
+  return found;
+}
+
+/* True if the pixel (x, y) of the rendered window is within 2 of the color in every channel. */
+static gboolean
+pixel_is (const uint32_t *px, int w, int x, int y, uint32_t color)
+{
+  return count_near (&px[(gsize) y * w + x], 1, color) == 1;
+}
+
+/* The grid lines at the place the view's own scroll puts them: the canvas starts at (cx, cy) in the rendered window
+   (its offset is minus the scroll), so the line of picture column k is at x = cx + k * cell * zoom / 100 and the line of
+   picture row k at y = cy + k * cell * zoom / 100 (a whole device pixel each, REQ-0004-12), and everything between two
+   lines is the picture. Looks at the lines nearest the window point (500, 300). */
+static void
+assert_grid_lines_at_scroll (const uint32_t *px, int w, int cx, int cy, int zoom, int cell, uint32_t base)
+{
+  int step = cell * zoom / 100;
+  int col = (500 - cx) / step, row = (300 - cy) / step;
+  int x = cx + col * step, y = cy + row * step;
+  uint32_t line = grid_line_over (base);
+
+  g_assert_cmpint (step, >=, 4);
+  /* On a row between two horizontal lines: a line at x and at x + step, the picture between. */
+  g_assert_true (pixel_is (px, w, x, y + step / 2, line));
+  g_assert_true (pixel_is (px, w, x + step, y + step / 2, line));
+  for (int i = 1; i < step; i++)
+    g_assert_true (pixel_is (px, w, x + i, y + step / 2, base));
+  /* On a column between two vertical lines: a line at y and at y + step, the picture between. */
+  g_assert_true (pixel_is (px, w, x + step / 2, y, line));
+  g_assert_true (pixel_is (px, w, x + step / 2, y + step, line));
+  for (int i = 1; i < step; i++)
+    g_assert_true (pixel_is (px, w, x + step / 2, y + i, base));
+}
+
+/* REQ-0004-12, from the screencast of 2026-10-18: at 4x, 6x and 8x, reached with the Magnifier, the grid is on and its
+   lines are drawn (one every picture pixel), on a white picture and on an orange one, where a grey line at 50 % has little
+   contrast, and on a picture bigger than the view. */
+static void
+as10_grid_at_magnifier_levels (void)
+{
+  static const struct { const char *settings; int w, h; uint32_t base; } pictures[] = {
+    { "[new-picture]\nwidth=3000\nheight=2000\nbackground=#FFFFFF\n", 3000, 2000, 0xFFFFFFFFu },
+    { "[new-picture]\nwidth=3000\nheight=2000\nbackground=#FB9411\n", 3000, 2000, 0xFFFB9411u },
+    { "[new-picture]\nwidth=8000\nheight=6000\nbackground=#FB9411\n", 8000, 6000, 0xFFFB9411u },
+  };
+  static const char *const levels[] = { "400 %", "600 %", "800 %" };
+
+  for (guint k = 0; k < G_N_ELEMENTS (pictures); k++)
+    {
+      EaselWindow *win;
+      EaselCanvas *canvas;
+
+      write_settings (pictures[k].settings);
+      win = start_window ();
+      canvas = easel_window_get_canvas (win);
+      wait_for_layout (win);
+      g_action_group_activate_action (G_ACTION_GROUP (win), "grid", NULL);
+      g_assert_true (panel_checked (win, "grid"));
+      g_assert_true (easel_canvas_get_grid_on (canvas));
+      use_tool (win, "magnifier");
+      for (guint i = 0; i < G_N_ELEMENTS (levels); i++)
+        {
+          int w, h, cx, cy, zoom = atoi (levels[i]);
+          g_autofree uint32_t *px = NULL;
+
+          choose_preset (win, levels[i]);
+          click_pixel (win, 1, pictures[k].w / 2, pictures[k].h / 2);
+          g_assert_cmpint (easel_window_get_zoom (win), ==, zoom);
+          g_assert_true (easel_canvas_grid_is_drawn (canvas));
+          wait_for_next_frame (win);
+          px = render_pixels (win, &w, &h, &cx, &cy);
+          /* The view is scrolled by more than one page in each direction (the zoom keeps the center). */
+          {
+            GtkWidget *scr = gtk_widget_get_ancestor (GTK_WIDGET (canvas), GTK_TYPE_SCROLLED_WINDOW);
+            GtkAdjustment *ha = gtk_scrolled_window_get_hadjustment (GTK_SCROLLED_WINDOW (scr));
+            GtkAdjustment *va = gtk_scrolled_window_get_vadjustment (GTK_SCROLLED_WINDOW (scr));
+
+            g_assert_cmpfloat (gtk_adjustment_get_value (ha), >, gtk_adjustment_get_page_size (ha));
+            g_assert_cmpfloat (gtk_adjustment_get_value (va), >, gtk_adjustment_get_page_size (va));
+          }
+          /* Where the lines are, from the scroll and the cell size. */
+          assert_grid_lines_at_scroll (px, w, cx, cy, zoom, easel_canvas_get_grid_cell (canvas), pictures[k].base);
+          /* A line every picture pixel: over a view about 1350 x 775 that is thousands of pixels. */
+          g_test_message ("picture %d x %d, %s: %d line pixels", pictures[k].w, pictures[k].h, levels[i],
+                          count_near (px, w * h, grid_line_over (pictures[k].base)));
+          g_assert_cmpint (count_near (px, w * h, grid_line_over (pictures[k].base)), >, 20000);
+          click_pixel (win, 1, pictures[k].w / 2, pictures[k].h / 2);       /* the same level again: back to 100 % */
+          g_assert_cmpint (easel_window_get_zoom (win), ==, 100);
+        }
+      close_windows ();
+    }
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
 /* AS-17 (REQ-0007-17): after the zoom the Pencil and Fill act on the pixel under the pointer at the new zoom. */
 static void
 as17_pencil_after_magnifier (void)
@@ -6526,6 +6660,7 @@ main (int argc, char **argv)
   g_test_add_func ("/0007/as5_box_follows_pointer", as5_box_follows_pointer);
   g_test_add_func ("/0007/as14_numpad_ignored", as14_numpad_ignored);
   g_test_add_func ("/0007/as15_new_tools_ignored_when_blocked", as15_new_tools_ignored_when_blocked);
+  g_test_add_func ("/0004/as10_grid_at_magnifier_levels", as10_grid_at_magnifier_levels);
   g_test_add_func ("/0007/as17_pencil_after_magnifier", as17_pencil_after_magnifier);
   g_test_add_func ("/0007/as18_lost_release_ends_the_press", as18_lost_release_ends_the_press);
   g_test_add_func ("/0006/as12_cursor_follows_tool_preset_and_zoom", as12_cursor_follows_tool_preset_and_zoom);

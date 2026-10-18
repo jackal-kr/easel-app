@@ -1261,3 +1261,14 @@ test: ui-0007
 --- replace
   if (self->resizing != EASEL_HANDLE_NONE)
     easel_canvas_release (self, self->resize_button);
+
+# ---- the grid at a scrolled view (0004) ----
+
+=== REQ-0004-12 the grid is drawn shifted by the scroll offset, out of its bounds once the view is scrolled by a page
+file: src/ui/canvas.c
+test: ui-0004
+--- find
+  cairo_set_antialias (d.cr, CAIRO_ANTIALIAS_NONE);
+--- replace
+  cairo_translate (d.cr, -vx0, -vy0);
+  cairo_set_antialias (d.cr, CAIRO_ANTIALIAS_NONE);

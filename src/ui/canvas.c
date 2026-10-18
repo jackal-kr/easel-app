@@ -388,9 +388,8 @@ append_grid (EaselCanvas *self, GtkSnapshot *snapshot)
     return;
   d.cr = gtk_snapshot_append_cairo (snapshot, &GRAPHENE_RECT_INIT ((float) vx0, (float) vy0, (float) (vx1 - vx0),
                                                                     (float) (vy1 - vy0)));
-  /* The context's origin is the top-left of the bounds, not of the canvas, so go back to canvas coordinates. This
-     matters whenever the view is scrolled. */
-  cairo_translate (d.cr, -vx0, -vy0);
+  /* The context draws in the snapshot's own coordinates, which are the canvas's: no translation, whatever the scroll
+     (an offset here moved the lines out of the bounds once the view was scrolled by more than a page). */
   cairo_set_antialias (d.cr, CAIRO_ANTIALIAS_NONE);
   cairo_set_source_rgba (d.cr, 0.5, 0.5, 0.5, 0.5);
   cairo_set_line_width (d.cr, 1.0 / scale);
