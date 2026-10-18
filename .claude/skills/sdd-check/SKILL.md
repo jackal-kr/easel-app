@@ -5,7 +5,7 @@ description: Step 3 of the loop, also usable any time. Read-only check of a feat
 
 # Check (read-only, except the Check section of the spec; propose, do not edit anything else)
 
-1. `tools/spec.sh lint` and `tools/spec.sh status`.
+1. `tools/spec.sh lint`, `tools/spec.sh lint --names NNNN` and `tools/spec.sh status`.
 2. Coverage: for every REQ and AS -> task -> test or manual check -> passing? Flag any requirement without code or test, any test
    without a requirement, any task without a trace. Run everything as the Testing section of `docs/engineering.md` says for
    `/sdd-check` (all tests, the whole mutation list); a rule that guards against data loss and has no mutant in

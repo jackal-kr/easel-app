@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Usage: tools/spec.sh new <NNNN> <slug> | status | lint
+# Usage: tools/spec.sh new <NNNN> <slug> | status | lint [--names <NNNN>]
 # Specs are single files: docs/specs/NNNN-slug.md (template: docs/specs/_template.md).
 cd "$(dirname "$0")/.."
 shopt -s nullglob
@@ -31,7 +31,7 @@ cmd_status() {
 # an accepted/implemented spec may have no open "- [NEEDS CLARIFICATION" lines.
 # Draft specs only get warnings; the exit code is 1 only for accepted/implemented specs.
 cmd_lint() {
-  local rc=0 s st r p t
+  local rc=0 s st r p
   for s in "${specs[@]}"; do
     st=$(status_of "$s")
     local problems=()
@@ -39,10 +39,6 @@ cmd_lint() {
       grep -E '^- AS-[0-9]+' "$s" | grep -q "$r" || problems+=("$r has no scenario")
     done
     grep -E '^- AS-[0-9]+' "$s" | grep -vq 'Verified by:' && problems+=("a scenario has no 'Verified by:'")
-    # A test named in the scenario-to-test map must exist in tests/ (the names drift when a test is split or moved).
-    for t in $(sed -n '/^### Scenario-to-test map/,/^### /p' "$s" | grep -oE '`[a-z][a-z0-9]*_[a-z0-9_]*`' | tr -d '`' | sort -u); do
-      grep -rqw -- "$t" tests/ || problems+=("the scenario map names a test that does not exist: $t")
-    done
     if [ "$st" != draft ] && grep -q '^- \[NEEDS CLARIFICATION' "$s"; then
       problems+=("open NEEDS CLARIFICATION in a $st spec")
     fi
@@ -55,9 +51,27 @@ cmd_lint() {
   return $rc
 }
 
+# Every test named in backticks in the scenario-to-test map of one spec must be registered in tests/ (a core test as
+# `RUN (name)`, a ui or io test as `"/NNNN/name"`): the names drift when a test is split or moved. Run by /sdd-check; the
+# plain lint does not do it, because a Plan names its tests before they are written.
+cmd_names() {
+  local n="${1:-}" f t rc=0
+  [[ "$n" =~ ^[0-9]{4}$ ]] || { echo "usage: tools/spec.sh lint --names <NNNN>"; return 1; }
+  f=$(ls docs/specs/"$n"-*.md 2>/dev/null | head -1)
+  [ -n "$f" ] || { echo "no spec $n"; return 1; }
+  for t in $(sed -n '/^### Scenario-to-test map/,/^### /p' "$f" | grep -oE '`[a-z][a-z0-9]*_[a-z0-9_]*`' | tr -d '`' | sort -u); do
+    if ! grep -rqE "(RUN \\(|\"/[0-9]{4}/)$t\\b" tests/; then
+      echo "$f: the scenario map names a test that is not registered: $t"
+      rc=1
+    fi
+  done
+  [ $rc -eq 0 ] && echo "spec names: ok ($f)"
+  return $rc
+}
+
 case "${1:-}" in
   new) shift; cmd_new "$@" ;;
   status) cmd_status ;;
-  lint) cmd_lint ;;
-  *) echo "usage: tools/spec.sh new <NNNN> <slug> | status | lint"; exit 1 ;;
+  lint) if [ "${2:-}" = --names ]; then cmd_names "${3:-}"; else cmd_lint; fi ;;
+  *) echo "usage: tools/spec.sh new <NNNN> <slug> | status | lint [--names <NNNN>]"; exit 1 ;;
 esac
