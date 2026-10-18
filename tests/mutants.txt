@@ -559,9 +559,10 @@ test: ui-0005 ui-0001
 --- find
   if (!easel_picture_save (self->picture, path, save_format (path), self->settings.jpeg_quality, &error))
 --- replace
+  char *mutant_path = g_strdup (path);   /* copied first: path can be self->path itself, which is freed next */
   g_free (self->path);
-  self->path = g_strdup (path);
-  if (!easel_picture_save (self->picture, path, save_format (path), self->settings.jpeg_quality, &error))
+  self->path = mutant_path;
+  if (!easel_picture_save (self->picture, self->path, save_format (self->path), self->settings.jpeg_quality, &error))
 
 === REQ-0005-04 Cancel in the unsaved-changes prompt goes on like Discard
 file: src/ui/window.c
@@ -1027,9 +1028,9 @@ test: core-magnifier
 file: src/core/view.c
 test: core-magnifier
 --- find
-  double offset = focus * pct / 100.0 / scale - view_size / 2;
+  double offset = EASEL_VIEW_MARGIN + focus * pct / 100.0 / scale - view_size / 2;     /* the margin is before the picture */
 --- replace
-  double offset = focus * pct / 100.0 / scale;
+  double offset = EASEL_VIEW_MARGIN + focus * pct / 100.0 / scale;
 
 === REQ-0007-13 Pick Color shows the hint of Fill
 file: src/ui/window.c
@@ -1391,3 +1392,149 @@ button.flat.level {
 --- replace
 button.flat.level label { font-size: 82%; }
 button.flat.level {
+
+# ---- the margin around the picture (0009) ----
+
+=== REQ-0009-05 the zoom anchor forgets the margin before the picture
+file: src/core/view.c
+test: core-view ui-0009
+--- find
+  double picture_point = (scroll + pointer - EASEL_VIEW_MARGIN) / logical_per_pixel (old_pct, scale);
+  double next = picture_point * logical_per_pixel (new_pct, scale) + EASEL_VIEW_MARGIN - pointer;
+--- replace
+  double picture_point = (scroll + pointer) / logical_per_pixel (old_pct, scale);
+  double next = picture_point * logical_per_pixel (new_pct, scale) - pointer;
+
+=== REQ-0009-05 the Magnifier's focus scroll forgets the margin before the picture
+file: src/core/view.c
+test: core-magnifier ui-0009
+--- find
+  double offset = EASEL_VIEW_MARGIN + focus * pct / 100.0 / scale - view_size / 2;
+--- replace
+  double offset = focus * pct / 100.0 / scale - view_size / 2;
+
+=== REQ-0009-05 Fit to Window forgets the two margins
+file: src/core/view.c
+test: core-view ui-0009
+--- find
+  area_w -= (int) ceil (2 * EASEL_VIEW_MARGIN * scale);
+  area_h -= (int) ceil (2 * EASEL_VIEW_MARGIN * scale);
+--- replace
+
+=== REQ-0009-04 the workspace color accepts a bad value (#346, the short form)
+file: src/core/settings.c
+test: core-settings
+--- find
+  if (v.n != 7 || v.p[0] != '#')
+    return false;
+--- replace
+  if (v.n == 4 && v.p[0] == '#')
+    {
+      *out = 0x334466u;
+      return true;
+    }
+  if (v.n != 7 || v.p[0] != '#')
+    return false;
+
+=== REQ-0009-05 the grid reads the scroll offsets without the margin (lines missing near the view's left and top)
+file: src/ui/canvas.c
+test: ui-0009
+--- find
+  if (!gtk_widget_compute_bounds (gtk_widget_get_parent (GTK_WIDGET (self)), GTK_WIDGET (self), &seen))
+    return;
+--- replace
+  if (!gtk_widget_compute_bounds (gtk_widget_get_parent (GTK_WIDGET (self)), GTK_WIDGET (self), &seen))
+    return;
+  seen.origin.x = gtk_adjustment_get_value (adjustment (self, GTK_ORIENTATION_HORIZONTAL));
+  seen.origin.y = gtk_adjustment_get_value (adjustment (self, GTK_ORIENTATION_VERTICAL));
+
+=== REQ-0009-07 a Pan drag that starts in the margin or on the shadow does not pan
+file: src/ui/canvas.c
+test: ui-0009
+--- find
+      /* Only a primary drag pans (REQ-0001-14). */
+      if (button == GDK_BUTTON_PRIMARY)
+--- replace
+      /* Only a primary drag pans (REQ-0001-14). */
+      if (button == GDK_BUTTON_PRIMARY && x >= 0 && y >= 0)
+
+=== REQ-0009-02 the picture has no shadow (the style class is not set)
+file: src/ui/canvas.c
+test: ui-0009
+--- find
+  gtk_widget_add_css_class (GTK_WIDGET (self), "easel-picture");
+--- replace
+
+=== REQ-0009-02 the shadow is too faint to see (a light rgba)
+file: src/ui/style.css
+test: ui-0009
+--- find
+  box-shadow: 0 0 6px rgba(0, 0, 0, 0.35);
+--- replace
+  box-shadow: 0 0 6px rgba(0, 0, 0, 0.03);
+
+=== REQ-0009-03 the workspace keeps the theme's color (the style class is not set)
+file: src/ui/window.c
+test: ui-0009
+--- find
+  gtk_widget_add_css_class (GTK_WIDGET (self->scroller), "workspace");
+--- replace
+
+=== REQ-0009-04 a valid workspace color from the settings file is ignored
+file: src/ui/window.c
+test: ui-0009
+--- find
+  if (set)
+    css = g_strdup_printf
+--- replace
+  if (set && FALSE)
+    css = g_strdup_printf
+
+=== REQ-0009-06 the dark theme keeps the light grey (no dark default)
+file: src/ui/style.css
+test: ui-0009
+--- find
+    background-color: #2C2C2C;
+--- replace
+    background-color: #E7E7E7;
+
+=== REQ-0009-06 workspace-color-dark is ignored in the dark theme
+file: src/ui/window.c
+test: ui-0009
+--- find
+  uint32_t color = dark && s->has_workspace_color_dark ? s->workspace_color_dark : s->workspace_color;
+--- replace
+  uint32_t color = s->workspace_color;
+
+=== REQ-0009-06 the dark theme does not fall back to workspace-color when workspace-color-dark is not set
+file: src/ui/window.c
+test: ui-0009
+--- find
+  gboolean set = dark ? s->has_workspace_color_dark || s->has_workspace_color : s->has_workspace_color;
+--- replace
+  gboolean set = dark ? s->has_workspace_color_dark : s->has_workspace_color;
+
+=== REQ-0009-06 a set workspace color does not follow a change of theme while the app runs
+file: src/ui/window.c
+test: ui-0009
+--- find
+      g_signal_connect (adw_style_manager_get_default (), "notify::dark", G_CALLBACK (on_dark_changed), NULL);
+--- replace
+
+=== REQ-0009-04 workspace-color-dark is not read from the settings file
+file: src/core/settings.c
+test: core-settings
+--- find
+      else if (easel_span_is (key, "workspace-color-dark"))
+        s->has_workspace_color_dark = parse_rgb (value, &s->workspace_color_dark);
+--- replace
+
+=== REQ-0009-01 the canvas has no margin (the picture flush against the toolbox and the top edge)
+file: src/ui/canvas.c
+test: ui-0009
+--- find
+  gtk_widget_set_margin_start (GTK_WIDGET (self), EASEL_VIEW_MARGIN);
+  gtk_widget_set_margin_end (GTK_WIDGET (self), EASEL_VIEW_MARGIN);
+  gtk_widget_set_margin_top (GTK_WIDGET (self), EASEL_VIEW_MARGIN);
+  gtk_widget_set_margin_bottom (GTK_WIDGET (self), EASEL_VIEW_MARGIN);
+--- replace

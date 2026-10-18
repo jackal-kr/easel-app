@@ -93,6 +93,10 @@ easel_settings_defaults (EaselSettings *s)
   s->show_toolbox = true;
   s->show_colorbox = true;
   s->show_statusbar = true;
+  s->has_workspace_color = false;
+  s->workspace_color = 0;
+  s->has_workspace_color_dark = false;
+  s->workspace_color_dark = 0;
   s->jpeg_quality = EASEL_JPEG_QUALITY_DEFAULT;
 }
 
@@ -106,6 +110,30 @@ parse_on_off (EaselSpan v, bool *out)
     *out = false;
   else
     return false;
+  return true;
+}
+
+/* `#rrggbb` exactly: a `#` and six hexadecimal digits, either case (REQ-0009-04). */
+static bool
+parse_rgb (EaselSpan v, uint32_t *out)
+{
+  uint32_t c = 0;
+
+  if (v.n != 7 || v.p[0] != '#')
+    return false;
+  for (size_t i = 1; i < 7; i++)
+    {
+      char ch = v.p[i];
+      int d = ch >= '0' && ch <= '9'   ? ch - '0'
+              : ch >= 'a' && ch <= 'f' ? ch - 'a' + 10
+              : ch >= 'A' && ch <= 'F' ? ch - 'A' + 10
+                                       : -1;
+
+      if (d < 0)
+        return false;
+      c = c << 4 | (uint32_t) d;
+    }
+  *out = c;
   return true;
 }
 
@@ -153,6 +181,10 @@ apply (EaselSpan section, EaselSpan key, EaselSpan value, void *data)
         s->show_colorbox = true;
       else if (easel_span_is (key, "statusbar") && !parse_on_off (value, &s->show_statusbar))
         s->show_statusbar = true;
+      else if (easel_span_is (key, "workspace-color"))
+        s->has_workspace_color = parse_rgb (value, &s->workspace_color);
+      else if (easel_span_is (key, "workspace-color-dark"))
+        s->has_workspace_color_dark = parse_rgb (value, &s->workspace_color_dark);
       else if (easel_span_is (key, "grid-size"))
         {
           if (value.n < sizeof text)

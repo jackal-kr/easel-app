@@ -17,6 +17,10 @@ extern const int easel_view_presets[EASEL_VIEW_N_PRESETS];
 /* The index of pct in easel_view_presets, or -1 when it is not a preset (10, 25, 50, 300, a Fit to Window zoom such as 42). */
 int easel_view_preset_index (int pct);
 
+/* The margin around the picture in the canvas area, in logical pixels, on each side (REQ-0009-01). The scroll offsets
+   the functions below take and give are those of the scrolled area, margin included. */
+#define EASEL_VIEW_MARGIN 12
+
 /* Width or height in logical pixels that shows picture_size pixels, rounded up. */
 int easel_view_content_size (int picture_size, int pct, double scale);
 
@@ -31,7 +35,7 @@ double easel_view_anchor (double scroll, double pointer, int old_pct, int new_pc
 /* Fit to Window (REQ-0004-07): the largest whole percent at which a pic_w x pic_h picture fits in an area_w x area_h
    canvas area, all in device pixels with no scrollbars counted, limited to 10 to 800 (10 if even that is too big). It
    is usually not one of the zoom levels; easel_view_zoom_step steps from it to the level above or below. */
-int easel_view_fit_zoom (int area_w, int area_h, int pic_w, int pic_h);
+int easel_view_fit_zoom (int area_w, int area_h, int pic_w, int pic_h, double scale);
 
 /* The pinch (REQ-0004-08). *base is the gesture's scale at the last level change (1.0 when a gesture begins); scale
    is its scale now; pct is the current zoom. Returns +1 or -1 when the scale has changed by 1.5x since *base and the

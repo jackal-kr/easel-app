@@ -33,6 +33,10 @@ typedef struct
   bool show_toolbox;      /* the panels start shown (REQ-0004-27) */
   bool show_colorbox;
   bool show_statusbar;
+  bool has_workspace_color;   /* a valid `[view] workspace-color` was given (REQ-0009-04) */
+  uint32_t workspace_color;   /* 0xRRGGBB, when has_workspace_color */
+  bool has_workspace_color_dark;   /* a valid `[view] workspace-color-dark` was given (REQ-0009-04, REQ-0009-06) */
+  uint32_t workspace_color_dark;   /* 0xRRGGBB, when has_workspace_color_dark */
   int jpeg_quality;       /* EASEL_JPEG_QUALITY_MIN..EASEL_JPEG_QUALITY_MAX (REQ-0005-14) */
 } EaselSettings;
 

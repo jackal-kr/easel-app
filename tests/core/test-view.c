@@ -1,6 +1,8 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 /* Zoom and pointer mapping scenarios of feature 0001. */
 
+#include <math.h>
+
 #include "check.h"
 #include "view.h"
 
@@ -19,25 +21,27 @@ as13_zoom_steps_and_anchor (void)
   CHECK (easel_view_zoom_step (50, 2) == 200);
   CHECK (easel_view_zoom_step (400, -3) == 100);
 
-  /* 2000x2000 picture, 500x500 view, scale 1, pointer over pixel (40,30) at 100 %. */
-  sx = easel_view_anchor (0, 40.5, 100, 200, 2000, 1.0, 500);
-  sy = easel_view_anchor (0, 30.5, 100, 200, 2000, 1.0, 500);
+  /* 2000x2000 picture, 500x500 view, scale 1, pointer over pixel (40,30) at 100 %. The view point is the margin plus
+     the picture point (amended by 0009: the scroll offsets count the margin, REQ-0009-05). */
+  sx = easel_view_anchor (0, EASEL_VIEW_MARGIN + 40.5, 100, 200, 2000, 1.0, 500);
+  sy = easel_view_anchor (0, EASEL_VIEW_MARGIN + 30.5, 100, 200, 2000, 1.0, 500);
   easel_view_to_pixel (sx + 40.5, sy + 30.5, 200, 1.0, &px, &py);
   CHECK (px == 40 && py == 30);
 
   /* Same at scale 2 and from 300 % to 400 % with the view scrolled. */
   sx = easel_view_anchor (700, 123.25, 300, 400, 2000, 2.0, 500);
-  easel_view_to_pixel (700 + 123.25, 0, 300, 2.0, &px, &py);
+  easel_view_to_pixel (700 + 123.25 - EASEL_VIEW_MARGIN, 0, 300, 2.0, &px, &py);
   {
     int px2, py2;
 
-    easel_view_to_pixel (sx + 123.25, 0, 400, 2.0, &px2, &py2);
+    easel_view_to_pixel (sx + 123.25 - EASEL_VIEW_MARGIN, 0, 400, 2.0, &px2, &py2);
     CHECK (px2 == px);
   }
 
-  /* At the edges the view cannot scroll past the picture. */
-  CHECK (easel_view_anchor (0, 10, 200, 100, 2000, 1.0, 500) == 0);
-  CHECK (easel_view_anchor (1500, 490, 100, 50, 2000, 1.0, 500) == 500);
+  /* At the edges the view cannot scroll past the picture and its margins: 0 at the start, the content plus 24 less the
+     view at the end (1000 + 24 - 500 at 50 %, so 511 is inside it). */
+  CHECK (easel_view_anchor (0, 22, 200, 100, 2000, 1.0, 500) == 0);
+  CHECK (easel_view_anchor (1500, 490, 100, 50, 2000, 1.0, 500) == 511);
   CHECK (easel_view_anchor (0, 10, 100, 200, 100, 1.0, 500) == 0);
 
   /* Touchpad: deltas add up to whole notches; wheel up (negative delta) zooms in. */
@@ -161,53 +165,82 @@ as5_every_preset_is_a_step (void)
     CHECK (easel_view_zoom_step (easel_view_zoom_step (easel_view_presets[i], -1), 1) == easel_view_presets[i]);
 }
 
+/* 0009 AS-5 (REQ-0009-05, REQ-0004-07): Fit to Window fits the picture and its two margins of EASEL_VIEW_MARGIN logical
+   pixels (device pixels: times the scale). */
+static void
+as5_fit_zoom_with_margin (void)
+{
+  CHECK (EASEL_VIEW_MARGIN == 12);
+  CHECK (easel_view_fit_zoom (1390, 853, 3000, 2000, 1.0) == 41);     /* 3000 x 0.41 + 24 and 2000 x 0.41 + 24 fit, 42 % not */
+  CHECK (easel_view_fit_zoom (2780, 1706, 3000, 2000, 2.0) == 82);    /* (1706 - 48) / 2000 = 0.829 */
+  CHECK (easel_view_fit_zoom (1024, 824, 1000, 800, 1.0) == 100);     /* exactly the picture and its margins */
+  CHECK (easel_view_fit_zoom (1023, 824, 1000, 800, 1.0) == 99);
+}
+
+/* 0009 AS-6 (REQ-0009-05): the zoom anchor counts the margin: the scroll offset of the viewport includes the 12 logical
+   pixels before the picture, and the end of the scroll the 12 after it. */
+static void
+as6_anchor_with_margin (void)
+{
+  /* At 100 % and scroll 0, the view point 112 is over picture pixel 100 (12 + 100); at 200 % that pixel is at
+     12 + 200 = 212, so the scroll that keeps it under the point is 100. */
+  CHECK (fabs (easel_view_anchor (0, 112, 100, 200, 2000, 1.0, 500) - 100) < 1e-9);
+  /* The far end: content 4000 at 200 % plus 24, less the view of 500. */
+  CHECK (easel_view_anchor (1524, 490, 100, 200, 2000, 1.0, 500) == 4024 - 500);   /* from the far end at 100 % */
+  /* A point in the margin before the picture stays still too: view point 6 at scroll 0 is 6 pixels before pixel 0. */
+  CHECK (easel_view_anchor (0, 6, 100, 200, 2000, 1.0, 500) == 0);
+}
+
 /* REQ-0004-06: a zoom command keeps the center of the canvas area still. */
 static void
 as5_zoom_anchor_center (void)
 {
-  /* 2000x2000 picture at 100 %, canvas area 1000x800 scrolled to (500, 400): the center is picture pixel (1000, 800). */
+  /* 2000x2000 picture at 100 %, canvas area 1000x800 scrolled to (500, 400): the center is picture pixel (988, 788), the
+     margin of 12 being before the picture (amended by 0009, REQ-0009-05). */
   double sx = easel_view_anchor (500, 500, 100, 200, 2000, 1.0, 1000);
   double sy = easel_view_anchor (400, 400, 100, 200, 2000, 1.0, 800);
 
-  CHECK (sx == 1500 && sy == 1200);       /* (1000, 800) * 2 - (500, 400) */
-  CHECK (easel_view_anchor (500, 500, 200, 100, 2000, 1.0, 1000) == 0);   /* zooming out: the picture fits, no scroll */
+  CHECK (sx == 1488 && sy == 1188);       /* (988, 788) * 2 + 12 - (500, 400) */
+  CHECK (easel_view_anchor (500, 500, 200, 100, 2000, 1.0, 1000) == 6);   /* zooming out: (494 + 12) - 500 */
   /* A picture smaller than the canvas area stays at the top-left, at any zoom. */
   CHECK (easel_view_anchor (0, 500, 100, 200, 300, 1.0, 1000) == 0);
   CHECK (easel_view_anchor (0, 400, 100, 800, 100, 1.0, 1000) == 0);   /* 100 pixels at 800 % are 800 < 1000 */
   /* Where the anchor would leave the picture, the edge wins: zooming out at the right end (200 % scrolled to 3000). */
-  CHECK (easel_view_anchor (3000, 500, 200, 100, 2000, 1.0, 1000) == 1000);
-  CHECK (easel_view_anchor (1000, 1000, 100, 200, 2000, 1.0, 1000) == 3000);   /* zooming in at the right end */
+  CHECK (easel_view_anchor (3000, 500, 200, 100, 2000, 1.0, 1000) == 1024);   /* 2000 + 24 - 1000 */
+  CHECK (easel_view_anchor (1000, 1000, 100, 200, 2000, 1.0, 1000) == 2988);   /* zooming in at the right end */
 }
 
 /* REQ-0004-07: the largest level at which the whole picture fits the canvas area; device pixels. */
 static void
 as6_fit_zoom (void)
 {
-  /* The largest whole percent that fits, 10 to 800 (REQ-0004-07). */
-  CHECK (easel_view_fit_zoom (1390, 853, 800, 600) == 142);        /* 853 / 600 = 1.421 */
-  CHECK (easel_view_fit_zoom (1390, 853, 3000, 2000) == 42);       /* 853 / 2000 = 0.426 */
-  CHECK (easel_view_fit_zoom (1390, 853, 5840, 5184) == 16);       /* the photo: 853 / 5184 = 0.1645 */
-  CHECK (easel_view_fit_zoom (1390, 853, 10000, 10000) == 10);     /* 8.5 %: not below 10 % */
-  CHECK (easel_view_fit_zoom (1390, 853, 1, 1) == 800);            /* smaller than the area even at 800 % */
-  CHECK (easel_view_fit_zoom (1390, 853, 100, 100) == 800);
-  CHECK (easel_view_fit_zoom (1390, 853, 174, 100) == 798);        /* 1390 / 174 = 7.988 */
-  CHECK (easel_view_fit_zoom (1390, 853, 173, 100) == 800);        /* 8.035: capped */
+  /* The largest whole percent that fits, 10 to 800 (REQ-0004-07), in the area less two margins of 12 (amended by 0009,
+     REQ-0009-05): a 1390 x 853 area leaves 1366 x 829. */
+  CHECK (easel_view_fit_zoom (1390, 853, 800, 600, 1.0) == 138);        /* 829 / 600 = 1.381 */
+  CHECK (easel_view_fit_zoom (1390, 853, 3000, 2000, 1.0) == 41);       /* 829 / 2000 = 0.414 */
+  CHECK (easel_view_fit_zoom (1390, 853, 5840, 5184, 1.0) == 15);       /* the photo: 829 / 5184 = 0.1599 */
+  CHECK (easel_view_fit_zoom (1390, 853, 10000, 10000, 1.0) == 10);     /* 8.3 %: not below 10 % */
+  CHECK (easel_view_fit_zoom (1390, 853, 1, 1, 1.0) == 800);            /* smaller than the area even at 800 % */
+  CHECK (easel_view_fit_zoom (1390, 853, 100, 100, 1.0) == 800);
+  CHECK (easel_view_fit_zoom (1390, 853, 174, 100, 1.0) == 785);        /* 1366 / 174 = 7.851 */
+  CHECK (easel_view_fit_zoom (1390, 853, 170, 100, 1.0) == 800);        /* 8.035: capped */
   /* Fitting exactly counts as fitting; either direction can be the limit. */
-  CHECK (easel_view_fit_zoom (1000, 800, 1000, 800) == 100);
-  CHECK (easel_view_fit_zoom (2000, 800, 1000, 800) == 100);       /* the height limits it */
-  CHECK (easel_view_fit_zoom (1000, 2000, 1000, 800) == 100);      /* the width limits it */
-  CHECK (easel_view_fit_zoom (2000, 1600, 1000, 800) == 200);
-  CHECK (easel_view_fit_zoom (0, 0, 800, 600) == 10);              /* no room at all */
-  /* The result fits, and one percent more would not (except at the ends). */
+  CHECK (easel_view_fit_zoom (1024, 824, 1000, 800, 1.0) == 100);
+  CHECK (easel_view_fit_zoom (2024, 824, 1000, 800, 1.0) == 100);       /* the height limits it */
+  CHECK (easel_view_fit_zoom (1024, 2024, 1000, 800, 1.0) == 100);      /* the width limits it */
+  CHECK (easel_view_fit_zoom (2024, 1624, 1000, 800, 1.0) == 200);
+  CHECK (easel_view_fit_zoom (0, 0, 800, 600, 1.0) == 10);              /* no room at all */
+  /* The result fits with its margins, and one percent more would not (except at the ends): 1366 x 829 is 1390 x 853
+     less two margins of 12. */
   for (int w = 50; w <= 9000; w += 437)
     for (int h = 50; h <= 9000; h += 611)
       {
-        int z = easel_view_fit_zoom (1390, 853, w, h);
+        int z = easel_view_fit_zoom (1390, 853, w, h, 1.0);
 
         if (z > 10)
-          CHECK ((long) w * z <= 1390L * 100 && (long) h * z <= 853L * 100);
+          CHECK ((long) w * z <= 1366L * 100 && (long) h * z <= 829L * 100);
         if (z > 10 && z < 800)
-          CHECK ((long) w * (z + 1) > 1390L * 100 || (long) h * (z + 1) > 853L * 100);
+          CHECK ((long) w * (z + 1) > 1366L * 100 || (long) h * (z + 1) > 829L * 100);
       }
 }
 
@@ -306,6 +339,8 @@ main (void)
   RUN (as13_zoom_steps_and_anchor);
   RUN (as3_zoom_levels);
   RUN (as1_presets_list_and_index);
+  RUN (as5_fit_zoom_with_margin);
+  RUN (as6_anchor_with_margin);
   RUN (as5_every_preset_is_a_step);
   RUN (as5_zoom_anchor_center);
   RUN (as6_fit_zoom);

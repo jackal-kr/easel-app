@@ -13,7 +13,7 @@ Vertical slices first (a thin end-to-end feature), breadth later.
 | 0006 | freehand-tools | Brush shapes/sizes, airbrush, eraser | |
 | 0007 | fill-pick-magnify | Fill, pick color, magnifier | Magnifier levels 1/10x, 1/4x, 1/2x, 1x, 2x (default), 4x, 6x, 8x, chosen then applied on a click; Pick Color returns to the previous tool |
 | 0008 | zoom-presets | One list of zoom presets for the Magnifier's options and a new View > Zoom submenu | Accepted 2026-10-18, from JOD's screencast; the lens list (no 300 %) is the preset list, Zoom In and Out keep their own steps with 300 % |
-| 0009 | view-polish | A 12 px margin and a soft shadow around the picture, a workspace color setting | Accepted 2026-10-18, from JOD's reference measurements; touches every rule that maps the pointer to a picture pixel |
+| 0009 | view-polish | A 12 px margin and a soft shadow around the picture, a workspace color setting | Implemented 2026-10-18, from JOD's reference measurements; touches every rule that maps the pointer to a picture pixel Next, a small settings change after view polish: rename the picture-color key `background` to `canvas-color`, still read `background`, and write the new name in a new settings file |
 | 0010 | lines-curves-shapes | Line, curve, polygon, rectangle, rounded rectangle, ellipse, fill styles, gradient | |
 | 0011 | selection | Rect and free-form select, floating selection, move, smear, stamp, transparent mode | |
 | 0012 | clipboard | Cut, copy, paste, oversize paste, paste from / copy to file | |

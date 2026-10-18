@@ -106,11 +106,10 @@ static void stop_spray (EaselCanvas *self);
 static void commit_zoom (EaselCanvas *self, int zoom, double scroll_h, double scroll_v);
 static gboolean on_spray_tick (gpointer data);
 
-/* Resize handles (REQ-0004-16): 5 x 5 logical pixels touching the picture, a hit area of 9 x 9 around the center, and
-   room to the right of and below the picture for the part of the hit area outside the handle (5 + 2). */
+/* Resize handles (REQ-0004-16): 5 x 5 logical pixels touching the picture, a hit area of 9 x 9 around the center. They
+   reach 5 + 2 pixels past the picture, inside the margin of EASEL_VIEW_MARGIN around it (REQ-0009-01). */
 #define HANDLE_SIZE 5.0
 #define HANDLE_HIT 9.0
-#define HANDLE_REACH 7
 
 static gboolean
 handles_shown (EaselCanvas *self)
@@ -325,10 +324,11 @@ easel_canvas_measure (GtkWidget *widget, GtkOrientation orientation, int for_siz
   EaselCanvas *self = EASEL_CANVAS (widget);
   int size = 0;
 
+  /* The picture only: the handles lie in the margin around it, drawn past the canvas's edge (REQ-0009-01,
+     REQ-0004-16). */
   if (self->img != NULL)
     size = easel_view_content_size (orientation == GTK_ORIENTATION_HORIZONTAL ? self->img->width : self->img->height,
-                                    self->zoom, easel_canvas_get_scale (self))
-           + (handles_shown (self) ? HANDLE_REACH : 0);
+                                    self->zoom, easel_canvas_get_scale (self));
   *minimum = *natural = size;
 }
 
@@ -375,14 +375,20 @@ grid_segment (double x0, double y0, double x1, double y1, void *data)
 static void
 append_grid (EaselCanvas *self, GtkSnapshot *snapshot)
 {
-  GtkAdjustment *h = adjustment (self, GTK_ORIENTATION_HORIZONTAL);
-  GtkAdjustment *v = adjustment (self, GTK_ORIENTATION_VERTICAL);
   double scale = easel_canvas_get_scale (self);
   double l = self->zoom / (100.0 * scale);
-  double vx0 = fmax (0, gtk_adjustment_get_value (h)), vy0 = fmax (0, gtk_adjustment_get_value (v));
-  double vx1 = fmin (self->img->width * l, gtk_adjustment_get_value (h) + gtk_adjustment_get_page_size (h));
-  double vy1 = fmin (self->img->height * l, gtk_adjustment_get_value (v) + gtk_adjustment_get_page_size (v));
+  graphene_rect_t seen;
+  double vx0, vy0, vx1, vy1;
   GridDraw d = { NULL, l, scale };
+
+  /* The part of the picture the view shows, in the canvas's own coordinates: the viewport's bounds seen from the canvas,
+     so that the margin around the picture (REQ-0009-01) needs no arithmetic here. */
+  if (!gtk_widget_compute_bounds (gtk_widget_get_parent (GTK_WIDGET (self)), GTK_WIDGET (self), &seen))
+    return;
+  vx0 = fmax (0, seen.origin.x);
+  vy0 = fmax (0, seen.origin.y);
+  vx1 = fmin (self->img->width * l, seen.origin.x + seen.size.width);
+  vy1 = fmin (self->img->height * l, seen.origin.y + seen.size.height);
 
   if (vx1 <= vx0 || vy1 <= vy0)
     return;
@@ -1181,7 +1187,8 @@ easel_canvas_fit_to_window (EaselCanvas *self)
     return;
   /* The canvas area in device pixels, with no scrollbars counted (REQ-0004-07). */
   zoom = easel_view_fit_zoom ((int) (gtk_adjustment_get_page_size (h) * scale),
-                               (int) (gtk_adjustment_get_page_size (v) * scale), self->img->width, self->img->height);
+                               (int) (gtk_adjustment_get_page_size (v) * scale), self->img->width, self->img->height,
+                               scale);
   if (zoom == self->zoom)
     {
       /* Same zoom: still show the top-left corner. */
@@ -1580,4 +1587,12 @@ easel_canvas_init (EaselCanvas *self)
   update_cursor (self);
   gtk_widget_set_halign (GTK_WIDGET (self), GTK_ALIGN_START);
   gtk_widget_set_valign (GTK_WIDGET (self), GTK_ALIGN_START);
+  /* The picture lies EASEL_VIEW_MARGIN logical pixels in from every edge of the scrollable area (REQ-0009-01); the
+     canvas's own coordinates stay those of the picture. */
+  gtk_widget_set_margin_start (GTK_WIDGET (self), EASEL_VIEW_MARGIN);
+  gtk_widget_set_margin_end (GTK_WIDGET (self), EASEL_VIEW_MARGIN);
+  gtk_widget_set_margin_top (GTK_WIDGET (self), EASEL_VIEW_MARGIN);
+  gtk_widget_set_margin_bottom (GTK_WIDGET (self), EASEL_VIEW_MARGIN);
+  /* The style sheet draws the soft shadow around the canvas's box, which is the picture (REQ-0009-02). */
+  gtk_widget_add_css_class (GTK_WIDGET (self), "easel-picture");
 }

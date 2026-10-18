@@ -139,7 +139,8 @@ window_monitor (EaselWindow *self)
 /* An auto size depends on the visible canvas area, known once the scrolled area is first allocated:
    the adjustments' page sizes are that area in logical pixels. On Wayland a HiDPI surface learns its
    scale only after its first frame, so the monitor's scale converts to device pixels. */
-/* The visible canvas area in device pixels, from the adjustments' page sizes; false until it is known. */
+/* The visible canvas area less its two margins, in device pixels, from the adjustments' page sizes; false until it
+   is known. */
 static gboolean
 canvas_area_device (EaselWindow *self, int *width, int *height)
 {
@@ -152,8 +153,10 @@ canvas_area_device (EaselWindow *self, int *width, int *height)
     return FALSE;
   monitor = window_monitor (self);
   scale = monitor ? gdk_monitor_get_scale (monitor) : easel_canvas_get_scale (self->canvas);
-  *width = (int) (w * scale);
-  *height = (int) (h * scale);
+  /* Less the two margins around the picture, so that an auto picture still shows without scrollbars (REQ-0001-02 as
+     amended by REQ-0009-01). */
+  *width = (int) ((w - 2 * EASEL_VIEW_MARGIN) * scale);
+  *height = (int) ((h - 2 * EASEL_VIEW_MARGIN) * scale);
   return TRUE;
 }
 
@@ -1192,6 +1195,51 @@ zoom_fit_activated (GSimpleAction *action, GVariant *parameter, gpointer user_da
     easel_canvas_fit_to_window (self->canvas);
 }
 
+/* The workspace colors of the settings file, when valid, over the defaults of style.css (REQ-0009-04, REQ-0009-06): in
+   the light theme `workspace-color`; in the dark theme `workspace-color-dark`, else `workspace-color`. One provider for
+   the app, set again by each new window from the file it read, and again when the theme changes (a media query in a
+   provider loaded from a string is not re-evaluated on a change of theme, so the color for the theme now is chosen
+   here). */
+static EaselSettings workspace_settings;
+
+static void on_dark_changed (AdwStyleManager *manager, GParamSpec *pspec, gpointer data);
+
+static void
+load_workspace_color (void)
+{
+  static GtkCssProvider *provider;
+  const EaselSettings *s = &workspace_settings;
+  gboolean dark = adw_style_manager_get_dark (adw_style_manager_get_default ());
+  gboolean set = dark ? s->has_workspace_color_dark || s->has_workspace_color : s->has_workspace_color;
+  uint32_t color = dark && s->has_workspace_color_dark ? s->workspace_color_dark : s->workspace_color;
+  g_autofree char *css = NULL;
+
+  if (provider == NULL)
+    {
+      provider = gtk_css_provider_new ();
+      gtk_style_context_add_provider_for_display (gdk_display_get_default (), GTK_STYLE_PROVIDER (provider),
+                                                  GTK_STYLE_PROVIDER_PRIORITY_USER);
+      g_signal_connect (adw_style_manager_get_default (), "notify::dark", G_CALLBACK (on_dark_changed), NULL);
+    }
+  if (set)
+    css = g_strdup_printf ("scrolledwindow.workspace > viewport { background-color: #%06X; }", (unsigned) color);
+  gtk_css_provider_load_from_string (provider, css != NULL ? css : "");
+}
+
+/* The theme changed: the workspace color for the new theme (REQ-0009-06). */
+static void
+on_dark_changed (AdwStyleManager *manager, GParamSpec *pspec, gpointer data)
+{
+  load_workspace_color ();
+}
+
+static void
+apply_workspace_color (const EaselSettings *settings)
+{
+  workspace_settings = *settings;
+  load_workspace_color ();
+}
+
 /* The Magnifier's level (REQ-0007-02, REQ-0008-02): the lens buttons set this state; it only selects, it never zooms. */
 static void
 magnifier_level_changed (GSimpleAction *action, GVariant *value, gpointer user_data)
@@ -1735,6 +1783,8 @@ easel_window_init (EaselWindow *self)
   sync_zoom_ui (self);
   easel_canvas_set_history (self->canvas, self->history);
   easel_canvas_listen_on (self->canvas, GTK_WIDGET (self->scroller));
+  gtk_widget_add_css_class (GTK_WIDGET (self->scroller), "workspace");
+  apply_workspace_color (&self->settings);
   easel_canvas_set_tool (self->canvas, self->tool);
   {
     g_autofree char *palette_path = easel_palette_file_path ();

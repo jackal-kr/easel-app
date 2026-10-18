@@ -163,6 +163,41 @@ as18_budget_setting (void)
   CHECK (parse ("[history]\nmemory=64\nhello\n").undo_budget_mb == 512);
 }
 
+/* 0009 AS-3 (REQ-0009-04): `[view] workspace-color` is exactly `#rrggbb`; anything else, or nothing, means no color set. */
+static void
+as3_workspace_color_setting (void)
+{
+  EaselSettings s;
+
+  s = parse ("");
+  CHECK (!s.has_workspace_color);
+  s = parse ("[view]\nworkspace-color=#3465A4\n");
+  CHECK (s.has_workspace_color && s.workspace_color == 0x3465A4u);
+  s = parse ("[view]\nworkspace-color=#3465a4\n");
+  CHECK (s.has_workspace_color && s.workspace_color == 0x3465A4u);
+  s = parse ("[view]\nworkspace-color = #E7E7E7 \n");                  /* spaces around, as every value */
+  CHECK (s.has_workspace_color && s.workspace_color == 0xE7E7E7u);
+  CHECK (!parse ("[view]\nworkspace-color=3465A4\n").has_workspace_color);
+  CHECK (!parse ("[view]\nworkspace-color=#346\n").has_workspace_color);
+  CHECK (!parse ("[view]\nworkspace-color=#3465A4FF\n").has_workspace_color);
+  CHECK (!parse ("[view]\nworkspace-color=blue\n").has_workspace_color);
+  CHECK (!parse ("[view]\nworkspace-color=\n").has_workspace_color);
+  CHECK (!parse ("[view]\nworkspace-color=#3465G4\n").has_workspace_color);
+  CHECK (!parse ("[view]\nworkspace-color=transparent\n").has_workspace_color);
+  /* The last repeat wins; an invalid repeat resets to none. */
+  CHECK (parse ("[view]\nworkspace-color=#000000\nworkspace-color=#FFFFFF\n").workspace_color == 0xFFFFFFu);
+  CHECK (!parse ("[view]\nworkspace-color=#000000\nworkspace-color=red\n").has_workspace_color);
+  /* Only in [view]. */
+  CHECK (!parse ("[new-picture]\nworkspace-color=#3465A4\n").has_workspace_color);
+  /* The dark key, the same syntax, set on its own (REQ-0009-04 as amended before M2). */
+  s = parse ("[view]\nworkspace-color-dark=#102030\n");
+  CHECK (s.has_workspace_color_dark && s.workspace_color_dark == 0x102030u && !s.has_workspace_color);
+  s = parse ("[view]\nworkspace-color=#3465A4\nworkspace-color-dark=#123\n");
+  CHECK (!s.has_workspace_color_dark && s.has_workspace_color);
+  CHECK (!parse ("").has_workspace_color_dark);
+  CHECK (!parse ("[view]\nworkspace-color-dark=\n").has_workspace_color_dark);
+}
+
 static void
 as14_view_settings (void)
 {
@@ -278,6 +313,7 @@ main (void)
   RUN (as5_invalid_value_falls_back);
   RUN (as18_budget_setting);
   RUN (as14_view_settings);
+  RUN (as3_workspace_color_setting);
   RUN (as16_jpeg_quality_setting);
   RUN (as6_garbage_is_all_defaults);
   RUN (as7_size_limits);

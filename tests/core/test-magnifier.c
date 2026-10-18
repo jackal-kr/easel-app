@@ -40,20 +40,21 @@ as3_magnifier_zoom_rule (void)
 static void
 as4_focus_scroll (void)
 {
-  /* A 3000 x 2000 picture at 200 % in a view of 1390 x 853: content 6000 x 4000. */
-  CHECK (fabs (easel_view_focus_scroll (1000.5, 200, 3000, 1.0, 1390) - (2001 - 695)) < 1e-9);
-  CHECK (fabs (easel_view_focus_scroll (700.5, 200, 2000, 1.0, 853) - (1401 - 426.5)) < 1e-9);
+  /* A 3000 x 2000 picture at 200 % in a view of 1390 x 853: content 6000 x 4000, plus the margins of 12 before and after
+     the picture (amended by 0009, REQ-0009-05). */
+  CHECK (fabs (easel_view_focus_scroll (1000.5, 200, 3000, 1.0, 1390) - (12 + 2001 - 695)) < 1e-9);
+  CHECK (fabs (easel_view_focus_scroll (700.5, 200, 2000, 1.0, 853) - (12 + 1401 - 426.5)) < 1e-9);
   /* Near the top-left corner: the edge limits it, the view shows the corner. */
   CHECK (easel_view_focus_scroll (100.5, 200, 3000, 1.0, 1390) == 0);
   CHECK (easel_view_focus_scroll (50.5, 200, 2000, 1.0, 853) == 0);
   /* Near the bottom-right corner: the last offset that still fills the view. */
-  CHECK (fabs (easel_view_focus_scroll (2950.5, 200, 3000, 1.0, 1390) - (6000 - 1390)) < 1e-9);
-  CHECK (fabs (easel_view_focus_scroll (1980.5, 200, 2000, 1.0, 853) - (4000 - 853)) < 1e-9);
+  CHECK (fabs (easel_view_focus_scroll (2950.5, 200, 3000, 1.0, 1390) - (6024 - 1390)) < 1e-9);
+  CHECK (fabs (easel_view_focus_scroll (1980.5, 200, 2000, 1.0, 853) - (4024 - 853)) < 1e-9);
   /* A picture that fits (600 x 400 at 200 % is 1200 x 800): no scrolling. */
   CHECK (easel_view_focus_scroll (300, 200, 600, 1.0, 1390) == 0);
   CHECK (easel_view_focus_scroll (200, 200, 400, 1.0, 853) == 0);
   /* A scale of 2: device pixels are twice the logical ones, so the offset in logical pixels is half. */
-  CHECK (fabs (easel_view_focus_scroll (1000.5, 200, 3000, 2.0, 695) - (1000.5 * 2 / 2 - 347.5)) < 1e-9);
+  CHECK (fabs (easel_view_focus_scroll (1000.5, 200, 3000, 2.0, 695) - (12 + 1000.5 * 2 / 2 - 347.5)) < 1e-9);
 }
 
 /* AS-5: the preview box. */
@@ -92,9 +93,20 @@ as5_magnifier_box (void)
   CHECK (w == 1 && h == 1 && x == 50 && y == 50);
 }
 
+/* 0009 (REQ-0009-05, REQ-0007-03): the focus scroll counts the margin: a focus at picture coordinate f is at
+   12 + f x zoom in the viewport, and the far end of the scroll is the content plus 24 less the view. */
+static void
+focus_scroll_with_margin (void)
+{
+  CHECK (fabs (easel_view_focus_scroll (1500, 200, 3000, 1.0, 1000) - (12 + 3000 - 500)) < 1e-9);
+  CHECK (easel_view_focus_scroll (3000, 200, 3000, 1.0, 1000) == 6024 - 1000);
+  CHECK (easel_view_focus_scroll (0, 200, 3000, 1.0, 1000) == 0);
+}
+
 int
 main (void)
 {
+  RUN (focus_scroll_with_margin);
   RUN (as3_magnifier_zoom_rule);
   RUN (as4_focus_scroll);
   RUN (as5_magnifier_box);

@@ -67,9 +67,11 @@ double
 easel_view_anchor (double scroll, double pointer, int old_pct, int new_pct, int picture_size, double scale,
                    double view_size)
 {
-  double picture_point = (scroll + pointer) / logical_per_pixel (old_pct, scale);
-  double next = picture_point * logical_per_pixel (new_pct, scale) - pointer;
-  double max = easel_view_content_size (picture_size, new_pct, scale) - view_size;
+  /* The scroll offsets count the margin before the picture, and the scrollable size the margins on both sides
+     (REQ-0009-05). */
+  double picture_point = (scroll + pointer - EASEL_VIEW_MARGIN) / logical_per_pixel (old_pct, scale);
+  double next = picture_point * logical_per_pixel (new_pct, scale) + EASEL_VIEW_MARGIN - pointer;
+  double max = easel_view_content_size (picture_size, new_pct, scale) + 2 * EASEL_VIEW_MARGIN - view_size;
 
   if (next > max)
     next = max;
@@ -100,10 +102,14 @@ easel_view_window_size (int monitor_width, int monitor_height, int *width, int *
 }
 
 int
-easel_view_fit_zoom (int area_w, int area_h, int pic_w, int pic_h)
+easel_view_fit_zoom (int area_w, int area_h, int pic_w, int pic_h, double scale)
 {
   long zoom;
 
+  /* The picture must fit with its two margins (REQ-0009-05), which are logical pixels and so scale times as many device
+     pixels. */
+  area_w -= (int) ceil (2 * EASEL_VIEW_MARGIN * scale);
+  area_h -= (int) ceil (2 * EASEL_VIEW_MARGIN * scale);
   if (pic_w < 1 || pic_h < 1 || area_w < 1 || area_h < 1)
     return zoom_levels[0];
   /* Integer division rounds down, which is what "fits" needs: one percent more would not. */
@@ -158,8 +164,8 @@ double
 easel_view_focus_scroll (double focus, int pct, int picture_size, double scale, double view_size)
 {
   double content = easel_view_content_size (picture_size, pct, scale);
-  double offset = focus * pct / 100.0 / scale - view_size / 2;
-  double most = content - view_size;
+  double offset = EASEL_VIEW_MARGIN + focus * pct / 100.0 / scale - view_size / 2;     /* the margin is before the picture */
+  double most = content + 2 * EASEL_VIEW_MARGIN - view_size;
 
   if (offset > most)
     offset = most;

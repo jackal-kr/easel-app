@@ -25,6 +25,14 @@
 /* One application per process: GApplication cannot be registered twice. Tests close their windows. */
 static GtkApplication *app;
 
+/* The canvas coordinate (logical pixels from the picture's top-left) of a point of the view, view_point pixels from the
+   left (or top) of the canvas area: the scroll offset counts the margin before the picture (REQ-0009-01). */
+static double
+view_to_canvas (GtkAdjustment *adj, double view_point)
+{
+  return gtk_adjustment_get_value (adj) + view_point - EASEL_VIEW_MARGIN;
+}
+
 static void
 close_windows (void)
 {
@@ -129,8 +137,9 @@ as2_auto_fits_view (void)
   scale = easel_canvas_get_scale (easel_window_get_canvas (win));
   area_w = (int) (gtk_adjustment_get_page_size (gtk_scrolled_window_get_hadjustment (scroller)) * scale);
   area_h = (int) (gtk_adjustment_get_page_size (gtk_scrolled_window_get_vadjustment (scroller)) * scale);
-  g_assert_cmpint (img->width, <, area_w);
-  g_assert_cmpint (img->height, <, area_h);
+  /* Smaller than the area less its two margins (REQ-0001-02 as amended by 0009, REQ-0009-01). */
+  g_assert_cmpint (img->width, <, area_w - (int) (2 * EASEL_VIEW_MARGIN * scale));
+  g_assert_cmpint (img->height, <, area_h - (int) (2 * EASEL_VIEW_MARGIN * scale));
   g_assert_true ((img->width == 640 && img->height == 480) || (img->width == 800 && img->height == 600)
                  || (img->width == 1024 && img->height == 768));
   close_windows ();
@@ -185,9 +194,9 @@ as13_zoom_keeps_point_under_pointer (void)
   easel_canvas_zoom_at (canvas, 1, 40.5, 30.5);
   wait_for_layout (win);
   g_assert_cmpint (easel_window_get_zoom (win), ==, 200);
-  easel_view_to_pixel (gtk_adjustment_get_value (h) + 40.5, gtk_adjustment_get_value (v) + 30.5, 200, scale, &px, &py);
-  g_assert_cmpint (px, ==, (int) (40.5 * scale));
-  g_assert_cmpint (py, ==, (int) (30.5 * scale));
+  easel_view_to_pixel (view_to_canvas (h, 40.5), view_to_canvas (v, 30.5), 200, scale, &px, &py);
+  g_assert_cmpint (px, ==, (int) ((40.5 - EASEL_VIEW_MARGIN) * scale));    /* the pixel the point was over at 100 % */
+  g_assert_cmpint (py, ==, (int) ((30.5 - EASEL_VIEW_MARGIN) * scale));
 
   easel_canvas_zoom_at (canvas, 20, 0, 0);
   g_assert_cmpint (easel_window_get_zoom (win), ==, 800);
@@ -1784,14 +1793,14 @@ as5_zoom_keeps_center (void)
   gtk_adjustment_set_value (v, 400);
   wait_for_layout (win);
   /* The picture point at the center of the canvas area, in picture pixels (zoom 100 %, scale 1). */
-  cx = (gtk_adjustment_get_value (h) + ph / 2) / easel_canvas_get_scale (canvas);
-  cy = (gtk_adjustment_get_value (v) + pv / 2) / easel_canvas_get_scale (canvas);
+  cx = view_to_canvas (h, ph / 2) / easel_canvas_get_scale (canvas);
+  cy = view_to_canvas (v, pv / 2) / easel_canvas_get_scale (canvas);
 
   g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-in", NULL);
   wait_for_layout (win);
   g_assert_cmpint (easel_window_get_zoom (win), ==, 200);
-  g_assert_cmpfloat_with_epsilon ((gtk_adjustment_get_value (h) + ph / 2) / 2 / easel_canvas_get_scale (canvas), cx, 1.0);
-  g_assert_cmpfloat_with_epsilon ((gtk_adjustment_get_value (v) + pv / 2) / 2 / easel_canvas_get_scale (canvas), cy, 1.0);
+  g_assert_cmpfloat_with_epsilon (view_to_canvas (h, ph / 2) / 2 / easel_canvas_get_scale (canvas), cx, 1.0);
+  g_assert_cmpfloat_with_epsilon (view_to_canvas (v, pv / 2) / 2 / easel_canvas_get_scale (canvas), cy, 1.0);
 
   /* A picture smaller than the canvas area stays at the top-left. */
   close_windows ();
@@ -1839,7 +1848,7 @@ as6_fit_to_window (void)
       scroller = GTK_SCROLLED_WINDOW (gtk_widget_get_ancestor (GTK_WIDGET (canvas), GTK_TYPE_SCROLLED_WINDOW));
       wait_for_layout (win);
       canvas_area (win, &aw, &ah);
-      want = easel_view_fit_zoom (aw, ah, sizes[i][0], sizes[i][1]);
+      want = easel_view_fit_zoom (aw, ah, sizes[i][0], sizes[i][1], easel_canvas_get_scale (canvas));
 
       gtk_adjustment_set_value (gtk_scrolled_window_get_hadjustment (scroller), 300);
       gtk_adjustment_set_value (gtk_scrolled_window_get_vadjustment (scroller), 200);
@@ -2206,7 +2215,8 @@ as13_offset_is_displayed (void)
       wait_for_layout (win);
       g_assert_true (gtk_widget_compute_bounds (GTK_WIDGET (canvas), scroller, &r));
       /* A failure here has not been reproduced on demand: say what the view looked like (docs/learning-log.md). */
-      if (fabs (r.origin.x + gtk_adjustment_get_value (h)) > 1.0 || fabs (r.origin.y + gtk_adjustment_get_value (v)) > 1.0)
+      if (fabs (r.origin.x - (EASEL_VIEW_MARGIN - gtk_adjustment_get_value (h))) > 1.0
+          || fabs (r.origin.y - (EASEL_VIEW_MARGIN - gtk_adjustment_get_value (v))) > 1.0)
         {
           GdkFrameClock *clock = gtk_widget_get_frame_clock (GTK_WIDGET (win));
 
@@ -2216,8 +2226,9 @@ as13_offset_is_displayed (void)
                       gtk_widget_get_width (GTK_WIDGET (win)), gtk_widget_get_height (GTK_WIDGET (win)),
                       clock ? gdk_frame_clock_get_frame_counter (clock) : (gint64) -1);
         }
-      g_assert_cmpfloat_with_epsilon (r.origin.x, -gtk_adjustment_get_value (h), 1.0);   /* GTK places it at whole pixels */
-      g_assert_cmpfloat_with_epsilon (r.origin.y, -gtk_adjustment_get_value (v), 1.0);
+      /* The canvas is the margin in from the start of the scroll (REQ-0009-01); GTK places it at whole pixels. */
+      g_assert_cmpfloat_with_epsilon (r.origin.x, EASEL_VIEW_MARGIN - gtk_adjustment_get_value (h), 1.0);
+      g_assert_cmpfloat_with_epsilon (r.origin.y, EASEL_VIEW_MARGIN - gtk_adjustment_get_value (v), 1.0);
     }
   close_windows ();
   write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
@@ -2734,6 +2745,9 @@ as20_attributes_dialog (void)
   win = start_window ();
   wait_for_layout (win);
   canvas_area (win, &area_w, &area_h);
+  /* The auto size is chosen in the area less its two margins (REQ-0001-02 as amended by 0009, REQ-0009-01). */
+  area_w -= (int) (2 * EASEL_VIEW_MARGIN * easel_canvas_get_scale (easel_window_get_canvas (win)));
+  area_h -= (int) (2 * EASEL_VIEW_MARGIN * easel_canvas_get_scale (easel_window_get_canvas (win)));
   easel_settings_resolve_size (&(EaselSettings) { .width = EASEL_SIZE_AUTO, .height = EASEL_SIZE_AUTO }, area_w, area_h,
                                &dw, &dh);
   open_attributes (win, &dialog, &width, &height);
@@ -2850,8 +2864,8 @@ as26_scroll_clamp_after_resize (void)
   g_assert_cmpint (easel_window_resize_picture (win, 1700, 1700), ==, EASEL_RESIZE_OK);
   wait_for_layout (win);
   g_assert_cmpint (easel_canvas_get_zoom (canvas), ==, 100);
-  g_assert_cmpfloat_with_epsilon (gtk_adjustment_get_value (h), MAX (0, MIN (1500, 1700 - page_w)), 1.0);
-  g_assert_cmpfloat_with_epsilon (gtk_adjustment_get_value (v), MAX (0, MIN (1500, 1700 - page_h)), 1.0);
+  g_assert_cmpfloat_with_epsilon (gtk_adjustment_get_value (h), MAX (0, MIN (1500, 1700 + 2 * EASEL_VIEW_MARGIN - page_w)), 1.0);
+  g_assert_cmpfloat_with_epsilon (gtk_adjustment_get_value (v), MAX (0, MIN (1500, 1700 + 2 * EASEL_VIEW_MARGIN - page_h)), 1.0);
   g_assert_cmpint (gtk_widget_get_width (GTK_WIDGET (win)), ==, win_w);
   g_assert_cmpint (gtk_widget_get_height (GTK_WIDGET (win)), ==, win_h);
 
@@ -3033,9 +3047,12 @@ as15_handles (void)
     g_assert_cmpint (easel_canvas_handle_at (canvas, cx, cy), ==, EASEL_HANDLE_CORNER);
   }
 
-  /* The scrollable area includes them, only while they show. */
+  /* The scrollable area includes them: they lie in the margin around the picture (REQ-0004-16 as amended by 0009,
+     REQ-0009-01), which is there whether they show or not, and reaches past them (5 + 2 pixels). */
   gtk_widget_measure (GTK_WIDGET (canvas), GTK_ORIENTATION_HORIZONTAL, -1, &min_pencil, &ignored, NULL, NULL);
-  g_assert_cmpint (min_pencil, ==, min_pan + 7);
+  g_assert_cmpint (min_pencil, ==, min_pan);
+  g_assert_cmpint (min_pencil, ==, 300 + 2 * EASEL_VIEW_MARGIN);
+  g_assert_cmpint (5 + 2, <=, EASEL_VIEW_MARGIN);
 
   /* Where the hit areas overlap, the corner wins: an 8x8 picture. */
   g_assert_cmpint (easel_window_resize_picture (win, 8, 8), ==, EASEL_RESIZE_OK);
@@ -5857,8 +5874,8 @@ view_center (EaselWindow *win, double *cx, double *cy)
   View view = view_of (win);
   double scale = easel_canvas_get_scale (easel_window_get_canvas (win)), zoom = easel_window_get_zoom (win);
 
-  *cx = (gtk_adjustment_get_value (view.h) + gtk_adjustment_get_page_size (view.h) / 2) * scale * 100.0 / zoom;
-  *cy = (gtk_adjustment_get_value (view.v) + gtk_adjustment_get_page_size (view.v) / 2) * scale * 100.0 / zoom;
+  *cx = view_to_canvas (view.h, gtk_adjustment_get_page_size (view.h) / 2) * scale * 100.0 / zoom;
+  *cy = view_to_canvas (view.v, gtk_adjustment_get_page_size (view.v) / 2) * scale * 100.0 / zoom;
 }
 
 /* A press and release of the Magnifier (or any tool) at picture pixel (px, py) at the current zoom. */
@@ -5904,8 +5921,8 @@ as3_magnifier_click (void)
     g_assert_cmpfloat_with_epsilon (cy, by + bh / 2.0, 1.0);
     /* The picture is drawn where the scroll says (rendering, as the offset test does). */
     g_assert_true (gtk_widget_compute_bounds (GTK_WIDGET (canvas), view.scroller, &r));
-    g_assert_cmpfloat_with_epsilon (r.origin.x, -gtk_adjustment_get_value (view.h), 1.0);
-    g_assert_cmpfloat_with_epsilon (r.origin.y, -gtk_adjustment_get_value (view.v), 1.0);
+    g_assert_cmpfloat_with_epsilon (r.origin.x, EASEL_VIEW_MARGIN - gtk_adjustment_get_value (view.h), 1.0);
+    g_assert_cmpfloat_with_epsilon (r.origin.y, EASEL_VIEW_MARGIN - gtk_adjustment_get_value (view.v), 1.0);
   }
   g_assert_cmpint (easel_window_get_tool (win), ==, EASEL_TOOL_MAGNIFIER);        /* stays the Magnifier */
   g_assert_false (easel_window_get_modified (win));
@@ -6005,8 +6022,10 @@ as4_magnifier_edges (void)
   click_pixel (win, 1, 2985, 1985);                                                /* near the bottom-right corner, off the resize handle */
   g_assert_cmpint (easel_window_get_zoom (win), ==, 200);
   /* The picture's right and bottom edges (6000 and 4000 logical pixels at 200 %) are at the view's edges. */
-  g_assert_cmpfloat_with_epsilon (gtk_adjustment_get_value (view.h) + gtk_adjustment_get_page_size (view.h), 6000, 1.0);
-  g_assert_cmpfloat_with_epsilon (gtk_adjustment_get_value (view.v) + gtk_adjustment_get_page_size (view.v), 4000, 1.0);
+  g_assert_cmpfloat_with_epsilon (gtk_adjustment_get_value (view.h) + gtk_adjustment_get_page_size (view.h),
+                                  6000 + 2 * EASEL_VIEW_MARGIN, 1.0);
+  g_assert_cmpfloat_with_epsilon (gtk_adjustment_get_value (view.v) + gtk_adjustment_get_page_size (view.v),
+                                  4000 + 2 * EASEL_VIEW_MARGIN, 1.0);
   close_windows ();
 
   /* A small picture: 200 % of 300 x 200 fits the view, so it stays at the top-left (REQ-0001-11). */
@@ -6265,15 +6284,25 @@ pixel_is (const uint32_t *px, int w, int x, int y, uint32_t color)
   return count_near (&px[(gsize) y * w + x], 1, color) == 1;
 }
 
-/* The grid lines at the place the view's own scroll puts them: the canvas starts at (cx, cy) in the rendered window
-   (its offset is minus the scroll), so the line of picture column k is at x = cx + k * cell * zoom / 100 and the line of
-   picture row k at y = cy + k * cell * zoom / 100 (a whole device pixel each, REQ-0004-12), and everything between two
-   lines is the picture. Looks at the lines nearest the window point (500, 300). */
+static void assert_grid_lines_near (const uint32_t *px, int w, int cx, int cy, int zoom, int cell, uint32_t base, int wx,
+                                    int wy);
+
+/* The lines nearest the window point (500, 300). */
 static void
 assert_grid_lines_at_scroll (const uint32_t *px, int w, int cx, int cy, int zoom, int cell, uint32_t base)
 {
+  assert_grid_lines_near (px, w, cx, cy, zoom, cell, base, 500, 300);
+}
+
+/* The grid lines at the place the view's own scroll puts them: the canvas starts at (cx, cy) in the rendered window
+   (its offset is minus the scroll), so the line of picture column k is at x = cx + k * cell * zoom / 100 and the line of
+   picture row k at y = cy + k * cell * zoom / 100 (a whole device pixel each, REQ-0004-12), and everything between two
+   lines is the picture. Looks at the lines nearest the window point (wx, wy). */
+static void
+assert_grid_lines_near (const uint32_t *px, int w, int cx, int cy, int zoom, int cell, uint32_t base, int wx, int wy)
+{
   int step = cell * zoom / 100;
-  int col = (500 - cx) / step, row = (300 - cy) / step;
+  int col = (wx - cx) / step, row = (wy - cy) / step;
   int x = cx + col * step, y = cy + row * step;
   uint32_t line = grid_line_over (base);
 
@@ -6374,8 +6403,8 @@ as17_pencil_after_magnifier (void)
   /* The center of the view, as the pointer there would give it. */
   view_center (win, &cx, &cy);
   use_tool (win, "pencil");
-  easel_canvas_press (canvas, 1, gtk_adjustment_get_value (view.h) + gtk_adjustment_get_page_size (view.h) / 2,
-                      gtk_adjustment_get_value (view.v) + gtk_adjustment_get_page_size (view.v) / 2);
+  easel_canvas_press (canvas, 1, view_to_canvas (view.h, gtk_adjustment_get_page_size (view.h) / 2),
+                      view_to_canvas (view.v, gtk_adjustment_get_page_size (view.v) / 2));
   easel_canvas_release (canvas, 1);
   g_assert_cmpint (count_color (img, 0xFF000000u), ==, 1);
   g_assert_cmphex (easel_image_get (img, (int) cx, (int) cy), ==, 0xFF000000u);        /* the pixel at the center */
@@ -6383,8 +6412,8 @@ as17_pencil_after_magnifier (void)
 
   /* Fill at the same point fills the area of that pixel: the black pixel alone, with the background color. */
   use_tool (win, "fill");
-  easel_canvas_press (canvas, 3, gtk_adjustment_get_value (view.h) + gtk_adjustment_get_page_size (view.h) / 2,
-                      gtk_adjustment_get_value (view.v) + gtk_adjustment_get_page_size (view.v) / 2);
+  easel_canvas_press (canvas, 3, view_to_canvas (view.h, gtk_adjustment_get_page_size (view.h) / 2),
+                      view_to_canvas (view.v, gtk_adjustment_get_page_size (view.v) / 2));
   easel_canvas_release (canvas, 3);
   g_assert_cmpint (count_color (img, 0xFF000000u), ==, 0);
   close_windows ();
@@ -6882,6 +6911,532 @@ as4_zoom_to_ignored_when_blocked (void)
 }
 
 
+/* ---- 0009: the margin around the picture ---- */
+
+/* AS-1, the margin part (REQ-0009-01): a small picture lies 12 pixels in from the canvas area's left and top; a big one,
+   scrolled to its end, ends 12 pixels before the area's right and bottom edges. */
+static void
+as1_margin_and_workspace (void)
+{
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  View view;
+  graphene_rect_t r;
+  int w, h, cx, cy;
+  g_autofree uint32_t *px = NULL;
+
+  adw_style_manager_set_color_scheme (adw_style_manager_get_default (), ADW_COLOR_SCHEME_FORCE_LIGHT);   /* #E7E7E7 is the light theme's */
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  view = view_of (win);
+
+  wait_for_layout (win);
+  wait_for_next_frame (win);
+  r = bounds_in (GTK_WIDGET (canvas), view.scroller);
+  g_assert_cmpfloat_with_epsilon (r.origin.x, EASEL_VIEW_MARGIN, 0.5);
+  g_assert_cmpfloat_with_epsilon (r.origin.y, EASEL_VIEW_MARGIN, 0.5);
+  /* Rendered: the picture's first pixel 12 in, the pixel before it not the picture. */
+  px = render_pixels (win, &w, &h, &cx, &cy);
+  g_assert_cmphex (px[(gsize) (cy + 10) * w + cx], ==, 0xFFFFFF00u);
+  g_assert_cmphex (px[(gsize) (cy + 10) * w + cx - 1], !=, 0xFFFFFF00u);
+  g_assert_cmphex (px[(gsize) (cy - 1) * w + cx + 10], !=, 0xFFFFFF00u);
+  /* The color part (REQ-0009-03): the workspace around the picture, past the shadow, is #E7E7E7. */
+  g_assert_cmphex (px[(gsize) (cy + 100) * w + cx + 300 + 40], ==, 0xFFE7E7E7u);
+  g_assert_cmphex (px[(gsize) (cy + 200 + 40) * w + cx + 100], ==, 0xFFE7E7E7u);
+  close_windows ();
+
+  write_settings ("[new-picture]\nwidth=3000\nheight=2000\nbackground=#FFFF00\n");
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  view = view_of (win);
+  wait_for_layout (win);
+  gtk_adjustment_set_value (view.h, gtk_adjustment_get_upper (view.h) - gtk_adjustment_get_page_size (view.h));
+  gtk_adjustment_set_value (view.v, gtk_adjustment_get_upper (view.v) - gtk_adjustment_get_page_size (view.v));
+  wait_for_layout (win);
+  wait_for_next_frame (win);
+  r = bounds_in (GTK_WIDGET (canvas), view.scroller);
+  g_assert_cmpfloat_with_epsilon (r.origin.x + r.size.width, gtk_adjustment_get_page_size (view.h) - EASEL_VIEW_MARGIN, 1.0);
+  g_assert_cmpfloat_with_epsilon (r.origin.y + r.size.height, gtk_adjustment_get_page_size (view.v) - EASEL_VIEW_MARGIN, 1.0);
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+  adw_style_manager_set_color_scheme (adw_style_manager_get_default (), ADW_COLOR_SCHEME_DEFAULT);
+}
+
+/* AS-4 (REQ-0009-05): a press at a point of the view paints the pixel drawn there: 12 pixels in is pixel (0, 0), 11 is the
+   margin; at 400 % scrolled by more than a page, the pixel under the view's center. */
+static void
+as4_pointer_maps_with_margin (void)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  View view = view_of (win);
+  double x, y;
+
+  wait_for_layout (win);
+  use_pencil (win);
+  easel_canvas_press (canvas, 1, view_to_canvas (view.h, 12.5), view_to_canvas (view.v, 12.5));
+  easel_canvas_release (canvas, 1);
+  g_assert_cmphex (easel_image_get (img, 0, 0), ==, 0xFF000000u);
+  g_assert_cmpint (count_color (img, 0xFF000000u), ==, 1);
+  /* And it is drawn there: 12 pixels in from the canvas area's corner, as the window lays it out. */
+  {
+    graphene_rect_t area = bounds_in (view.scroller, GTK_WIDGET (win));
+    double scale = easel_canvas_get_scale (canvas);
+    int w, h, cx, cy;
+    g_autofree uint32_t *px = NULL;
+
+    wait_for_next_frame (win);
+    px = render_pixels (win, &w, &h, &cx, &cy);
+    g_assert_cmphex (px[(gsize) ((area.origin.y + 12.5) * scale) * w + (gsize) ((area.origin.x + 12.5) * scale)], ==, 0xFF000000u);
+  }
+  easel_canvas_press (canvas, 1, view_to_canvas (view.h, 11.5), view_to_canvas (view.v, 30.5));     /* the margin */
+  easel_canvas_release (canvas, 1);
+  g_assert_cmpint (count_color (img, 0xFF000000u), ==, 1);
+  close_windows ();
+
+  write_settings ("[new-picture]\nwidth=3000\nheight=2000\nbackground=#FFFF00\n");
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  img = easel_window_get_picture (win);
+  view = view_of (win);
+  wait_for_layout (win);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-large", NULL);
+  wait_for_layout (win);
+  g_assert_cmpfloat (gtk_adjustment_get_value (view.h), >, gtk_adjustment_get_page_size (view.h));
+  use_pencil (win);
+  x = view_to_canvas (view.h, gtk_adjustment_get_page_size (view.h) / 2);
+  y = view_to_canvas (view.v, gtk_adjustment_get_page_size (view.v) / 2);
+  easel_canvas_press (canvas, 1, x, y);
+  easel_canvas_release (canvas, 1);
+  g_assert_cmphex (easel_image_get (img, (int) (x / 4 * easel_canvas_get_scale (canvas)),
+                                    (int) (y / 4 * easel_canvas_get_scale (canvas))), ==, 0xFF000000u);
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* AS-7 (REQ-0009-05, REQ-0004-16): the handles touch the picture and lie in the margin; a corner drag of 40 adds 40; a
+   press on the shadow beside a handle's hit area does nothing. */
+static void
+as7_handles_in_margin (void)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  graphene_rect_t r;
+  double x, y;
+
+  wait_for_layout (win);
+  use_pencil (win);
+  wait_for_layout (win);
+  /* The margin is there, in the layout of the window. */
+  g_assert_cmpfloat_with_epsilon (bounds_in (GTK_WIDGET (canvas), gtk_widget_get_parent (GTK_WIDGET (canvas))).origin.x,
+                                  EASEL_VIEW_MARGIN, 0.5);
+  g_assert_true (easel_canvas_get_handle_rect (canvas, EASEL_HANDLE_RIGHT, &r));
+  g_assert_cmpfloat_with_epsilon (r.origin.x, 300, 0.5);                         /* touching the right edge */
+  g_assert_cmpfloat (r.origin.x + r.size.width, <=, 300 + EASEL_VIEW_MARGIN);   /* inside the margin */
+  g_assert_true (easel_canvas_get_handle_rect (canvas, EASEL_HANDLE_BOTTOM, &r));
+  g_assert_cmpfloat_with_epsilon (r.origin.y, 200, 0.5);
+  g_assert_cmpfloat (r.origin.y + r.size.height, <=, 200 + EASEL_VIEW_MARGIN);
+  /* A press on the shadow beside the right handle's hit area, 10 pixels right of the picture: nothing. */
+  easel_canvas_press (canvas, 1, 310.5, 50.5);
+  g_assert_false (easel_canvas_is_resizing (canvas));
+  easel_canvas_release (canvas, 1);
+  g_assert_false (easel_window_get_modified (win));
+  /* The corner handle dragged by 40 at 100 %. */
+  handle_center (canvas, EASEL_HANDLE_CORNER, &x, &y);
+  easel_canvas_press (canvas, 1, x, y);
+  easel_canvas_motion (canvas, x + 40, y + 40);
+  easel_canvas_release (canvas, 1);
+  wait_for_layout (win);
+  assert_size (win, 340, 240);
+  close_windows ();
+}
+
+
+/* The picture point (in picture pixels) under a point of the canvas area, from where the window lays the canvas out (its
+   bounds in the scrolled area), not from the margin constant. */
+static void
+picture_point_at (EaselWindow *win, double view_x, double view_y, double *px, double *py)
+{
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  graphene_rect_t r = bounds_in (GTK_WIDGET (canvas), gtk_widget_get_ancestor (GTK_WIDGET (canvas), GTK_TYPE_SCROLLED_WINDOW));
+  double l = easel_window_get_zoom (win) / (100.0 * easel_canvas_get_scale (canvas));
+
+  *px = (view_x - r.origin.x) / l;
+  *py = (view_y - r.origin.y) / l;
+}
+
+/* AS-5 (REQ-0009-05, REQ-0004-07): Fit to Window fits the picture with its margins: the whole percent at which the
+   picture and 2 x 12 fit the canvas area, and one more would not; the view shows the picture's top-left with its margin. */
+static void
+as5_fit_to_window_with_margin (void)
+{
+  EaselWindow *win;
+  View view;
+  double scale, pw, ph;
+  int zoom;
+  graphene_rect_t r;
+
+  write_settings ("[new-picture]\nwidth=3000\nheight=2000\nbackground=#FFFF00\n");
+  win = start_window ();
+  view = view_of (win);
+  wait_for_layout (win);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-fit", NULL);
+  wait_for_layout (win);
+  scale = easel_canvas_get_scale (easel_window_get_canvas (win));
+  zoom = easel_window_get_zoom (win);
+  pw = gtk_adjustment_get_page_size (view.h) * scale;                 /* device pixels, no scrollbars */
+  ph = gtk_adjustment_get_page_size (view.v) * scale;
+  g_test_message ("area %.0f x %.0f, fit %d %%", pw, ph, zoom);
+  /* It fits with its margins (the canvas area's own size, read from the window), and one percent more would not. */
+  g_assert_cmpfloat (3000.0 * zoom / 100 + 2 * EASEL_VIEW_MARGIN * scale, <=, pw);
+  g_assert_cmpfloat (2000.0 * zoom / 100 + 2 * EASEL_VIEW_MARGIN * scale, <=, ph);
+  g_assert_true (3000.0 * (zoom + 1) / 100 + 2 * EASEL_VIEW_MARGIN * scale > pw
+                 || 2000.0 * (zoom + 1) / 100 + 2 * EASEL_VIEW_MARGIN * scale > ph);
+  /* No scrollbars needed, and the picture's top-left is 12 in. */
+  g_assert_cmpfloat (gtk_adjustment_get_upper (view.h), <=, gtk_adjustment_get_page_size (view.h));
+  g_assert_cmpfloat (gtk_adjustment_get_upper (view.v), <=, gtk_adjustment_get_page_size (view.v));
+  r = bounds_in (GTK_WIDGET (easel_window_get_canvas (win)), view.scroller);
+  g_assert_cmpfloat_with_epsilon (r.origin.x, EASEL_VIEW_MARGIN, 0.5);
+  g_assert_cmpfloat_with_epsilon (r.origin.y, EASEL_VIEW_MARGIN, 0.5);
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* AS-6 (REQ-0009-05): a zoom command keeps the picture point at the center of the canvas area, the wheel the one under the
+   pointer, and the Magnifier puts the pixel under the pointer at the center; at 100 %, at 400 % scrolled and at the fit
+   zoom; each point read from the window's layout before and after, within one device pixel. */
+static void
+as6_zoom_anchors_with_margin (void)
+{
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  View view;
+  double x0, y0, x1, y1, w, h;
+
+  write_settings ("[new-picture]\nwidth=3000\nheight=2000\nbackground=#FFFF00\n");
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  view = view_of (win);
+  wait_for_layout (win);
+  w = gtk_adjustment_get_page_size (view.h);
+  h = gtk_adjustment_get_page_size (view.v);
+
+  /* Zoom In from 100 % at the start of the scroll: the center stays. */
+  picture_point_at (win, w / 2, h / 2, &x0, &y0);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-in", NULL);
+  wait_for_layout (win);
+  picture_point_at (win, w / 2, h / 2, &x1, &y1);
+  g_assert_cmpfloat_with_epsilon (x1, x0, 1.0);
+  g_assert_cmpfloat_with_epsilon (y1, y0, 1.0);
+  /* Zoom In again from 200 % to 300 % and 400 %, scrolled by now: the center stays. */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-in", NULL);
+  wait_for_layout (win);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-in", NULL);
+  wait_for_layout (win);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 400);
+  g_assert_cmpfloat (gtk_adjustment_get_value (view.h), >, w);
+  picture_point_at (win, w / 2, h / 2, &x1, &y1);
+  g_assert_cmpfloat_with_epsilon (x1, x0, 1.0);
+  g_assert_cmpfloat_with_epsilon (y1, y0, 1.0);
+
+  /* The wheel (Pan) at a point near the top-left of the view, at 400 % scrolled: that point stays. */
+  picture_point_at (win, 40.5, 30.5, &x0, &y0);
+  easel_canvas_zoom_at (canvas, -1, 40.5, 30.5);
+  wait_for_layout (win);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 300);
+  picture_point_at (win, 40.5, 30.5, &x1, &y1);
+  g_assert_cmpfloat_with_epsilon (x1, x0, 1.0);
+  g_assert_cmpfloat_with_epsilon (y1, y0, 1.0);
+
+  /* From the fit zoom: the wheel at the view's top-left corner, in the margin, keeps that point too. */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-fit", NULL);
+  wait_for_layout (win);
+  picture_point_at (win, 100.5, 80.5, &x0, &y0);
+  easel_canvas_zoom_at (canvas, 1, 100.5, 80.5);
+  wait_for_layout (win);
+  picture_point_at (win, 100.5, 80.5, &x1, &y1);
+  g_assert_cmpfloat_with_epsilon (x1, x0, 1.0);
+  g_assert_cmpfloat_with_epsilon (y1, y0, 1.0);
+
+  /* The Magnifier at 100 % with 2x: the box's center, here the pixel under the pointer (1000, 700), comes to the center. */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-normal", NULL);
+  wait_for_layout (win);
+  use_tool (win, "magnifier");
+  {
+    int bx, by, bw, bh;
+
+    easel_magnifier_box ((int) (w * easel_canvas_get_scale (canvas)), (int) (h * easel_canvas_get_scale (canvas)), 200,
+                         3000, 2000, 1000, 700, &bx, &by, &bw, &bh);
+    click_pixel (win, 1, 1000, 700);
+    g_assert_cmpint (easel_window_get_zoom (win), ==, 200);
+    picture_point_at (win, w / 2, h / 2, &x1, &y1);
+    g_assert_cmpfloat_with_epsilon (x1, bx + bw / 2.0, 1.0);
+    g_assert_cmpfloat_with_epsilon (y1, by + bh / 2.0, 1.0);
+  }
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+
+/* AS-8 (REQ-0009-05, REQ-0004-12): with the grid on at 400 %, scrolled by more than a page, the lines lie on the picture's
+   pixel edges everywhere in the view, also in the first 12 pixels of it from the left and the top, where the margin
+   would shift a grid read from the scroll offsets alone. */
+static void
+as8_grid_with_margin (void)
+{
+  EaselWindow *win;
+  View view;
+  graphene_rect_t area;
+  int w, h, cx, cy;
+  g_autofree uint32_t *px = NULL;
+
+  write_settings ("[new-picture]\nwidth=3000\nheight=2000\nbackground=#FFFFFF\n");
+  win = start_window ();
+  view = view_of (win);
+  wait_for_layout (win);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "grid", NULL);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-large", NULL);
+  wait_for_layout (win);
+  g_assert_cmpfloat (gtk_adjustment_get_value (view.h), >, gtk_adjustment_get_page_size (view.h));
+  wait_for_next_frame (win);
+  px = render_pixels (win, &w, &h, &cx, &cy);
+  area = bounds_in (view.scroller, GTK_WIDGET (win));
+  /* In the middle of the view, and 8 pixels in from its top-left corner: inside the 12 pixels a grid read from the scroll
+     offsets would leave bare, and past the 2 pixels the scrolled area shades along its edge. */
+  assert_grid_lines_near (px, w, cx, cy, 400, 1, 0xFFFFFFFFu, (int) (area.origin.x + area.size.width / 2),
+                          (int) (area.origin.y + area.size.height / 2));
+  assert_grid_lines_near (px, w, cx, cy, 400, 1, 0xFFFFFFFFu, (int) area.origin.x + 8, (int) area.origin.y + 8);
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+
+/* AS-10 (REQ-0009-07): with Pan, a primary drag that starts on the shadow (6 pixels before the picture's top-left) or
+   in the margin 11 pixels from the canvas area's left edge pans the view as a drag on the picture would; with Pencil the
+   same press does nothing. The press points come from the window's layout. */
+static void
+as10_pan_from_the_margin (void)
+{
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  const EaselImage *img;
+  View view;
+  graphene_rect_t r;
+  double x, y, before;
+
+  write_settings ("[new-picture]\nwidth=3000\nheight=2000\nbackground=#FFFF00\n");
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  img = easel_window_get_picture (win);
+  view = view_of (win);
+  wait_for_layout (win);
+  r = bounds_in (GTK_WIDGET (canvas), view.scroller);           /* where the picture's top-left is in the canvas area */
+
+  /* On the shadow, 6 pixels up and left of the picture's corner: drag 50 to the left and up. */
+  use_tool (win, "pan");
+  x = (r.origin.x - 6) - r.origin.x;
+  y = (r.origin.y - 6) - r.origin.y;
+  before = gtk_adjustment_get_value (view.h);
+  easel_canvas_press (canvas, 1, x, y);
+  easel_canvas_motion (canvas, x - 50, y - 50);
+  easel_canvas_release (canvas, 1);
+  wait_for_layout (win);
+  g_assert_cmpfloat_with_epsilon (gtk_adjustment_get_value (view.h), before + 50, 0.5);
+  g_assert_cmpfloat_with_epsilon (gtk_adjustment_get_value (view.v), 50, 0.5);
+
+  /* In the margin 11 pixels from the canvas area's left edge, back at the start of the scroll: it pans too. */
+  gtk_adjustment_set_value (view.h, 0);
+  wait_for_layout (win);
+  r = bounds_in (GTK_WIDGET (canvas), view.scroller);
+  x = 11 - r.origin.x;
+  y = 100 - r.origin.y;
+  easel_canvas_press (canvas, 1, x, y);
+  easel_canvas_motion (canvas, x - 30, y);
+  easel_canvas_release (canvas, 1);
+  wait_for_layout (win);
+  g_assert_cmpfloat_with_epsilon (gtk_adjustment_get_value (view.h), 30, 0.5);
+  g_assert_false (easel_window_get_modified (win));
+  g_assert_cmpint (count_color (img, 0xFFFFFF00u), ==, 3000 * 2000);
+
+  /* With Pencil the same press on the shadow paints nothing and moves nothing. */
+  use_pencil (win);
+  gtk_adjustment_set_value (view.h, 0);
+  gtk_adjustment_set_value (view.v, 0);
+  wait_for_layout (win);
+  easel_canvas_press (canvas, 1, -6, -6);
+  easel_canvas_motion (canvas, -56, -6);
+  easel_canvas_release (canvas, 1);
+  wait_for_layout (win);
+  g_assert_cmpfloat (gtk_adjustment_get_value (view.h), ==, 0);
+  g_assert_cmpint (count_color (img, 0xFFFFFF00u), ==, 3000 * 2000);
+  g_assert_false (easel_window_get_modified (win));
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+
+/* The red, green and blue of a rendered pixel, summed: lower is darker. */
+static int
+brightness (uint32_t c)
+{
+  return (int) ((c >> 16) & 0xFF) + (int) ((c >> 8) & 0xFF) + (int) (c & 0xFF);
+}
+
+/* AS-2 (REQ-0009-02): a soft shadow on the four sides: next to the picture darker than the workspace, fading to it within
+   about 6 pixels (one device pixel of tolerance for the rounded canvas size), and never over the picture; the saved file
+   is the picture alone. */
+static void
+as2_shadow_on_four_sides (void)
+{
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  g_autofree char *dir = g_dir_make_tmp ("easel-ui-XXXXXX", NULL);
+  g_autofree char *path = g_build_filename (dir, "a.png", NULL);
+  g_autoptr (GdkPixbuf) saved = NULL;
+  int w, h, cx, cy, pw, ph;
+  g_autofree uint32_t *px = NULL;
+  double scale;
+
+  adw_style_manager_set_color_scheme (adw_style_manager_get_default (), ADW_COLOR_SCHEME_FORCE_LIGHT);   /* on #E7E7E7, as AS-1 */
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  wait_for_layout (win);
+  wait_for_next_frame (win);
+  px = render_pixels (win, &w, &h, &cx, &cy);
+  scale = easel_canvas_get_scale (canvas);
+  pw = (int) (300 * scale);
+  ph = (int) (200 * scale);
+#define PX(x, y) px[(gsize) (cy + (y)) * w + cx + (x)]
+  {
+    /* For each side: the pixel 1 out, the pixel 9 out (the workspace), and the picture's own pixel at that edge. */
+    struct { int x1, y1, x9, y9, xin, yin; } side[] = {
+      { -2, 100, -10, 100, 0, 100 },                          /* left: 2 out, as the canvas may round by 1 */
+      { pw + 1, 100, pw + 9, 100, pw - 1, 100 },              /* right */
+      { 150, -2, 150, -10, 150, 0 },                          /* top */
+      { 150, ph + 1, 150, ph + 9, 150, ph - 1 },              /* bottom */
+    };
+
+    for (guint i = 0; i < G_N_ELEMENTS (side); i++)
+      {
+        uint32_t near = PX (side[i].x1, side[i].y1), far = PX (side[i].x9, side[i].y9), in = PX (side[i].xin, side[i].yin);
+
+        g_test_message ("side %u: near %08x far %08x picture %08x", i, near, far, in);
+        g_assert_cmpint (brightness (near), <, brightness (far) - 20);       /* a visible shadow next to the picture */
+        g_assert_cmphex (in, ==, 0xFFFFFF00u);                               /* not over the picture */
+      }
+    /* Fading: from 1 out to 6 out it gets lighter, and 9 out it is the workspace. */
+    g_assert_cmpint (brightness (PX (-2, 100)), <, brightness (PX (-4, 100)));
+    g_assert_cmpint (brightness (PX (-4, 100)), <=, brightness (PX (-7, 100)));
+  }
+#undef PX
+  /* The saved file is the picture alone: no margin, no shadow. */
+  g_assert_true (easel_window_save_to (win, path));
+  saved = gdk_pixbuf_new_from_file (path, NULL);
+  g_assert_nonnull (saved);
+  g_assert_cmpint (gdk_pixbuf_get_width (saved), ==, 300);
+  g_assert_cmpint (gdk_pixbuf_get_height (saved), ==, 200);
+  {
+    const guchar *p = gdk_pixbuf_read_pixels (saved);
+
+    g_assert_cmpint (p[0], ==, 0xFF);
+    g_assert_cmpint (p[1], ==, 0xFF);
+    g_assert_cmpint (p[2], ==, 0x00);
+  }
+  g_unlink (path);
+  g_rmdir (dir);
+  close_windows ();
+  adw_style_manager_set_color_scheme (adw_style_manager_get_default (), ADW_COLOR_SCHEME_DEFAULT);
+}
+
+
+/* The workspace as drawn: a pixel 40 pixels right of a 300 x 200 picture, past its shadow. */
+static uint32_t
+workspace_pixel (EaselWindow *win)
+{
+  int w, h, cx, cy;
+  g_autofree uint32_t *px = NULL;
+
+  wait_for_layout (win);
+  wait_for_next_frame (win);
+  px = render_pixels (win, &w, &h, &cx, &cy);
+  return px[(gsize) (cy + 100) * w + cx + (int) (340 * easel_canvas_get_scale (easel_window_get_canvas (win)))];
+}
+
+/* AS-3 (REQ-0009-04): `[view] workspace-color` as `#rrggbb`, either case, is the workspace; any other value, or none, is
+   #E7E7E7; the settings file is not rewritten. */
+static void
+as3_workspace_color_from_settings (void)
+{
+  static const struct { const char *value; uint32_t expected; } cases[] = {
+    { "#3465A4", 0xFF3465A4u }, { "#3465a4", 0xFF3465A4u }, { "3465A4", 0xFFE7E7E7u }, { "#346", 0xFFE7E7E7u },
+    { "#3465A4FF", 0xFFE7E7E7u }, { "blue", 0xFFE7E7E7u }, { "", 0xFFE7E7E7u },
+  };
+  g_autofree char *settings_path = easel_settings_file_path ();
+
+  adw_style_manager_set_color_scheme (adw_style_manager_get_default (), ADW_COLOR_SCHEME_FORCE_LIGHT);   /* the light theme's colors */
+  for (guint i = 0; i < G_N_ELEMENTS (cases); i++)
+    {
+      g_autofree char *text = g_strdup_printf ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n[view]\n"
+                                               "workspace-color=%s\n", cases[i].value);
+      g_autofree char *after = NULL;
+      EaselWindow *win;
+
+      write_settings (text);
+      win = start_window ();
+      g_test_message ("workspace-color=%s", cases[i].value);
+      g_assert_cmphex (workspace_pixel (win), ==, cases[i].expected);
+      close_windows ();
+      g_assert_true (g_file_get_contents (settings_path, &after, NULL, NULL));
+      g_assert_cmpstr (after, ==, text);                                      /* not rewritten */
+    }
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");                  /* no key: the default */
+  {
+    EaselWindow *win = start_window ();
+
+    g_assert_cmphex (workspace_pixel (win), ==, 0xFFE7E7E7u);
+    close_windows ();
+  }
+  adw_style_manager_set_color_scheme (adw_style_manager_get_default (), ADW_COLOR_SCHEME_DEFAULT);
+}
+
+/* AS-9 (REQ-0009-06, REQ-0009-04, amended before M2): the workspace per theme: #E7E7E7 light and #2C2C2C dark by
+   default; `workspace-color` alone for both; `workspace-color-dark` for the dark theme, falling back to `workspace-color`
+   when it is invalid; and a change of theme while the app runs changes the workspace at once. */
+static void
+as9_workspace_dark_theme (void)
+{
+  static const struct { const char *keys; uint32_t light, dark; } cases[] = {
+    { "", 0xFFE7E7E7u, 0xFF2C2C2Cu },
+    { "workspace-color=#3465A4\n", 0xFF3465A4u, 0xFF3465A4u },
+    { "workspace-color=#3465A4\nworkspace-color-dark=#102030\n", 0xFF3465A4u, 0xFF102030u },
+    { "workspace-color=#3465A4\nworkspace-color-dark=#123\n", 0xFF3465A4u, 0xFF3465A4u },
+    { "workspace-color-dark=#102030\n", 0xFFE7E7E7u, 0xFF102030u },
+  };
+  AdwStyleManager *manager = adw_style_manager_get_default ();
+
+  for (guint i = 0; i < G_N_ELEMENTS (cases); i++)
+    {
+      g_autofree char *text = g_strdup_printf ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n[view]\n%s",
+                                               cases[i].keys);
+      EaselWindow *win;
+
+      g_test_message ("keys: %s", cases[i].keys);
+      write_settings (text);
+      adw_style_manager_set_color_scheme (manager, ADW_COLOR_SCHEME_FORCE_LIGHT);
+      win = start_window ();
+      g_assert_cmphex (workspace_pixel (win), ==, cases[i].light);
+      adw_style_manager_set_color_scheme (manager, ADW_COLOR_SCHEME_FORCE_DARK);    /* the theme changes while it runs */
+      g_assert_cmphex (workspace_pixel (win), ==, cases[i].dark);
+      adw_style_manager_set_color_scheme (manager, ADW_COLOR_SCHEME_FORCE_LIGHT);   /* and back */
+      g_assert_cmphex (workspace_pixel (win), ==, cases[i].light);
+      close_windows ();
+    }
+  adw_style_manager_set_color_scheme (manager, ADW_COLOR_SCHEME_DEFAULT);
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+
 int
 main (int argc, char **argv)
 {
@@ -7029,6 +7584,16 @@ main (int argc, char **argv)
   g_test_add_func ("/0008/as3_zoom_check_follows_zoom", as3_zoom_check_follows_zoom);
   g_test_add_func ("/0008/as6_toolbox_width_is_the_same_for_every_tool", as6_toolbox_width_is_the_same_for_every_tool);
   g_test_add_func ("/0008/as4_zoom_to_ignored_when_blocked", as4_zoom_to_ignored_when_blocked);
+  g_test_add_func ("/0009/as1_margin_and_workspace", as1_margin_and_workspace);
+  g_test_add_func ("/0009/as4_pointer_maps_with_margin", as4_pointer_maps_with_margin);
+  g_test_add_func ("/0009/as7_handles_in_margin", as7_handles_in_margin);
+  g_test_add_func ("/0009/as5_fit_to_window_with_margin", as5_fit_to_window_with_margin);
+  g_test_add_func ("/0009/as6_zoom_anchors_with_margin", as6_zoom_anchors_with_margin);
+  g_test_add_func ("/0009/as8_grid_with_margin", as8_grid_with_margin);
+  g_test_add_func ("/0009/as10_pan_from_the_margin", as10_pan_from_the_margin);
+  g_test_add_func ("/0009/as2_shadow_on_four_sides", as2_shadow_on_four_sides);
+  g_test_add_func ("/0009/as3_workspace_color_from_settings", as3_workspace_color_from_settings);
+  g_test_add_func ("/0009/as9_workspace_dark_theme", as9_workspace_dark_theme);
   g_test_add_func ("/0006/as12_cursor_follows_tool_preset_and_zoom", as12_cursor_follows_tool_preset_and_zoom);
   g_test_add_func ("/0004/as20_attributes_dialog", as20_attributes_dialog);
   g_test_add_func ("/0004/as22_undo_through_resize", as22_undo_through_resize);
