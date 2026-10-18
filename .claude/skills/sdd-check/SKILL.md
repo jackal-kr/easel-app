@@ -11,6 +11,8 @@ description: Step 3 of the loop, also usable any time. Read-only check of a feat
    `/sdd-check` (all tests, the whole mutation list); a rule that guards against data loss and has no mutant in
    `tests/mutants.txt` gets one, a mutant that survives is a finding, and so is one killed only by a crash (add an
    assertion). If none does, first check whether any input could observe the change; an equivalent mutant is not a finding.
+   Read the `Result:` line of every task: copy them into Check, report every `characterization` task as a finding, and
+   report a manual step (or a task) without a `Result:` as a finding.
 3. Drift: behavior in code that is not in the spec; Plan items not built; spec statements contradicted by tests.
 4. Constitution: layering, warnings, tests shipped with the change, no AI trailers in commits.
 5. Read `git diff` for correctness: pixel bounds and overflow, GTK object lifetime, one undo step per user-visible edit.

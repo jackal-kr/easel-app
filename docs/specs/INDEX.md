@@ -23,6 +23,19 @@ Vertical slices first (a thin end-to-end feature), breadth later.
 | 0016 | i18n | UI languages (pl, uk, ru, de, cs, it, es, pt + English) | Mark the 0001 strings (title, quit and save prompts, errors) translatable; deferred from the 0001 check |
 | 0017 | packaging-release | Flatpak, deb, AppImage, metadata | |
 
+## Known flakes
+- `/0006/as6_airbrush_follows_the_pointer` (found in 0006, failed again in 0007, cause not found; the log has the data). Read
+  on 2026-10-18, nothing changed: yes, its result depends on the wall clock and a real GLib timer. The test holds the
+  press with `run_for (300)`, which spins the main loop for 300 ms of real time (`tests/ui/test-window.c`:
+  `gint64 end = g_get_monotonic_time () + ms * 1000; while (g_get_monotonic_time () < end) g_main_context_iteration (NULL, FALSE);`),
+  and the canvas sprays from `g_timeout_add (5, on_spray_tick, self)`, which asks `easel_spray_due (g_get_monotonic_time () -
+  self->spray_start_us)` how many sprays are due (`src/ui/canvas.c`), with the seed from `g_get_monotonic_time ()` and
+  `g_get_real_time ()`. No clock is injected; the core's exact count (201 in 1000 ms) uses a simulated clock, the ui test
+  does not. Hypothesis (not tested): displaced pixels mean a different number of random draws, which means a different
+  spray count under load. Doubt to check first: a different count changes how many pixels land, and where they land only
+  if the draws shift the sequence between the two points; the pixels seen were about 91, 32 pixels away, which a count alone
+  does not explain. Not hunted.
+
 ## Milestones
 | Milestone | Features | Outcome |
 |---|---|---|

@@ -43,6 +43,8 @@ Open items start a line with `- [NEEDS CLARIFICATION` and a question. Resolve al
 
 ## Tasks
 (added by /sdd-build after the plan is agreed: `- [ ] T001 title (REQ-..., AS-...) - done when ...`)
+(filled in when the task is ticked, a line under it: `  Result: ...`. A code task: the test that failed first and its message,
+or `characterization: <why there was no red run>`. A manual step: one line of what JOD saw.)
 
 ## Check
 (written by /sdd-check as its last step, about ten lines)

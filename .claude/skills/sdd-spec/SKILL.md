@@ -15,6 +15,8 @@ Input: feature number or name from `docs/specs/INDEX.md`.
 3. Fill Why, Requirements (`REQ-NNNN-xx`, "When/While/If ... the app shall ..."), Scenarios (`AS-n`, Given/When/Then, cite the
    REQ ids, end with `Verified by:`), Edge cases, Out of scope. **Behavior only**: no files, functions, libraries, data structures.
    A file the user edits by hand needs its syntax in the spec (comments, spaces, case, repeated keys, bad lines), not only its keys.
+   For any tool or control that holds state between two events (a press and its release, a drag and its end, a dialog and
+   its answer), the spec needs a scenario for the second event never arriving.
    If this feature changes a requirement of an implemented spec, add a pointer note to that requirement.
 4. Take behavior from XP Paint knowledge, jspaint (behavior, not code), JOD's descriptions and `docs/reference`; never from the
    source code of an existing implementation. If behavior is unknown or has several reasonable answers, do not decide:

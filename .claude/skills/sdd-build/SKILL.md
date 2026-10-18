@@ -26,7 +26,9 @@ Precondition: `Status: accepted` in the spec. Otherwise stop and say so.
    - `ninja -C build` must be warning-free and the tests green as the Testing section of `docs/engineering.md` says for a task
      and for the end of a group. A test that fails once and then passes is logged with its values and how it was hunted,
      never just re-run until green;
-   - tick the task and report in one line.
+   - tick the task and report in one line, and fill its `Result:` line in the spec: the test that failed first and its
+     message, or `characterization: <why there was no red run>` (a test that passes on its first run is reported as that),
+     and for a manual step one line of what JOD saw;
 4. **Spec gap rule.** If you need to decide something the spec does not say, stop. Propose wording, get JOD's yes, update the spec,
    add a line to `docs/learning-log.md`, continue. Never guess in code.
 5. At a manual check ask JOD to try it. UI feel cannot be verified headless; say so. Name the active tool in every step,
