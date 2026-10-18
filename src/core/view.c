@@ -142,3 +142,17 @@ easel_view_resize_by (EaselHandle handle, double dx, double dy, int *w, int *h)
   if (handle == EASEL_HANDLE_BOTTOM || handle == EASEL_HANDLE_CORNER)
     *h = moved_edge (*h, dy);
 }
+
+double
+easel_view_focus_scroll (double focus, int pct, int picture_size, double scale, double view_size)
+{
+  double content = easel_view_content_size (picture_size, pct, scale);
+  double offset = focus * pct / 100.0 / scale - view_size / 2;
+  double most = content - view_size;
+
+  if (offset > most)
+    offset = most;
+  if (offset < 0)
+    offset = 0;
+  return offset;
+}

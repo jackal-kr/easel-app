@@ -318,6 +318,94 @@ as13_dropped_start_state (void)
   easel_image_free (img);
 }
 
+/* A fill as one step of spans (REQ-0007-05, REQ-0007-07): the pixels are written by the caller, the step stores the two
+   colors and the spans. */
+static EaselSpan *
+make_spans (const EaselSpan *list, size_t n)
+{
+  EaselSpan *spans = malloc (n * sizeof *spans);
+
+  CHECK (spans != NULL);
+  for (size_t i = 0; i < n; i++)
+    spans[i] = list[i];
+  return spans;
+}
+
+static void
+fill_spans (EaselImage *img, const EaselSpan *spans, size_t n, uint32_t color)
+{
+  for (size_t i = 0; i < n; i++)
+    for (uint32_t x = spans[i].x0; x <= spans[i].x1; x++)
+      easel_image_set (img, (int) x, (int) spans[i].y, color);
+}
+
+static void
+as6_fill_step_undo_redo (void)
+{
+  EaselImage *img = easel_image_new (W, 6, WHITE);
+  EaselHistory *h = easel_history_new (1024 * 1024);
+  const EaselSpan list[] = { { 2, 1, 4 }, { 3, 1, 1 }, { 3, 6, 9 } };
+  EaselSpan *spans = make_spans (list, 3);
+  EaselSpan *none = make_spans (list, 1);
+
+  CHECK (img != NULL && h != NULL);
+  fill_spans (img, list, 3, BLACK);
+  CHECK (easel_history_push_fill (h, WHITE, BLACK, spans, 3));
+  CHECK (easel_history_can_undo (h));
+  CHECK (easel_history_is_modified (h));
+  CHECK (easel_history_bytes (h) == 3 * 12 + 64);                       /* 12 bytes a span, not a pixel */
+
+  CHECK (easel_history_undo (h, img));
+  for (int y = 0; y < 6; y++)
+    CHECK (row_count (img, y, WHITE) == W);                              /* exactly as before the fill */
+  CHECK (!easel_history_is_modified (h));
+  CHECK (easel_history_redo (h, img));
+  CHECK (row_count (img, 2, BLACK) == 4 && row_count (img, 3, BLACK) == 5);
+  CHECK (easel_image_get (img, 0, 2) == WHITE && easel_image_get (img, 5, 3) == WHITE);   /* neighbors untouched */
+  CHECK (easel_history_bytes (h) == 3 * 12 + 64);
+
+  /* No span: no step, and the spans are freed. */
+  CHECK (easel_history_push_fill (h, WHITE, BLACK, none, 0));
+  CHECK (easel_history_bytes (h) == 3 * 12 + 64);
+  /* A count that cannot be stored is refused and the caller keeps the spans. */
+  CHECK (!easel_history_push_fill (h, WHITE, BLACK, spans, SIZE_MAX / 8));
+  CHECK (easel_history_bytes (h) == 3 * 12 + 64);
+
+  /* A new edit after an undo discards the redo, as any step (REQ-0002-05). */
+  CHECK (easel_history_undo (h, img));
+  CHECK (easel_history_can_redo (h));
+  draw_row (img, h, 5, 0, 2, BLACK);
+  CHECK (!easel_history_can_redo (h));
+  easel_history_free (h);
+  easel_image_free (img);
+}
+
+/* The budget counts a fill by its spans, and a lone step over it stays (REQ-0002-16, REQ-0002-17). */
+static void
+as6_fill_step_budget (void)
+{
+  EaselImage *img = easel_image_new (W, 120, WHITE);
+  EaselHistory *h = easel_history_new (1000);
+  EaselSpan small[10], big[100];
+
+  CHECK (img != NULL && h != NULL);
+  for (uint32_t i = 0; i < 10; i++)
+    small[i] = (EaselSpan) { i, 0, 0 };
+  for (uint32_t i = 0; i < 100; i++)
+    big[i] = (EaselSpan) { i, 2, 3 };
+  fill_spans (img, small, 10, BLACK);
+  CHECK (easel_history_push_fill (h, WHITE, BLACK, make_spans (small, 10), 10));
+  CHECK (easel_history_bytes (h) == 10 * 12 + 64);
+  fill_spans (img, big, 100, 0xFFFF0000u);
+  CHECK (easel_history_push_fill (h, WHITE, 0xFFFF0000u, make_spans (big, 100), 100));    /* 1264 bytes > 1000 */
+  CHECK (easel_history_bytes (h) == 100 * 12 + 64);                      /* the older step was dropped, this one stays */
+  CHECK (easel_history_undo (h, img));
+  CHECK (!easel_history_can_undo (h));
+  CHECK (easel_image_get (img, 2, 50) == WHITE && easel_image_get (img, 0, 3) == BLACK);
+  easel_history_free (h);
+  easel_image_free (img);
+}
+
 int
 main (void)
 {
@@ -330,5 +418,7 @@ main (void)
   RUN (as13_dropped_start_state);
   RUN (as16_budget_drops_oldest);
   RUN (as17_huge_step_kept_alone);
+  RUN (as6_fill_step_undo_redo);
+  RUN (as6_fill_step_budget);
   return 0;
 }

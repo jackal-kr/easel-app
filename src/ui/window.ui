@@ -112,13 +112,58 @@
                     </child>
                     <child>
                       <object class="GtkToggleButton">
+                        <property name="icon-name">easel-tool-magnifier-symbolic</property>
+                        <property name="tooltip-text" translatable="yes">Magnifier</property>
+                        <property name="action-name">win.tool</property>
+                        <property name="action-target">'magnifier'</property>
+                        <layout>
+                          <property name="column">1</property>
+                          <property name="row">0</property>
+                        </layout>
+                        <style>
+                          <class name="flat"/>
+                        </style>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkToggleButton">
                         <property name="icon-name">easel-tool-eraser-symbolic</property>
                         <property name="tooltip-text" translatable="yes">Eraser</property>
                         <property name="action-name">win.tool</property>
                         <property name="action-target">'eraser'</property>
                         <layout>
+                          <property name="column">0</property>
+                          <property name="row">1</property>
+                        </layout>
+                        <style>
+                          <class name="flat"/>
+                        </style>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkToggleButton">
+                        <property name="icon-name">easel-tool-pick-symbolic</property>
+                        <property name="tooltip-text" translatable="yes">Pick Color</property>
+                        <property name="action-name">win.tool</property>
+                        <property name="action-target">'pick'</property>
+                        <layout>
                           <property name="column">1</property>
-                          <property name="row">0</property>
+                          <property name="row">1</property>
+                        </layout>
+                        <style>
+                          <class name="flat"/>
+                        </style>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkToggleButton">
+                        <property name="icon-name">easel-tool-fill-symbolic</property>
+                        <property name="tooltip-text" translatable="yes">Fill</property>
+                        <property name="action-name">win.tool</property>
+                        <property name="action-target">'fill'</property>
+                        <layout>
+                          <property name="column">0</property>
+                          <property name="row">2</property>
                         </layout>
                         <style>
                           <class name="flat"/>
@@ -132,8 +177,8 @@
                         <property name="action-name">win.tool</property>
                         <property name="action-target">'pencil'</property>
                         <layout>
-                          <property name="column">0</property>
-                          <property name="row">1</property>
+                          <property name="column">1</property>
+                          <property name="row">2</property>
                         </layout>
                         <style>
                           <class name="flat"/>
@@ -147,8 +192,8 @@
                         <property name="action-name">win.tool</property>
                         <property name="action-target">'brush'</property>
                         <layout>
-                          <property name="column">1</property>
-                          <property name="row">1</property>
+                          <property name="column">0</property>
+                          <property name="row">3</property>
                         </layout>
                         <style>
                           <class name="flat"/>
@@ -162,8 +207,8 @@
                         <property name="action-name">win.tool</property>
                         <property name="action-target">'airbrush'</property>
                         <layout>
-                          <property name="column">0</property>
-                          <property name="row">2</property>
+                          <property name="column">1</property>
+                          <property name="row">3</property>
                         </layout>
                         <style>
                           <class name="flat"/>

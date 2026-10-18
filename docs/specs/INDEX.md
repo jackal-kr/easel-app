@@ -11,7 +11,7 @@ Vertical slices first (a thin end-to-end feature), breadth later.
 | 0004 | canvas-view | Zoom range and commands, Fit to Window, View and Image menus with panel toggles, status bar, pixel grid and Grid dialog, resize handles, Attributes dialog | Builds on Pan from 0001. History steps store pixel indexes; any change of picture size must clear the history or record the size. 8000x8000 now draws, undoes and redoes within one refresh: the picture is shown as tiles (T001, T002, measured in the 0004 Plan) |
 | 0005 | file-io | New, Open and Save As, open/save formats (png, jpeg, bmp, tiff, webp; gif open-only), modified tracking for Open and New, a file on the command line, errors | gif open-only; the saved state itself is 0002. Open and New clear the undo history; sizes may differ (a resize inside one picture is a history step, 0004; a different picture is not) |
 | 0006 | freehand-tools | Brush shapes/sizes, airbrush, eraser | |
-| 0007 | fill-pick-magnify | Fill, pick color, magnifier | |
+| 0007 | fill-pick-magnify | Fill, pick color, magnifier | Magnifier levels 1/10x, 1/4x, 1/2x, 1x, 2x (default), 4x, 6x, 8x, chosen then applied on a click; Pick Color returns to the previous tool |
 | 0008 | lines-curves-shapes | Line, curve, polygon, rectangle, rounded rectangle, ellipse, fill styles, gradient | |
 | 0009 | selection | Rect and free-form select, floating selection, move, smear, stamp, transparent mode | |
 | 0010 | clipboard | Cut, copy, paste, oversize paste, paste from / copy to file | |

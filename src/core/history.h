@@ -26,6 +26,18 @@ void easel_history_free (EaselHistory *h);
    was added and the caller still owns changes. */
 bool easel_history_push (EaselHistory *h, EaselChange *changes, size_t n);
 
+/* A run of pixels in one row, x0 to x1 inclusive: a piece of a fill's area (REQ-0007-05). */
+typedef struct
+{
+  uint32_t y, x0, x1;
+} EaselSpan;
+
+/* A fill as one step: every pixel of the n spans had old_value and now has new_value (a fill replaces only pixels equal in
+   all four channels). Same ownership as easel_history_push: on success it takes spans (malloc'd); with n == 0 nothing is
+   added and spans is freed; false means no memory and the caller still owns spans. A step counts 12 bytes per span plus 64,
+   which is within the 16 bytes per pixel of REQ-0002-16, since a span has at least one pixel. */
+bool easel_history_push_fill (EaselHistory *h, uint32_t old_value, uint32_t new_value, EaselSpan *spans, size_t n);
+
 /* Write the step's pixels back through easel_image_set, so the screen update sees them. False: nothing to do. */
 bool easel_history_undo (EaselHistory *h, EaselImage *img);
 bool easel_history_redo (EaselHistory *h, EaselImage *img);
@@ -36,7 +48,8 @@ bool easel_history_refused (const EaselHistory *h, int *w, int *h_out);
 bool easel_history_can_undo (const EaselHistory *h);
 bool easel_history_can_redo (const EaselHistory *h);
 
-/* What the history stores: per step 12 bytes per changed pixel plus 64 bytes for the step itself (REQ-0002-16). */
+/* What the history stores: per step 12 bytes per changed pixel (per span, for a fill) plus 64 bytes for the step itself
+   (REQ-0002-16). */
 size_t easel_history_bytes (const EaselHistory *h);
 
 /* A resize of the picture as one undo step (REQ-0004-22..24, REQ-0004-26), with everything it needs:

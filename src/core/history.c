@@ -9,6 +9,7 @@ typedef enum
 {
   STEP_CHANGES,           /* pixels that changed: changes, n */
   STEP_RESIZE,            /* a new size: the fields below */
+  STEP_FILL,              /* a fill: old_color becomes new_color in every pixel of the spans */
 } StepKind;
 
 typedef struct
@@ -23,6 +24,9 @@ typedef struct
   uint32_t fill;
   uint32_t *removed;
   size_t n_removed;
+  EaselSpan *spans;
+  size_t n_spans;
+  uint32_t old_color, new_color;
 } Step;
 
 struct _EaselHistory
@@ -61,10 +65,13 @@ free_step (Step *s)
 {
   free (s->changes);
   free (s->removed);
+  free (s->spans);
   s->changes = NULL;
   s->removed = NULL;
+  s->spans = NULL;
   s->n = 0;
   s->n_removed = 0;
+  s->n_spans = 0;
 }
 
 void
@@ -89,6 +96,8 @@ step_bytes (const Step *s)
 {
   if (s->kind == STEP_RESIZE)
     return s->n_removed * sizeof (uint32_t) + BYTES_PER_STEP;
+  if (s->kind == STEP_FILL)
+    return s->n_spans * sizeof (EaselSpan) + BYTES_PER_STEP;
   return s->n * BYTES_PER_CHANGE + BYTES_PER_STEP;
 }
 
@@ -174,6 +183,20 @@ easel_history_push (EaselHistory *h, EaselChange *changes, size_t n)
   return true;
 }
 
+bool
+easel_history_push_fill (EaselHistory *h, uint32_t old_value, uint32_t new_value, EaselSpan *spans, size_t n)
+{
+  if (n == 0)
+    {
+      free (spans);
+      return true;
+    }
+  if (n > (SIZE_MAX - BYTES_PER_STEP) / sizeof (EaselSpan) || !make_room (h))
+    return false;
+  commit_step (h, (Step) { .kind = STEP_FILL, .spans = spans, .n_spans = n, .old_color = old_value, .new_color = new_value });
+  return true;
+}
+
 EaselResizeResult
 easel_resize_edit (EaselImage *img, EaselHistory *h, int width, int height, uint32_t fill)
 {
@@ -243,6 +266,16 @@ apply_step (const Step *s, EaselImage *img, bool undo)
             if (x >= kept_w || y >= kept_h)
               img->px[(size_t) y * (size_t) s->old_w + (size_t) x] = s->removed[i++];
       }
+      return true;
+    }
+
+  if (s->kind == STEP_FILL)
+    {
+      uint32_t color = undo ? s->old_color : s->new_color;
+
+      for (size_t i = 0; i < s->n_spans; i++)
+        for (uint64_t x = s->spans[i].x0; x <= s->spans[i].x1; x++)      /* 64 bits: x1 may be the largest 32-bit value */
+          easel_image_set (img, (int) x, (int) s->spans[i].y, color);
       return true;
     }
 

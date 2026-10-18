@@ -28,6 +28,9 @@ struct _EaselWindow
   GtkWidget *toolbox_panel;   /* the tool buttons, the options below them, and their separator */
   GtkWidget *tools_column;    /* the tool grid, and below it the options panel */
   EaselToolOptions *tool_options;
+  EaselTool pick_return_tool;   /* the tool that was active when Pick Color was chosen (REQ-0007-09) */
+  gboolean pick_running;        /* a pick is in progress; the two colors below are those before its press (REQ-0007-10) */
+  uint32_t pick_old_foreground, pick_old_background;
   GtkMenuButton *main_menu_button;
   GtkMenuButton *image_button;
   GtkMenuButton *view_button;
@@ -990,6 +993,12 @@ tool_hint (EaselTool tool, gboolean transparent)
     case EASEL_TOOL_ERASER:
       return transparent ? "Erase to transparency. The secondary button erases only the foreground color."
                          : "Erase to the background color. The secondary button changes only the foreground color.";
+    case EASEL_TOOL_MAGNIFIER:
+      return "Changes the magnification.";
+    case EASEL_TOOL_PICK:
+      return "Picks up a color from the picture for drawing.";
+    case EASEL_TOOL_FILL:
+      return "Fills an area with the current drawing color.";
     default:
       return "Drag to pan. Ctrl+wheel zooms.";
     }
@@ -1353,7 +1362,54 @@ sync_canvas_options (EaselWindow *self)
   if (self->tool == EASEL_TOOL_BRUSH || self->tool == EASEL_TOOL_AIRBRUSH || self->tool == EASEL_TOOL_ERASER)
     easel_canvas_set_footprint (self->canvas, easel_tool_options_get_footprint (self->tool_options, self->tool));
   easel_canvas_set_eraser_transparent (self->canvas, easel_tool_options_get_transparent (self->tool_options));
+  easel_canvas_set_magnifier_level (self->canvas, easel_tool_options_get_magnifier_level (self->tool_options));
   easel_status_bar_set_hint (self->status_bar, tool_hint (self->tool, easel_tool_options_get_transparent (self->tool_options)));
+}
+
+/* Pick Color (REQ-0007-08..10): the picked color is the foreground (primary button) or the background (secondary) at
+   once, so that the color box shows it while the button is held; a cancel puts the old colors back, an end goes back to
+   the tool that was active when Pick Color was chosen. */
+static void
+on_color_picked (EaselWindow *self, guint button, guint color)
+{
+  if (!self->pick_running)
+    {
+      self->pick_running = TRUE;
+      self->pick_old_foreground = self->foreground;
+      self->pick_old_background = self->background;
+    }
+  if (button == GDK_BUTTON_PRIMARY)
+    set_colors (self, color, self->background);
+  else
+    set_colors (self, self->foreground, color);
+}
+
+static void
+on_pick_ended (EaselWindow *self, gboolean cancelled)
+{
+  self->pick_running = FALSE;
+  if (cancelled)
+    set_colors (self, self->pick_old_foreground, self->pick_old_background);
+  else
+    g_action_group_activate_action (G_ACTION_GROUP (self), "tool",
+                                    g_variant_new_string (easel_tool_name (self->pick_return_tool)));
+}
+
+/* REQ-0007-07: shown from an idle callback, so that the press that failed has returned first. */
+static gboolean
+show_fill_error (gpointer data)
+{
+  EaselWindow *self = data;
+
+  show_save_error (self, "Could Not Fill", "There is not enough memory to fill this area.");
+  g_object_unref (self);
+  return G_SOURCE_REMOVE;
+}
+
+static void
+on_fill_failed (EaselWindow *self)
+{
+  g_idle_add (show_fill_error, g_object_ref (self));
 }
 
 /* Choosing a preset is not possible while a stroke is in progress (REQ-0006-03). */
@@ -1374,6 +1430,8 @@ change_tool_state (GSimpleAction *action, GVariant *value, gpointer user_data)
     return;
   if (!easel_tool_from_name (g_variant_get_string (value, NULL), &tool))
     return;
+  if (tool == EASEL_TOOL_PICK && self->tool != EASEL_TOOL_PICK)
+    self->pick_return_tool = self->tool;
   self->tool = tool;
   easel_canvas_set_tool (self->canvas, tool);
   easel_status_bar_set_hint (self->status_bar, tool_hint (tool, easel_tool_options_get_transparent (self->tool_options)));
@@ -1383,11 +1441,12 @@ change_tool_state (GSimpleAction *action, GVariant *value, gpointer user_data)
 }
 
 /* Numpad + and -: the next larger or smaller preset of the tool; like the View actions, not during a stroke or while a
-   dialog is open (REQ-0006-14, REQ-0004-03). Pan and Pencil have no presets, so nothing changes. */
+   dialog is open (REQ-0006-14, REQ-0004-03). Only the Brush, the Airbrush and the Eraser have presets. */
 static void
 step_preset (EaselWindow *self, int direction)
 {
-  if (view_actions_allowed (self) && self->tool != EASEL_TOOL_PAN && self->tool != EASEL_TOOL_PENCIL)
+  if (view_actions_allowed (self)
+      && (self->tool == EASEL_TOOL_BRUSH || self->tool == EASEL_TOOL_AIRBRUSH || self->tool == EASEL_TOOL_ERASER))
     easel_tool_options_step (self->tool_options, self->tool, direction);
 }
 
@@ -1655,6 +1714,9 @@ easel_window_init (EaselWindow *self)
     g_signal_connect_swapped (keys, "key-pressed", G_CALLBACK (on_key_pressed), self);
     gtk_widget_add_controller (GTK_WIDGET (self), keys);
   }
+  g_signal_connect_object (self->canvas, "color-picked", G_CALLBACK (on_color_picked), self, G_CONNECT_SWAPPED);
+  g_signal_connect_object (self->canvas, "pick-ended", G_CALLBACK (on_pick_ended), self, G_CONNECT_SWAPPED);
+  g_signal_connect_object (self->canvas, "fill-failed", G_CALLBACK (on_fill_failed), self, G_CONNECT_SWAPPED);
   g_signal_connect_object (self->canvas, "stroke-finished", G_CALLBACK (on_stroke_finished), self, G_CONNECT_SWAPPED);
   g_signal_connect (self, "notify::is-active", G_CALLBACK (on_active_changed), NULL);
 

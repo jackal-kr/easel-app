@@ -7,7 +7,13 @@
     <file preprocess="xml-stripblanks">icons/scalable/actions/easel-tool-brush-symbolic.svg</file>
     <file preprocess="xml-stripblanks">icons/scalable/actions/easel-tool-airbrush-symbolic.svg</file>
     <file preprocess="xml-stripblanks">icons/scalable/actions/easel-tool-eraser-symbolic.svg</file>
+    <file preprocess="xml-stripblanks">icons/scalable/actions/easel-tool-magnifier-symbolic.svg</file>
+    <file preprocess="xml-stripblanks">icons/scalable/actions/easel-tool-pick-symbolic.svg</file>
+    <file preprocess="xml-stripblanks">icons/scalable/actions/easel-tool-fill-symbolic.svg</file>
     <file preprocess="xml-stripblanks">cursors/pencil.svg</file>
     <file preprocess="xml-stripblanks">cursors/airbrush.svg</file>
+    <file preprocess="xml-stripblanks">cursors/magnifier.svg</file>
+    <file preprocess="xml-stripblanks">cursors/pick.svg</file>
+    <file preprocess="xml-stripblanks">cursors/fill.svg</file>
   </gresource>
 </gresources>

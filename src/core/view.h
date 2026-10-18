@@ -47,3 +47,8 @@ typedef enum
    become the new size: the right handle moves the right edge by dx, the bottom handle the bottom edge by dy, the corner
    both; each edge goes to the nearest pixel boundary (.5 rounds up) and is limited to 1 to 10000. */
 void easel_view_resize_by (EaselHandle handle, double dx, double dy, int *w, int *h);
+
+/* The scroll offset along one axis that puts the picture coordinate `focus` (in picture pixels, a pixel's center is at
+   its index + 0.5) at the center of a view view_size logical pixels long, at zoom pct and the given scale, kept inside the
+   content (0 when the content is not longer than the view; REQ-0007-03). */
+double easel_view_focus_scroll (double focus, int pct, int picture_size, double scale, double view_size);

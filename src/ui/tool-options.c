@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 
+#include "magnifier.h"
 #include "tool-options.h"
 
 enum { SIGNAL_PRESET_CHANGED, N_SIGNALS };
@@ -19,12 +20,13 @@ struct _EaselToolOptions
   GtkBox parent_instance;
 
   GtkWidget *line;           /* the separator above the presets */
-  GtkWidget *groups[3];      /* Brush, Airbrush, Eraser: a vertical box each */
+  GtkWidget *groups[4];      /* Brush, Airbrush, Eraser, Magnifier: a vertical box each */
   GtkToggleButton *brush[EASEL_BRUSH_N_PRESETS];
   GtkToggleButton *airbrush[EASEL_AIRBRUSH_N_PRESETS];
   GtkToggleButton *eraser[EASEL_ERASER_N_SIZES];
   GtkToggleButton *modes[2];
-  int brush_index, airbrush_index, eraser_index;
+  GtkToggleButton *magnifier[EASEL_MAGNIFIER_N_LEVELS];
+  int brush_index, airbrush_index, eraser_index, magnifier_index;
   gboolean transparent;
   gboolean busy;
 };
@@ -111,6 +113,24 @@ add_button (EaselToolOptions *self, GtkGrid *grid, int index, int columns, const
   return GTK_TOGGLE_BUTTON (button);
 }
 
+/* A text button of the Magnifier's levels: "2x", with the zoom it gives as its tooltip. */
+static GtkToggleButton *
+add_level_button (EaselToolOptions *self, GtkGrid *grid, int index, int pct, GtkToggleButton *group_first)
+{
+  /* "2x" for an enlargement, "1/4x" for a reduction (100 / 25). */
+  g_autofree char *label = pct >= 100 ? g_strdup_printf ("%dx", pct / 100) : g_strdup_printf ("1/%dx", (100 + pct / 2) / pct);
+  g_autofree char *tip = g_strdup_printf ("%d %%", pct);
+  GtkWidget *button = gtk_toggle_button_new_with_label (label);
+
+  gtk_widget_add_css_class (button, "flat");
+  gtk_widget_set_tooltip_text (button, tip);
+  if (group_first != NULL)
+    gtk_toggle_button_set_group (GTK_TOGGLE_BUTTON (button), group_first);
+  gtk_grid_attach (grid, button, index % 2, index / 2, 1, 1);
+  g_signal_connect (button, "toggled", G_CALLBACK (on_toggled), self);
+  return GTK_TOGGLE_BUTTON (button);
+}
+
 static GtkWidget *
 new_grid (void)
 {
@@ -171,10 +191,18 @@ build_presets (EaselToolOptions *self)
   gtk_box_append (GTK_BOX (eraser_box), gtk_separator_new (GTK_ORIENTATION_HORIZONTAL));
   gtk_box_append (GTK_BOX (eraser_box), mode_grid);
 
+  {
+    GtkWidget *magnifier_grid = new_grid ();
+
+    for (int i = 0; i < EASEL_MAGNIFIER_N_LEVELS; i++)
+      self->magnifier[i] = add_level_button (self, GTK_GRID (magnifier_grid), i, easel_magnifier_levels[i],
+                                             i ? self->magnifier[0] : NULL);
+    self->groups[3] = magnifier_grid;
+  }
   self->groups[0] = brush_grid;
   self->groups[1] = air_grid;
   self->groups[2] = eraser_box;
-  for (int i = 0; i < 3; i++)
+  for (int i = 0; i < 4; i++)
     {
       gtk_widget_set_visible (self->groups[i], FALSE);
       gtk_box_append (GTK_BOX (self), self->groups[i]);
@@ -188,6 +216,7 @@ sync_selection (EaselToolOptions *self)
   gtk_toggle_button_set_active (self->airbrush[self->airbrush_index], TRUE);
   gtk_toggle_button_set_active (self->eraser[self->eraser_index], TRUE);
   gtk_toggle_button_set_active (self->modes[self->transparent ? 1 : 0], TRUE);
+  gtk_toggle_button_set_active (self->magnifier[self->magnifier_index], TRUE);
 }
 
 static int
@@ -207,6 +236,7 @@ read_selection (EaselToolOptions *self)
   self->airbrush_index = index_of (self->airbrush, EASEL_AIRBRUSH_N_PRESETS);
   self->eraser_index = index_of (self->eraser, EASEL_ERASER_N_SIZES);
   self->transparent = gtk_toggle_button_get_active (self->modes[1]);
+  self->magnifier_index = index_of (self->magnifier, EASEL_MAGNIFIER_N_LEVELS);
 }
 
 static void
@@ -223,6 +253,7 @@ easel_tool_options_init (EaselToolOptions *self)
   self->brush_index = EASEL_BRUSH_DEFAULT;
   self->airbrush_index = EASEL_AIRBRUSH_DEFAULT;
   self->eraser_index = EASEL_ERASER_DEFAULT;
+  self->magnifier_index = EASEL_MAGNIFIER_DEFAULT;
   self->line = gtk_separator_new (GTK_ORIENTATION_HORIZONTAL);
   gtk_box_append (GTK_BOX (self), self->line);
   build_presets (self);
@@ -239,9 +270,10 @@ easel_tool_options_new (void)
 void
 easel_tool_options_show_tool (EaselToolOptions *self, EaselTool tool)
 {
-  int group = tool == EASEL_TOOL_BRUSH ? 0 : tool == EASEL_TOOL_AIRBRUSH ? 1 : tool == EASEL_TOOL_ERASER ? 2 : -1;
+  int group = tool == EASEL_TOOL_BRUSH ? 0 : tool == EASEL_TOOL_AIRBRUSH ? 1 : tool == EASEL_TOOL_ERASER ? 2
+              : tool == EASEL_TOOL_MAGNIFIER ? 3 : -1;
 
-  for (int i = 0; i < 3; i++)
+  for (int i = 0; i < 4; i++)
     gtk_widget_set_visible (self->groups[i], i == group);
   gtk_widget_set_visible (GTK_WIDGET (self), group >= 0);
 }
@@ -255,6 +287,13 @@ easel_tool_options_get_footprint (EaselToolOptions *self, EaselTool tool)
   if (tool == EASEL_TOOL_ERASER)
     return easel_eraser_presets[self->eraser_index];
   return easel_brush_presets[self->brush_index];
+}
+
+int
+easel_tool_options_get_magnifier_level (EaselToolOptions *self)
+{
+  read_selection (self);
+  return easel_magnifier_levels[self->magnifier_index];
 }
 
 gboolean

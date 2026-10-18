@@ -56,6 +56,19 @@ void easel_canvas_reset_view (EaselCanvas *self);
 /* What the Brush, the Airbrush and the Eraser paint with, as the options panel has it (REQ-0006-04..11): the footprint of
    the active tool, and whether the Eraser erases to transparency. */
 void easel_canvas_set_footprint (EaselCanvas *self, EaselFootprint footprint);
+
+/* The Magnifier's selected level in percent (200, 400, ...), as the options panel has it (REQ-0007-02). */
+void easel_canvas_set_magnifier_level (EaselCanvas *self, int pct);
+/* The Magnifier's preview box in picture pixels (REQ-0007-04); FALSE when none is shown (not the Magnifier, not 100 %, a
+   level that does not zoom in, or the pointer not over a picture pixel). */
+gboolean easel_canvas_get_magnifier_box (EaselCanvas *self, int *x, int *y, int *w, int *h);
+
+/* The window saw the pointer move, or a button go down, with no mouse button down: a release was lost (REQ-0007-18). Whatever
+   press the canvas still holds (a stroke, a pick, a Fill or Magnifier press, a handle drag) ends as if it had been released. */
+void easel_canvas_buttons_released (EaselCanvas *self);
+
+/* Test hook: what a Fill may use for its work buffers before it fails with the memory dialog (default: no limit). */
+void easel_canvas_set_fill_memory_limit (EaselCanvas *self, size_t max_bytes);
 void easel_canvas_set_eraser_transparent (EaselCanvas *self, gboolean transparent);
 
 /* Test hook: how many sprays the current or the last Airbrush stroke has made. */
@@ -96,7 +109,10 @@ void easel_canvas_reset_pointer (EaselCanvas *self);
 void easel_canvas_end_stroke (EaselCanvas *self);
 
 /* Input entry points, in canvas coordinates (logical pixels from the picture's top-left). The event
-   controller feeds them; tests call them directly. Emit "stroke-finished" (guint changed_pixels). */
+   controller feeds them; tests call them directly. Emit "stroke-finished" (guint changed_pixels), also for a Fill (REQ-0007-05);
+   a Fill that cannot get its memory emits "fill-failed" and changes nothing (REQ-0007-07). A Pick Color press is a stroke
+   as far as easel_canvas_is_stroking, Undo and the other button are concerned: "color-picked" (guint button, guint color)
+   comes at the press and when the pointer moves to another pixel, "pick-ended" (gboolean cancelled) when it ends. */
 void easel_canvas_press (EaselCanvas *self, guint button, double x, double y);
 void easel_canvas_motion (EaselCanvas *self, double x, double y);
 void easel_canvas_release (EaselCanvas *self, guint button);

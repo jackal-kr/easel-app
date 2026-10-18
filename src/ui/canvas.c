@@ -5,7 +5,9 @@
 #include "config.h"
 #include "canvas.h"
 #include "cursor-shape.h"
+#include "fill.h"
 #include "grid.h"
+#include "magnifier.h"
 #include "stroke.h"
 #include "view.h"
 
@@ -47,6 +49,14 @@ struct _EaselCanvas
   int cursor_zoom;
   guint stroke_button;
   guint cancelled_button; /* button of a stroke cancelled by Undo, until it is released; 0 if none */
+  gboolean picking;       /* a Pick Color press is held: a pending gesture, treated like a stroke (REQ-0007-08) */
+  int pick_px, pick_py;   /* the pixel the pick showed last */
+  int magnifier_level;    /* the Magnifier's selected level in percent (REQ-0007-02) */
+  gboolean pointer_in;    /* the pointer is over the canvas area (REQ-0007-04) */
+  double pointer_ax, pointer_ay;  /* where, relative to the area (so a scroll or a zoom moves the picture under it) */
+  int box_px, box_py;     /* the pixel the preview box was last drawn for, to redraw only when it changes */
+  size_t fill_max_bytes;  /* test hook: what a Fill may use for its work buffers */
+  guint action_button;    /* button held after a press that acted at once (Fill): no other press acts until it is released */
   gboolean input_blocked;
   gboolean busy;          /* a picture is loading: the busy cursor */
   gboolean grid_on, grid_axonometric;
@@ -66,6 +76,8 @@ struct _EaselCanvas
   double pinch_base;      /* the pinch's scale at the last level change, 1 when it begins */
   gboolean anchor_pending;
   double anchor_h, anchor_v;  /* scroll offsets to apply once the new zoom is allocated */
+  gboolean anchor_focus;      /* instead: the picture point focus_x, focus_y goes to the center of the view as allocated */
+  double focus_x, focus_y;
 };
 
 /* Touchpad scrolling arrives in surface pixels; this many count as one wheel notch. */
@@ -75,6 +87,9 @@ enum
 {
   SIGNAL_STROKE_FINISHED,
   SIGNAL_STROKING_CHANGED,
+  SIGNAL_FILL_FAILED,
+  SIGNAL_COLOR_PICKED,
+  SIGNAL_PICK_ENDED,
   SIGNAL_ZOOM_CHANGED,
   SIGNAL_POINTER_MOVED,
   SIGNAL_POINTER_LEFT,
@@ -85,8 +100,10 @@ enum
 static guint signals[N_SIGNALS];
 
 static GtkAdjustment *adjustment (EaselCanvas *self, GtkOrientation orientation);
+static void to_pixel (EaselCanvas *self, double x, double y, int *px, int *py);
 static void update_cursor (EaselCanvas *self);
 static void stop_spray (EaselCanvas *self);
+static void commit_zoom (EaselCanvas *self, int zoom, double scroll_h, double scroll_v);
 static gboolean on_spray_tick (gpointer data);
 
 /* Resize handles (REQ-0004-16): 5 x 5 logical pixels touching the picture, a hit area of 9 x 9 around the center, and
@@ -409,6 +426,71 @@ append_handles (EaselCanvas *self, GtkSnapshot *snapshot)
     }
 }
 
+/* The preview box (REQ-0007-04) in picture pixels, if it is shown now: the Magnifier at 100 % with a level that zooms in
+   and the pointer over a picture pixel. */
+static gboolean
+magnifier_box (EaselCanvas *self, int *bx, int *by, int *bw, int *bh)
+{
+  GtkAdjustment *h, *v;
+  graphene_point_t p;
+  double scale;
+  int px, py;
+
+  if (self->img == NULL || self->tool != EASEL_TOOL_MAGNIFIER || self->zoom != 100 || self->magnifier_level <= 100
+      || !self->pointer_in)
+    return FALSE;
+  if (!gtk_widget_compute_point (self->area != NULL ? self->area : GTK_WIDGET (self), GTK_WIDGET (self),
+                                 &GRAPHENE_POINT_INIT ((float) self->pointer_ax, (float) self->pointer_ay), &p))
+    return FALSE;
+  to_pixel (self, p.x, p.y, &px, &py);
+  if (px < 0 || py < 0 || px >= self->img->width || py >= self->img->height)
+    return FALSE;
+  h = adjustment (self, GTK_ORIENTATION_HORIZONTAL);
+  v = adjustment (self, GTK_ORIENTATION_VERTICAL);
+  scale = easel_canvas_get_scale (self);
+  easel_magnifier_box ((int) (gtk_adjustment_get_page_size (h) * scale), (int) (gtk_adjustment_get_page_size (v) * scale),
+                       self->magnifier_level, self->img->width, self->img->height, px, py, bx, by, bw, bh);
+  self->box_px = px;
+  self->box_py = py;
+  return TRUE;
+}
+
+gboolean
+easel_canvas_get_magnifier_box (EaselCanvas *self, int *x, int *y, int *w, int *h)
+{
+  return magnifier_box (self, x, y, w, h);
+}
+
+/* The preview box as a black line with a white line outside it, so that it shows on any color (REQ-0007-04). */
+static void
+append_magnifier_box (EaselCanvas *self, GtkSnapshot *snapshot)
+{
+  static const GdkRGBA black = { 0, 0, 0, 1 }, white = { 1, 1, 1, 1 };
+  int bx, by, bw, bh;
+  double l, t, x0, y0, w, h;
+
+  if (!magnifier_box (self, &bx, &by, &bw, &bh))
+    return;
+  l = logical_per_pixel (self);
+  t = 1.0 / easel_canvas_get_scale (self);
+  x0 = bx * l;
+  y0 = by * l;
+  w = bw * l;
+  h = bh * l;
+  /* The black line is inside the box's edge, the white one just outside it. */
+  for (int i = 0; i < 2; i++)
+    {
+      const GdkRGBA *c = i == 0 ? &white : &black;
+      double o = i == 0 ? t : 0;     /* white: one line further out */
+      double rx = x0 - o, ry = y0 - o, rw = w + 2 * o, rh = h + 2 * o;
+
+      gtk_snapshot_append_color (snapshot, c, &GRAPHENE_RECT_INIT ((float) rx, (float) ry, (float) rw, (float) t));
+      gtk_snapshot_append_color (snapshot, c, &GRAPHENE_RECT_INIT ((float) rx, (float) (ry + rh - t), (float) rw, (float) t));
+      gtk_snapshot_append_color (snapshot, c, &GRAPHENE_RECT_INIT ((float) rx, (float) ry, (float) t, (float) rh));
+      gtk_snapshot_append_color (snapshot, c, &GRAPHENE_RECT_INIT ((float) (rx + rw - t), (float) ry, (float) t, (float) rh));
+    }
+}
+
 static void
 easel_canvas_snapshot (GtkWidget *widget, GtkSnapshot *snapshot)
 {
@@ -437,6 +519,7 @@ easel_canvas_snapshot (GtkWidget *widget, GtkSnapshot *snapshot)
   if (easel_canvas_grid_is_drawn (self))
     append_grid (self, snapshot);
   append_handles (self, snapshot);
+  append_magnifier_box (self, snapshot);
 }
 
 static GdkCursor *
@@ -469,6 +552,22 @@ airbrush_cursor (void)
       spray_can = gdk_cursor_new_from_texture (texture, 7, 26, fallback);
     }
   return spray_can;
+}
+
+/* The cursors of Fill, Pick Color and the Magnifier (REQ-0007-12): the hotspot is the spilling tip of the bucket, the tip of
+   the dropper and the center of the lens. */
+static GdkCursor *
+texture_cursor (GdkCursor **cache, const char *name, int hot_x, int hot_y)
+{
+  if (*cache == NULL)
+    {
+      g_autofree char *path = g_strconcat (RESOURCE_PATH "/cursors/", name, NULL);
+      g_autoptr (GdkTexture) texture = gdk_texture_new_from_resource (path);
+      g_autoptr (GdkCursor) fallback = gdk_cursor_new_from_name ("crosshair", NULL);
+
+      *cache = gdk_cursor_new_from_texture (texture, hot_x, hot_y, fallback);
+    }
+  return *cache;
 }
 
 /* The outline of the Brush's or the Eraser's footprint at the current zoom (REQ-0006-16); made again only when the
@@ -518,6 +617,24 @@ update_cursor (EaselCanvas *self)
     cursor = g_object_ref (outline_cursor (self));
   else if (self->tool == EASEL_TOOL_AIRBRUSH)
     cursor = g_object_ref (airbrush_cursor ());
+  else if (self->tool == EASEL_TOOL_FILL)
+    {
+      static GdkCursor *bucket;
+
+      cursor = g_object_ref (texture_cursor (&bucket, "fill.svg", 4, 29));
+    }
+  else if (self->tool == EASEL_TOOL_PICK)
+    {
+      static GdkCursor *dropper;
+
+      cursor = g_object_ref (texture_cursor (&dropper, "pick.svg", 2, 30));
+    }
+  else if (self->tool == EASEL_TOOL_MAGNIFIER)
+    {
+      static GdkCursor *glass;
+
+      cursor = g_object_ref (texture_cursor (&glass, "magnifier.svg", 12, 12));
+    }
   else
     cursor = gdk_cursor_new_from_name (self->panning ? "grabbing" : "grab", NULL);
 
@@ -551,6 +668,7 @@ easel_canvas_set_tool (EaselCanvas *self, EaselTool tool)
   self->tool = tool;
   self->hover = EASEL_HANDLE_NONE;
   update_cursor (self);
+  gtk_widget_queue_draw (GTK_WIDGET (self));     /* the preview box comes and goes with the Magnifier */
   gtk_widget_queue_resize (GTK_WIDGET (self));   /* the handles come and go with the room they need */
 }
 
@@ -559,6 +677,19 @@ easel_canvas_set_footprint (EaselCanvas *self, EaselFootprint footprint)
 {
   self->footprint = footprint;
   update_cursor (self);
+}
+
+void
+easel_canvas_set_magnifier_level (EaselCanvas *self, int pct)
+{
+  self->magnifier_level = pct;
+  gtk_widget_queue_draw (GTK_WIDGET (self));
+}
+
+void
+easel_canvas_set_fill_memory_limit (EaselCanvas *self, size_t max_bytes)
+{
+  self->fill_max_bytes = max_bytes;
 }
 
 void
@@ -577,7 +708,7 @@ easel_canvas_set_colors (EaselCanvas *self, uint32_t foreground, uint32_t backgr
 gboolean
 easel_canvas_is_stroking (EaselCanvas *self)
 {
-  return self->stroke != NULL;
+  return self->stroke != NULL || self->picking;
 }
 
 static GtkAdjustment *
@@ -596,9 +727,24 @@ to_pixel (EaselCanvas *self, double x, double y, int *px, int *py)
   easel_view_to_pixel (x, y, self->zoom, easel_canvas_get_scale (self), px, py);
 }
 
+/* The pick ends: kept (the button was released, the focus lost) or cancelled (the other button, Undo). */
+static void
+finish_pick (EaselCanvas *self, gboolean cancelled)
+{
+  self->picking = FALSE;
+  g_signal_emit (self, signals[SIGNAL_STROKING_CHANGED], 0, FALSE);
+  g_signal_emit (self, signals[SIGNAL_PICK_ENDED], 0, cancelled);
+}
+
 void
 easel_canvas_cancel_stroke (EaselCanvas *self)
 {
+  if (self->picking)
+    {
+      self->cancelled_button = self->stroke_button;
+      finish_pick (self, TRUE);
+      return;
+    }
   if (self->stroke == NULL)
     return;
   easel_stroke_cancel (self->stroke);
@@ -610,10 +756,23 @@ easel_canvas_cancel_stroke (EaselCanvas *self)
 }
 
 void
+easel_canvas_buttons_released (EaselCanvas *self)
+{
+  /* What a release would have done, for each press the canvas still holds (REQ-0007-18). */
+  self->action_button = 0;
+  if (self->stroke != NULL || self->picking)
+    easel_canvas_end_stroke (self);
+  if (self->resizing != EASEL_HANDLE_NONE)
+    easel_canvas_release (self, self->resize_button);
+  self->cancelled_button = 0;
+}
+
+void
 easel_canvas_reset_pointer (EaselCanvas *self)
 {
   easel_canvas_end_stroke (self);
   self->cancelled_button = 0;
+  self->action_button = 0;
   if (self->resizing != EASEL_HANDLE_NONE)
     stop_resizing (self);
   if (self->panning)
@@ -674,6 +833,11 @@ easel_canvas_end_stroke (EaselCanvas *self)
 {
   size_t changed;
 
+  if (self->picking)
+    {
+      finish_pick (self, FALSE);
+      return;
+    }
   if (self->stroke == NULL)
     return;
   changed = easel_stroke_end (self->stroke, self->history);
@@ -681,6 +845,61 @@ easel_canvas_end_stroke (EaselCanvas *self)
   stop_spray (self);
   g_signal_emit (self, signals[SIGNAL_STROKING_CHANGED], 0, FALSE);
   g_signal_emit (self, signals[SIGNAL_STROKE_FINISHED], 0, (guint) changed);
+}
+
+/* The Magnifier (REQ-0007-03): a press on the picture sets the zoom to the selected level, or to 100 % if it already is
+   that level. The focus, the point that goes to the center of the view, is the center of the preview box at 100 % (the box
+   is the part the zoom will show) and the pixel under the pointer at other zooms. */
+static void
+magnifier_at (EaselCanvas *self, guint button, int px, int py)
+{
+  GtkAdjustment *h = adjustment (self, GTK_ORIENTATION_HORIZONTAL);
+  GtkAdjustment *v = adjustment (self, GTK_ORIENTATION_VERTICAL);
+  double scale = easel_canvas_get_scale (self), focus_x = px + 0.5, focus_y = py + 0.5;
+  int zoom = easel_magnifier_zoom (self->zoom, self->magnifier_level);
+
+  if (px < 0 || py < 0 || px >= self->img->width || py >= self->img->height)
+    return;
+  self->action_button = button;
+  if (zoom == self->zoom)
+    return;
+  if (self->zoom == 100 && zoom > 100)
+    {
+      int bx, by, bw, bh;
+
+      easel_magnifier_box ((int) (gtk_adjustment_get_page_size (h) * scale), (int) (gtk_adjustment_get_page_size (v) * scale),
+                           zoom, self->img->width, self->img->height, px, py, &bx, &by, &bw, &bh);
+      /* A box at an edge of the picture puts the view at that edge: the focus is the edge itself, which the scroll limits
+         then turn into offset 0 or the largest one, however wide a scrollbar makes the page. */
+      focus_x = bx == 0 ? 0 : bx + bw >= self->img->width ? self->img->width : bx + bw / 2.0;
+      focus_y = by == 0 ? 0 : by + bh >= self->img->height ? self->img->height : by + bh / 2.0;
+    }
+  commit_zoom (self, zoom, 0, 0);
+  self->anchor_focus = TRUE;                 /* the scroll is worked out at the allocation, with the page size then */
+  self->focus_x = focus_x;
+  self->focus_y = focus_y;
+}
+
+/* Fill (REQ-0007-05..07): the press fills at once, one undo step; the button stays "held" until its release, and no other
+   press acts meanwhile, since there is no stroke to cancel. */
+static void
+fill_at (EaselCanvas *self, guint button, int px, int py)
+{
+  size_t changed = 0;
+  EaselFillResult r;
+
+  if (px < 0 || py < 0 || px >= self->img->width || py >= self->img->height)
+    return;
+  self->action_button = button;
+  r = easel_fill_capped (self->img, self->history, px, py, button == GDK_BUTTON_PRIMARY ? self->foreground : self->background,
+                         &changed, self->fill_max_bytes);
+  if (r == EASEL_FILL_NO_MEMORY)
+    g_signal_emit (self, signals[SIGNAL_FILL_FAILED], 0);
+  else if (r == EASEL_FILL_DONE)
+    {
+      easel_canvas_update (self);
+      g_signal_emit (self, signals[SIGNAL_STROKE_FINISHED], 0, (guint) changed);
+    }
 }
 
 void
@@ -691,7 +910,16 @@ easel_canvas_press (EaselCanvas *self, guint button, double x, double y)
   /* Only the primary and secondary buttons draw; others are ignored (REQ-0001-24). */
   if (self->input_blocked || (button != GDK_BUTTON_PRIMARY && button != GDK_BUTTON_SECONDARY))
     return;
+  if (self->action_button != 0)
+    return;
 
+  if (self->picking)
+    {
+      /* The other button cancels the pick, as it cancels a stroke (REQ-0007-10). */
+      if (button != self->stroke_button)
+        finish_pick (self, TRUE);
+      return;
+    }
   if (self->stroke != NULL)
     {
       /* The other button cancels the stroke (REQ-0001-23). */
@@ -751,6 +979,30 @@ easel_canvas_press (EaselCanvas *self, guint button, double x, double y)
   if (self->img == NULL || self->tool == EASEL_TOOL_PAN)
     return;
   to_pixel (self, x, y, &px, &py);
+  if (self->tool == EASEL_TOOL_MAGNIFIER)
+    {
+      magnifier_at (self, button, px, py);
+      return;
+    }
+  if (self->tool == EASEL_TOOL_PICK)
+    {
+      /* A press on the picture starts a pick: the color of the pixel under the pointer, then of each pixel it moves to
+         (REQ-0007-08). A press outside the picture picks nothing. */
+      if (px < 0 || py < 0 || px >= self->img->width || py >= self->img->height)
+        return;
+      self->picking = TRUE;
+      self->stroke_button = button;
+      self->pick_px = px;
+      self->pick_py = py;
+      g_signal_emit (self, signals[SIGNAL_STROKING_CHANGED], 0, TRUE);
+      g_signal_emit (self, signals[SIGNAL_COLOR_PICKED], 0, button, (guint) easel_image_get (self->img, px, py));
+      return;
+    }
+  if (self->tool == EASEL_TOOL_FILL)
+    {
+      fill_at (self, button, px, py);
+      return;
+    }
   if (self->tool == EASEL_TOOL_AIRBRUSH)
     {
       /* The random sequence starts differently each time (REQ-0006-09). */
@@ -819,6 +1071,18 @@ easel_canvas_motion (EaselCanvas *self, double x, double y)
       return;
     }
 
+  if (self->picking)
+    {
+      to_pixel (self, x, y, &px, &py);
+      if (px >= 0 && py >= 0 && px < self->img->width && py < self->img->height
+          && (px != self->pick_px || py != self->pick_py))
+        {
+          self->pick_px = px;
+          self->pick_py = py;
+          g_signal_emit (self, signals[SIGNAL_COLOR_PICKED], 0, self->stroke_button, (guint) easel_image_get (self->img, px, py));
+        }
+      return;
+    }
   if (self->stroke == NULL)
     return;
   to_pixel (self, x, y, &px, &py);
@@ -833,6 +1097,8 @@ easel_canvas_release (EaselCanvas *self, guint button)
 {
   if (button == self->cancelled_button)
     self->cancelled_button = 0;
+  if (button == self->action_button)
+    self->action_button = 0;
   if (self->resizing != EASEL_HANDLE_NONE && button == self->resize_button)
     {
       int w = self->outline_w, h = self->outline_h;
@@ -848,7 +1114,7 @@ easel_canvas_release (EaselCanvas *self, guint button)
       self->panning = FALSE;
       update_cursor (self);
     }
-  if (self->stroke != NULL && button == self->stroke_button)
+  if ((self->stroke != NULL || self->picking) && button == self->stroke_button)
     easel_canvas_end_stroke (self);
 }
 
@@ -860,8 +1126,10 @@ commit_zoom (EaselCanvas *self, int zoom, double scroll_h, double scroll_v)
   self->anchor_h = scroll_h;
   self->anchor_v = scroll_v;
   self->anchor_pending = TRUE;
+  self->anchor_focus = FALSE;
   self->zoom = zoom;
   gtk_widget_queue_resize (GTK_WIDGET (self));
+  gtk_widget_queue_draw (GTK_WIDGET (self));
   update_cursor (self);
   g_signal_emit (self, signals[SIGNAL_ZOOM_CHANGED], 0, zoom);
 }
@@ -987,12 +1255,29 @@ easel_canvas_pointer_at (EaselCanvas *self, double x, double y)
       update_cursor (self);
     }
   to_pixel (self, x, y, &px, &py);
+  {
+    graphene_point_t p;
+    GtkWidget *ref = self->area != NULL ? self->area : GTK_WIDGET (self);
+
+    if (gtk_widget_compute_point (GTK_WIDGET (self), ref, &GRAPHENE_POINT_INIT ((float) x, (float) y), &p))
+      {
+        gboolean was_in = self->pointer_in;
+
+        self->pointer_ax = p.x;
+        self->pointer_ay = p.y;
+        self->pointer_in = TRUE;
+        if (self->tool == EASEL_TOOL_MAGNIFIER && (!was_in || px != self->box_px || py != self->box_py))
+          gtk_widget_queue_draw (GTK_WIDGET (self));
+      }
+  }
   g_signal_emit (self, signals[SIGNAL_POINTER_MOVED], 0, px, py);
 }
 
 void
 easel_canvas_pointer_left (EaselCanvas *self)
 {
+  self->pointer_in = FALSE;
+  gtk_widget_queue_draw (GTK_WIDGET (self));
   g_signal_emit (self, signals[SIGNAL_POINTER_LEFT], 0);
 }
 
@@ -1119,6 +1404,11 @@ on_event (GtkEventControllerLegacy *controller, GdkEvent *event, EaselCanvas *se
       y = p.y;
     }
 
+  /* A pointer move or a first press while the window sees no button down: a release got lost (a menu or a popover took
+     it), so what is still held ends now (REQ-0007-18). */
+  if ((type == GDK_MOTION_NOTIFY || type == GDK_BUTTON_PRESS)
+      && !(gdk_event_get_modifier_state (event) & (GDK_BUTTON1_MASK | GDK_BUTTON2_MASK | GDK_BUTTON3_MASK)))
+    easel_canvas_buttons_released (self);
   if (type == GDK_MOTION_NOTIFY)
     easel_canvas_pointer_at (self, x, y);
   if (type == GDK_BUTTON_PRESS)
@@ -1206,7 +1496,20 @@ easel_canvas_size_allocate (GtkWidget *widget, int width, int height, int baseli
   /* The viewport has configured the adjustments for the new size before allocating the canvas. */
   if (self->anchor_pending)
     {
+      GtkAdjustment *h = adjustment (self, GTK_ORIENTATION_HORIZONTAL), *v = adjustment (self, GTK_ORIENTATION_VERTICAL);
+
       self->anchor_pending = FALSE;
+      if (self->anchor_focus)
+        {
+          /* The page size is known only now: scrollbars may have come or gone with the new zoom. */
+          double scale = easel_canvas_get_scale (self);
+
+          self->anchor_h = easel_view_focus_scroll (self->focus_x, self->zoom, self->img->width, scale,
+                                                    gtk_adjustment_get_page_size (h));
+          self->anchor_v = easel_view_focus_scroll (self->focus_y, self->zoom, self->img->height, scale,
+                                                    gtk_adjustment_get_page_size (v));
+          self->anchor_focus = FALSE;
+        }
       gtk_adjustment_set_value (adjustment (self, GTK_ORIENTATION_HORIZONTAL), self->anchor_h);
       gtk_adjustment_set_value (adjustment (self, GTK_ORIENTATION_VERTICAL), self->anchor_v);
       gtk_widget_add_tick_callback (widget, replace_in_viewport, NULL, NULL);
@@ -1254,6 +1557,12 @@ easel_canvas_class_init (EaselCanvasClass *klass)
                                                NULL, G_TYPE_NONE, 1, G_TYPE_INT);
   signals[SIGNAL_RESIZE_REQUESTED] = g_signal_new ("resize-requested", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST, 0,
                                                    NULL, NULL, NULL, G_TYPE_NONE, 2, G_TYPE_INT, G_TYPE_INT);
+  signals[SIGNAL_COLOR_PICKED] = g_signal_new ("color-picked", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST, 0, NULL, NULL, NULL,
+                                               G_TYPE_NONE, 2, G_TYPE_UINT, G_TYPE_UINT);
+  signals[SIGNAL_PICK_ENDED] = g_signal_new ("pick-ended", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST, 0, NULL, NULL, NULL,
+                                             G_TYPE_NONE, 1, G_TYPE_BOOLEAN);
+  signals[SIGNAL_FILL_FAILED] = g_signal_new ("fill-failed", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST, 0, NULL, NULL, NULL,
+                                              G_TYPE_NONE, 0);
   signals[SIGNAL_STROKING_CHANGED] = g_signal_new ("stroking-changed", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST, 0, NULL,
                                                    NULL, NULL, G_TYPE_NONE, 1, G_TYPE_BOOLEAN);
   signals[SIGNAL_STROKE_FINISHED] = g_signal_new ("stroke-finished", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST,
@@ -1264,6 +1573,8 @@ static void
 easel_canvas_init (EaselCanvas *self)
 {
   self->zoom = 100;
+  self->fill_max_bytes = SIZE_MAX;
+  self->magnifier_level = easel_magnifier_levels[EASEL_MAGNIFIER_DEFAULT];
   self->grid_cell = 1;
   self->pinch_base = 1.0;
   self->builder = gdk_memory_texture_builder_new ();

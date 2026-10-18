@@ -11,6 +11,7 @@
 
 #include "application.h"
 #include "canvas.h"
+#include "magnifier.h"
 #include "palette-bar.h"
 #include "picture-file.h"
 #include "palette-file.h"
@@ -3229,9 +3230,9 @@ static void
 as1_toolbox_and_options (void)
 {
   static const struct { const char *name, *tip; int col, row; EaselTool tool; } tools[] = {
-    { "pan", "Pan", 0, 0, EASEL_TOOL_PAN }, { "eraser", "Eraser", 1, 0, EASEL_TOOL_ERASER },
-    { "pencil", "Pencil", 0, 1, EASEL_TOOL_PENCIL }, { "brush", "Brush", 1, 1, EASEL_TOOL_BRUSH },
-    { "airbrush", "Airbrush", 0, 2, EASEL_TOOL_AIRBRUSH },
+    { "pan", "Pan", 0, 0, EASEL_TOOL_PAN }, { "eraser", "Eraser", 0, 1, EASEL_TOOL_ERASER },
+    { "pencil", "Pencil", 1, 2, EASEL_TOOL_PENCIL }, { "brush", "Brush", 0, 3, EASEL_TOOL_BRUSH },
+    { "airbrush", "Airbrush", 1, 3, EASEL_TOOL_AIRBRUSH },
   };
   EaselWindow *win = start_window ();
   GtkToggleButton *buttons[5];
@@ -5298,6 +5299,41 @@ as12_cursor_follows_tool_preset_and_zoom (void)
   close_windows ();
 }
 
+/* AS-1 (REQ-0007-12): each of the three tools has its own picture as the cursor, with the hotspot at the tip; a resize
+   handle under the pointer wins. How they look is the manual check M4. */
+static void
+as1_cursors_follow_tool (void)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  static const struct { const char *tool; int hot_x, hot_y; } tools[] = {
+    { "fill", 4, 29 }, { "pick", 2, 30 }, { "magnifier", 12, 12 },
+  };
+  graphene_rect_t r;
+
+  wait_for_layout (win);
+  for (guint i = 0; i < G_N_ELEMENTS (tools); i++)
+    {
+      GdkCursor *cursor;
+
+      use_tool (win, tools[i].tool);
+      g_assert_cmpint (cursor_width (win), ==, 32);
+      cursor = gtk_widget_get_cursor (GTK_WIDGET (canvas));
+      g_assert_cmpint (gdk_cursor_get_hotspot_x (cursor), ==, tools[i].hot_x);
+      g_assert_cmpint (gdk_cursor_get_hotspot_y (cursor), ==, tools[i].hot_y);
+
+      /* Over the corner handle: the resize cursor; away from it: the tool's again. */
+      g_assert_true (easel_canvas_get_handle_rect (canvas, EASEL_HANDLE_CORNER, &r));
+      easel_canvas_pointer_at (canvas, r.origin.x + r.size.width / 2, r.origin.y + r.size.height / 2);
+      g_assert_cmpstr (gdk_cursor_get_name (gtk_widget_get_cursor (GTK_WIDGET (canvas))), ==, "nwse-resize");
+      easel_canvas_pointer_at (canvas, 10, 10);
+      g_assert_cmpint (cursor_width (win), ==, 32);
+    }
+  use_tool (win, "pan");
+  g_assert_cmpint (cursor_width (win), ==, 0);
+  close_windows ();
+}
+
 /* ---- 0006: the hints ---- */
 
 /* AS-13 (REQ-0006-17): the status bar hint of each new tool, and of the Eraser's two modes. */
@@ -5338,6 +5374,908 @@ as13_hints (void)
   g_assert_cmpstr (easel_status_bar_get_text (bar, EASEL_STATUS_HINT), ==, PENCIL_HINT);
   use_tool (win, "pan");
   g_assert_cmpstr (easel_status_bar_get_text (bar, EASEL_STATUS_HINT), ==, PAN_HINT);
+  close_windows ();
+}
+
+/* ---- 0007: Fill, Pick Color and the Magnifier ---- */
+
+/* AS-1 (REQ-0007-01, REQ-0007-13): the toolbox order, the tooltips, the hints, and no options for Pick Color and Fill. */
+static void
+as1_new_tools_toolbox_hints (void)
+{
+  static const struct { const char *name, *tip; int col, row; EaselTool tool; } tools[] = {
+    { "pan", "Pan", 0, 0, EASEL_TOOL_PAN }, { "magnifier", "Magnifier", 1, 0, EASEL_TOOL_MAGNIFIER },
+    { "eraser", "Eraser", 0, 1, EASEL_TOOL_ERASER }, { "pick", "Pick Color", 1, 1, EASEL_TOOL_PICK },
+    { "fill", "Fill", 0, 2, EASEL_TOOL_FILL }, { "pencil", "Pencil", 1, 2, EASEL_TOOL_PENCIL },
+    { "brush", "Brush", 0, 3, EASEL_TOOL_BRUSH }, { "airbrush", "Airbrush", 1, 3, EASEL_TOOL_AIRBRUSH },
+  };
+  EaselWindow *win = start_window ();
+  EaselStatusBar *bar = easel_window_get_status_bar (win);
+  GtkToggleButton *buttons[8];
+  graphene_rect_t first, r;
+
+  wait_for_layout (win);
+  for (guint i = 0; i < G_N_ELEMENTS (tools); i++)
+    {
+      buttons[i] = find_tool_button (GTK_WIDGET (win), tools[i].name);
+      g_assert_nonnull (buttons[i]);
+      g_assert_cmpstr (gtk_widget_get_tooltip_text (GTK_WIDGET (buttons[i])), ==, tools[i].tip);
+      g_assert_cmpstr (gtk_button_get_icon_name (GTK_BUTTON (buttons[i])), !=, NULL);
+    }
+  /* Two columns, row by row: Pan, Magnifier / Eraser, Pick Color / Fill, Pencil / Brush, Airbrush. */
+  first = bounds_in (GTK_WIDGET (buttons[0]), GTK_WIDGET (win));
+  for (guint i = 1; i < G_N_ELEMENTS (tools); i++)
+    {
+      graphene_rect_t before = bounds_in (GTK_WIDGET (buttons[i - 1]), GTK_WIDGET (win));
+
+      r = bounds_in (GTK_WIDGET (buttons[i]), GTK_WIDGET (win));
+      if (tools[i].col == 0)
+        g_assert_cmpfloat_with_epsilon (r.origin.x, first.origin.x, 1.0);
+      else
+        g_assert_cmpfloat (r.origin.x, >, first.origin.x + first.size.width - 1);
+      if (tools[i].row > tools[i - 1].row)
+        g_assert_cmpfloat (r.origin.y, >, before.origin.y + 1);
+      else
+        g_assert_cmpfloat_with_epsilon (r.origin.y, before.origin.y, 1.0);
+    }
+  /* Each can be chosen, shows selected, and the others do not. */
+  for (guint i = 0; i < G_N_ELEMENTS (tools); i++)
+    {
+      g_signal_emit_by_name (buttons[i], "clicked");
+      g_assert_cmpint (easel_window_get_tool (win), ==, tools[i].tool);
+      for (guint j = 0; j < G_N_ELEMENTS (tools); j++)
+        g_assert_true (gtk_toggle_button_get_active (buttons[j]) == (i == j));
+    }
+  /* The hints of REQ-0007-13, and no options panel for Pick Color and Fill. */
+  use_tool (win, "fill");
+  wait_for_layout (win);
+  g_assert_cmpstr (easel_status_bar_get_text (bar, EASEL_STATUS_HINT), ==, "Fills an area with the current drawing color.");
+  g_assert_false (gtk_widget_get_mapped (GTK_WIDGET (easel_window_get_tool_options (win))));
+  use_tool (win, "pick");
+  wait_for_layout (win);
+  g_assert_cmpstr (easel_status_bar_get_text (bar, EASEL_STATUS_HINT), ==, "Picks up a color from the picture for drawing.");
+  g_assert_false (gtk_widget_get_mapped (GTK_WIDGET (easel_window_get_tool_options (win))));
+  use_tool (win, "magnifier");
+  g_assert_cmpstr (easel_status_bar_get_text (bar, EASEL_STATUS_HINT), ==, "Changes the magnification.");
+  close_windows ();
+}
+
+static const char *const magnifier_tips[8] = { "10 %", "25 %", "50 %", "100 %", "200 %", "400 %", "600 %", "800 %" };
+
+/* AS-2 (REQ-0007-02): the Magnifier's four levels, 2x selected, choosing one zooms nothing, and the choice is kept. */
+static void
+as2_magnifier_level_kept (void)
+{
+  static const char *const labels[8] = { "1/10x", "1/4x", "1/2x", "1x", "2x", "4x", "6x", "8x" };
+  EaselWindow *win = start_window ();
+  EaselToolOptions *options = easel_window_get_tool_options (win);
+
+  wait_for_layout (win);
+  g_assert_cmpint (easel_tool_options_get_magnifier_level (options), ==, 200);
+  use_tool (win, "magnifier");
+  wait_for_layout (win);
+  g_assert_true (gtk_widget_get_mapped (GTK_WIDGET (options)));
+  g_assert_cmpint (check_presets (win, magnifier_tips, 8, 2), ==, 4);        /* 1/10x, 1/4x / 1/2x, 1x / 2x, 4x / 6x, 8x; 2x is on */
+  for (int i = 0; i < 8; i++)
+    g_assert_cmpstr (gtk_button_get_label (GTK_BUTTON (find_by_tooltip (GTK_WIDGET (win), magnifier_tips[i]))), ==, labels[i]);
+  g_assert_false (on_screen (win, "Circle, 4 pixels"));                      /* only its own group */
+
+  choose_preset (win, "800 %");
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 100);                    /* choosing zooms nothing */
+  g_assert_cmpint (check_presets (win, magnifier_tips, 8, 2), ==, 7);
+  g_assert_cmpint (easel_tool_options_get_magnifier_level (options), ==, 800);
+  choose_preset (win, "100 %");
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 100);
+  g_assert_cmpint (easel_tool_options_get_magnifier_level (options), ==, 100);
+  choose_preset (win, "10 %");
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 100);
+  g_assert_cmpint (easel_tool_options_get_magnifier_level (options), ==, 10);
+  choose_preset (win, "800 %");
+  g_assert_false (easel_window_get_modified (win));
+  g_assert_false (action_enabled (win, "undo"));
+
+  use_tool (win, "pencil");
+  wait_for_layout (win);
+  g_assert_false (on_screen (win, "800 %"));
+  use_tool (win, "brush");
+  wait_for_layout (win);
+  g_assert_false (on_screen (win, "800 %"));
+  use_tool (win, "magnifier");
+  wait_for_layout (win);
+  g_assert_cmpint (check_presets (win, magnifier_tips, 8, 2), ==, 7);        /* kept */
+  g_assert_cmpint (easel_tool_options_get_magnifier_level (options), ==, 800);
+  close_windows ();
+}
+
+/* A black ring (a rectangle outline, x 50..150, y 50..120) with the Pencil, on the yellow start-up picture; leaves Fill
+   active. */
+static void
+draw_ring (EaselWindow *win)
+{
+  use_tool (win, "pencil");
+  stroke_with (win, 1, 50, 50, 150, 50);
+  stroke_with (win, 1, 150, 50, 150, 120);
+  stroke_with (win, 1, 150, 120, 50, 120);
+  stroke_with (win, 1, 50, 120, 50, 50);
+  use_tool (win, "fill");
+}
+
+/* AS-6 (REQ-0007-05): a press fills the area inside the ring, one undo step; the secondary button uses the background. */
+static void
+as6_fill_on_canvas (void)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  const uint32_t black = 0xFF000000u, yellow = 0xFFFFFF00u;
+
+  wait_for_layout (win);
+  draw_ring (win);
+  g_assert_cmpint (count_color (img, black), ==, 340);
+  easel_canvas_press (canvas, 1, 100.5, 80.5);
+  g_assert_cmpint (count_color (img, black), ==, 340 + 99 * 69);                 /* the inside took the foreground */
+  g_assert_cmpint (count_color (img, yellow), ==, 300 * 200 - 340 - 99 * 69);
+  g_assert_cmphex (easel_image_get (img, 0, 0), ==, yellow);                     /* outside the ring: untouched */
+  easel_canvas_release (canvas, 1);
+  g_assert_true (easel_window_get_modified (win));
+
+  /* The secondary button fills the whole black area (ring and inside are one area now) with the background. */
+  easel_canvas_press (canvas, 3, 100.5, 80.5);
+  easel_canvas_release (canvas, 3);
+  g_assert_cmpint (count_color (img, black), ==, 0);
+  g_assert_cmpint (count_color (img, yellow), ==, 300 * 200);
+
+  /* Each fill is one step: two Undos give back the ring alone, a third takes a stroke of the ring away. */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_cmpint (count_color (img, black), ==, 340 + 99 * 69);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_cmpint (count_color (img, black), ==, 340);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "redo", NULL);
+  g_assert_cmpint (count_color (img, black), ==, 340 + 99 * 69);
+  close_windows ();
+}
+
+/* AS-8 (REQ-0007-06): the same color, a point outside, the middle button, and a second button held: no step, no mark. */
+static void
+as8_fill_nothing_on_canvas (void)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+
+  wait_for_layout (win);
+  use_tool (win, "fill");
+  easel_canvas_press (canvas, 3, 100.5, 80.5);                                   /* yellow on yellow */
+  easel_canvas_release (canvas, 3);
+  easel_canvas_press (canvas, 1, -10.5, 80.5);                                   /* outside the picture */
+  easel_canvas_release (canvas, 1);
+  easel_canvas_press (canvas, 1, 400.5, 80.5);
+  easel_canvas_release (canvas, 1);
+  easel_canvas_press (canvas, 2, 100.5, 80.5);                                   /* the middle button */
+  easel_canvas_release (canvas, 2);
+  g_assert_false (action_enabled (win, "undo"));
+  g_assert_false (easel_window_get_modified (win));
+  g_assert_cmpint (count_color (img, 0xFFFFFF00u), ==, 300 * 200);
+
+  /* A press fills at once; the other button pressed while it is held does nothing more (there is no stroke to cancel). */
+  easel_canvas_press (canvas, 1, 100.5, 80.5);
+  g_assert_cmpint (count_color (img, 0xFF000000u), ==, 300 * 200);
+  easel_canvas_press (canvas, 3, 100.5, 80.5);
+  g_assert_cmpint (count_color (img, 0xFF000000u), ==, 300 * 200);
+  easel_canvas_release (canvas, 3);
+  easel_canvas_release (canvas, 1);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_cmpint (count_color (img, 0xFFFFFF00u), ==, 300 * 200);               /* one step */
+  g_assert_false (action_enabled (win, "undo"));
+  close_windows ();
+}
+
+/* AS-9 (REQ-0007-07): a fill that cannot get its memory shows the dialog and changes nothing. The failure is made with the
+   fill's test hook (the core test also does it with a real address-space limit). */
+static void
+as9_fill_memory_dialog (void)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  AdwAlertDialog *dialog;
+
+  wait_for_layout (win);
+  draw_ring (win);
+
+  /* 99 rows inside the ring need 99 spans, more than the 768 bytes the work buffer may have. */
+  easel_canvas_set_fill_memory_limit (canvas, 1000);
+  easel_canvas_press (canvas, 1, 100.5, 80.5);
+  easel_canvas_release (canvas, 1);
+  easel_canvas_set_fill_memory_limit (canvas, SIZE_MAX);
+  wait_for_dialogs (win, 1);
+  dialog = open_alert (win);
+  g_assert_nonnull (dialog);
+  g_assert_cmpstr (adw_alert_dialog_get_heading (dialog), ==, "Could Not Fill");
+  g_assert_cmpstr (adw_alert_dialog_get_body (dialog), ==, "There is not enough memory to fill this area.");
+  g_assert_cmpint (count_color (img, 0xFF000000u), ==, 340);                       /* nothing changed: the ring alone */
+  adw_dialog_close (ADW_DIALOG (dialog));
+  wait_for_dialogs (win, 0);
+
+  /* No step was added: one Undo takes a stroke of the ring away, not a fill; and the same press works with memory. */
+  easel_canvas_press (canvas, 1, 100.5, 80.5);
+  easel_canvas_release (canvas, 1);
+  g_assert_cmpint (count_color (img, 0xFF000000u), ==, 340 + 99 * 69);
+  close_windows ();
+}
+
+/* ---- 0007: Pick Color ---- */
+
+/* Makes swatch n the foreground color, and returns it. */
+static uint32_t
+choose_swatch (EaselWindow *win, int n)
+{
+  easel_palette_bar_press (easel_window_get_palette_bar (win), n, 1, 1);
+  return easel_window_get_foreground (win);
+}
+
+/* A dot of the foreground color at picture pixel (x, y), drawn with the Pencil. */
+static void
+dot (EaselWindow *win, int x, int y)
+{
+  use_tool (win, "pencil");
+  stroke_with (win, 1, x, y, x, y);
+}
+
+/* AS-10 (REQ-0007-08, REQ-0007-09, REQ-0007-11): the pick follows the pointer, the previous tool comes back, no edit. */
+static void
+as10_pick_follows_and_returns (void)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  uint32_t red, green;
+
+  wait_for_layout (win);
+  red = choose_swatch (win, 3);
+  dot (win, 10, 10);
+  green = choose_swatch (win, 5);
+  dot (win, 20, 10);
+  g_assert_cmphex (red, !=, green);
+  choose_swatch (win, 1);                                                     /* black again */
+  g_assert_cmphex (easel_window_get_foreground (win), ==, 0xFF000000u);
+  use_tool (win, "pick");
+
+  easel_canvas_press (canvas, 1, 10.5, 10.5);
+  g_assert_cmphex (easel_window_get_foreground (win), ==, red);               /* at once */
+  g_assert_true (easel_canvas_is_stroking (canvas));
+  easel_canvas_motion (canvas, 20.5, 10.5);
+  g_assert_cmphex (easel_window_get_foreground (win), ==, green);             /* follows the pointer */
+  easel_canvas_motion (canvas, -30.5, 10.5);                                   /* off the picture: the last stays */
+  g_assert_cmphex (easel_window_get_foreground (win), ==, green);
+  g_assert_cmpint (easel_window_get_tool (win), ==, EASEL_TOOL_PICK);          /* still Pick Color while held */
+  easel_canvas_release (canvas, 1);
+  g_assert_cmpint (easel_window_get_tool (win), ==, EASEL_TOOL_PENCIL);        /* the previous tool is back */
+  g_assert_cmphex (easel_window_get_foreground (win), ==, green);
+  g_assert_false (easel_canvas_is_stroking (canvas));
+
+  /* Not an edit: one Undo takes the last dot away, so the pick added no step; the picture was not touched. */
+  g_assert_cmphex (easel_image_get (img, 10, 10), ==, red);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_cmphex (easel_image_get (img, 20, 10), ==, 0xFFFFFF00u);
+  g_assert_cmphex (easel_image_get (img, 10, 10), ==, red);
+
+  /* The secondary button sets the background color. */
+  use_tool (win, "pick");
+  easel_canvas_press (canvas, 3, 10.5, 10.5);
+  g_assert_cmphex (easel_window_get_background (win), ==, red);
+  g_assert_cmphex (easel_window_get_foreground (win), ==, green);
+  easel_canvas_release (canvas, 3);
+  g_assert_cmpint (easel_window_get_tool (win), ==, EASEL_TOOL_PENCIL);
+  close_windows ();
+}
+
+/* AS-11 (REQ-0007-08): the color is exact in all four channels, a transparent pixel gives a transparent color. */
+static void
+as11_pick_exact_colors (void)
+{
+  EaselWindow *win;
+  EaselCanvas *canvas;
+
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=transparent\n");
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  wait_for_layout (win);
+  {
+    uint32_t half = 0x80FF8000u;
+
+    easel_palette_bar_press_indicator (easel_window_get_palette_bar (win), TRUE);   /* the chooser for the foreground */
+    choose (win, &half);
+  }
+  g_assert_cmphex (easel_window_get_foreground (win), ==, 0x80FF8000u);
+  dot (win, 10, 10);
+  g_assert_cmphex (easel_image_get (easel_window_get_picture (win), 10, 10), ==, 0x80FF8000u);
+  choose_swatch (win, 1);
+  use_tool (win, "pick");
+  easel_canvas_press (canvas, 1, 10.5, 10.5);
+  g_assert_cmphex (easel_window_get_foreground (win), ==, 0x80FF8000u);
+  easel_canvas_motion (canvas, 11.5, 10.5);                                     /* a transparent pixel next to it */
+  g_assert_cmphex (easel_window_get_foreground (win), ==, 0x00000000u);
+  easel_canvas_release (canvas, 1);
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* AS-12 (REQ-0007-08, REQ-0007-09): a press outside the picture picks nothing and the tool stays; from start-up it is Pan. */
+static void
+as12_pick_outside_picture (void)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+
+  wait_for_layout (win);
+  g_assert_cmpint (easel_window_get_tool (win), ==, EASEL_TOOL_PAN);
+  use_tool (win, "pick");
+  easel_canvas_press (canvas, 1, -10.5, -10.5);
+  g_assert_false (easel_canvas_is_stroking (canvas));
+  easel_canvas_release (canvas, 1);
+  g_assert_cmpint (easel_window_get_tool (win), ==, EASEL_TOOL_PICK);
+  g_assert_cmphex (easel_window_get_foreground (win), ==, 0xFF000000u);
+  easel_canvas_press (canvas, 2, 5.5, 5.5);                                    /* the middle button does nothing */
+  easel_canvas_release (canvas, 2);
+  g_assert_cmpint (easel_window_get_tool (win), ==, EASEL_TOOL_PICK);
+  easel_canvas_press (canvas, 3, 5.5, 5.5);
+  easel_canvas_release (canvas, 3);
+  g_assert_cmpint (easel_window_get_tool (win), ==, EASEL_TOOL_PAN);            /* picked: back to Pan */
+  g_assert_cmphex (easel_window_get_background (win), ==, 0xFFFFFF00u);
+  close_windows ();
+}
+
+/* AS-13 (REQ-0007-10): the other button and Undo cancel; losing the focus ends the pick and keeps it. */
+static void
+as13_pick_cancel_and_focus (void)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  uint32_t red;
+
+  wait_for_layout (win);
+  red = choose_swatch (win, 3);
+  dot (win, 10, 10);
+  choose_swatch (win, 1);
+
+  /* The other button: the colors go back, Pick Color stays, the releases change nothing. */
+  use_tool (win, "pick");
+  easel_canvas_press (canvas, 1, 10.5, 10.5);
+  g_assert_cmphex (easel_window_get_foreground (win), ==, red);
+  easel_canvas_press (canvas, 3, 10.5, 10.5);
+  g_assert_cmphex (easel_window_get_foreground (win), ==, 0xFF000000u);
+  g_assert_false (easel_canvas_is_stroking (canvas));
+  g_assert_cmpint (easel_window_get_tool (win), ==, EASEL_TOOL_PICK);
+  easel_canvas_release (canvas, 3);
+  easel_canvas_release (canvas, 1);
+  g_assert_cmphex (easel_window_get_foreground (win), ==, 0xFF000000u);
+  g_assert_cmpint (easel_window_get_tool (win), ==, EASEL_TOOL_PICK);
+
+  /* Undo: the colors go back; a second Undo before the release does nothing (the dot stays). */
+  easel_canvas_press (canvas, 1, 10.5, 10.5);
+  g_assert_cmphex (easel_window_get_foreground (win), ==, red);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_cmphex (easel_window_get_foreground (win), ==, 0xFF000000u);
+  g_assert_cmpint (easel_window_get_tool (win), ==, EASEL_TOOL_PICK);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_cmphex (easel_image_get (easel_window_get_picture (win), 10, 10), ==, red);
+  easel_canvas_release (canvas, 1);
+  g_assert_cmphex (easel_window_get_foreground (win), ==, 0xFF000000u);
+  g_assert_cmpint (easel_window_get_tool (win), ==, EASEL_TOOL_PICK);
+
+  /* The window loses the focus (or the button is released outside it): the pick ends and keeps its color. */
+  easel_canvas_press (canvas, 1, 10.5, 10.5);
+  easel_canvas_reset_pointer (canvas);
+  g_assert_cmphex (easel_window_get_foreground (win), ==, red);
+  g_assert_cmpint (easel_window_get_tool (win), ==, EASEL_TOOL_PENCIL);
+  easel_canvas_release (canvas, 1);
+  g_assert_cmphex (easel_window_get_foreground (win), ==, red);
+  close_windows ();
+}
+
+/* AS-16 (REQ-0007-16): a tool button pressed during a pick is ignored. */
+static void
+as16_tool_change_ignored_during_pick (void)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+
+  wait_for_layout (win);
+  use_tool (win, "pick");
+  easel_canvas_press (canvas, 1, 10.5, 10.5);
+  use_tool (win, "brush");
+  g_assert_cmpint (easel_window_get_tool (win), ==, EASEL_TOOL_PICK);
+  g_signal_emit_by_name (find_tool_button (GTK_WIDGET (win), "eraser"), "clicked");
+  g_assert_cmpint (easel_window_get_tool (win), ==, EASEL_TOOL_PICK);
+  easel_canvas_release (canvas, 1);
+  g_assert_cmpint (easel_window_get_tool (win), ==, EASEL_TOOL_PAN);
+  use_tool (win, "brush");                                                      /* after the pick it works again */
+  g_assert_cmpint (easel_window_get_tool (win), ==, EASEL_TOOL_BRUSH);
+  close_windows ();
+}
+
+/* ---- 0007: the Magnifier's click ---- */
+
+typedef struct
+{
+  GtkWidget *scroller;
+  GtkAdjustment *h, *v;
+} View;
+
+static View
+view_of (EaselWindow *win)
+{
+  View view;
+
+  view.scroller = gtk_widget_get_ancestor (GTK_WIDGET (easel_window_get_canvas (win)), GTK_TYPE_SCROLLED_WINDOW);
+  view.h = gtk_scrolled_window_get_hadjustment (GTK_SCROLLED_WINDOW (view.scroller));
+  view.v = gtk_scrolled_window_get_vadjustment (GTK_SCROLLED_WINDOW (view.scroller));
+  return view;
+}
+
+/* The canvas point (logical pixels) of the center of picture pixel (px, py) at the current zoom. */
+static void
+canvas_point (EaselWindow *win, double px, double py, double *x, double *y)
+{
+  double scale = easel_canvas_get_scale (easel_window_get_canvas (win));
+
+  *x = px * easel_window_get_zoom (win) / 100.0 / scale;
+  *y = py * easel_window_get_zoom (win) / 100.0 / scale;
+}
+
+/* The picture point at the center of the view now, in picture pixels. */
+static void
+view_center (EaselWindow *win, double *cx, double *cy)
+{
+  View view = view_of (win);
+  double scale = easel_canvas_get_scale (easel_window_get_canvas (win)), zoom = easel_window_get_zoom (win);
+
+  *cx = (gtk_adjustment_get_value (view.h) + gtk_adjustment_get_page_size (view.h) / 2) * scale * 100.0 / zoom;
+  *cy = (gtk_adjustment_get_value (view.v) + gtk_adjustment_get_page_size (view.v) / 2) * scale * 100.0 / zoom;
+}
+
+/* A press and release of the Magnifier (or any tool) at picture pixel (px, py) at the current zoom. */
+static void
+click_pixel (EaselWindow *win, guint button, double px, double py)
+{
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  double x, y;
+
+  canvas_point (win, px + 0.5, py + 0.5, &x, &y);
+  easel_canvas_press (canvas, button, x, y);
+  easel_canvas_release (canvas, button);
+  wait_for_layout (win);
+}
+
+/* AS-3, AS-4 (REQ-0007-03, REQ-0007-11): the zoom a press gives, the focus at the center of the view, and nothing edited. */
+static void
+as3_magnifier_click (void)
+{
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  View view;
+  graphene_rect_t r;
+  double cx, cy;
+
+  write_settings ("[new-picture]\nwidth=3000\nheight=2000\nbackground=#FFFF00\n");
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  view = view_of (win);
+  wait_for_layout (win);
+  use_tool (win, "magnifier");
+
+  /* 2x at (1000, 700): the zoom is 200 % and the box's center, which is the focus at 100 %, is at the center of the view. */
+  {
+    int bx, by, bw, bh;
+    int area_w = (int) gtk_adjustment_get_page_size (view.h), area_h = (int) gtk_adjustment_get_page_size (view.v);
+
+    easel_magnifier_box (area_w, area_h, 200, 3000, 2000, 1000, 700, &bx, &by, &bw, &bh);
+    click_pixel (win, 1, 1000, 700);
+    g_assert_cmpint (easel_window_get_zoom (win), ==, 200);
+    view_center (win, &cx, &cy);
+    g_assert_cmpfloat_with_epsilon (cx, bx + bw / 2.0, 1.0);
+    g_assert_cmpfloat_with_epsilon (cy, by + bh / 2.0, 1.0);
+    /* The picture is drawn where the scroll says (rendering, as the offset test does). */
+    g_assert_true (gtk_widget_compute_bounds (GTK_WIDGET (canvas), view.scroller, &r));
+    g_assert_cmpfloat_with_epsilon (r.origin.x, -gtk_adjustment_get_value (view.h), 1.0);
+    g_assert_cmpfloat_with_epsilon (r.origin.y, -gtk_adjustment_get_value (view.v), 1.0);
+  }
+  g_assert_cmpint (easel_window_get_tool (win), ==, EASEL_TOOL_MAGNIFIER);        /* stays the Magnifier */
+  g_assert_false (easel_window_get_modified (win));
+  g_assert_false (action_enabled (win, "undo"));
+
+  /* The same level again goes back to 100 %, anywhere on the picture. */
+  click_pixel (win, 1, 1100, 750);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 100);
+
+  /* 4x: 100 % to 400 %, and back; from 200 % the selected level; the secondary button does the same. */
+  choose_preset (win, "400 %");
+  click_pixel (win, 3, 500, 500);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 400);
+  click_pixel (win, 1, 520, 510);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 100);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-in", NULL);              /* 200 % from the menu */
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 200);
+  click_pixel (win, 1, 500, 500);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 400);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-fit", NULL);             /* the fit zoom, not a level */
+  wait_for_layout (win);
+  g_assert_cmpint (easel_window_get_zoom (win), !=, 400);
+  click_pixel (win, 1, 500, 500);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 400);
+
+  /* 1x: back to 100 % from any zoom, and nothing at 100 %. */
+  choose_preset (win, "100 %");
+  click_pixel (win, 1, 500, 500);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 100);
+  click_pixel (win, 1, 500, 500);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 100);
+
+  /* A reduction: 1/10x at 100 % gives 10 %, the same level again 100 %; 1/2x from 400 % gives 50 %. */
+  choose_preset (win, "10 %");
+  click_pixel (win, 1, 1500, 1000);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 10);
+  click_pixel (win, 3, 150, 100);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 100);
+  choose_preset (win, "50 %");
+  click_pixel (win, 1, 1500, 1000);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 50);
+  click_pixel (win, 1, 750, 500);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 100);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-large", NULL);                   /* 400 % */
+  click_pixel (win, 1, 500, 500);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 50);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-normal", NULL);
+  wait_for_layout (win);
+
+  /* The middle button and a press outside the picture do nothing; a second button held does nothing more. */
+  choose_preset (win, "200 %");
+  click_pixel (win, 2, 500, 500);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 100);
+  easel_canvas_press (canvas, 1, -20.5, -20.5);
+  easel_canvas_release (canvas, 1);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 100);
+  easel_canvas_press (canvas, 1, 500.5, 500.5);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 200);
+  easel_canvas_press (canvas, 3, 1001, 1001);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 200);
+  easel_canvas_release (canvas, 3);
+  easel_canvas_release (canvas, 1);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 200);
+  g_assert_false (easel_window_get_modified (win));
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* AS-4 (REQ-0007-03): near the corners the edges limit the view; a picture that fits stays at its top-left. */
+static void
+as4_magnifier_edges (void)
+{
+  EaselWindow *win;
+  View view;
+
+  write_settings ("[new-picture]\nwidth=3000\nheight=2000\nbackground=#FFFF00\n");
+  win = start_window ();
+  view = view_of (win);
+  wait_for_layout (win);
+  use_tool (win, "magnifier");
+  /* A press where the box just touches the picture's left and top edges (half a box from them) shows the corner exactly,
+     although the page gets narrower when the scrollbar comes with the zoom. */
+  click_pixel (win, 1, (int) gtk_adjustment_get_page_size (view.h) / 4, (int) gtk_adjustment_get_page_size (view.v) / 4);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 200);
+  g_assert_cmpfloat (gtk_adjustment_get_value (view.h), ==, 0);
+  g_assert_cmpfloat (gtk_adjustment_get_value (view.v), ==, 0);
+  click_pixel (win, 1, 100, 50);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 100);
+  click_pixel (win, 1, 100, 50);                                                   /* near the top-left corner */
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 200);
+  g_assert_cmpfloat (gtk_adjustment_get_value (view.h), ==, 0);
+  g_assert_cmpfloat (gtk_adjustment_get_value (view.v), ==, 0);
+  click_pixel (win, 1, 100, 50);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 100);
+  click_pixel (win, 1, 2985, 1985);                                                /* near the bottom-right corner, off the resize handle */
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 200);
+  /* The picture's right and bottom edges (6000 and 4000 logical pixels at 200 %) are at the view's edges. */
+  g_assert_cmpfloat_with_epsilon (gtk_adjustment_get_value (view.h) + gtk_adjustment_get_page_size (view.h), 6000, 1.0);
+  g_assert_cmpfloat_with_epsilon (gtk_adjustment_get_value (view.v) + gtk_adjustment_get_page_size (view.v), 4000, 1.0);
+  close_windows ();
+
+  /* A small picture: 200 % of 300 x 200 fits the view, so it stays at the top-left (REQ-0001-11). */
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+  win = start_window ();
+  view = view_of (win);
+  wait_for_layout (win);
+  use_tool (win, "magnifier");
+  click_pixel (win, 1, 150, 100);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 200);
+  g_assert_cmpfloat (gtk_adjustment_get_value (view.h), ==, 0);
+  g_assert_cmpfloat (gtk_adjustment_get_value (view.v), ==, 0);
+  close_windows ();
+}
+
+/* The pointer over picture pixel (px, py) at the current zoom, as the window's motion handler reports it. */
+static void
+point_at_pixel (EaselWindow *win, double px, double py)
+{
+  double x, y;
+
+  canvas_point (win, px + 0.5, py + 0.5, &x, &y);
+  easel_canvas_pointer_at (easel_window_get_canvas (win), x, y);
+}
+
+/* AS-5 (REQ-0007-04): the preview box follows the pointer at 100 % with a level that zooms in, and only then. */
+static void
+as5_box_follows_pointer (void)
+{
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  View view;
+  int x, y, w, h, ex, ey, ew, eh;
+
+  write_settings ("[new-picture]\nwidth=3000\nheight=2000\nbackground=#FFFF00\n");
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  view = view_of (win);
+  wait_for_layout (win);
+
+  /* Not the Magnifier: no box. */
+  point_at_pixel (win, 1000, 700);
+  g_assert_false (easel_canvas_get_magnifier_box (canvas, &x, &y, &w, &h));
+
+  use_tool (win, "magnifier");
+  g_assert_true (easel_canvas_get_magnifier_box (canvas, &x, &y, &w, &h));
+  easel_magnifier_box ((int) gtk_adjustment_get_page_size (view.h), (int) gtk_adjustment_get_page_size (view.v), 200, 3000, 2000,
+                       1000, 700, &ex, &ey, &ew, &eh);
+  g_assert_cmpint (x, ==, ex);
+  g_assert_cmpint (y, ==, ey);
+  g_assert_cmpint (w, ==, ew);
+  g_assert_cmpint (h, ==, eh);
+
+  /* It follows the pointer and keeps inside the picture at a corner. */
+  point_at_pixel (win, 0, 0);
+  g_assert_true (easel_canvas_get_magnifier_box (canvas, &x, &y, &w, &h));
+  g_assert_cmpint (x, ==, 0);
+  g_assert_cmpint (y, ==, 0);
+
+  /* 8x makes it smaller. */
+  choose_preset (win, "800 %");
+  point_at_pixel (win, 1000, 700);
+  g_assert_true (easel_canvas_get_magnifier_box (canvas, &x, &y, &w, &h));
+  g_assert_cmpint (w, <, ew);
+
+  /* Outside the picture and outside the area: none. */
+  easel_canvas_pointer_at (canvas, -50, -50);
+  g_assert_false (easel_canvas_get_magnifier_box (canvas, &x, &y, &w, &h));
+  point_at_pixel (win, 1000, 700);
+  g_assert_true (easel_canvas_get_magnifier_box (canvas, &x, &y, &w, &h));
+  easel_canvas_pointer_left (canvas);
+  g_assert_false (easel_canvas_get_magnifier_box (canvas, &x, &y, &w, &h));
+
+  /* 1x and a reduction do not zoom in: none. */
+  choose_preset (win, "100 %");
+  point_at_pixel (win, 1000, 700);
+  g_assert_false (easel_canvas_get_magnifier_box (canvas, &x, &y, &w, &h));
+  choose_preset (win, "50 %");
+  g_assert_false (easel_canvas_get_magnifier_box (canvas, &x, &y, &w, &h));
+
+  /* At another zoom none; back at 100 % with the pointer still there, it is shown at once. */
+  choose_preset (win, "200 %");
+  g_assert_true (easel_canvas_get_magnifier_box (canvas, &x, &y, &w, &h));
+  click_pixel (win, 1, 1000, 700);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 200);
+  point_at_pixel (win, 1000, 700);
+  g_assert_false (easel_canvas_get_magnifier_box (canvas, &x, &y, &w, &h));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-normal", NULL);
+  wait_for_layout (win);
+  g_assert_true (easel_canvas_get_magnifier_box (canvas, &x, &y, &w, &h));
+
+  /* Another tool: gone. */
+  use_tool (win, "pencil");
+  g_assert_false (easel_canvas_get_magnifier_box (canvas, &x, &y, &w, &h));
+  close_windows ();
+
+  /* A picture smaller than the box: the whole picture. */
+  write_settings ("[new-picture]\nwidth=500\nheight=300\nbackground=#FFFF00\n");
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  wait_for_layout (win);
+  use_tool (win, "magnifier");
+  point_at_pixel (win, 250, 150);
+  g_assert_true (easel_canvas_get_magnifier_box (canvas, &x, &y, &w, &h));
+  g_assert_cmpint (x, ==, 0);
+  g_assert_cmpint (y, ==, 0);
+  g_assert_cmpint (w, ==, 500);
+  g_assert_cmpint (h, ==, 300);
+  close_windows ();
+}
+
+static const char *const new_tools[] = { "fill", "pick", "magnifier" };
+
+/* AS-14 (REQ-0007-14): the keypad + and - do nothing with Fill, Pick Color and the Magnifier; Ctrl+keypad still zooms. */
+static void
+as14_numpad_ignored (void)
+{
+  EaselWindow *win = start_window ();
+  EaselToolOptions *options = easel_window_get_tool_options (win);
+
+  wait_for_layout (win);
+  for (guint i = 0; i < G_N_ELEMENTS (new_tools); i++)
+    {
+      int level = easel_tool_options_get_magnifier_level (options);
+
+      use_tool (win, new_tools[i]);
+      g_action_group_activate_action (G_ACTION_GROUP (win), "preset-larger", NULL);
+      g_action_group_activate_action (G_ACTION_GROUP (win), "preset-smaller", NULL);
+      g_assert_cmpint (easel_tool_options_get_magnifier_level (options), ==, level);
+      g_assert_cmpint (easel_window_get_zoom (win), ==, 100);
+      g_assert_false (easel_window_get_modified (win));
+    }
+  g_assert_true (has_accel ("win.zoom-in", GDK_KEY_KP_Add, GDK_CONTROL_MASK));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-in", NULL);
+  g_assert_cmpint (easel_window_get_zoom (win), >, 100);
+  close_windows ();
+}
+
+/* One press and release with each of the three tools; true if anything changed (the picture, the colors, the zoom). */
+static gboolean
+three_tools_change_something (EaselWindow *win, double x, double y)
+{
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  uint32_t fg = easel_window_get_foreground (win), bg = easel_window_get_background (win);
+  int zoom = easel_window_get_zoom (win);
+  gboolean changed = FALSE;
+
+  for (guint i = 0; i < G_N_ELEMENTS (new_tools); i++)
+    {
+      use_tool (win, new_tools[i]);
+      easel_canvas_press (canvas, 1, x, y);
+      easel_canvas_release (canvas, 1);
+      easel_canvas_press (canvas, 3, x, y);
+      easel_canvas_release (canvas, 3);
+      changed |= easel_window_get_modified (win) || easel_window_get_foreground (win) != fg
+                 || easel_window_get_background (win) != bg || easel_window_get_zoom (win) != zoom
+                 || easel_canvas_is_stroking (canvas);
+    }
+  return changed;
+}
+
+/* AS-15 (REQ-0007-15): before the picture exists, with the color chooser open and during a resize drag, a press with Fill,
+   Pick Color or the Magnifier does nothing. */
+static void
+as15_new_tools_ignored_when_blocked (void)
+{
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  EaselPaletteBar *bar;
+  double x, y;
+
+  /* Before the picture exists. */
+  write_settings ("[new-picture]\nwidth=auto\nheight=auto\n");
+  win = easel_window_new (app);
+  g_assert_null (easel_window_get_picture (win));
+  g_assert_false (three_tools_change_something (win, 3.5, 3.5));
+  gtk_window_destroy (GTK_WINDOW (win));
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+
+  /* The color chooser open. */
+  win = start_window ();
+  bar = easel_window_get_palette_bar (win);
+  wait_for_layout (win);
+  easel_palette_bar_press (bar, 17, 1, 1);
+  easel_palette_bar_press (bar, 17, 1, 2);
+  g_assert_true (easel_window_is_choosing_color (win));
+  g_assert_false (three_tools_change_something (win, 50.5, 50.5));
+  choose (win, NULL);
+  close_windows ();
+
+  /* A resize drag in progress (the other button would cancel it, so only the dragging button presses again). */
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  for (guint i = 0; i < G_N_ELEMENTS (new_tools); i++)
+    {
+      uint32_t fg = easel_window_get_foreground (win);
+
+      use_tool (win, new_tools[i]);
+      wait_for_layout (win);
+      handle_center (canvas, EASEL_HANDLE_CORNER, &x, &y);
+      easel_canvas_press (canvas, 1, x, y);
+      g_assert_true (easel_canvas_is_resizing (canvas));
+      easel_canvas_press (canvas, 1, 50.5, 50.5);
+      easel_canvas_release (canvas, 1);
+      g_assert_false (easel_window_get_modified (win));
+      g_assert_cmphex (easel_window_get_foreground (win), ==, fg);
+      g_assert_cmpint (easel_window_get_zoom (win), ==, 100);
+      g_assert_false (easel_canvas_is_resizing (canvas));
+    }
+  close_windows ();
+}
+
+/* AS-17 (REQ-0007-17): after the zoom the Pencil and Fill act on the pixel under the pointer at the new zoom. */
+static void
+as17_pencil_after_magnifier (void)
+{
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  const EaselImage *img;
+  View view;
+  double cx, cy;
+
+  write_settings ("[new-picture]\nwidth=3000\nheight=2000\nbackground=#FFFF00\n");
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  img = easel_window_get_picture (win);
+  view = view_of (win);
+  wait_for_layout (win);
+  use_tool (win, "magnifier");
+  choose_preset (win, "400 %");
+  click_pixel (win, 1, 1000, 700);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 400);
+
+  /* The center of the view, as the pointer there would give it. */
+  view_center (win, &cx, &cy);
+  use_tool (win, "pencil");
+  easel_canvas_press (canvas, 1, gtk_adjustment_get_value (view.h) + gtk_adjustment_get_page_size (view.h) / 2,
+                      gtk_adjustment_get_value (view.v) + gtk_adjustment_get_page_size (view.v) / 2);
+  easel_canvas_release (canvas, 1);
+  g_assert_cmpint (count_color (img, 0xFF000000u), ==, 1);
+  g_assert_cmphex (easel_image_get (img, (int) cx, (int) cy), ==, 0xFF000000u);        /* the pixel at the center */
+  g_assert_cmpfloat_with_epsilon (cx, 1000, 175.0);                                    /* and near the one that was clicked */
+
+  /* Fill at the same point fills the area of that pixel: the black pixel alone, with the background color. */
+  use_tool (win, "fill");
+  easel_canvas_press (canvas, 3, gtk_adjustment_get_value (view.h) + gtk_adjustment_get_page_size (view.h) / 2,
+                      gtk_adjustment_get_value (view.v) + gtk_adjustment_get_page_size (view.v) / 2);
+  easel_canvas_release (canvas, 3);
+  g_assert_cmpint (count_color (img, 0xFF000000u), ==, 0);
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* AS-18 (REQ-0007-18): a release the window never saw: the next sign that no button is down ends the held press. */
+static void
+as18_lost_release_ends_the_press (void)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  uint32_t red;
+
+  wait_for_layout (win);
+
+  /* Fill: the press fills; without the release a second press does nothing, after the move it fills again. */
+  use_tool (win, "fill");
+  easel_canvas_press (canvas, 1, 100.5, 80.5);
+  g_assert_cmpint (count_color (img, 0xFF000000u), ==, 300 * 200);
+  easel_canvas_press (canvas, 3, 100.5, 80.5);
+  g_assert_cmpint (count_color (img, 0xFF000000u), ==, 300 * 200);               /* still held in the app */
+  easel_canvas_buttons_released (canvas);
+  easel_canvas_press (canvas, 3, 100.5, 80.5);
+  g_assert_cmpint (count_color (img, 0xFFFFFF00u), ==, 300 * 200);
+  easel_canvas_release (canvas, 3);
+
+  /* A stroke: the move ends it, what it drew is kept, and the options panel is usable. */
+  use_tool (win, "brush");
+  easel_canvas_press (canvas, 1, 20.5, 20.5);
+  g_assert_false (gtk_widget_is_sensitive (GTK_WIDGET (easel_window_get_tool_options (win))));
+  easel_canvas_buttons_released (canvas);
+  g_assert_true (gtk_widget_is_sensitive (GTK_WIDGET (easel_window_get_tool_options (win))));
+  g_assert_false (easel_canvas_is_stroking (canvas));
+  g_assert_cmphex (easel_image_get (img, 20, 20), ==, 0xFF000000u);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);             /* the stroke is one step */
+  g_assert_cmphex (easel_image_get (img, 20, 20), ==, 0xFFFFFF00u);
+
+  /* A pick: ends and keeps its color, the previous tool comes back. */
+  red = choose_swatch (win, 3);
+  dot (win, 10, 10);
+  choose_swatch (win, 1);
+  use_tool (win, "pick");
+  easel_canvas_press (canvas, 1, 10.5, 10.5);
+  g_assert_cmphex (easel_window_get_foreground (win), ==, red);
+  easel_canvas_buttons_released (canvas);
+  g_assert_false (easel_canvas_is_stroking (canvas));
+  g_assert_cmpint (easel_window_get_tool (win), ==, EASEL_TOOL_PENCIL);
+  g_assert_cmphex (easel_window_get_foreground (win), ==, red);
   close_windows ();
 }
 
@@ -5572,6 +6510,24 @@ main (int argc, char **argv)
   g_test_add_func ("/0006/as9_spray_one_step_and_cancel", as9_spray_one_step_and_cancel);
   g_test_add_func ("/0006/as10_numpad_steps", as10_numpad_steps);
   g_test_add_func ("/0006/as13_hints", as13_hints);
+  g_test_add_func ("/0007/as1_new_tools_toolbox_hints", as1_new_tools_toolbox_hints);
+  g_test_add_func ("/0007/as2_magnifier_level_kept", as2_magnifier_level_kept);
+  g_test_add_func ("/0007/as6_fill_on_canvas", as6_fill_on_canvas);
+  g_test_add_func ("/0007/as8_fill_nothing_on_canvas", as8_fill_nothing_on_canvas);
+  g_test_add_func ("/0007/as9_fill_memory_dialog", as9_fill_memory_dialog);
+  g_test_add_func ("/0007/as10_pick_follows_and_returns", as10_pick_follows_and_returns);
+  g_test_add_func ("/0007/as11_pick_exact_colors", as11_pick_exact_colors);
+  g_test_add_func ("/0007/as12_pick_outside_picture", as12_pick_outside_picture);
+  g_test_add_func ("/0007/as13_pick_cancel_and_focus", as13_pick_cancel_and_focus);
+  g_test_add_func ("/0007/as16_tool_change_ignored_during_pick", as16_tool_change_ignored_during_pick);
+  g_test_add_func ("/0007/as3_magnifier_click", as3_magnifier_click);
+  g_test_add_func ("/0007/as4_magnifier_edges", as4_magnifier_edges);
+  g_test_add_func ("/0007/as1_cursors_follow_tool", as1_cursors_follow_tool);
+  g_test_add_func ("/0007/as5_box_follows_pointer", as5_box_follows_pointer);
+  g_test_add_func ("/0007/as14_numpad_ignored", as14_numpad_ignored);
+  g_test_add_func ("/0007/as15_new_tools_ignored_when_blocked", as15_new_tools_ignored_when_blocked);
+  g_test_add_func ("/0007/as17_pencil_after_magnifier", as17_pencil_after_magnifier);
+  g_test_add_func ("/0007/as18_lost_release_ends_the_press", as18_lost_release_ends_the_press);
   g_test_add_func ("/0006/as12_cursor_follows_tool_preset_and_zoom", as12_cursor_follows_tool_preset_and_zoom);
   g_test_add_func ("/0004/as20_attributes_dialog", as20_attributes_dialog);
   g_test_add_func ("/0004/as22_undo_through_resize", as22_undo_through_resize);

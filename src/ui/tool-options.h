@@ -27,6 +27,9 @@ gboolean easel_tool_options_get_transparent (EaselToolOptions *self);
    selection changed. */
 gboolean easel_tool_options_step (EaselToolOptions *self, EaselTool tool, int direction);
 
+/* The Magnifier's selected level in percent: 200, 400, 600 or 800 (REQ-0007-02); kept for the session. */
+int easel_tool_options_get_magnifier_level (EaselToolOptions *self);
+
 /* While a stroke is in progress, choosing a preset is ignored (REQ-0006-03). */
 void easel_tool_options_set_busy (EaselToolOptions *self, gboolean busy);
 

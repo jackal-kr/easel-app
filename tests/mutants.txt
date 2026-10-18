@@ -816,9 +816,10 @@ test: ui-0006
 file: src/ui/window.c
 test: ui-0006
 --- find
-  if (view_actions_allowed (self) && self->tool != EASEL_TOOL_PAN && self->tool != EASEL_TOOL_PENCIL)
+  if (view_actions_allowed (self)
+      && (self->tool == EASEL_TOOL_BRUSH || self->tool == EASEL_TOOL_AIRBRUSH || self->tool == EASEL_TOOL_ERASER))
 --- replace
-  if (self->tool != EASEL_TOOL_PAN && self->tool != EASEL_TOOL_PENCIL)
+  if (self->tool == EASEL_TOOL_BRUSH || self->tool == EASEL_TOOL_AIRBRUSH || self->tool == EASEL_TOOL_ERASER)
 
 === REQ-0006-14 Numpad + steps down and Numpad - steps up
 file: src/ui/window.c
@@ -918,3 +919,345 @@ test: ui-0006
       return "Spray with the foreground color. The secondary button uses the background color.";
 --- replace
       return "Paint with the foreground color. The secondary button uses the background color.";
+
+=== REQ-0007-05 undo of a fill writes the new color back
+file: src/core/history.c
+test: core-history
+--- find
+      uint32_t color = undo ? s->old_color : s->new_color;
+--- replace
+      uint32_t color = undo ? s->new_color : s->old_color;
+
+=== REQ-0007-05 a fill's span leaves its last pixel out
+file: src/core/history.c
+test: core-history
+--- find
+        for (uint64_t x = s->spans[i].x0; x <= s->spans[i].x1; x++)      /* 64 bits: x1 may be the largest 32-bit value */
+--- replace
+        for (uint64_t x = s->spans[i].x0; x < s->spans[i].x1; x++)      /* 64 bits: x1 may be the largest 32-bit value */
+
+=== REQ-0007-05 a fill is counted for the budget by 4 bytes a span
+file: src/core/history.c
+test: core-history
+--- find
+    return s->n_spans * sizeof (EaselSpan) + BYTES_PER_STEP;
+--- replace
+    return s->n_spans * 4 + BYTES_PER_STEP;
+
+=== REQ-0007-05 a fill leaks through diagonal corners (8-connected)
+file: src/core/fill.c
+test: core-fill
+--- find
+  for (int x = xl; x <= xr; x++)
+    {
+      bool is_target
+--- replace
+  for (int x = xl > 0 ? xl - 1 : xl; x <= (xr < img->width - 1 ? xr + 1 : xr); x++)
+    {
+      bool is_target
+
+=== REQ-0007-05 a fill ignores the alpha channel when it matches
+file: src/core/fill.c
+test: core-fill
+--- find
+      while (xr < img->width - 1 && row[xr + 1] == target)
+--- replace
+      while (xr < img->width - 1 && (row[xr + 1] & 0x00FFFFFFu) == (target & 0x00FFFFFFu))
+
+=== REQ-0007-07 a fill that runs out of memory leaves its pixels filled
+file: src/core/fill.c
+test: core-fill
+--- find
+no_memory:
+  undo_spans (img, &w, target);
+--- replace
+no_memory:
+
+=== REQ-0007-03 a press at the selected level does not go back to 100 %
+file: src/core/magnifier.c
+test: core-magnifier
+--- find
+  return zoom == level_pct ? 100 : level_pct;
+--- replace
+  return level_pct;
+
+=== REQ-0007-04 the preview box can leave the picture on the right and bottom
+file: src/core/magnifier.c
+test: core-magnifier
+--- find
+  if (*start > pic - *size)
+    *start = pic - *size;
+--- replace
+  if (*start > pic)
+    *start = pic - *size;
+
+=== REQ-0007-04 the preview box size is rounded up
+file: src/core/magnifier.c
+test: core-magnifier
+--- find
+  long len = (long) area * 100 / level_pct;
+--- replace
+  long len = ((long) area * 100 + level_pct - 1) / level_pct;
+
+=== REQ-0007-04 the preview box can be empty
+file: src/core/magnifier.c
+test: core-magnifier
+--- find
+  if (len < 1)
+    len = 1;
+--- replace
+  if (len < 0)
+    len = 0;
+
+=== REQ-0007-03 the focus is not kept inside the content at the far edge
+file: src/core/view.c
+test: core-magnifier
+--- find
+  if (offset > most)
+    offset = most;
+  if (offset < 0)
+    offset = 0;
+  return offset;
+--- replace
+  if (offset < 0)
+    offset = 0;
+  return offset;
+
+=== REQ-0007-03 the focus goes to the view's edge, not its center
+file: src/core/view.c
+test: core-magnifier
+--- find
+  double offset = focus * pct / 100.0 / scale - view_size / 2;
+--- replace
+  double offset = focus * pct / 100.0 / scale;
+
+=== REQ-0007-13 Pick Color shows the hint of Fill
+file: src/ui/window.c
+test: ui-0007
+--- find
+      return "Picks up a color from the picture for drawing.";
+--- replace
+      return "Fills an area with the current drawing color.";
+
+=== REQ-0007-01 the Magnifier button is not in the toolbox's first row
+file: src/ui/window.ui
+test: ui-0007
+--- find
+                        <property name="action-target">'magnifier'</property>
+                        <layout>
+                          <property name="column">1</property>
+                          <property name="row">0</property>
+--- replace
+                        <property name="action-target">'magnifier'</property>
+                        <layout>
+                          <property name="column">1</property>
+                          <property name="row">4</property>
+
+=== REQ-0007-02 the Magnifier's choice is not read back from the buttons
+file: src/ui/tool-options.c
+test: ui-0007
+--- find
+  self->magnifier_index = index_of (self->magnifier, EASEL_MAGNIFIER_N_LEVELS);
+--- replace
+
+=== REQ-0007-02 the Magnifier starts at 4x instead of 2x
+file: src/ui/tool-options.c
+test: ui-0007
+--- find
+  self->magnifier_index = EASEL_MAGNIFIER_DEFAULT;
+--- replace
+  self->magnifier_index = 2;
+
+=== REQ-0007-02 the Magnifier has no 1x level
+file: src/core/magnifier.c
+test: core-magnifier
+--- find
+{ 10, 25, 50, 100, 200, 400, 600, 800 }
+--- replace
+{ 10, 25, 50, 200, 200, 400, 600, 800 }
+
+=== REQ-0007-05 the secondary button fills with the foreground color
+file: src/ui/canvas.c
+test: ui-0007
+--- find
+  r = easel_fill_capped (self->img, self->history, px, py, button == GDK_BUTTON_PRIMARY ? self->foreground : self->background,
+--- replace
+  r = easel_fill_capped (self->img, self->history, px, py, button == GDK_BUTTON_PRIMARY ? self->background : self->foreground,
+
+=== REQ-0007-05 a second button pressed while the first is held fills again
+file: src/ui/canvas.c
+test: ui-0007
+--- find
+  self->action_button = button;
+  r = easel_fill_capped
+--- replace
+  r = easel_fill_capped
+
+=== REQ-0007-05 a fill does not tell the window that the picture changed
+file: src/ui/canvas.c
+test: ui-0007
+--- find
+      easel_canvas_update (self);
+      g_signal_emit (self, signals[SIGNAL_STROKE_FINISHED], 0, (guint) changed);
+    }
+}
+--- replace
+      easel_canvas_update (self);
+    }
+}
+
+=== REQ-0007-07 a fill that cannot get its memory shows no dialog
+file: src/ui/canvas.c
+test: ui-0007
+--- find
+    g_signal_emit (self, signals[SIGNAL_FILL_FAILED], 0);
+--- replace
+    (void) 0;
+
+=== REQ-0007-08 the color does not follow the pointer during a pick
+file: src/ui/canvas.c
+test: ui-0007
+--- find
+          g_signal_emit (self, signals[SIGNAL_COLOR_PICKED], 0, self->stroke_button, (guint) easel_image_get (self->img, px, py));
+--- replace
+          (void) 0;
+
+=== REQ-0007-08 the secondary button picks the foreground color
+file: src/ui/window.c
+test: ui-0007
+--- find
+      self->pick_old_background = self->background;
+    }
+  if (button == GDK_BUTTON_PRIMARY)
+    set_colors (self, color, self->background);
+  else
+    set_colors (self, self->foreground, color);
+--- replace
+      self->pick_old_background = self->background;
+    }
+  set_colors (self, color, self->background);
+
+=== REQ-0007-08 a press outside the picture starts a pick
+file: src/ui/canvas.c
+test: ui-0007
+--- find
+      if (px < 0 || py < 0 || px >= self->img->width || py >= self->img->height)
+        return;
+      self->picking = TRUE;
+--- replace
+      self->picking = TRUE;
+
+=== REQ-0007-09 the previous tool does not come back after a pick
+file: src/ui/window.c
+test: ui-0007
+--- find
+    self->pick_return_tool = self->tool;
+--- replace
+    self->pick_return_tool = EASEL_TOOL_PAN;
+
+=== REQ-0007-10 the other button keeps the picked color
+file: src/ui/canvas.c
+test: ui-0007
+--- find
+      if (button != self->stroke_button)
+        finish_pick (self, TRUE);
+--- replace
+      if (button != self->stroke_button)
+        finish_pick (self, FALSE);
+
+=== REQ-0007-10 Undo does not cancel a pick
+file: src/ui/canvas.c
+test: ui-0007
+--- find
+  if (self->picking)
+    {
+      self->cancelled_button = self->stroke_button;
+      finish_pick (self, TRUE);
+      return;
+    }
+--- replace
+
+=== REQ-0007-16 a pick does not count as a stroke, so a tool can be chosen during it
+file: src/ui/canvas.c
+test: ui-0007
+--- find
+  return self->stroke != NULL || self->picking;
+--- replace
+  return self->stroke != NULL;
+
+=== REQ-0007-03 the selected Magnifier level never reaches the canvas
+file: src/ui/window.c
+test: ui-0007
+--- find
+  easel_canvas_set_magnifier_level (self->canvas, easel_tool_options_get_magnifier_level (self->tool_options));
+--- replace
+
+=== REQ-0007-03 the focus is the pixel under the pointer even at 100 %, not the box's center
+file: src/ui/canvas.c
+test: ui-0007
+--- find
+  if (self->zoom == 100 && zoom > 100)
+    {
+      int bx, by, bw, bh;
+--- replace
+  if (0)
+    {
+      int bx, by, bw, bh;
+
+=== REQ-0007-03 the focus is not brought to the center of the view
+file: src/ui/canvas.c
+test: ui-0007
+--- find
+  self->anchor_focus = TRUE;                 /* the scroll is worked out at the allocation, with the page size then */
+--- replace
+  self->anchor_focus = FALSE;
+
+=== REQ-0007-03 a press outside the picture zooms
+file: src/ui/canvas.c
+test: ui-0007
+--- find
+  if (px < 0 || py < 0 || px >= self->img->width || py >= self->img->height)
+    return;
+  self->action_button = button;
+  if (zoom == self->zoom)
+--- replace
+  self->action_button = button;
+  if (zoom == self->zoom)
+
+=== REQ-0007-03 a second button pressed while the first is held zooms again
+file: src/ui/canvas.c
+test: ui-0007
+--- find
+  self->action_button = button;
+  if (zoom == self->zoom)
+--- replace
+  if (zoom == self->zoom)
+
+=== REQ-0007-02 the 1/10x level gives the wrong zoom
+file: src/core/magnifier.c
+test: core-magnifier
+--- find
+{ 10, 25, 50, 100, 200, 400, 600, 800 }
+--- replace
+{ 20, 25, 50, 100, 200, 400, 600, 800 }
+
+=== REQ-0007-18 a lost release does not free the Fill, Pick Color and Magnifier press
+file: src/ui/canvas.c
+test: ui-0007
+--- find
+  /* What a release would have done, for each press the canvas still holds (REQ-0007-18). */
+  self->action_button = 0;
+--- replace
+  /* What a release would have done, for each press the canvas still holds (REQ-0007-18). */
+
+=== REQ-0007-18 a lost release does not end a stroke or a pick
+file: src/ui/canvas.c
+test: ui-0007
+--- find
+  if (self->stroke != NULL || self->picking)
+    easel_canvas_end_stroke (self);
+  if (self->resizing != EASEL_HANDLE_NONE)
+    easel_canvas_release (self, self->resize_button);
+--- replace
+  if (self->resizing != EASEL_HANDLE_NONE)
+    easel_canvas_release (self, self->resize_button);

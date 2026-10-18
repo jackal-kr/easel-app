@@ -8,7 +8,16 @@ static const char *const names[] = {
   [EASEL_TOOL_BRUSH] = "brush",
   [EASEL_TOOL_AIRBRUSH] = "airbrush",
   [EASEL_TOOL_ERASER] = "eraser",
+  [EASEL_TOOL_MAGNIFIER] = "magnifier",
+  [EASEL_TOOL_PICK] = "pick",
+  [EASEL_TOOL_FILL] = "fill",
 };
+
+const char *
+easel_tool_name (EaselTool tool)
+{
+  return names[tool];
+}
 
 gboolean
 easel_tool_from_name (const char *name, EaselTool *tool)
