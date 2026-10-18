@@ -111,7 +111,7 @@ Defined by feature 0017.
 - **Code that can abort the process** (a failed allocation in GLib, gdk-pixbuf or glycin) is tested in a subprocess
   (`g_test_trap_subprocess`, as `as19_save_without_memory` and `as8_open_without_memory` do), so that an abort is a failed
   assertion of the test and not a crash of the run.
-- **Gates:** build warning-free, all tests green after each task; `tools/spec.sh lint` clean before a spec is accepted (it also checks that every test named in a scenario-to-test map exists in `tests/`).
+- **Gates:** build warning-free, all tests green after each task; `tools/spec.sh lint` clean before a spec is accepted (`tools/spec.sh lint --names NNNN` additionally fails when a test named in that spec's scenario-to-test map is not registered in `tests/`; `/sdd-check` runs it, the plain lint does not, because a Plan names its tests before they are written).
 - **Later:** CI in a container or the Flatpak SDK (libadwaita >= 1.8 needed); screenshot checks only if they prove worth the upkeep.
 
 ## Performance budgets
@@ -126,3 +126,9 @@ Rule P5 applies: no optimization without a measurement against a budget here.
 | Undo memory | bounded by a user budget (default 512 MB, set in Preferences), never by step count |
 | Undo / redo | shown at the next screen refresh on a 1920x1080 picture |
 | Idle | 0% CPU when nothing is happening |
+| Fill, a whole 8000x8000 picture (core) | < 500 ms (JOD, 2026-10-18; measured 160 ms) |
+| Fill or Magnifier press to the painted frame | < 100 ms at 1920x1080 and 8000x8000 (JOD, 2026-10-18; measured one frame) |
+
+The Fill and Magnifier budgets are benchmark budgets: `perf-0007` prints the numbers, `/sdd-check` reports them against the
+table, and no test fails on them (timing tests flake on a loaded machine). The worst-case fill (the comb) has no time budget;
+its cost is memory, 12 bytes per one-pixel span.
