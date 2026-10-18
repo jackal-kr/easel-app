@@ -95,7 +95,7 @@ Defined by the packaging and release feature.
   time, then a total; the exit status is non-zero if any mutant survived or did not build. It never touches the working
   tree: it works in `.scratch/mutate` (git-ignored, deleted and made again at each start) with one build directory, so each
   mutant rebuilds one file.
-  - `tools/mutate.sh` runs every mutant of `tests/mutants.txt` (100 mutants, 495 s, all killed; a mutant killed only by a crash counts as a test gap, so the cases for rules that lose work run in a subprocess or come first); `tools/mutate.sh
+  - `tools/mutate.sh` runs every mutant of `tests/mutants.txt` (100 mutants, 495 s, all killed; a mutant killed only by a crash counts as a test gap, so the cases for rules that lose work run in a subprocess or come first; the tool reports such a mutant as `crashed`, "killed by crash (test gap)", when the failing test shows no assertion of ours and a FATAL or CRITICAL message, "Aborted" or a signal, counts it apart and fails the run); `tools/mutate.sh
     REQ-0005-03` runs the mutants of one requirement (several IDs may be given); `MUTANTS=file tools/mutate.sh` uses
     another list. The ui tests need the display, as always.
   - To add a mutant, append a block to `tests/mutants.txt`: `=== REQ-NNNN-xx what the bug does`, then `file:` (from the

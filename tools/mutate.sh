@@ -9,7 +9,9 @@
 #   MUTANTS=other.txt tools/mutate.sh   another mutant list
 #
 # The working tree is never touched: everything happens under .scratch/mutate (git-ignored), which is deleted and made
-# again at each start, so an interrupted run leaves nothing to clean up. Exit status: 0 if every mutant was killed.
+# again at each start, so an interrupted run leaves nothing to clean up. Exit status: 0 if every mutant was killed by an
+# assertion. A mutant whose test died without an assertion of ours (a FATAL or CRITICAL message, "Aborted", a signal) is
+# "crashed": killed by crash, a test gap, counted apart and failing the run (docs/engineering.md, "Mutation tool").
 # Format of the list and how to add a mutant: docs/engineering.md, "Mutation tool".
 set -u
 cd "$(dirname "$0")/.."
@@ -142,7 +144,16 @@ why_failed () {
   printf '%s' "$line" | cut -c1-230
 }
 
-killed=0; survived=0; errors=0
+# True if the test that failed did so by an assertion of ours: a core CHECK, or a GTest assertion in a file under tests/
+# ("ERROR:../tests/ui/test-window.c:123:case: assertion failed ..." or "... should be TRUE"). Anything else that went with a
+# FATAL or CRITICAL message, "Aborted" or a signal is a crash, which says nothing about the rule the mutant breaks.
+killed_by_assertion () {
+  grep -qE 'CHECK failed|ERROR:[^ ]*tests/[^ :]+:[0-9]+:' "$SCRATCH/test.log" && return 0
+  grep -qE 'FATAL|CRITICAL|Aborted|Segmentation|killed by signal|SIG[A-Z]+' "$SCRATCH/test.log" && return 1
+  return 0
+}
+
+killed=0; crashed=0; survived=0; errors=0
 FAILED_TEST=
 reason=
 total_start=$(date +%s)
@@ -169,13 +180,15 @@ PY
     result="ERROR   (the mutant does not build)"; errors=$((errors + 1))
   elif run_tests "$tests"; then
     result="SURVIVED"; survived=$((survived + 1))
-  else
+  elif killed_by_assertion; then
     result="killed"; killed=$((killed + 1)); reason="by $FAILED_TEST: $(why_failed)"
+  else
+    result="crashed"; crashed=$((crashed + 1)); reason="killed by crash (test gap), by $FAILED_TEST: $(why_failed)"
   fi
   cp "$SCRATCH/original" "$target"          # the original text back, before the next mutant
   printf '%-9s %s  %s  (%d s)\n' "$result" "$req" "$name" $(( $(date +%s) - start ))
-  [ "$result" = killed ] && printf '          %s\n' "$reason"
+  case "$result" in killed|crashed) printf '          %s\n' "$reason" ;; esac
 done < "$SCRATCH/index.tsv"
 
-echo "$((killed + survived + errors)) mutants: $killed killed, $survived survived, $errors errors in $(( $(date +%s) - total_start )) s"
-[ "$survived" -eq 0 ] && [ "$errors" -eq 0 ]
+echo "$((killed + crashed + survived + errors)) mutants: $killed killed, $crashed killed by crash (test gap), $survived survived, $errors errors in $(( $(date +%s) - total_start )) s"
+[ "$survived" -eq 0 ] && [ "$errors" -eq 0 ] && [ "$crashed" -eq 0 ]
