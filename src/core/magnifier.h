@@ -2,9 +2,12 @@
 /* The Magnifier's rules (REQ-0007-03, REQ-0007-04). Zoom levels are percent; pixels are picture pixels. */
 #pragma once
 
-/* The zoom levels the Magnifier offers: 1/10x, 1/4x, 1/2x, 1x, 2x, 4x, 6x and 8x; 2x is the default (REQ-0007-02). */
-enum { EASEL_MAGNIFIER_N_LEVELS = 8, EASEL_MAGNIFIER_DEFAULT = 4 };
-extern const int easel_magnifier_levels[EASEL_MAGNIFIER_N_LEVELS];
+#include "view.h"
+
+/* The zoom levels the Magnifier offers: 1x, 2x, 4x, 6x and 8x; 2x is the default (REQ-0007-02). They are the zoom presets
+   (REQ-0008-02): one list, so the Magnifier's options and the View > Zoom submenu cannot differ. */
+enum { EASEL_MAGNIFIER_N_LEVELS = EASEL_VIEW_N_PRESETS, EASEL_MAGNIFIER_DEFAULT = 1 };
+#define easel_magnifier_levels easel_view_presets
 
 /* The zoom a press gives when the picture is at `zoom` and the selected level is level_pct: the level, or 100 if the zoom
    already is that level. */

@@ -1,0 +1,13 @@
+/* The preset buttons are compact so that every tool's options fit the width of the tool grid (REQ-0008-07). */
+button.flat.compact {
+  padding: 2px 3px;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* The Magnifier's levels are as wide as the tool buttons above them, their labels at the normal size (REQ-0008-07). */
+button.flat.level {
+  padding-left: 2px;
+  padding-right: 2px;
+  min-width: 0;
+}

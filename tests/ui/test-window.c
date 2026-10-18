@@ -1580,7 +1580,8 @@ as1_menus (void)
   s2 = describe_section (vm, 2);
   s3 = describe_section (vm, 3);
   g_assert_cmpstr (s0, ==, "custom:zoom");
-  g_assert_cmpstr (s1, ==, "Normal Size|win.zoom-normal; Large Size|win.zoom-large; Fit to Window|win.zoom-fit");
+  /* 0008 (REQ-0008-03) puts the Zoom submenu first in this group; its items are checked by /0008/as1. */
+  g_assert_cmpstr (s1, ==, "Zoom|(null); Normal Size|win.zoom-normal; Large Size|win.zoom-large; Fit to Window|win.zoom-fit");
   g_assert_cmpstr (s2, ==, "Show Grid|win.grid; Grid…|win.grid-dialog");
   g_assert_cmpstr (s3, ==, "Tool Box|win.show-toolbox; Color Box|win.show-colorbox; Status Bar|win.show-statusbar");
   g_assert_cmpint (g_menu_model_get_n_items (im), ==, 1);
@@ -2937,6 +2938,7 @@ as30_undo_error_dialog (void)
   g_assert_cmpint (setrlimit (RLIMIT_AS, &old), ==, 0);
   wait_for_dialogs (win, 1);
   dialog = open_alert (win);
+  g_assert_nonnull (dialog);                       /* the error is shown; without it the heading below would crash */
   g_assert_cmpstr (adw_alert_dialog_get_heading (dialog), ==, "Could Not Resize the Picture");
   g_assert_cmpstr (adw_alert_dialog_get_body (dialog), ==, "There is not enough memory for a picture of 10000 × 5000 pixels.");
   assert_size (win, 1, 1);
@@ -3297,6 +3299,19 @@ on_screen (EaselWindow *win, const char *tip)
   return w != NULL && gtk_widget_get_mapped (w);
 }
 
+/* REQ-0006-02 (and REQ-0007-02 for Pick Color and Fill): the active tool has no options: no option button of any tool
+   is on screen, and the options, their line included, take no height. */
+static void
+assert_no_options_shown (EaselWindow *win)
+{
+  static const char *const any[] = { "Circle, 4 pixels", "Spray, 16 pixels", "Eraser, 8 pixels",
+                                     "Opaque: erase to the background color", "200 %" };
+
+  for (guint i = 0; i < G_N_ELEMENTS (any); i++)
+    g_assert_false (on_screen (win, any[i]));
+  g_assert_cmpint (gtk_widget_get_height (GTK_WIDGET (easel_window_get_tool_options (win))), ==, 0);
+}
+
 static void
 use_tool (EaselWindow *win, const char *tool)
 {
@@ -3358,11 +3373,11 @@ as1_options_panel (void)
   wait_for_layout (win);
   /* Pan and Pencil have no options: no preset button is on screen. */
   g_assert_false (on_screen (win, "Circle, 4 pixels"));
-  g_assert_false (gtk_widget_get_mapped (GTK_WIDGET (easel_window_get_tool_options (win))));      /* nor its line */
+  assert_no_options_shown (win);                                 /* nor its line */
   use_tool (win, "pencil");
   wait_for_layout (win);
   g_assert_false (on_screen (win, "Circle, 4 pixels"));
-  g_assert_false (gtk_widget_get_mapped (GTK_WIDGET (easel_window_get_tool_options (win))));
+  assert_no_options_shown (win);
 
   /* The Brush: twelve presets in two columns, the 4-pixel circle on. */
   use_tool (win, "brush");
@@ -3416,7 +3431,7 @@ as1_options_panel (void)
   use_tool (win, "pan");
   wait_for_layout (win);
   g_assert_false (on_screen (win, "Eraser, 8 pixels"));
-  g_assert_false (gtk_widget_get_mapped (GTK_WIDGET (easel_window_get_tool_options (win))));
+  assert_no_options_shown (win);
   close_windows ();
 }
 
@@ -4691,6 +4706,7 @@ as13_command_line_error (void)
 
   wait_for_dialogs (win, 1);
   dialog = open_alert (win);
+  g_assert_nonnull (dialog);                       /* the error is shown; without it the heading below would crash */
   g_assert_cmpstr (adw_alert_dialog_get_heading (dialog), ==, "Could Not Open “missing.png”");
   g_assert_cmpstr (adw_alert_dialog_get_body (dialog), ==, "The file cannot be read.");
   assert_size (win, 300, 200);                                         /* the blank picture of the settings */
@@ -4854,6 +4870,7 @@ as11_save_as (void)
   g_assert_true (g_file_set_contents (png, "old", -1, NULL));
   easel_window_save_chosen (win, plain);
   wait_for_dialogs (win, 1);
+  g_assert_nonnull (open_alert (win));             /* the question is asked; without it the heading below would crash */
   g_assert_cmpstr (adw_alert_dialog_get_heading (open_alert (win)), ==, "Replace “b.png”?");
   respond (win, "cancel");
   wait_for_layout (win);
@@ -5430,46 +5447,55 @@ as1_new_tools_toolbox_hints (void)
   use_tool (win, "fill");
   wait_for_layout (win);
   g_assert_cmpstr (easel_status_bar_get_text (bar, EASEL_STATUS_HINT), ==, "Fills an area with the current drawing color.");
-  g_assert_false (gtk_widget_get_mapped (GTK_WIDGET (easel_window_get_tool_options (win))));
+  assert_no_options_shown (win);
   use_tool (win, "pick");
   wait_for_layout (win);
   g_assert_cmpstr (easel_status_bar_get_text (bar, EASEL_STATUS_HINT), ==, "Picks up a color from the picture for drawing.");
-  g_assert_false (gtk_widget_get_mapped (GTK_WIDGET (easel_window_get_tool_options (win))));
+  assert_no_options_shown (win);
   use_tool (win, "magnifier");
   g_assert_cmpstr (easel_status_bar_get_text (bar, EASEL_STATUS_HINT), ==, "Changes the magnification.");
   close_windows ();
 }
 
-static const char *const magnifier_tips[8] = { "10 %", "25 %", "50 %", "100 %", "200 %", "400 %", "600 %", "800 %" };
+/* The Magnifier's selected level: the state of win.magnifier-level, which the level buttons set (REQ-0007-02). */
+static int
+magnifier_level (EaselWindow *win)
+{
+  g_autoptr (GVariant) state = g_action_group_get_action_state (G_ACTION_GROUP (win), "magnifier-level");
 
-/* AS-2 (REQ-0007-02): the Magnifier's four levels, 2x selected, choosing one zooms nothing, and the choice is kept. */
+  return g_variant_get_int32 (state);
+}
+
+static const char *const magnifier_tips[5] = { "100 %", "200 %", "400 %", "600 %", "800 %" };
+
+/* AS-2 (REQ-0007-02, amended by REQ-0008-02): the Magnifier's five levels, 2x selected, choosing one zooms nothing, and the choice is kept. */
 static void
 as2_magnifier_level_kept (void)
 {
-  static const char *const labels[8] = { "1/10x", "1/4x", "1/2x", "1x", "2x", "4x", "6x", "8x" };
+  static const char *const labels[5] = { "1x", "2x", "4x", "6x", "8x" };
   EaselWindow *win = start_window ();
   EaselToolOptions *options = easel_window_get_tool_options (win);
 
   wait_for_layout (win);
-  g_assert_cmpint (easel_tool_options_get_magnifier_level (options), ==, 200);
+  g_assert_cmpint (magnifier_level (win), ==, 200);
   use_tool (win, "magnifier");
   wait_for_layout (win);
   g_assert_true (gtk_widget_get_mapped (GTK_WIDGET (options)));
-  g_assert_cmpint (check_presets (win, magnifier_tips, 8, 2), ==, 4);        /* 1/10x, 1/4x / 1/2x, 1x / 2x, 4x / 6x, 8x; 2x is on */
-  for (int i = 0; i < 8; i++)
+  g_assert_cmpint (check_presets (win, magnifier_tips, 5, 2), ==, 1);        /* 1x 2x / 4x 6x / 8x; 2x is on */
+  for (int i = 0; i < 5; i++)
     g_assert_cmpstr (gtk_button_get_label (GTK_BUTTON (find_by_tooltip (GTK_WIDGET (win), magnifier_tips[i]))), ==, labels[i]);
   g_assert_false (on_screen (win, "Circle, 4 pixels"));                      /* only its own group */
 
   choose_preset (win, "800 %");
   g_assert_cmpint (easel_window_get_zoom (win), ==, 100);                    /* choosing zooms nothing */
-  g_assert_cmpint (check_presets (win, magnifier_tips, 8, 2), ==, 7);
-  g_assert_cmpint (easel_tool_options_get_magnifier_level (options), ==, 800);
+  g_assert_cmpint (check_presets (win, magnifier_tips, 5, 2), ==, 4);
+  g_assert_cmpint (magnifier_level (win), ==, 800);
   choose_preset (win, "100 %");
   g_assert_cmpint (easel_window_get_zoom (win), ==, 100);
-  g_assert_cmpint (easel_tool_options_get_magnifier_level (options), ==, 100);
-  choose_preset (win, "10 %");
+  g_assert_cmpint (magnifier_level (win), ==, 100);
+  choose_preset (win, "400 %");
   g_assert_cmpint (easel_window_get_zoom (win), ==, 100);
-  g_assert_cmpint (easel_tool_options_get_magnifier_level (options), ==, 10);
+  g_assert_cmpint (magnifier_level (win), ==, 400);
   choose_preset (win, "800 %");
   g_assert_false (easel_window_get_modified (win));
   g_assert_false (action_enabled (win, "undo"));
@@ -5482,8 +5508,8 @@ as2_magnifier_level_kept (void)
   g_assert_false (on_screen (win, "800 %"));
   use_tool (win, "magnifier");
   wait_for_layout (win);
-  g_assert_cmpint (check_presets (win, magnifier_tips, 8, 2), ==, 7);        /* kept */
-  g_assert_cmpint (easel_tool_options_get_magnifier_level (options), ==, 800);
+  g_assert_cmpint (check_presets (win, magnifier_tips, 5, 2), ==, 4);        /* kept */
+  g_assert_cmpint (magnifier_level (win), ==, 800);
   close_windows ();
 }
 
@@ -5912,22 +5938,24 @@ as3_magnifier_click (void)
   click_pixel (win, 1, 500, 500);
   g_assert_cmpint (easel_window_get_zoom (win), ==, 100);
 
-  /* A reduction: 1/10x at 100 % gives 10 %, the same level again 100 %; 1/2x from 400 % gives 50 %. */
-  choose_preset (win, "10 %");
-  click_pixel (win, 1, 1500, 1000);
-  g_assert_cmpint (easel_window_get_zoom (win), ==, 10);
-  click_pixel (win, 3, 150, 100);
-  g_assert_cmpint (easel_window_get_zoom (win), ==, 100);
-  choose_preset (win, "50 %");
-  click_pixel (win, 1, 1500, 1000);
-  g_assert_cmpint (easel_window_get_zoom (win), ==, 50);
-  click_pixel (win, 1, 750, 500);
-  g_assert_cmpint (easel_window_get_zoom (win), ==, 100);
-  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-large", NULL);                   /* 400 % */
-  click_pixel (win, 1, 500, 500);
-  g_assert_cmpint (easel_window_get_zoom (win), ==, 50);
-  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-normal", NULL);
+  /* Below 100 % (two Zoom Out steps give 25 %): 4x gives 400 %, and 1x gives 100 % (amended by REQ-0008-02: no
+     reduction levels; there is no 1/10x or 1/2x to choose any more). */
+  g_assert_null (find_by_tooltip (GTK_WIDGET (win), "10 %"));
+  g_assert_null (find_by_tooltip (GTK_WIDGET (win), "50 %"));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-out", NULL);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-out", NULL);
   wait_for_layout (win);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 25);
+  choose_preset (win, "400 %");
+  click_pixel (win, 1, 500, 500);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 400);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-normal", NULL);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-out", NULL);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-out", NULL);
+  wait_for_layout (win);
+  choose_preset (win, "100 %");
+  click_pixel (win, 3, 500, 500);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 100);
 
   /* The middle button and a press outside the picture do nothing; a second button held does nothing more. */
   choose_preset (win, "200 %");
@@ -6052,11 +6080,9 @@ as5_box_follows_pointer (void)
   easel_canvas_pointer_left (canvas);
   g_assert_false (easel_canvas_get_magnifier_box (canvas, &x, &y, &w, &h));
 
-  /* 1x and a reduction do not zoom in: none. */
+  /* 1x does not zoom in: none (there is no reduction level, REQ-0008-02). */
   choose_preset (win, "100 %");
   point_at_pixel (win, 1000, 700);
-  g_assert_false (easel_canvas_get_magnifier_box (canvas, &x, &y, &w, &h));
-  choose_preset (win, "50 %");
   g_assert_false (easel_canvas_get_magnifier_box (canvas, &x, &y, &w, &h));
 
   /* At another zoom none; back at 100 % with the pointer still there, it is shown at once. */
@@ -6097,17 +6123,16 @@ static void
 as14_numpad_ignored (void)
 {
   EaselWindow *win = start_window ();
-  EaselToolOptions *options = easel_window_get_tool_options (win);
 
   wait_for_layout (win);
   for (guint i = 0; i < G_N_ELEMENTS (new_tools); i++)
     {
-      int level = easel_tool_options_get_magnifier_level (options);
+      int level = magnifier_level (win);
 
       use_tool (win, new_tools[i]);
       g_action_group_activate_action (G_ACTION_GROUP (win), "preset-larger", NULL);
       g_action_group_activate_action (G_ACTION_GROUP (win), "preset-smaller", NULL);
-      g_assert_cmpint (easel_tool_options_get_magnifier_level (options), ==, level);
+      g_assert_cmpint (magnifier_level (win), ==, level);
       g_assert_cmpint (easel_window_get_zoom (win), ==, 100);
       g_assert_false (easel_window_get_modified (win));
     }
@@ -6521,6 +6546,342 @@ other_easel_process (void)
   return 0;
 }
 
+/* ---- 0008: the zoom presets ---- */
+
+/* The View menu's "Zoom" submenu: its model, found as the item labelled "Zoom" in any section of the View menu. */
+static GMenuModel *
+zoom_submenu (EaselWindow *win, int *section_index, int *item_index)
+{
+  GMenuModel *menu = gtk_menu_button_get_menu_model (easel_window_get_view_button (win));
+
+  for (int s = 0; s < g_menu_model_get_n_items (menu); s++)
+    {
+      GMenuModel *section = g_menu_model_get_item_link (menu, s, G_MENU_LINK_SECTION);
+
+      for (int i = 0; section != NULL && i < g_menu_model_get_n_items (section); i++)
+        {
+          g_autofree char *label = NULL;
+
+          if (g_menu_model_get_item_attribute (section, i, G_MENU_ATTRIBUTE_LABEL, "s", &label)
+              && g_str_equal (label, "Zoom"))
+            {
+              GMenuModel *sub = g_menu_model_get_item_link (section, i, G_MENU_LINK_SUBMENU);
+
+              if (section_index != NULL)
+                *section_index = s;
+              if (item_index != NULL)
+                *item_index = i;
+              g_object_unref (section);
+              return sub;
+            }
+        }
+      g_clear_object (&section);
+    }
+  return NULL;
+}
+
+/* AS-1 (REQ-0008-01, REQ-0008-02, REQ-0008-03): View > Zoom holds the five presets in order, labelled "100 %" to
+   "800 %", each choosing win.zoom-to with its percent; it is the first item of the section that holds Normal Size; the
+   Magnifier's options show the same eight levels. */
+static void
+as1_zoom_submenu_and_lens_levels (void)
+{
+  static const int presets[] = { 100, 200, 400, 600, 800 };
+  EaselWindow *win = start_window ();
+  GMenuModel *menu = gtk_menu_button_get_menu_model (easel_window_get_view_button (win));
+  g_autoptr (GMenuModel) sub = NULL;
+  int s = -1, i = -1;
+
+  wait_for_layout (win);
+  sub = zoom_submenu (win, &s, &i);
+  g_assert_nonnull (sub);
+  g_assert_cmpint (g_menu_model_get_n_items (sub), ==, 5);
+  for (int k = 0; k < 5; k++)
+    {
+      g_autofree char *label = NULL, *action = NULL, *expected = g_strdup_printf ("%d %%", presets[k]);
+      g_autoptr (GVariant) target = NULL;
+
+      g_assert_true (g_menu_model_get_item_attribute (sub, k, G_MENU_ATTRIBUTE_LABEL, "s", &label));
+      g_assert_cmpstr (label, ==, expected);
+      g_assert_true (g_menu_model_get_item_attribute (sub, k, G_MENU_ATTRIBUTE_ACTION, "s", &action));
+      g_assert_cmpstr (action, ==, "win.zoom-to");
+      target = g_menu_model_get_item_attribute_value (sub, k, G_MENU_ATTRIBUTE_TARGET, G_VARIANT_TYPE_INT32);
+      g_assert_nonnull (target);
+      g_assert_cmpint (g_variant_get_int32 (target), ==, presets[k]);
+    }
+  /* Placed first in the section of Normal Size, Large Size and Fit to Window, which stay. */
+  {
+    g_autoptr (GMenuModel) section = g_menu_model_get_item_link (menu, s, G_MENU_LINK_SECTION);
+    g_autofree char *next = NULL;
+
+    g_assert_cmpint (i, ==, 0);
+    g_assert_true (g_menu_model_get_item_attribute (section, 1, G_MENU_ATTRIBUTE_ACTION, "s", &next));
+    g_assert_cmpstr (next, ==, "win.zoom-normal");
+    g_assert_cmpint (g_menu_model_get_n_items (section), ==, 4);
+  }
+  /* The Magnifier's options: the same five levels, in the same order, labelled 1x to 8x (REQ-0008-02); no others. */
+  {
+    static const char *const labels[] = { "1x", "2x", "4x", "6x", "8x" };
+
+    use_tool (win, "magnifier");
+    wait_for_layout (win);
+    g_assert_null (find_by_tooltip (GTK_WIDGET (win), "10 %"));
+    g_assert_null (find_by_tooltip (GTK_WIDGET (win), "25 %"));
+    g_assert_null (find_by_tooltip (GTK_WIDGET (win), "50 %"));
+    for (int k = 0; k < 5; k++)
+      {
+        g_autofree char *tip = g_strdup_printf ("%d %%", presets[k]);
+        GtkWidget *b = find_by_tooltip (GTK_WIDGET (win), tip);
+
+        g_assert_nonnull (b);
+        g_assert_cmpstr (gtk_button_get_label (GTK_BUTTON (b)), ==, labels[k]);
+        g_assert_true (on_screen (win, tip));
+      }
+  }
+  close_windows ();
+}
+
+/* AS-2 (REQ-0008-04): a preset from the menu sets the zoom, keeps the center of the canvas area still, leaves the
+   Magnifier's selected level alone, and edits nothing. */
+static void
+as2_zoom_to_preset (void)
+{
+  EaselWindow *win;
+  double cx0, cy0, cx, cy;
+
+  write_settings ("[new-picture]\nwidth=3000\nheight=2000\nbackground=#FFFF00\n");
+  win = start_window ();
+  wait_for_layout (win);
+  use_pencil (win);
+  view_center (win, &cx0, &cy0);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-to", g_variant_new_int32 (800));
+  wait_for_layout (win);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 800);
+  view_center (win, &cx, &cy);
+  g_assert_cmpfloat_with_epsilon (cx, cx0, 1.0);
+  g_assert_cmpfloat_with_epsilon (cy, cy0, 1.0);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-to", g_variant_new_int32 (100));
+  wait_for_layout (win);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 100);
+  g_assert_cmpint (magnifier_level (win), ==, 200);
+  g_assert_cmpint (easel_window_get_tool (win), ==, EASEL_TOOL_PENCIL);
+  g_assert_false (easel_window_get_modified (win));
+  g_assert_false (action_enabled (win, "undo"));
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* The preset the Zoom submenu marks: the state of win.zoom-to, 0 when no item is checked. */
+static int
+zoom_checked (EaselWindow *win)
+{
+  g_autoptr (GVariant) state = g_action_group_get_action_state (G_ACTION_GROUP (win), "zoom-to");
+
+  return g_variant_get_int32 (state);
+}
+
+/* AS-3 (REQ-0008-05): the check mark follows every zoom change, and no item is checked at a zoom that is not a preset. */
+static void
+as3_zoom_check_follows_zoom (void)
+{
+  EaselWindow *win;
+  EaselCanvas *canvas;
+
+  write_settings ("[new-picture]\nwidth=3000\nheight=2000\nbackground=#FFFF00\n");
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  wait_for_layout (win);
+  g_assert_cmpint (zoom_checked (win), ==, 100);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-large", NULL);           /* Ctrl+PageDown */
+  g_assert_cmpint (zoom_checked (win), ==, 400);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-in", NULL);
+  g_assert_cmpint (zoom_checked (win), ==, 600);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-large", NULL);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-out", NULL);             /* 300 %: a step, not a preset */
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 300);
+  g_assert_cmpint (zoom_checked (win), ==, 0);
+  /* 50 % and 25 % are steps, not presets (REQ-0008-01). */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-normal", NULL);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-out", NULL);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 50);
+  g_assert_cmpint (zoom_checked (win), ==, 0);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-out", NULL);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 25);
+  g_assert_cmpint (zoom_checked (win), ==, 0);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-fit", NULL);
+  wait_for_layout (win);
+  g_assert_cmpint (easel_view_preset_index (easel_window_get_zoom (win)), ==, -1);    /* 42 % or so */
+  g_assert_cmpint (zoom_checked (win), ==, 0);
+  /* The Magnifier with 4x chosen. */
+  use_tool (win, "magnifier");
+  choose_preset (win, "400 %");
+  easel_canvas_press (canvas, 1, 100.5, 100.5);
+  easel_canvas_release (canvas, 1);
+  wait_for_layout (win);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 400);
+  g_assert_cmpint (zoom_checked (win), ==, 400);
+  /* The menu's own choice. */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-to", g_variant_new_int32 (200));
+  g_assert_cmpint (zoom_checked (win), ==, 200);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-to", g_variant_new_int32 (25));      /* not a preset: ignored */
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 200);
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* The toolbox panel: the box that holds the tool grid and the options, found from the Pan button. */
+static GtkWidget *
+toolbox_panel (EaselWindow *win)
+{
+  GtkWidget *grid = gtk_widget_get_parent (find_by_tooltip (GTK_WIDGET (win), "Pan"));
+
+  return gtk_widget_get_parent (gtk_widget_get_parent (grid));
+}
+
+/* Every button of the shown options lies inside the toolbox, and a text button's label gets at least its natural width
+   (no label is cut). */
+static void
+assert_options_fit (EaselWindow *win, const char *const *tips, int n)
+{
+  GtkWidget *panel = toolbox_panel (win);
+
+  for (int i = 0; i < n; i++)
+    {
+      GtkWidget *b = find_by_tooltip (GTK_WIDGET (win), tips[i]);
+      graphene_rect_t r = bounds_in (b, panel);
+      GtkWidget *child = gtk_button_get_child (GTK_BUTTON (b));
+
+      g_assert_true (gtk_widget_get_mapped (b));
+      g_assert_cmpfloat (r.origin.x, >=, 0);
+      g_assert_cmpfloat (r.origin.x + r.size.width, <=, gtk_widget_get_width (panel));
+      if (GTK_IS_LABEL (child))
+        {
+          int min, nat;
+
+          gtk_widget_measure (child, GTK_ORIENTATION_HORIZONTAL, -1, &min, &nat, NULL, NULL);
+          g_assert_cmpint (gtk_widget_get_width (child), >=, nat);
+        }
+    }
+}
+
+/* The Magnifier's level buttons are laid out as the tool buttons are (REQ-0008-07): 1x, 4x and 8x under Pan, 2x and 6x
+   under the Magnifier tool button, as wide as a tool button, their labels at the window's own text size. */
+static void
+assert_lens_like_tool_buttons (EaselWindow *win)
+{
+  static const char *const left[] = { "100 %", "400 %", "800 %" }, *const right[] = { "200 %", "600 %" };
+  GtkWidget *panel = toolbox_panel (win);
+  graphene_rect_t pan = bounds_in (find_by_tooltip (GTK_WIDGET (win), "Pan"), panel);
+  graphene_rect_t mag = bounds_in (find_by_tooltip (GTK_WIDGET (win), "Magnifier"), panel);
+  int window_size = pango_font_description_get_size (pango_context_get_font_description (
+                      gtk_widget_get_pango_context (GTK_WIDGET (win))));
+
+  use_tool (win, "magnifier");
+  wait_for_layout (win);
+  for (guint i = 0; i < G_N_ELEMENTS (left) + G_N_ELEMENTS (right); i++)
+    {
+      gboolean on_left = i < G_N_ELEMENTS (left);
+      GtkWidget *b = find_by_tooltip (GTK_WIDGET (win), on_left ? left[i] : right[i - G_N_ELEMENTS (left)]);
+      graphene_rect_t r = bounds_in (b, panel);
+      GtkWidget *label = gtk_button_get_child (GTK_BUTTON (b));
+
+      g_assert_cmpfloat_with_epsilon (r.origin.x, on_left ? pan.origin.x : mag.origin.x, 1.0);
+      g_assert_cmpfloat_with_epsilon (r.size.width, pan.size.width, 1.0);
+      g_assert_cmpint (pango_font_description_get_size (pango_context_get_font_description (gtk_widget_get_pango_context (label))),
+                       ==, window_size);
+    }
+}
+
+/* AS-6 (REQ-0008-07): the toolbox has the same width for every tool, 87 px at the default text size, and at 150 % and
+   200 % text the same for every tool at each size; every preset and level button is fully shown, no label cut. */
+static void
+as6_toolbox_width_is_the_same_for_every_tool (void)
+{
+  static const char *const tools[] = { "pan", "pencil", "brush", "airbrush", "eraser", "magnifier", "pick", "fill" };
+  static const char *const lens[] = { "100 %", "200 %", "400 %", "600 %", "800 %" };
+  GtkSettings *st = gtk_settings_get_default ();
+  EaselWindow *win = start_window ();
+  int dpi;
+
+  wait_for_layout (win);
+  g_object_get (st, "gtk-xft-dpi", &dpi, NULL);
+  for (int pct = 100; pct <= 200; pct += 50)
+    {
+      int width = -1;
+
+      /* -1 means "not set" (no settings daemon, as under meson): the default is 96 dpi, in 1024ths. */
+      g_object_set (st, "gtk-xft-dpi", (dpi > 0 ? dpi : 96 * 1024) * pct / 100, NULL);
+      wait_for_layout (win);
+      for (guint i = 0; i < G_N_ELEMENTS (tools); i++)
+        {
+          use_tool (win, tools[i]);
+          wait_for_layout (win);
+          g_test_message ("text %d %%, %s: toolbox %d px", pct, tools[i], gtk_widget_get_width (toolbox_panel (win)));
+          if (width < 0)
+            width = gtk_widget_get_width (toolbox_panel (win));
+          g_assert_cmpint (gtk_widget_get_width (toolbox_panel (win)), ==, width);
+          if (g_str_equal (tools[i], "brush"))
+            assert_options_fit (win, brush_tips, 12);
+          else if (g_str_equal (tools[i], "airbrush"))
+            assert_options_fit (win, airbrush_tips, 3);
+          else if (g_str_equal (tools[i], "eraser"))
+            {
+              assert_options_fit (win, eraser_tips, 4);
+              assert_options_fit (win, eraser_mode_tips, 2);
+            }
+          else if (g_str_equal (tools[i], "magnifier"))
+            assert_options_fit (win, lens, 5);
+        }
+      if (pct == 100)
+        {
+          g_assert_cmpint (width, ==, 87);
+          assert_lens_like_tool_buttons (win);
+        }
+    }
+  g_object_set (st, "gtk-xft-dpi", dpi, NULL);
+  close_windows ();
+}
+
+/* AS-4 (REQ-0008-04): before the picture exists, with the color chooser open and during a stroke, a preset does nothing. */
+static void
+as4_zoom_to_ignored_when_blocked (void)
+{
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  EaselPaletteBar *bar;
+
+  write_settings ("[new-picture]\nwidth=auto\nheight=auto\n");
+  win = easel_window_new (app);
+  g_assert_null (easel_window_get_picture (win));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-to", g_variant_new_int32 (400));
+  g_assert_cmpint (easel_canvas_get_zoom (easel_window_get_canvas (win)), ==, 100);
+  gtk_window_destroy (GTK_WINDOW (win));
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  bar = easel_window_get_palette_bar (win);
+  wait_for_layout (win);
+  /* The action exists, so that a menu item can use it. */
+  g_assert_true (g_action_group_has_action (G_ACTION_GROUP (win), "zoom-to"));
+  easel_palette_bar_press (bar, 17, 1, 1);
+  easel_palette_bar_press (bar, 17, 1, 2);
+  g_assert_true (easel_window_is_choosing_color (win));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-to", g_variant_new_int32 (400));
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 100);
+  choose (win, NULL);
+
+  use_pencil (win);
+  easel_canvas_press (canvas, 1, 10.5, 10.5);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-to", g_variant_new_int32 (400));
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 100);
+  easel_canvas_release (canvas, 1);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-to", g_variant_new_int32 (400));
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 400);           /* after the release it works */
+  close_windows ();
+}
+
+
 int
 main (int argc, char **argv)
 {
@@ -6663,6 +7024,11 @@ main (int argc, char **argv)
   g_test_add_func ("/0004/as10_grid_at_magnifier_levels", as10_grid_at_magnifier_levels);
   g_test_add_func ("/0007/as17_pencil_after_magnifier", as17_pencil_after_magnifier);
   g_test_add_func ("/0007/as18_lost_release_ends_the_press", as18_lost_release_ends_the_press);
+  g_test_add_func ("/0008/as1_zoom_submenu_and_lens_levels", as1_zoom_submenu_and_lens_levels);
+  g_test_add_func ("/0008/as2_zoom_to_preset", as2_zoom_to_preset);
+  g_test_add_func ("/0008/as3_zoom_check_follows_zoom", as3_zoom_check_follows_zoom);
+  g_test_add_func ("/0008/as6_toolbox_width_is_the_same_for_every_tool", as6_toolbox_width_is_the_same_for_every_tool);
+  g_test_add_func ("/0008/as4_zoom_to_ignored_when_blocked", as4_zoom_to_ignored_when_blocked);
   g_test_add_func ("/0006/as12_cursor_follows_tool_preset_and_zoom", as12_cursor_follows_tool_preset_and_zoom);
   g_test_add_func ("/0004/as20_attributes_dialog", as20_attributes_dialog);
   g_test_add_func ("/0004/as22_undo_through_resize", as22_undo_through_resize);

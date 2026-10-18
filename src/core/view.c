@@ -7,6 +7,17 @@
 static const int zoom_levels[] = { 10, 25, 50, 100, 200, 300, 400, 600, 800 };
 #define N_LEVELS ((int) (sizeof zoom_levels / sizeof zoom_levels[0]))
 
+const int easel_view_presets[EASEL_VIEW_N_PRESETS] = { 100, 200, 400, 600, 800 };
+
+int
+easel_view_preset_index (int pct)
+{
+  for (int i = 0; i < EASEL_VIEW_N_PRESETS; i++)
+    if (easel_view_presets[i] == pct)
+      return i;
+  return -1;
+}
+
 int
 easel_view_zoom_step (int pct, int notches)
 {

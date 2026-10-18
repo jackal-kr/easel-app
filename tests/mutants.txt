@@ -1053,28 +1053,30 @@ test: ui-0007
                           <property name="column">1</property>
                           <property name="row">4</property>
 
-=== REQ-0007-02 the Magnifier's choice is not read back from the buttons
-file: src/ui/tool-options.c
+=== REQ-0007-02 the Magnifier's choice is not kept (the level buttons do not change the selected level)
+file: src/ui/window.c
 test: ui-0007
 --- find
-  self->magnifier_index = index_of (self->magnifier, EASEL_MAGNIFIER_N_LEVELS);
+  g_simple_action_set_state (action, value);
+  easel_canvas_set_magnifier_level (self->canvas, g_variant_get_int32 (value));
 --- replace
+  easel_canvas_set_magnifier_level (self->canvas, g_variant_get_int32 (value));
 
 === REQ-0007-02 the Magnifier starts at 4x instead of 2x
-file: src/ui/tool-options.c
+file: src/ui/window.c
 test: ui-0007
 --- find
-  self->magnifier_index = EASEL_MAGNIFIER_DEFAULT;
+                                      g_variant_new_int32 (easel_magnifier_levels[EASEL_MAGNIFIER_DEFAULT]));
 --- replace
-  self->magnifier_index = 2;
+                                      g_variant_new_int32 (easel_magnifier_levels[2]));
 
 === REQ-0007-02 the Magnifier has no 1x level
-file: src/core/magnifier.c
-test: core-magnifier
+file: src/core/view.c
+test: core-magnifier core-view
 --- find
-{ 10, 25, 50, 100, 200, 400, 600, 800 }
+{ 100, 200, 400, 600, 800 }
 --- replace
-{ 10, 25, 50, 200, 200, 400, 600, 800 }
+{ 200, 200, 400, 600, 800 }
 
 === REQ-0007-05 the secondary button fills with the foreground color
 file: src/ui/canvas.c
@@ -1189,7 +1191,7 @@ test: ui-0007
 file: src/ui/window.c
 test: ui-0007
 --- find
-  easel_canvas_set_magnifier_level (self->canvas, easel_tool_options_get_magnifier_level (self->tool_options));
+  easel_canvas_set_magnifier_level (self->canvas, g_variant_get_int32 (value));
 --- replace
 
 === REQ-0007-03 the focus is the pixel under the pointer even at 100 %, not the box's center
@@ -1233,14 +1235,6 @@ test: ui-0007
 --- replace
   if (zoom == self->zoom)
 
-=== REQ-0007-02 the 1/10x level gives the wrong zoom
-file: src/core/magnifier.c
-test: core-magnifier
---- find
-{ 10, 25, 50, 100, 200, 400, 600, 800 }
---- replace
-{ 20, 25, 50, 100, 200, 400, 600, 800 }
-
 === REQ-0007-18 a lost release does not free the Fill, Pick Color and Magnifier press
 file: src/ui/canvas.c
 test: ui-0007
@@ -1272,3 +1266,128 @@ test: ui-0004
 --- replace
   cairo_translate (d.cr, -vx0, -vy0);
   cairo_set_antialias (d.cr, CAIRO_ANTIALIAS_NONE);
+
+# ---- the zoom presets (0008) ----
+
+=== REQ-0008-06 300 % is made a preset, so the lens and the menu would offer a level the list does not
+file: src/core/view.c
+test: core-view
+--- find
+const int easel_view_presets[EASEL_VIEW_N_PRESETS] = { 100, 200, 400, 600, 800 };
+--- replace
+const int easel_view_presets[EASEL_VIEW_N_PRESETS] = { 100, 200, 300, 600, 800 };
+
+=== REQ-0008-06 a preset is dropped from the zoom steps
+file: src/core/view.c
+test: core-view
+--- find
+static const int zoom_levels[] = { 10, 25, 50, 100, 200, 300, 400, 600, 800 };
+--- replace
+static const int zoom_levels[] = { 10, 25, 50, 100, 200, 300, 600, 800 };
+
+=== REQ-0008-01 the index of a preset is off by one
+file: src/core/view.c
+test: core-view
+--- find
+    if (easel_view_presets[i] == pct)
+      return i;
+--- replace
+    if (easel_view_presets[i] == pct)
+      return i + 1;
+
+=== REQ-0008-04 a preset from the menu zooms while a dialog is open or a stroke is held
+file: src/ui/window.c
+test: ui-0008
+--- find
+  if (view_actions_allowed (self) && easel_view_preset_index (g_variant_get_int32 (parameter)) >= 0)
+--- replace
+  if (easel_view_preset_index (g_variant_get_int32 (parameter)) >= 0)
+
+=== REQ-0008-03 the submenu's items are labelled without the space before the percent sign
+file: src/ui/window.c
+test: ui-0008
+--- find
+      g_autofree char *label = g_strdup_printf ("%d %%", easel_view_presets[i]);
+--- replace
+      g_autofree char *label = g_strdup_printf ("%d%%", easel_view_presets[i]);
+
+=== REQ-0008-05 the Zoom submenu's mark is not updated when the zoom changes
+file: src/ui/window.c
+test: ui-0008
+--- find
+    if (zoom_to != NULL)
+      g_simple_action_set_state (G_SIMPLE_ACTION (zoom_to),
+--- replace
+    if (zoom_to != NULL && FALSE)
+      g_simple_action_set_state (G_SIMPLE_ACTION (zoom_to),
+
+=== REQ-0008-05 a zoom that is not a preset keeps a mark (the state is the zoom itself)
+file: src/ui/window.c
+test: ui-0008
+--- find
+                                 g_variant_new_int32 (easel_view_preset_index (zoom) >= 0 ? zoom : 0));
+--- replace
+                                 g_variant_new_int32 (zoom));
+
+=== REQ-0008-02 the Magnifier's options leave out the last preset
+file: src/ui/tool-options.c
+test: ui-0008
+--- find
+    for (int i = 0; i < EASEL_MAGNIFIER_N_LEVELS; i++)
+--- replace
+    for (int i = 0; i < EASEL_MAGNIFIER_N_LEVELS - 1; i++)
+
+=== REQ-0008-07 a tool without options does not get the empty page (the last tool's options stay on screen)
+file: src/ui/tool-options.c
+test: ui-0006 ui-0007
+--- find
+  else
+    gtk_stack_set_visible_child_name (GTK_STACK (self->stack), "none");
+--- replace
+  else
+    ;
+
+=== REQ-0008-07 the line above the options stays visible on the empty page
+file: src/ui/tool-options.c
+test: ui-0006 ui-0007
+--- find
+  gtk_widget_set_visible (self->line, group >= 0);
+--- replace
+  gtk_widget_set_visible (self->line, TRUE);
+
+=== REQ-0008-07 the options stack is as wide as the page shown, so the toolbox width changes with the tool
+file: src/ui/tool-options.c
+test: ui-0008
+--- find
+  gtk_stack_set_hhomogeneous (GTK_STACK (self->stack), TRUE);
+--- replace
+  gtk_stack_set_hhomogeneous (GTK_STACK (self->stack), FALSE);
+
+=== REQ-0008-01 10 % is still a preset (the lens and the menu would mark a zoom out step)
+file: src/core/view.c
+test: core-view
+--- find
+easel_view_preset_index (int pct)
+{
+--- replace
+easel_view_preset_index (int pct)
+{
+  if (pct == 10)
+    return 0;
+
+=== REQ-0008-07 the Magnifier's levels are not lined up under the tool columns (a narrower gap)
+file: src/ui/tool-options.c
+test: ui-0008
+--- find
+    gtk_grid_set_column_spacing (GTK_GRID (magnifier_grid), 6);
+--- replace
+    gtk_grid_set_column_spacing (GTK_GRID (magnifier_grid), 2);
+
+=== REQ-0008-07 the Magnifier's level labels are smaller than the normal text size
+file: src/ui/style.css
+test: ui-0008
+--- find
+button.flat.level {
+--- replace
+button.flat.level label { font-size: 82%; }
+button.flat.level {

@@ -2,6 +2,7 @@
 <gresources>
   <gresource prefix="/io/github/jackal_kr/Easel">
     <file preprocess="xml-stripblanks">window.ui</file>
+    <file>style.css</file>
     <file preprocess="xml-stripblanks">icons/scalable/actions/easel-tool-pan-symbolic.svg</file>
     <file preprocess="xml-stripblanks">icons/scalable/actions/easel-tool-pencil-symbolic.svg</file>
     <file preprocess="xml-stripblanks">icons/scalable/actions/easel-tool-brush-symbolic.svg</file>

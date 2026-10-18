@@ -1,8 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 #include "magnifier.h"
 
-const int easel_magnifier_levels[EASEL_MAGNIFIER_N_LEVELS] = { 10, 25, 50, 100, 200, 400, 600, 800 };
-
 int
 easel_magnifier_zoom (int zoom, int level_pct)
 {

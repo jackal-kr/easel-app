@@ -11,10 +11,10 @@
 static void
 as3_magnifier_zoom_rule (void)
 {
-  CHECK (easel_magnifier_levels[0] == 10 && easel_magnifier_levels[1] == 25 && easel_magnifier_levels[2] == 50
-         && easel_magnifier_levels[3] == 100 && easel_magnifier_levels[4] == 200 && easel_magnifier_levels[5] == 400
-         && easel_magnifier_levels[6] == 600 && easel_magnifier_levels[7] == 800);
-  CHECK (EASEL_MAGNIFIER_N_LEVELS == 8);
+  /* 1x, 2x, 4x, 6x and 8x (REQ-0007-02 as amended by REQ-0008-02: no reduction levels). */
+  CHECK (easel_magnifier_levels[0] == 100 && easel_magnifier_levels[1] == 200 && easel_magnifier_levels[2] == 400
+         && easel_magnifier_levels[3] == 600 && easel_magnifier_levels[4] == 800);
+  CHECK (EASEL_MAGNIFIER_N_LEVELS == 5);
   CHECK (easel_magnifier_levels[EASEL_MAGNIFIER_DEFAULT] == 200);               /* 2x at start-up */
   CHECK (easel_magnifier_zoom (100, 200) == 200);
   CHECK (easel_magnifier_zoom (200, 200) == 100);                  /* the same level again goes back */
@@ -29,11 +29,10 @@ as3_magnifier_zoom_rule (void)
   CHECK (easel_magnifier_zoom (10, 600) == 600);
   CHECK (easel_magnifier_zoom (100, 100) == 100);                  /* 1x: back to 100 %, and at 100 % nothing changes */
   CHECK (easel_magnifier_zoom (400, 100) == 100);
-  /* A reduction: 100 % gives the level, the level goes back to 100 %, any other zoom gives the level. */
-  CHECK (easel_magnifier_zoom (100, 10) == 10);
-  CHECK (easel_magnifier_zoom (10, 10) == 100);
-  CHECK (easel_magnifier_zoom (100, 25) == 25 && easel_magnifier_zoom (25, 25) == 100);
-  CHECK (easel_magnifier_zoom (100, 50) == 50 && easel_magnifier_zoom (200, 50) == 50 && easel_magnifier_zoom (10, 50) == 50);
+  /* Below 100 % (a Zoom Out step, 10, 25 or 50 %, or a Fit to Window zoom): a press gives the selected level, and 1x gives
+     100 % (REQ-0007-03 as amended by REQ-0008-02; there is no reduction level). */
+  CHECK (easel_magnifier_zoom (25, 400) == 400 && easel_magnifier_zoom (25, 100) == 100);
+  CHECK (easel_magnifier_zoom (10, 200) == 200 && easel_magnifier_zoom (50, 800) == 800 && easel_magnifier_zoom (50, 100) == 100);
   CHECK (easel_magnifier_zoom (42, 100) == 100);
 }
 

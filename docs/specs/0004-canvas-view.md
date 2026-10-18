@@ -18,7 +18,7 @@ the picture). Words used below: the *canvas area* is the scrolled area that show
 - REQ-0004-01 The header bar shall have an Image menu button and, right after it, a View menu button, each showing a symbolic icon before its label ("Image", "View"), then the primary menu (design.md). Image shall hold one item for now: Attributes… (Ctrl+E); later features add theirs (Image Transforms). View shall hold, in order:
   - a zoom row: a Zoom Out button (tooltip "Zoom Out (Ctrl+-)"), the current zoom as `N%` (for example `100%`), and a Zoom In button (tooltip "Zoom In (Ctrl+=)"); Zoom In also answers to Ctrl++ and the numpad plus with Ctrl, Zoom Out to Ctrl+numpad minus;
   - a separator;
-  - Normal Size (Ctrl+PageUp), Large Size (Ctrl+PageDown), Fit to Window (Ctrl+0);
+  - Normal Size (Ctrl+PageUp), Large Size (Ctrl+PageDown), Fit to Window (Ctrl+0) (0008 puts a Zoom submenu with the zoom presets first in this group: REQ-0008-03);
   - a separator;
   - Show Grid (Ctrl+G, a check item) and Grid…;
   - a separator;

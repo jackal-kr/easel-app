@@ -113,6 +113,54 @@ as3_zoom_levels (void)
   CHECK (easel_view_zoom_step (10, -1) == 10);    /* and Zoom Out at 10 % */
 }
 
+/* 0008 AS-1 (REQ-0008-01): one list of presets, in order, and the index of a zoom in it (-1 when it is not a preset). */
+static void
+as1_presets_list_and_index (void)
+{
+  static const int expected[] = { 100, 200, 400, 600, 800 };
+
+  CHECK (EASEL_VIEW_N_PRESETS == 5);
+  for (int i = 0; i < 5; i++)
+    {
+      CHECK (easel_view_presets[i] == expected[i]);
+      CHECK (easel_view_preset_index (expected[i]) == i);
+    }
+  CHECK (easel_view_preset_index (300) == -1);        /* a step, not a preset */
+  CHECK (easel_view_preset_index (10) == -1);         /* steps below the first preset */
+  CHECK (easel_view_preset_index (25) == -1);
+  CHECK (easel_view_preset_index (50) == -1);
+  CHECK (easel_view_preset_index (42) == -1);         /* Fit to Window's zoom */
+  CHECK (easel_view_preset_index (0) == -1);
+  CHECK (easel_view_preset_index (9) == -1);
+  CHECK (easel_view_preset_index (801) == -1);
+}
+
+/* 0008 AS-5 (REQ-0008-06): every preset is a zoom step, so Zoom In from 100 % reaches every preset in order, with 300 %
+   between 200 % and 400 % as the only step that is not a preset; 10, 25 and 50 % are steps below the first preset. */
+static void
+as5_every_preset_is_a_step (void)
+{
+  int zoom = 100, next = 1;
+
+  CHECK (easel_view_presets[0] == 100);
+  CHECK (easel_view_zoom_step (100, -1) == 50 && easel_view_zoom_step (50, -1) == 25 && easel_view_zoom_step (25, -1) == 10);
+  for (int n = 0; n < 20 && next < EASEL_VIEW_N_PRESETS; n++)
+    {
+      zoom = easel_view_zoom_step (zoom, 1);
+      if (zoom == easel_view_presets[next])
+        next++;
+      else
+        CHECK (zoom == 300 && easel_view_presets[next] == 400);
+    }
+  CHECK (next == EASEL_VIEW_N_PRESETS);
+  CHECK (easel_view_zoom_step (200, 1) == 300);
+  CHECK (easel_view_zoom_step (400, -1) == 300);
+  CHECK (easel_view_zoom_step (300, -1) == 200);
+  /* Each preset is also reached by its own step from the one below it. */
+  for (int i = 0; i < EASEL_VIEW_N_PRESETS; i++)
+    CHECK (easel_view_zoom_step (easel_view_zoom_step (easel_view_presets[i], -1), 1) == easel_view_presets[i]);
+}
+
 /* REQ-0004-06: a zoom command keeps the center of the canvas area still. */
 static void
 as5_zoom_anchor_center (void)
@@ -257,6 +305,8 @@ main (void)
   RUN (as2_window_size);
   RUN (as13_zoom_steps_and_anchor);
   RUN (as3_zoom_levels);
+  RUN (as1_presets_list_and_index);
+  RUN (as5_every_preset_is_a_step);
   RUN (as5_zoom_anchor_center);
   RUN (as6_fit_zoom);
   RUN (as6_levels_from_a_fit_zoom);

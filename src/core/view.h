@@ -9,6 +9,14 @@ void easel_view_window_size (int monitor_width, int monitor_height, int *width, 
 /* The zoom levels in percent: 10, 25, 50, 100, 200, 300, 400, 600, 800. */
 int easel_view_zoom_step (int pct, int notches);
 
+/* The zoom presets (REQ-0008-01): the levels the Magnifier's options and the View > Zoom submenu offer, in this order.
+   Every preset is a zoom level (REQ-0008-06); 10, 25, 50 and 300 % are levels and not presets. */
+enum { EASEL_VIEW_N_PRESETS = 5 };
+extern const int easel_view_presets[EASEL_VIEW_N_PRESETS];
+
+/* The index of pct in easel_view_presets, or -1 when it is not a preset (10, 25, 50, 300, a Fit to Window zoom such as 42). */
+int easel_view_preset_index (int pct);
+
 /* Width or height in logical pixels that shows picture_size pixels, rounded up. */
 int easel_view_content_size (int picture_size, int pct, double scale);
 

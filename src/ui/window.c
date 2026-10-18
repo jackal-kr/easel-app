@@ -7,6 +7,7 @@
 #include "config.h"
 #include "attributes-dialog.h"
 #include "grid-dialog.h"
+#include "magnifier.h"
 #include "canvas.h"
 #include "palette-bar.h"
 #include "palette-file.h"
@@ -1105,6 +1106,14 @@ sync_zoom_ui (EaselWindow *self)
 
   gtk_label_set_text (self->zoom_label, text);
   easel_status_bar_set_zoom (self->status_bar, self->picture != NULL, zoom);
+  /* View > Zoom marks the current zoom when it is a preset, and nothing otherwise (REQ-0008-05). */
+  {
+    GAction *zoom_to = g_action_map_lookup_action (G_ACTION_MAP (self), "zoom-to");
+
+    if (zoom_to != NULL)
+      g_simple_action_set_state (G_SIMPLE_ACTION (zoom_to),
+                                 g_variant_new_int32 (easel_view_preset_index (zoom) >= 0 ? zoom : 0));
+  }
   for (guint i = 0; i < G_N_ELEMENTS (states); i++)
     {
       GAction *action = g_action_map_lookup_action (G_ACTION_MAP (self), states[i].name);
@@ -1181,6 +1190,47 @@ zoom_fit_activated (GSimpleAction *action, GVariant *parameter, gpointer user_da
 
   if (view_actions_allowed (self))
     easel_canvas_fit_to_window (self->canvas);
+}
+
+/* The Magnifier's level (REQ-0007-02, REQ-0008-02): the lens buttons set this state; it only selects, it never zooms. */
+static void
+magnifier_level_changed (GSimpleAction *action, GVariant *value, gpointer user_data)
+{
+  EaselWindow *self = user_data;
+
+  if (easel_view_preset_index (g_variant_get_int32 (value)) < 0)
+    return;
+  g_simple_action_set_state (action, value);
+  easel_canvas_set_magnifier_level (self->canvas, g_variant_get_int32 (value));
+}
+
+/* View > Zoom (REQ-0008-04): a preset, through the same path as the other zoom commands, which keeps the center still. */
+static void
+zoom_to_activated (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+  EaselWindow *self = user_data;
+
+  if (view_actions_allowed (self) && easel_view_preset_index (g_variant_get_int32 (parameter)) >= 0)
+    easel_canvas_set_zoom (self->canvas, g_variant_get_int32 (parameter));
+}
+
+/* The View menu's Zoom submenu, one item per preset (REQ-0008-03), first in the section of Normal Size. */
+static void
+add_zoom_submenu (EaselWindow *self)
+{
+  GMenuModel *menu = gtk_menu_button_get_menu_model (self->view_button);
+  g_autoptr (GMenuModel) section = g_menu_model_get_item_link (menu, 1, G_MENU_LINK_SECTION);
+  g_autoptr (GMenu) sub = g_menu_new ();
+
+  for (int i = 0; i < EASEL_VIEW_N_PRESETS; i++)
+    {
+      g_autofree char *label = g_strdup_printf ("%d %%", easel_view_presets[i]);
+      g_autoptr (GMenuItem) item = g_menu_item_new (label, NULL);
+
+      g_menu_item_set_action_and_target_value (item, "win.zoom-to", g_variant_new_int32 (easel_view_presets[i]));
+      g_menu_append_item (sub, item);
+    }
+  g_menu_insert_submenu (G_MENU (section), 0, "Zoom", G_MENU_MODEL (sub));
 }
 
 static void
@@ -1362,7 +1412,6 @@ sync_canvas_options (EaselWindow *self)
   if (self->tool == EASEL_TOOL_BRUSH || self->tool == EASEL_TOOL_AIRBRUSH || self->tool == EASEL_TOOL_ERASER)
     easel_canvas_set_footprint (self->canvas, easel_tool_options_get_footprint (self->tool_options, self->tool));
   easel_canvas_set_eraser_transparent (self->canvas, easel_tool_options_get_transparent (self->tool_options));
-  easel_canvas_set_magnifier_level (self->canvas, easel_tool_options_get_magnifier_level (self->tool_options));
   easel_status_bar_set_hint (self->status_bar, tool_hint (self->tool, easel_tool_options_get_transparent (self->tool_options)));
 }
 
@@ -1478,6 +1527,8 @@ static const GActionEntry win_actions[] = {
   { .name = "zoom-normal", .activate = zoom_normal_activated },
   { .name = "zoom-large", .activate = zoom_large_activated },
   { .name = "zoom-fit", .activate = zoom_fit_activated },
+  { .name = "zoom-to", .parameter_type = "i", .state = "0", .activate = zoom_to_activated },
+  { .name = "magnifier-level", .parameter_type = "i", .state = "200", .change_state = magnifier_level_changed },
   { .name = "grid", .state = "false", .change_state = grid_state_changed },
   { .name = "grid-dialog", .activate = grid_dialog_activated },
   { .name = "attributes", .activate = attributes_activated },
@@ -1672,6 +1723,9 @@ easel_window_init (EaselWindow *self)
     g_error ("Out of memory creating the undo history");
 
   g_action_map_add_action_entries (G_ACTION_MAP (self), win_actions, G_N_ELEMENTS (win_actions), self);
+  add_zoom_submenu (self);
+  g_action_group_change_action_state (G_ACTION_GROUP (self), "magnifier-level",
+                                      g_variant_new_int32 (easel_magnifier_levels[EASEL_MAGNIFIER_DEFAULT]));
   gtk_popover_menu_add_child (GTK_POPOVER_MENU (gtk_menu_button_get_popover (self->view_button)), make_zoom_row (self),
                               "zoom");
   g_signal_connect_object (self->canvas, "zoom-changed", G_CALLBACK (on_zoom_changed), self, G_CONNECT_SWAPPED);

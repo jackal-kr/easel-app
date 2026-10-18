@@ -27,7 +27,7 @@ test_window = executable('test-window', 'ui/test-window.c',
 # registered as /0001/..., /0002/..., so every case is in exactly one of them); see docs/engineering.md, Testing.
 # Not parallel: run in parallel, the ui windows failed as5_zoom_keeps_center with a stale layout (598.25 against 1196.5)
 # in 2 of 3 runs. Earlier one-off failures of the ui tests, run as a single executable, are unexplained.
-foreach feature : ['0001', '0002', '0003', '0004', '0005', '0006', '0007']
+foreach feature : ['0001', '0002', '0003', '0004', '0005', '0006', '0007', '0008']
   test('ui-' + feature, test_window, args: ['-p', '/' + feature], env: ui_env, suite: 'ui', timeout: 180,
        is_parallel: false)
 endforeach

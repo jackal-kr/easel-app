@@ -20,13 +20,14 @@ struct _EaselToolOptions
   GtkBox parent_instance;
 
   GtkWidget *line;           /* the separator above the presets */
+  GtkWidget *stack;          /* one page per group, and an empty page: as wide as its widest page (REQ-0008-07) */
   GtkWidget *groups[4];      /* Brush, Airbrush, Eraser, Magnifier: a vertical box each */
   GtkToggleButton *brush[EASEL_BRUSH_N_PRESETS];
   GtkToggleButton *airbrush[EASEL_AIRBRUSH_N_PRESETS];
   GtkToggleButton *eraser[EASEL_ERASER_N_SIZES];
   GtkToggleButton *modes[2];
   GtkToggleButton *magnifier[EASEL_MAGNIFIER_N_LEVELS];
-  int brush_index, airbrush_index, eraser_index, magnifier_index;
+  int brush_index, airbrush_index, eraser_index;
   gboolean transparent;
   gboolean busy;
 };
@@ -100,6 +101,7 @@ add_button (EaselToolOptions *self, GtkGrid *grid, int index, int columns, const
   GtkWidget *button = gtk_toggle_button_new (), *area = gtk_drawing_area_new ();
 
   gtk_widget_add_css_class (button, "flat");
+  gtk_widget_add_css_class (button, "compact");
   gtk_widget_set_tooltip_text (button, name);
   gtk_accessible_update_property (GTK_ACCESSIBLE (button), GTK_ACCESSIBLE_PROPERTY_LABEL, name, -1);
   gtk_drawing_area_set_content_width (GTK_DRAWING_AREA (area), BUTTON_SIZE);
@@ -113,19 +115,21 @@ add_button (EaselToolOptions *self, GtkGrid *grid, int index, int columns, const
   return GTK_TOGGLE_BUTTON (button);
 }
 
-/* A text button of the Magnifier's levels: "2x", with the zoom it gives as its tooltip. */
+/* A text button of the Magnifier's levels: "2x", with the zoom it gives as its tooltip. It selects the level through the
+   window's action win.magnifier-level, whose state is the selected level, so the buttons show that state and never zoom
+   (REQ-0007-02, REQ-0008-02). It is laid out as a tool button is, its label at the normal text size (REQ-0008-07). */
 static GtkToggleButton *
-add_level_button (EaselToolOptions *self, GtkGrid *grid, int index, int pct, GtkToggleButton *group_first)
+add_level_button (EaselToolOptions *self, GtkGrid *grid, int index, int pct)
 {
-  /* "2x" for an enlargement, "1/4x" for a reduction (100 / 25). */
-  g_autofree char *label = pct >= 100 ? g_strdup_printf ("%dx", pct / 100) : g_strdup_printf ("1/%dx", (100 + pct / 2) / pct);
+  g_autofree char *label = g_strdup_printf ("%dx", pct / 100);
   g_autofree char *tip = g_strdup_printf ("%d %%", pct);
   GtkWidget *button = gtk_toggle_button_new_with_label (label);
 
   gtk_widget_add_css_class (button, "flat");
+  gtk_widget_add_css_class (button, "level");
   gtk_widget_set_tooltip_text (button, tip);
-  if (group_first != NULL)
-    gtk_toggle_button_set_group (GTK_TOGGLE_BUTTON (button), group_first);
+  gtk_actionable_set_action_name (GTK_ACTIONABLE (button), "win.magnifier-level");
+  gtk_actionable_set_action_target_value (GTK_ACTIONABLE (button), g_variant_new_int32 (pct));
   gtk_grid_attach (grid, button, index % 2, index / 2, 1, 1);
   g_signal_connect (button, "toggled", G_CALLBACK (on_toggled), self);
   return GTK_TOGGLE_BUTTON (button);
@@ -136,10 +140,11 @@ new_grid (void)
 {
   GtkWidget *grid = gtk_grid_new ();
 
+  /* Small margins and gap, with the compact buttons, keep each group within the tool grid's width (REQ-0008-07). */
   gtk_grid_set_row_spacing (GTK_GRID (grid), 4);
-  gtk_grid_set_column_spacing (GTK_GRID (grid), 4);
-  gtk_widget_set_margin_start (grid, 6);
-  gtk_widget_set_margin_end (grid, 6);
+  gtk_grid_set_column_spacing (GTK_GRID (grid), 2);
+  gtk_widget_set_margin_start (grid, 4);
+  gtk_widget_set_margin_end (grid, 4);
   gtk_widget_set_margin_top (grid, 6);
   gtk_widget_set_margin_bottom (grid, 6);
   return grid;
@@ -192,21 +197,32 @@ build_presets (EaselToolOptions *self)
   gtk_box_append (GTK_BOX (eraser_box), mode_grid);
 
   {
+    /* The levels line up under the two tool columns: the tool grid's margins and gaps, two equal columns (REQ-0008-07). */
     GtkWidget *magnifier_grid = new_grid ();
 
+    gtk_grid_set_column_spacing (GTK_GRID (magnifier_grid), 6);
+    gtk_grid_set_row_spacing (GTK_GRID (magnifier_grid), 6);
+    gtk_grid_set_column_homogeneous (GTK_GRID (magnifier_grid), TRUE);
+    gtk_widget_set_margin_start (magnifier_grid, 6);
+    gtk_widget_set_margin_end (magnifier_grid, 6);
+
     for (int i = 0; i < EASEL_MAGNIFIER_N_LEVELS; i++)
-      self->magnifier[i] = add_level_button (self, GTK_GRID (magnifier_grid), i, easel_magnifier_levels[i],
-                                             i ? self->magnifier[0] : NULL);
+      self->magnifier[i] = add_level_button (self, GTK_GRID (magnifier_grid), i, easel_magnifier_levels[i]);
     self->groups[3] = magnifier_grid;
   }
   self->groups[0] = brush_grid;
   self->groups[1] = air_grid;
   self->groups[2] = eraser_box;
+  /* The groups are the pages of a stack as wide as its widest page and as high as the page shown, so that the toolbox has
+     one width for every tool at any text size; a tool without options shows the empty page (REQ-0008-07, REQ-0006-02). */
+  self->stack = gtk_stack_new ();
+  gtk_stack_set_hhomogeneous (GTK_STACK (self->stack), TRUE);
+  gtk_stack_set_vhomogeneous (GTK_STACK (self->stack), FALSE);
+  gtk_stack_set_transition_type (GTK_STACK (self->stack), GTK_STACK_TRANSITION_TYPE_NONE);
   for (int i = 0; i < 4; i++)
-    {
-      gtk_widget_set_visible (self->groups[i], FALSE);
-      gtk_box_append (GTK_BOX (self), self->groups[i]);
-    }
+    gtk_stack_add_named (GTK_STACK (self->stack), self->groups[i], NULL);
+  gtk_stack_add_named (GTK_STACK (self->stack), gtk_box_new (GTK_ORIENTATION_VERTICAL, 0), "none");
+  gtk_box_append (GTK_BOX (self), self->stack);
 }
 
 static void
@@ -216,7 +232,6 @@ sync_selection (EaselToolOptions *self)
   gtk_toggle_button_set_active (self->airbrush[self->airbrush_index], TRUE);
   gtk_toggle_button_set_active (self->eraser[self->eraser_index], TRUE);
   gtk_toggle_button_set_active (self->modes[self->transparent ? 1 : 0], TRUE);
-  gtk_toggle_button_set_active (self->magnifier[self->magnifier_index], TRUE);
 }
 
 static int
@@ -236,7 +251,6 @@ read_selection (EaselToolOptions *self)
   self->airbrush_index = index_of (self->airbrush, EASEL_AIRBRUSH_N_PRESETS);
   self->eraser_index = index_of (self->eraser, EASEL_ERASER_N_SIZES);
   self->transparent = gtk_toggle_button_get_active (self->modes[1]);
-  self->magnifier_index = index_of (self->magnifier, EASEL_MAGNIFIER_N_LEVELS);
 }
 
 static void
@@ -253,12 +267,11 @@ easel_tool_options_init (EaselToolOptions *self)
   self->brush_index = EASEL_BRUSH_DEFAULT;
   self->airbrush_index = EASEL_AIRBRUSH_DEFAULT;
   self->eraser_index = EASEL_ERASER_DEFAULT;
-  self->magnifier_index = EASEL_MAGNIFIER_DEFAULT;
   self->line = gtk_separator_new (GTK_ORIENTATION_HORIZONTAL);
   gtk_box_append (GTK_BOX (self), self->line);
   build_presets (self);
   sync_selection (self);
-  gtk_widget_set_visible (GTK_WIDGET (self), FALSE);
+  easel_tool_options_show_tool (self, EASEL_TOOL_PAN);
 }
 
 EaselToolOptions *
@@ -273,9 +286,12 @@ easel_tool_options_show_tool (EaselToolOptions *self, EaselTool tool)
   int group = tool == EASEL_TOOL_BRUSH ? 0 : tool == EASEL_TOOL_AIRBRUSH ? 1 : tool == EASEL_TOOL_ERASER ? 2
               : tool == EASEL_TOOL_MAGNIFIER ? 3 : -1;
 
-  for (int i = 0; i < 4; i++)
-    gtk_widget_set_visible (self->groups[i], i == group);
-  gtk_widget_set_visible (GTK_WIDGET (self), group >= 0);
+  /* Nothing of the options shows for a tool without any: the empty page, and no line above it (REQ-0006-02). */
+  if (group >= 0)
+    gtk_stack_set_visible_child (GTK_STACK (self->stack), self->groups[group]);
+  else
+    gtk_stack_set_visible_child_name (GTK_STACK (self->stack), "none");
+  gtk_widget_set_visible (self->line, group >= 0);
 }
 
 EaselFootprint
@@ -287,13 +303,6 @@ easel_tool_options_get_footprint (EaselToolOptions *self, EaselTool tool)
   if (tool == EASEL_TOOL_ERASER)
     return easel_eraser_presets[self->eraser_index];
   return easel_brush_presets[self->brush_index];
-}
-
-int
-easel_tool_options_get_magnifier_level (EaselToolOptions *self)
-{
-  read_selection (self);
-  return easel_magnifier_levels[self->magnifier_index];
 }
 
 gboolean
