@@ -40,11 +40,40 @@ write_settings (const char *dir, int w, int h)
   g_file_set_contents (path, text, -1, NULL);
 }
 
+/* A second Easel or test window changes the layout of the benchmark's window and its timings, so a benchmark refuses to run
+   with one open, as the ui tests do. */
+static void
+refuse_if_other_easel (void)
+{
+  g_autoptr (GDir) proc = g_dir_open ("/proc", 0, NULL);
+  const char *entry;
+
+  while (proc != NULL && (entry = g_dir_read_name (proc)) != NULL)
+    {
+      g_autofree char *path = g_strdup_printf ("/proc/%s/comm", entry);
+      g_autofree char *comm = NULL;
+      int pid = atoi (entry);
+
+      if (pid > 0 && pid != getpid () && g_file_get_contents (path, &comm, NULL, NULL)
+          && (g_str_has_prefix (comm, "easel\n") || g_str_has_prefix (comm, "test-window\n")))
+        {
+          g_printerr ("Close every Easel window first: process %d is an Easel or a ui test, and a second window changes the "
+                      "timings of this benchmark.\n", pid);
+          exit (1);
+        }
+    }
+}
+
 static EaselWindow *
 open_window (void)
 {
   EaselWindow *win;
   GdkFrameClock *clock;
+  static gboolean checked;
+
+  if (!checked)
+    refuse_if_other_easel ();
+  checked = TRUE;
 
   g_application_activate (G_APPLICATION (app));
   win = EASEL_WINDOW (gtk_application_get_active_window (app));

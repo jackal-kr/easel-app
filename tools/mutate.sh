@@ -11,7 +11,9 @@
 # The working tree is never touched: everything happens under .scratch/mutate (git-ignored), which is deleted and made
 # again at each start, so an interrupted run leaves nothing to clean up. Exit status: 0 if every mutant was killed by an
 # assertion. A mutant whose test died without an assertion of ours (a FATAL or CRITICAL message, "Aborted", a signal) is
-# "crashed": killed by crash, a test gap, counted apart and failing the run (docs/engineering.md, "Mutation tool").
+# "crashed": killed by crash, a test gap, counted apart and failing the run (docs/engineering.md, "Mutation tool"). A run that
+# ended because the window gave no snapshot (the line "EASEL-INCONCLUSIVE: no snapshot", exit status 75) is no verdict: that
+# mutant is run once more, and a second one is "INCONCLUSIVE", counted apart and failing the run; it is never counted as killed.
 # Format of the list and how to add a mutant: docs/engineering.md, "Mutation tool".
 set -u
 cd "$(dirname "$0")/.."
@@ -153,7 +155,23 @@ killed_by_assertion () {
   return 0
 }
 
-killed=0; crashed=0; survived=0; errors=0
+# True if the run ended because the window gave no snapshot to render (render_pixels in tests/ui/test-window.c prints this line
+# and exits with status 75). That says nothing about the mutant: it is not a kill, the mutant is run once more, and a second one
+# is counted apart and fails the run.
+inconclusive () {
+  grep -q 'EASEL-INCONCLUSIVE: no snapshot' "$SCRATCH/test.log"
+}
+
+# Runs the tests of a mutant and sets KIND to survived, killed, crashed or inconclusive.
+judge () {
+  if run_tests "$tests"; then KIND=survived
+  elif inconclusive; then KIND=inconclusive
+  elif killed_by_assertion; then KIND=killed
+  else KIND=crashed
+  fi
+}
+
+killed=0; crashed=0; survived=0; errors=0; inconclusives=0
 FAILED_TEST=
 reason=
 total_start=$(date +%s)
@@ -178,18 +196,28 @@ PY
     result="ERROR   ($verdict)"; errors=$((errors + 1))
   elif ! ninja -C "$BUILD" >"$SCRATCH/build.log" 2>&1; then
     result="ERROR   (the mutant does not build)"; errors=$((errors + 1))
-  elif run_tests "$tests"; then
-    result="SURVIVED"; survived=$((survived + 1))
-  elif killed_by_assertion; then
-    result="killed"; killed=$((killed + 1)); reason="by $FAILED_TEST: $(why_failed)"
   else
-    result="crashed"; crashed=$((crashed + 1)); reason="killed by crash (test gap), by $FAILED_TEST: $(why_failed)"
-    cp "$SCRATCH/test.log" "$SCRATCH/crash-$n.log"; reason="$reason (log: .scratch/mutate/crash-$n.log)"
+    note=
+    judge
+    if [ "$KIND" = inconclusive ]; then
+      note="the first run was inconclusive (no snapshot) and was run again; "
+      judge
+    fi
+    case "$KIND" in
+      survived) result="SURVIVED"; survived=$((survived + 1)) ;;
+      killed) result="killed"; killed=$((killed + 1)); reason="${note}by $FAILED_TEST: $(why_failed)" ;;
+      crashed)
+        result="crashed"; crashed=$((crashed + 1)); reason="${note}killed by crash (test gap), by $FAILED_TEST: $(why_failed)"
+        cp "$SCRATCH/test.log" "$SCRATCH/crash-$n.log"; reason="$reason (log: .scratch/mutate/crash-$n.log)" ;;
+      inconclusive)
+        result="INCONCLUSIVE"; inconclusives=$((inconclusives + 1)); reason="no snapshot twice, so no verdict on this mutant"
+        cp "$SCRATCH/test.log" "$SCRATCH/inconclusive-$n.log"; reason="$reason (log: .scratch/mutate/inconclusive-$n.log)" ;;
+    esac
   fi
   cp "$SCRATCH/original" "$target"          # the original text back, before the next mutant
   printf '%-9s %s  %s  (%d s)\n' "$result" "$req" "$name" $(( $(date +%s) - start ))
-  case "$result" in killed|crashed) printf '          %s\n' "$reason" ;; esac
+  case "$result" in killed|crashed|INCONCLUSIVE) printf '          %s\n' "$reason" ;; esac
 done < "$SCRATCH/index.tsv"
 
-echo "$((killed + crashed + survived + errors)) mutants: $killed killed, $crashed killed by crash (test gap), $survived survived, $errors errors in $(( $(date +%s) - total_start )) s"
-[ "$survived" -eq 0 ] && [ "$errors" -eq 0 ] && [ "$crashed" -eq 0 ]
+echo "$((killed + crashed + survived + errors + inconclusives)) mutants: $killed killed, $crashed killed by crash (test gap), $inconclusives inconclusive (no snapshot), $survived survived, $errors errors in $(( $(date +%s) - total_start )) s"
+[ "$survived" -eq 0 ] && [ "$errors" -eq 0 ] && [ "$crashed" -eq 0 ] && [ "$inconclusives" -eq 0 ]
