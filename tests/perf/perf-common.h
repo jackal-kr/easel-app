@@ -48,6 +48,13 @@ refuse_if_other_easel (void)
   g_autoptr (GDir) proc = g_dir_open ("/proc", 0, NULL);
   const char *entry;
 
+  if (g_getenv ("EASEL_ISOLATED") != NULL)
+    {
+      g_printerr ("Benchmarks stay in the real session: the isolated session (tools/isolated.sh) has a virtual monitor and its "
+                  "own frame clock, so its timings are not comparable.\n");
+      exit (1);
+    }
+
   while (proc != NULL && (entry = g_dir_read_name (proc)) != NULL)
     {
       g_autofree char *path = g_strdup_printf ("/proc/%s/comm", entry);

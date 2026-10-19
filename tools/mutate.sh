@@ -100,8 +100,9 @@ fi
 
 # A mutant tested by a ui test needs a display without another Easel or test window (docs/engineering.md, Testing): such a
 # window changes the layout of the test windows, and every ui test would "kill" its mutant for that reason.
-if cut -f4 "$SCRATCH/index.tsv" | grep -q 'ui-' && pgrep -x 'easel|test-window' >/dev/null; then
-  echo "close every Easel and test-window window first (pid: $(pgrep -x 'easel|test-window' | tr '\n' ' '))" >&2
+# Not in tools/isolated.sh's private session (EASEL_ISOLATED=1): no other window can be in that display.
+if cut -f4 "$SCRATCH/index.tsv" | grep -q 'ui-' && [ "${EASEL_ISOLATED:-}" != 1 ] && pgrep -x 'easel|test-window' >/dev/null; then
+  echo "close every Easel and test-window window first (pid: $(pgrep -x 'easel|test-window' | tr '\n' ' ')), or run through tools/isolated.sh" >&2
   exit 2
 fi
 

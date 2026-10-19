@@ -9428,10 +9428,11 @@ main (int argc, char **argv)
   /* A GTest subprocess (g_test_trap_subprocess) runs next to its parent, which is a test-window too. */
   for (int i = 1; i < argc; i++)
     is_subprocess |= g_str_equal (argv[i], "--GTestSubprocess");
-  if (!is_subprocess && (other = other_easel_process ()) != 0)
+  /* Not in tools/isolated.sh's private session (EASEL_ISOLATED=1): no other window can be in that display. */
+  if (!is_subprocess && g_getenv ("EASEL_ISOLATED") == NULL && (other = other_easel_process ()) != 0)
     {
       g_printerr ("Close every Easel window first: process %d is an Easel or a ui test, and a second window changes "
-                  "the layout of the test windows.\n", other);
+                  "the layout of the test windows (or run the tests through tools/isolated.sh).\n", other);
       return 1;
     }
 
