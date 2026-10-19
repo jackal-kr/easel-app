@@ -176,8 +176,45 @@ killed=0; crashed=0; survived=0; errors=0; inconclusives=0
 FAILED_TEST=
 reason=
 total_start=$(date +%s)
+
+# Progress goes to stderr and to a file, never to stdout, so the result lines and the summary line of stdout stay as they were:
+# the number of the mutant of the whole, the time elapsed, an estimate of what is left, and a line every EASEL_MUTATE_HEARTBEAT
+# seconds (30) while one mutant is running.
+PROGRESS=$SCRATCH/progress
+HEARTBEAT=${EASEL_MUTATE_HEARTBEAT:-30}
+HEARTBEAT_PID=
+FINISHED=0                    # seconds from the start to the end of the last finished mutant
+TOTAL=$(wc -l < "$SCRATCH/index.tsv")
+position=0
+: > "$PROGRESS"
+echo "progress file: $PROGRESS" >&2
+trap '[ -n "$HEARTBEAT_PID" ] && kill "$HEARTBEAT_PID" 2>/dev/null' EXIT
+
+fmt_time () { printf '%d:%02d' $(( $1 / 60 )) $(( $1 % 60 )); }
+progress () { printf '%s\n' "$1" >&2; printf '%s\n' "$1" >> "$PROGRESS"; }
+# status_line DONE WHAT: "[n of N] m:ss elapsed, about m:ss left: WHAT"; DONE mutants have finished. What is left is the
+# average of the finished ones times the ones to come, less what the running one has taken, so it only goes down while one runs.
+status_line () {
+  local elapsed=$(( $(date +%s) - total_start )) eta left
+  if [ "$1" -gt 0 ]; then
+    left=$(( FINISHED * (TOTAL - $1) / $1 - (elapsed - FINISHED) ))
+    [ "$left" -lt 0 ] && left=0
+    eta="about $(fmt_time "$left") left"
+  else
+    eta="the estimate comes after the first mutant"
+  fi
+  printf '[%d of %d] %s elapsed, %s: %s' "$position" "$TOTAL" "$(fmt_time "$elapsed")" "$eta" "$2"
+}
+
 while IFS=$'\t' read -r n req file tests name; do
   start=$(date +%s)
+  position=$((position + 1))
+  progress "$(status_line $((position - 1)) "mutant $position, $req $name")"
+  ( while true; do
+      for _ in $(seq "$HEARTBEAT"); do sleep 1; done
+      progress "$(status_line $((position - 1)) "still running $req $name, $(( $(date +%s) - start )) s")"
+    done ) &
+  HEARTBEAT_PID=$!
   target=$TREE/$file
   cp "$target" "$SCRATCH/original"
   verdict=$(python3 - "$target" "$SCRATCH/m/$n.find" "$SCRATCH/m/$n.replace" <<'PY'
@@ -215,8 +252,11 @@ PY
         cp "$SCRATCH/test.log" "$SCRATCH/inconclusive-$n.log"; reason="$reason (log: .scratch/mutate/inconclusive-$n.log)" ;;
     esac
   fi
+  kill "$HEARTBEAT_PID" 2>/dev/null; wait "$HEARTBEAT_PID" 2>/dev/null; HEARTBEAT_PID=
   cp "$SCRATCH/original" "$target"          # the original text back, before the next mutant
   printf '%-9s %s  %s  (%d s)\n' "$result" "$req" "$name" $(( $(date +%s) - start ))
+  FINISHED=$(( $(date +%s) - total_start ))
+  progress "$(status_line "$position" "done, $result")"
   case "$result" in killed|crashed|INCONCLUSIVE) printf '          %s\n' "$reason" ;; esac
 done < "$SCRATCH/index.tsv"
 
