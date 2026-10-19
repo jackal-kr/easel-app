@@ -66,6 +66,25 @@ struct _EaselCanvas
   uint32_t shape_draw, shape_other;             /* the colors of the press, kept until the release (REQ-0010-06) */
   int shape_width;                              /* 1 to 5, and the fill style: set by the window from its two actions */
   EaselFigureStyle shape_style;
+  /* A pending curve or polygon (0011): from its first press until it is put down or dropped. */
+  gboolean pending;
+  gboolean pend_held;                           /* a stage's button is held */
+  int pend_step;                                /* a curve: 0 the line, 1 the first bend, 2 the second bend (held now, or done last) */
+  guint pend_button;                            /* the button of the first press, used by every stage (REQ-0011-10) */
+  int pend_pts[8];                              /* a curve: the start, the two control points and the end */
+  int pend_px, pend_py;                         /* the pixel under the pointer now */
+  uint32_t pend_draw, pend_other;               /* the colors of the first press */
+  gboolean pend_polygon;                        /* the pending shape is a polygon, not a curve */
+  guint click_button;                           /* the last press: its button, time (ms), place and the count of clicks in a row (REQ-0011-07) */
+  guint32 click_time;
+  double click_x, click_y;
+  int click_count;
+  gboolean dbl_closed;                          /* the last double-click closed a polygon: a third click is ignored */
+  gboolean pend_dbl;                            /* the held side's press was the second click of a double-click */
+  double pend_wx, pend_wy;                      /* the pointer's place in the widget, and where the held side was pressed */
+  double press_wx, press_wy;
+  int *poly;                                    /* a polygon's corners as x, y pairs; the last one follows the pointer while held */
+  size_t poly_n, poly_cap;
   guint action_button;    /* button held after a press that acted at once (Fill): no other press acts until it is released */
   gboolean input_blocked;
   gboolean busy;          /* a picture is loading: the busy cursor */
@@ -99,6 +118,7 @@ enum
   SIGNAL_STROKING_CHANGED,
   SIGNAL_FILL_FAILED,
   SIGNAL_SHAPE_FAILED,
+  SIGNAL_PENDING_CHANGED,
   SIGNAL_COLOR_PICKED,
   SIGNAL_PICK_ENDED,
   SIGNAL_ZOOM_CHANGED,
@@ -116,6 +136,9 @@ static void update_cursor (EaselCanvas *self);
 static void end_shape (EaselCanvas *self);
 static void stop_spray (EaselCanvas *self);
 static void commit_zoom (EaselCanvas *self, int zoom, double scroll_h, double scroll_v);
+static void pend_follow (EaselCanvas *self);
+static gboolean within_double_click_distance (EaselCanvas *self, double x, double y, double ox, double oy);
+static EaselFigure pending_figure (EaselCanvas *self);
 static gboolean on_spray_tick (gpointer data);
 
 /* Resize handles (REQ-0004-16): 5 x 5 logical pixels touching the picture, a hit area of 9 x 9 around the center. They
@@ -533,6 +556,8 @@ easel_canvas_set_shift (EaselCanvas *self, gboolean down)
   self->shift = down;
   if (self->shaping)
     update_shape_end (self);
+  if (self->pend_held)
+    pend_follow (self);
 }
 
 /* The shape being dragged, as the core describes it (REQ-0010-05). */
@@ -577,11 +602,26 @@ static void
 append_shape_preview (EaselCanvas *self, GtkSnapshot *snapshot)
 {
   EaselFigure f;
+  EaselFigureRun *runs;
   graphene_rect_t seen, picture;
   double l = self->zoom / (100.0 * easel_canvas_get_scale (self));
   int row0, row1, step;
 
-  if (!self->shaping)
+  uint32_t draw, other;
+
+  if (self->pending)
+    {
+      f = pending_figure (self);
+      draw = self->pend_draw;
+      other = self->pend_other;
+    }
+  else if (self->shaping)
+    {
+      f = current_figure (self);
+      draw = self->shape_draw;
+      other = self->shape_other;
+    }
+  else
     return;
   if (!gtk_widget_compute_bounds (gtk_widget_get_parent (GTK_WIDGET (self)), GTK_WIDGET (self), &seen))
     return;
@@ -592,14 +632,18 @@ append_shape_preview (EaselCanvas *self, GtkSnapshot *snapshot)
     row1 = self->img->height - 1;
   if (row0 > row1)
     return;
-  f = current_figure (self);
   if (!easel_figure_prepare (&f, row0, row1))
     return;
+  runs = malloc (easel_figure_max_runs (&f) * sizeof *runs);
+  if (runs == NULL)
+    {
+      easel_figure_release (&f);
+      return;
+    }
   step = (row1 - row0 + 1) / 3000 + 1;
   for (int y = row0; y <= row1; y += step)
     {
-      EaselFigureRun runs[4];
-      size_t n = easel_figure_row (&f, y, runs, 4);
+      size_t n = easel_figure_row (&f, y, runs, easel_figure_max_runs (&f));
 
       for (size_t i = 0; i < n; i++)
         {
@@ -610,11 +654,11 @@ append_shape_preview (EaselCanvas *self, GtkSnapshot *snapshot)
           if (x0 > x1)
             continue;
           if (!runs[i].inside)
-            color = self->shape_draw;
+            color = draw;
           else if (f.style == EASEL_FIGURE_OUTLINE_AND_FILL)
-            color = self->shape_other;
+            color = other;
           else if (f.style == EASEL_FIGURE_FILL_ONLY)
-            color = self->shape_draw;
+            color = draw;
           else
             continue;
           r = GRAPHENE_RECT_INIT ((float) (x0 * l), (float) (y * l), (float) ((x1 - x0 + 1) * l), (float) (step * l));
@@ -622,6 +666,7 @@ append_shape_preview (EaselCanvas *self, GtkSnapshot *snapshot)
         }
     }
   easel_figure_release (&f);
+  free (runs);
 }
 
 static void
@@ -763,9 +808,9 @@ update_cursor (EaselCanvas *self)
 
       cursor = g_object_ref (texture_cursor (&dropper, "pick.svg", 2, 30));
     }
-  else if (easel_tool_draws_shape (self->tool))
+  else if (easel_tool_draws_shape (self->tool) || easel_tool_draws_pending (self->tool))
     {
-      /* The crosshair: its center is the pixel a shape would start from (REQ-0010-15). */
+      /* The crosshair: its center is the pixel a shape would start from (REQ-0010-15, REQ-0011-03). */
       cursor = gdk_cursor_new_from_name ("crosshair", NULL);
     }
   else if (self->tool == EASEL_TOOL_MAGNIFIER)
@@ -830,6 +875,7 @@ easel_canvas_set_shape_options (EaselCanvas *self, int width, int style)
 {
   self->shape_width = width;
   self->shape_style = (EaselFigureStyle) style;
+  gtk_widget_queue_draw (GTK_WIDGET (self));     /* a pending curve or polygon follows the choice at once (REQ-0011-12) */
 }
 
 void
@@ -858,9 +904,15 @@ easel_canvas_set_colors (EaselCanvas *self, uint32_t foreground, uint32_t backgr
 }
 
 gboolean
+easel_canvas_is_pending (EaselCanvas *self)
+{
+  return self->pending;
+}
+
+gboolean
 easel_canvas_is_stroking (EaselCanvas *self)
 {
-  return self->stroke != NULL || self->picking || self->shaping;
+  return self->stroke != NULL || self->picking || self->shaping || self->pend_held;
 }
 
 static GtkAdjustment *
@@ -888,6 +940,177 @@ finish_pick (EaselCanvas *self, gboolean cancelled)
   g_signal_emit (self, signals[SIGNAL_PICK_ENDED], 0, cancelled);
 }
 
+/* The held stage of a curve follows the pointer (REQ-0011-04): the line from its start, Shift constraining it as for Line; a
+   bend moves the control points to the pointer, Shift having no effect on it. */
+static void
+pend_follow (EaselCanvas *self)
+{
+  int x = self->pend_px, y = self->pend_py;
+
+  if (self->pend_polygon)
+    {
+      /* The last corner is the end of the side being dragged: the pointer's pixel, Shift constraining it as for Line from the
+         corner before (REQ-0011-06). */
+      if (self->shift && self->poly_n >= 2)
+        easel_figure_constrain (EASEL_FIGURE_LINE, self->poly[2 * (self->poly_n - 2)], self->poly[2 * (self->poly_n - 2) + 1], &x, &y);
+      self->poly[2 * (self->poly_n - 1)] = x;
+      self->poly[2 * (self->poly_n - 1) + 1] = y;
+    }
+  else if (self->pend_step == 0)
+    {
+      if (self->shift)
+        easel_figure_constrain (EASEL_FIGURE_LINE, self->pend_pts[0], self->pend_pts[1], &x, &y);
+      self->pend_pts[6] = x;
+      self->pend_pts[7] = y;
+      /* Both control points on the start: on the closed segment, so the curve is the Line (REQ-0011-05). */
+      self->pend_pts[2] = self->pend_pts[4] = self->pend_pts[0];
+      self->pend_pts[3] = self->pend_pts[5] = self->pend_pts[1];
+    }
+  else if (self->pend_step == 1)
+    {
+      self->pend_pts[2] = self->pend_pts[4] = x;
+      self->pend_pts[3] = self->pend_pts[5] = y;
+    }
+  else
+    {
+      self->pend_pts[4] = x;
+      self->pend_pts[5] = y;
+    }
+  gtk_widget_queue_draw (GTK_WIDGET (self));
+}
+
+static void
+set_pending (EaselCanvas *self, gboolean pending)
+{
+  if (self->pending == pending)
+    return;
+  self->pending = pending;
+  g_signal_emit (self, signals[SIGNAL_PENDING_CHANGED], 0);
+}
+
+/* The pending figure as the core describes it. */
+static EaselFigure
+pending_figure (EaselCanvas *self)
+{
+  if (self->pend_polygon)
+    return (EaselFigure) { EASEL_FIGURE_POLYGON, 0, 0, 0, 0, self->shape_width, self->shape_style, NULL, self->poly, self->poly_n,
+                           FALSE };
+  return (EaselFigure) { EASEL_FIGURE_CURVE, 0, 0, 0, 0, self->shape_width, self->shape_style, NULL, self->pend_pts, 4, FALSE };
+}
+
+/* A corner is added to the polygon: false if the memory cannot be had. */
+static gboolean
+poly_add (EaselCanvas *self, int x, int y)
+{
+  if (self->poly_n == self->poly_cap)
+    {
+      size_t cap = self->poly_cap ? self->poly_cap * 2 : 16;
+      int *p;
+
+      if (cap > SIZE_MAX / (2 * sizeof *p))
+        return FALSE;
+      p = realloc (self->poly, cap * 2 * sizeof *p);
+      if (p == NULL)
+        return FALSE;
+      self->poly = p;
+      self->poly_cap = cap;
+    }
+  self->poly[2 * self->poly_n] = x;
+  self->poly[2 * self->poly_n + 1] = y;
+  self->poly_n++;
+  return TRUE;
+}
+
+/* The pending curve is drawn into the picture as one undo step, or not at all if it changes no pixel (REQ-0011-14); a
+   failed allocation shows the dialog and changes nothing (REQ-0011-15). */
+static void
+put_down_pending (EaselCanvas *self)
+{
+  EaselFigure f = pending_figure (self);
+  EaselFigureResult r;
+  gboolean was_held = self->pend_held;
+
+  f.closed = self->pend_polygon;                 /* a polygon is closed when put down (REQ-0011-07) */
+
+  self->pend_held = FALSE;
+  r = easel_figure_apply_capped (self->img, self->history, &f, self->pend_draw, self->pend_other, NULL,
+                                 self->shape_max_bytes);
+  if (was_held)
+    g_signal_emit (self, signals[SIGNAL_STROKING_CHANGED], 0, FALSE);
+  /* No "stroke-finished" here: "pending-changed", emitted just after the apply, makes the window sync the history, the title
+     and Undo and Redo, which is all "stroke-finished" does there. */
+  set_pending (self, FALSE);
+  if (r == EASEL_FIGURE_DONE)
+    easel_canvas_update (self);
+  else if (r == EASEL_FIGURE_NO_MEMORY)
+    g_signal_emit (self, signals[SIGNAL_SHAPE_FAILED], 0);
+  gtk_widget_queue_draw (GTK_WIDGET (self));
+}
+
+/* A stage's button goes up, or the stage is ended as last shown (a lost release, a lost focus, Save, Quit): the curve waits
+   for its next stage, and the second bend puts it down (REQ-0011-04, -13). */
+static void
+end_pending_stage (EaselCanvas *self)
+{
+  self->pend_held = FALSE;
+  g_signal_emit (self, signals[SIGNAL_STROKING_CHANGED], 0, FALSE);
+  if (self->pend_polygon && self->poly_n >= 3)
+    {
+      /* From the second side on, a polygon closes when the side ends near the first corner, or when its press was the second
+         click of a double-click and it ends near that press; the side that closed it adds no corner (REQ-0011-07). */
+      double l = self->zoom / (100.0 * easel_canvas_get_scale (self));
+      gboolean near_start = hypot (self->pend_wx - (self->poly[0] + 0.5) * l, self->pend_wy - (self->poly[1] + 0.5) * l) <= 4.0;
+      gboolean dbl = self->pend_dbl && within_double_click_distance (self, self->pend_wx, self->pend_wy, self->press_wx, self->press_wy);
+
+      if (near_start || dbl)
+        {
+          self->poly_n--;
+          self->dbl_closed = dbl;
+          put_down_pending (self);
+          return;
+        }
+    }
+  if (!self->pend_polygon && self->pend_step == 2)
+    put_down_pending (self);
+  else
+    gtk_widget_queue_draw (GTK_WIDGET (self));
+}
+
+void
+easel_canvas_put_down (EaselCanvas *self)
+{
+  if (self->pending)
+    put_down_pending (self);
+}
+
+gboolean
+easel_canvas_enter (EaselCanvas *self)
+{
+  if (!self->pending)
+    return FALSE;
+  if (!self->pend_held)
+    put_down_pending (self);
+  return TRUE;
+}
+
+void
+easel_canvas_drop (EaselCanvas *self)
+{
+  gboolean was_held = self->pend_held;
+
+  if (!self->pending)
+    return;
+  /* Nothing is drawn and no step is added; a held button is waited for until its release (REQ-0011-11). */
+  self->pend_held = FALSE;
+  if (was_held)
+    {
+      self->cancelled_button = self->pend_button;
+      g_signal_emit (self, signals[SIGNAL_STROKING_CHANGED], 0, FALSE);
+    }
+  set_pending (self, FALSE);
+  gtk_widget_queue_draw (GTK_WIDGET (self));
+}
+
 void
 easel_canvas_cancel_stroke (EaselCanvas *self)
 {
@@ -895,6 +1118,11 @@ easel_canvas_cancel_stroke (EaselCanvas *self)
     {
       self->cancelled_button = self->stroke_button;
       finish_pick (self, TRUE);
+      return;
+    }
+  if (self->pend_held)
+    {
+      easel_canvas_drop (self);
       return;
     }
   if (self->shaping)
@@ -922,7 +1150,7 @@ easel_canvas_buttons_released (EaselCanvas *self)
 {
   /* What a release would have done, for each press the canvas still holds (REQ-0007-18). */
   self->action_button = 0;
-  if (self->stroke != NULL || self->picking || self->shaping)
+  if (self->stroke != NULL || self->picking || self->shaping || self->pend_held)
     easel_canvas_end_stroke (self);
   if (self->resizing != EASEL_HANDLE_NONE)
     easel_canvas_release (self, self->resize_button);
@@ -1000,6 +1228,11 @@ easel_canvas_end_stroke (EaselCanvas *self)
       finish_pick (self, FALSE);
       return;
     }
+  if (self->pend_held)
+    {
+      end_pending_stage (self);
+      return;
+    }
   if (self->shaping)
     {
       /* Save, Quit, a lost focus and a lost release draw the shape as last shown (REQ-0010-09, -18, -19). */
@@ -1070,8 +1303,47 @@ fill_at (EaselCanvas *self, guint button, int px, int py)
     }
 }
 
+/* Counts the clicks in a row: a press of the same button within the desktop's double-click time and distance of the one
+   before is the next click of the same multi-click (REQ-0011-07). */
+static void
+count_click (EaselCanvas *self, guint button, double x, double y, guint32 time_ms)
+{
+  int time = 400, distance = 5;
+  GtkSettings *settings = gtk_widget_get_settings (GTK_WIDGET (self));
+
+  g_object_get (settings, "gtk-double-click-time", &time, "gtk-double-click-distance", &distance, NULL);
+  if (button == self->click_button && self->click_count > 0 && (guint32) (time_ms - self->click_time) <= (guint32) time
+      && hypot (x - self->click_x, y - self->click_y) <= distance)
+    self->click_count++;
+  else
+    {
+      self->click_count = 1;
+      self->dbl_closed = FALSE;
+    }
+  self->click_button = button;
+  self->click_time = time_ms;
+  self->click_x = x;
+  self->click_y = y;
+}
+
+/* Is (x, y), a place in the widget, within the desktop's double-click distance of (ox, oy)? */
+static gboolean
+within_double_click_distance (EaselCanvas *self, double x, double y, double ox, double oy)
+{
+  int distance = 5;
+
+  g_object_get (gtk_widget_get_settings (GTK_WIDGET (self)), "gtk-double-click-distance", &distance, NULL);
+  return hypot (x - ox, y - oy) <= distance;
+}
+
 void
 easel_canvas_press (EaselCanvas *self, guint button, double x, double y)
+{
+  easel_canvas_press_timed (self, button, x, y, (guint32) (g_get_monotonic_time () / 1000));
+}
+
+void
+easel_canvas_press_timed (EaselCanvas *self, guint button, double x, double y, guint32 time_ms)
 {
   int px, py;
 
@@ -1080,6 +1352,9 @@ easel_canvas_press (EaselCanvas *self, guint button, double x, double y)
     return;
   if (self->action_button != 0)
     return;
+  count_click (self, button, x, y, time_ms);
+  if (self->dbl_closed && self->click_count >= 3 && self->tool == EASEL_TOOL_POLYGON && !self->pending)
+    return;                                 /* the third click of a multi-click that closed a polygon starts nothing (REQ-0011-07) */
 
   if (self->picking)
     {
@@ -1093,6 +1368,41 @@ easel_canvas_press (EaselCanvas *self, guint button, double x, double y)
       /* The other button cancels the shape drag, as it cancels a stroke (REQ-0010-08). */
       if (button != self->shape_button)
         easel_canvas_cancel_stroke (self);
+      return;
+    }
+  if (self->pending && !self->pend_held && handles_shown (self) && easel_canvas_handle_at (self, x, y) != EASEL_HANDLE_NONE)
+    {
+      /* A press on a resize handle: a secondary one does nothing and keeps the shape (REQ-0004-16); a primary one puts it down
+         and goes on as a press on the handle (REQ-0011-12). */
+      if (button != GDK_BUTTON_PRIMARY)
+        return;
+      put_down_pending (self);
+    }
+  if (self->pending)
+    {
+      /* A curve waits or has a stage held: the other button drops it, the same button goes on to the next stage
+         (REQ-0011-04, -11). */
+      if (button != self->pend_button)
+        easel_canvas_drop (self);
+      else if (!self->pend_held)
+        {
+          to_pixel (self, x, y, &px, &py);
+          if (self->pend_polygon && !poly_add (self, px, py))
+            {
+              easel_canvas_drop (self);
+              g_signal_emit (self, signals[SIGNAL_SHAPE_FAILED], 0);
+              return;
+            }
+          self->pend_held = TRUE;
+          self->pend_step++;
+          self->pend_px = px;
+          self->pend_py = py;
+          self->pend_dbl = self->pend_polygon && self->click_count == 2;
+          self->pend_wx = self->press_wx = x;
+          self->pend_wy = self->press_wy = y;
+          g_signal_emit (self, signals[SIGNAL_STROKING_CHANGED], 0, TRUE);
+          pend_follow (self);
+        }
       return;
     }
   if (self->stroke != NULL)
@@ -1176,6 +1486,50 @@ easel_canvas_press (EaselCanvas *self, guint button, double x, double y)
   if (self->tool == EASEL_TOOL_FILL)
     {
       fill_at (self, button, px, py);
+      return;
+    }
+  if (self->tool == EASEL_TOOL_CURVE)
+    {
+      /* The first stage of a curve: the line from the pixel under the press, the colors those of the press (REQ-0011-04,
+         -10). */
+      set_pending (self, TRUE);
+      self->pend_polygon = FALSE;
+      self->pend_held = TRUE;
+      self->pend_step = 0;
+      self->pend_button = button;
+      self->pend_pts[0] = self->pend_pts[6] = self->pend_px = px;
+      self->pend_pts[1] = self->pend_pts[7] = self->pend_py = py;
+      self->pend_pts[2] = self->pend_pts[4] = px;
+      self->pend_pts[3] = self->pend_pts[5] = py;
+      self->pend_draw = button == GDK_BUTTON_PRIMARY ? self->foreground : self->background;
+      self->pend_other = button == GDK_BUTTON_PRIMARY ? self->background : self->foreground;
+      g_signal_emit (self, signals[SIGNAL_STROKING_CHANGED], 0, TRUE);
+      gtk_widget_queue_draw (GTK_WIDGET (self));
+      return;
+    }
+  if (self->tool == EASEL_TOOL_POLYGON)
+    {
+      /* The first side of a polygon: from the pixel under the press, which is its first corner, to the pointer (REQ-0011-06). */
+      self->poly_n = 0;
+      if (!poly_add (self, px, py) || !poly_add (self, px, py))
+        {
+          g_signal_emit (self, signals[SIGNAL_SHAPE_FAILED], 0);
+          return;
+        }
+      set_pending (self, TRUE);
+      self->pend_polygon = TRUE;
+      self->pend_held = TRUE;
+      self->pend_step = 0;
+      self->pend_button = button;
+      self->pend_px = px;
+      self->pend_py = py;
+      self->pend_dbl = FALSE;
+      self->pend_wx = self->press_wx = x;
+      self->pend_wy = self->press_wy = y;
+      self->pend_draw = button == GDK_BUTTON_PRIMARY ? self->foreground : self->background;
+      self->pend_other = button == GDK_BUTTON_PRIMARY ? self->background : self->foreground;
+      g_signal_emit (self, signals[SIGNAL_STROKING_CHANGED], 0, TRUE);
+      gtk_widget_queue_draw (GTK_WIDGET (self));
       return;
     }
   if (easel_tool_draws_shape (self->tool))
@@ -1272,6 +1626,16 @@ easel_canvas_motion (EaselCanvas *self, double x, double y)
         }
       return;
     }
+  if (self->pend_held)
+    {
+      self->pend_wx = x;
+      self->pend_wy = y;
+      to_pixel (self, x, y, &px, &py);
+      self->pend_px = px;
+      self->pend_py = py;
+      pend_follow (self);
+      return;
+    }
   if (self->shaping)
     {
       to_pixel (self, x, y, &px, &py);
@@ -1334,6 +1698,8 @@ easel_canvas_release (EaselCanvas *self, guint button)
       self->panning = FALSE;
       update_cursor (self);
     }
+  if (self->pend_held && button == self->pend_button)
+    end_pending_stage (self);
   if (self->shaping && button == self->shape_button)
     end_shape (self);
   if ((self->stroke != NULL || self->picking) && button == self->stroke_button)
@@ -1643,7 +2009,7 @@ on_event (GtkEventControllerLegacy *controller, GdkEvent *event, EaselCanvas *se
   if (type == GDK_MOTION_NOTIFY)
     easel_canvas_pointer_at (self, x, y);
   if (type == GDK_BUTTON_PRESS)
-    easel_canvas_press (self, gdk_button_event_get_button (event), x, y);
+    easel_canvas_press_timed (self, gdk_button_event_get_button (event), x, y, gdk_event_get_time (event));
   else if (type == GDK_BUTTON_RELEASE)
     easel_canvas_release (self, gdk_button_event_get_button (event));
   else
@@ -1764,6 +2130,7 @@ easel_canvas_dispose (GObject *object)
   free_tiles (self);
   g_clear_object (&self->outline_cursor);
   g_clear_object (&self->builder);
+  g_clear_pointer (&self->poly, free);
   G_OBJECT_CLASS (easel_canvas_parent_class)->dispose (object);
 }
 
@@ -1795,6 +2162,8 @@ easel_canvas_class_init (EaselCanvasClass *klass)
   signals[SIGNAL_FILL_FAILED] = g_signal_new ("fill-failed", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST, 0, NULL, NULL, NULL,
                                               G_TYPE_NONE, 0);
   signals[SIGNAL_SHAPE_FAILED] = g_signal_new ("shape-failed", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST, 0, NULL, NULL, NULL,
+                                              G_TYPE_NONE, 0);
+  signals[SIGNAL_PENDING_CHANGED] = g_signal_new ("pending-changed", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST, 0, NULL, NULL, NULL,
                                               G_TYPE_NONE, 0);
   signals[SIGNAL_STROKING_CHANGED] = g_signal_new ("stroking-changed", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST, 0, NULL,
                                                    NULL, NULL, G_TYPE_NONE, 1, G_TYPE_BOOLEAN);

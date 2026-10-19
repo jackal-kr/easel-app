@@ -62,6 +62,14 @@ void easel_canvas_set_magnifier_level (EaselCanvas *self, int pct);
 /* The line width (1 to 5) and the fill style (0 outline, 1 outline and fill, 2 fill) of the shape tools (REQ-0010-02). */
 void easel_canvas_set_shape_options (EaselCanvas *self, int width, int style);
 void easel_canvas_set_shift (EaselCanvas *self, gboolean down);
+/* A curve or polygon is pending (0011): shown over the picture, with a stage held or waiting for the next one. */
+gboolean easel_canvas_is_pending (EaselCanvas *self);
+/* The pending curve or polygon is drawn as shown (one undo step, none if it changes no pixel), or dropped with nothing drawn. */
+void easel_canvas_put_down (EaselCanvas *self);
+/* Enter: puts a waiting curve or polygon down (a polygon closed); does nothing while a stage's button is held. TRUE if one is
+   pending, so the key is taken. */
+gboolean easel_canvas_enter (EaselCanvas *self);
+void easel_canvas_drop (EaselCanvas *self);
 /* The wheel handler: dy in notches, the point in view coordinates; GDK_EVENT_PROPAGATE lets the view scroll as usual. */
 gboolean easel_canvas_wheel (EaselCanvas *self, GdkModifierType state, double notches_dy, double view_x, double view_y);
 /* The Magnifier's preview box in picture pixels (REQ-0007-04); FALSE when none is shown (not the Magnifier, not 100 %, a
@@ -116,11 +124,14 @@ void easel_canvas_reset_pointer (EaselCanvas *self);
 void easel_canvas_end_stroke (EaselCanvas *self);
 
 /* Input entry points, in canvas coordinates (logical pixels from the picture's top-left). The event
-   controller feeds them; tests call them directly. Emit "stroke-finished" (guint changed_pixels), also for a Fill (REQ-0007-05);
+   controller feeds them; tests call them directly. Emit "stroke-finished" (guint changed_pixels), also for a Fill (REQ-0007-05) and for a shape dragged in one go (0010);
+   a curve or polygon put down emits "pending-changed" instead (0011);
    a Fill that cannot get its memory emits "fill-failed" and changes nothing (REQ-0007-07), and so does a shape release ("shape-failed", REQ-0010-20). A Pick Color press is a stroke
    as far as easel_canvas_is_stroking, Undo and the other button are concerned: "color-picked" (guint button, guint color)
    comes at the press and when the pointer moves to another pixel, "pick-ended" (gboolean cancelled) when it ends. */
 void easel_canvas_press (EaselCanvas *self, guint button, double x, double y);
+/* The same with the event's time in milliseconds, which a double-click is told by (0011); the tests give their own. */
+void easel_canvas_press_timed (EaselCanvas *self, guint button, double x, double y, guint32 time_ms);
 void easel_canvas_motion (EaselCanvas *self, double x, double y);
 void easel_canvas_release (EaselCanvas *self, guint button);
 

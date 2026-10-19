@@ -17,6 +17,8 @@ typedef enum
   EASEL_FIGURE_RECTANGLE,
   EASEL_FIGURE_ROUNDED,
   EASEL_FIGURE_ELLIPSE,
+  EASEL_FIGURE_CURVE,              /* 0011: the four points of pts, the curve of REQ-0011-05 */
+  EASEL_FIGURE_POLYGON,            /* 0011: the n_pts corners of pts; closed, it has the last side and an inside (REQ-0011-08) */
 } EaselFigureKind;
 
 typedef enum
@@ -33,7 +35,10 @@ typedef struct
   int x0, y0, x1, y1;
   int width;
   EaselFigureStyle style;
-  void *rows;              /* the Line's rows, made by easel_figure_prepare; NULL until then and for the other kinds */
+  void *rows;              /* the Line's or the curve's rows, made by easel_figure_prepare; NULL until then and for the other kinds */
+  const int *pts;          /* a curve: the start, the two control points and the end, as x, y pairs (8 ints); x0..y1 are unused */
+  size_t n_pts;            /* the number of points in pts (4 for a curve) */
+  bool closed;             /* a polygon: closed, with a last side back to the first corner */
 } EaselFigure;
 
 /* A run of pixels of one row, x0 to x1 both included: the figure's outline or, with inside set, its inside. */
@@ -56,6 +61,10 @@ void easel_figure_release (EaselFigure *f);
    (for 45 degrees the smaller of the horizontal and vertical distances); the other kinds give a square or a circle of the
    smaller side of the box (both pixels included), from the start toward the pointer. */
 void easel_figure_constrain (EaselFigureKind kind, int x0, int y0, int *x1, int *y1);
+
+/* An upper bound of the runs one row of the figure can have: the size of the buffer a caller gives easel_figure_row. For a
+   curve it is exact only after easel_figure_prepare, so a caller prepares first. */
+size_t easel_figure_max_runs (const EaselFigure *f);
 
 /* The box of a figure: it runs from the outer corner of the start pixel to the outer corner of the end pixel, so both
    pixels are in it (a start (10, 10) and an end (19, 14) give x 10, y 10, w 10, h 5). Not for Line. */

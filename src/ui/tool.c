@@ -15,6 +15,8 @@ static const char *const names[] = {
   [EASEL_TOOL_RECTANGLE] = "rectangle",
   [EASEL_TOOL_ROUNDED_RECTANGLE] = "rounded-rectangle",
   [EASEL_TOOL_ELLIPSE] = "ellipse",
+  [EASEL_TOOL_CURVE] = "curve",
+  [EASEL_TOOL_POLYGON] = "polygon",
 };
 
 gboolean
@@ -22,6 +24,12 @@ easel_tool_draws_shape (EaselTool tool)
 {
   return tool == EASEL_TOOL_LINE || tool == EASEL_TOOL_RECTANGLE || tool == EASEL_TOOL_ROUNDED_RECTANGLE
          || tool == EASEL_TOOL_ELLIPSE;
+}
+
+gboolean
+easel_tool_draws_pending (EaselTool tool)
+{
+  return tool == EASEL_TOOL_CURVE || tool == EASEL_TOOL_POLYGON;
 }
 
 const char *

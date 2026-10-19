@@ -329,11 +329,11 @@ test: ui-0005
 file: src/ui/window.c
 test: ui-0005
 --- find
-  easel_canvas_end_stroke (self->canvas);
+  easel_canvas_put_down (self->canvas);                    /* a pending curve or polygon too (REQ-0011-12) */
   easel_canvas_cancel_resize (self->canvas);
   return TRUE;
 --- replace
-  easel_canvas_end_stroke (self->canvas);
+  easel_canvas_put_down (self->canvas);                    /* a pending curve or polygon too (REQ-0011-12) */
   return TRUE;
 
 === REQ-0005-02 Save is not held back while a dialog is open
@@ -817,9 +817,9 @@ test: ui-0006
 --- find
   if (!view_actions_allowed (self))
     return;
-  if (easel_tool_draws_shape (self->tool))
+  if (easel_tool_draws_shape (self->tool) || easel_tool_draws_pending (self->tool))
 --- replace
-  if (easel_tool_draws_shape (self->tool))
+  if (easel_tool_draws_shape (self->tool) || easel_tool_draws_pending (self->tool))
 
 === REQ-0006-14 Numpad + steps down and Numpad - steps up
 file: src/ui/window.c
@@ -1183,9 +1183,9 @@ test: ui-0007
 file: src/ui/canvas.c
 test: ui-0007
 --- find
-  return self->stroke != NULL || self->picking || self->shaping;
+  return self->stroke != NULL || self->picking || self->shaping || self->pend_held;
 --- replace
-  return self->stroke != NULL || self->shaping;
+  return self->stroke != NULL || self->shaping || self->pend_held;
 
 === REQ-0007-03 the selected Magnifier level never reaches the canvas
 file: src/ui/window.c
@@ -1248,7 +1248,7 @@ test: ui-0007
 file: src/ui/canvas.c
 test: ui-0007
 --- find
-  if (self->stroke != NULL || self->picking || self->shaping)
+  if (self->stroke != NULL || self->picking || self->shaping || self->pend_held)
     easel_canvas_end_stroke (self);
   if (self->resizing != EASEL_HANDLE_NONE)
     easel_canvas_release (self, self->resize_button);
@@ -1590,9 +1590,9 @@ test: ui-0010
 file: src/ui/tool-options.c
 test: ui-0010
 --- find
-: tool == EASEL_TOOL_LINE ? 4 : easel_tool_draws_shape (tool) ? 5 : -1
+tool == EASEL_TOOL_LINE || tool == EASEL_TOOL_CURVE ? 4
 --- replace
-: tool == EASEL_TOOL_LINE ? 5 : easel_tool_draws_shape (tool) ? 5 : -1
+tool == EASEL_TOOL_LINE || tool == EASEL_TOOL_CURVE ? 5
 
 === REQ-0010-04 Numpad changes the fill style and not the width
 file: src/ui/window.c
@@ -1742,16 +1742,32 @@ test: ui-0010
 file: src/ui/canvas.c
 test: ui-0010
 --- find
+  r = easel_figure_apply_capped (self->img, self->history, &f, self->shape_draw, self->shape_other, &changed,
                                  self->shape_max_bytes);
 --- replace
+  r = easel_figure_apply_capped (self->img, self->history, &f, self->shape_draw, self->shape_other, &changed,
                                  SIZE_MAX);
 
 === REQ-0010-20 a refused shape shows no dialog
 file: src/ui/canvas.c
 test: ui-0010
 --- find
+  g_signal_emit (self, signals[SIGNAL_STROKING_CHANGED], 0, FALSE);
+  if (r == EASEL_FIGURE_DONE)
+    {
+      easel_canvas_update (self);
+      g_signal_emit (self, signals[SIGNAL_STROKE_FINISHED], 0, (guint) changed);
+    }
+  else if (r == EASEL_FIGURE_NO_MEMORY)
     g_signal_emit (self, signals[SIGNAL_SHAPE_FAILED], 0);
 --- replace
+  g_signal_emit (self, signals[SIGNAL_STROKING_CHANGED], 0, FALSE);
+  if (r == EASEL_FIGURE_DONE)
+    {
+      easel_canvas_update (self);
+      g_signal_emit (self, signals[SIGNAL_STROKE_FINISHED], 0, (guint) changed);
+    }
+  else if (r == EASEL_FIGURE_NO_MEMORY)
     (void) 0;
 
 === REQ-0010-21 the end of a drag does not follow the pointer beyond the area
@@ -1787,6 +1803,591 @@ test: ui-0010
   if (!(state & GDK_CONTROL_MASK) || self->tool != EASEL_TOOL_PAN)
     return GDK_EVENT_PROPAGATE;
   notches = easel_view_take_notches (&self->notch_acc, notches_dy);
+
+=== REQ-0011-02 Curve shows the fill styles
+file: src/ui/tool-options.c
+test: ui-0011
+--- find
+tool == EASEL_TOOL_LINE || tool == EASEL_TOOL_CURVE ? 4
+              : easel_tool_draws_shape (tool) || tool == EASEL_TOOL_POLYGON ? 5 : -1;
+--- replace
+tool == EASEL_TOOL_LINE ? 4
+              : easel_tool_draws_shape (tool) || tool == EASEL_TOOL_POLYGON || tool == EASEL_TOOL_CURVE ? 5 : -1;
+
+=== REQ-0011-02 Polygon shows no options
+file: src/ui/tool-options.c
+test: ui-0011
+--- find
+              : easel_tool_draws_shape (tool) || tool == EASEL_TOOL_POLYGON ? 5 : -1;
+--- replace
+              : easel_tool_draws_shape (tool) ? 5 : -1;
+
+=== REQ-0011-03 Curve has Polygon's hint
+file: src/ui/window.c
+test: ui-0011
+--- find
+      return "Draws a curved line with the selected line width.";
+--- replace
+      return "Draws a polygon with the selected fill style.";
+
+=== REQ-0011-03 Curve and Polygon have no crosshair
+file: src/ui/canvas.c
+test: ui-0011
+--- find
+  else if (easel_tool_draws_shape (self->tool) || easel_tool_draws_pending (self->tool))
+--- replace
+  else if (easel_tool_draws_shape (self->tool))
+
+=== REQ-0011-02 Numpad does not step the width with Curve and Polygon
+file: src/ui/window.c
+test: ui-0011
+--- find
+  if (easel_tool_draws_shape (self->tool) || easel_tool_draws_pending (self->tool))
+    {
+      /* The width of Line and the shapes
+--- replace
+  if (easel_tool_draws_shape (self->tool))
+    {
+      /* The width of Line and the shapes
+
+=== REQ-0011-09 the bound of the runs of a row is too small
+file: src/core/figure.c
+test: core-figure
+--- find
+  return 3;
+--- replace
+  return 1;
+
+=== REQ-0011-09 the apply gives a row a run buffer of one
+file: src/core/figure.c
+test: core-figure-apply
+--- find
+      size_t n = easel_figure_row (&f, y, runs, max_runs);
+--- replace
+      size_t n = easel_figure_row (&f, y, runs, 1);
+
+=== REQ-0011-09 the preview gives a row a run buffer of one
+file: src/ui/canvas.c
+test: ui-0010
+--- find
+      size_t n = easel_figure_row (&f, y, runs, easel_figure_max_runs (&f));
+--- replace
+      size_t n = easel_figure_row (&f, y, runs, 1);
+
+=== REQ-0011-05 a half of the curve's coordinate rounds down
+file: src/core/figure.c
+test: core-figure-curve
+--- find
+  return (int) ((num * 2 + d) / (2 * d)) - COORD_LIMIT;
+--- replace
+  return (int) ((num * 2 + d - 1) / (2 * d)) - COORD_LIMIT;
+
+=== REQ-0011-05 the number of steps comes from the first leg of the control polygon only
+file: src/core/figure.c
+test: core-figure-curve
+--- find
+  for (int k = 0; k < 3; k++)
+    {
+      double dx = (double) (p[2 * k + 2] - p[2 * k]), dy = (double) (p[2 * k + 3] - p[2 * k + 1]);
+--- replace
+  for (int k = 0; k < 1; k++)
+    {
+      double dx = (double) (p[2 * k + 2] - p[2 * k]), dy = (double) (p[2 * k + 3] - p[2 * k + 1]);
+
+=== REQ-0011-05 the curve keeps its L-shaped corners
+file: src/core/figure.c
+test: core-figure-curve
+--- find
+      if (abs (a.x - c.x) <= 1 && abs (a.y - c.y) <= 1)
+--- replace
+      if (0)
+
+=== REQ-0011-05 control points beyond an end count as on the segment
+file: src/core/figure.c
+test: core-figure-curve
+--- find
+  return cross == 0 && qx >= (p[0] < p[6] ? p[0] : p[6]) && qx <= (p[0] < p[6] ? p[6] : p[0])
+         && qy >= (p[1] < p[7] ? p[1] : p[7]) && qy <= (p[1] < p[7] ? p[7] : p[1]);
+--- replace
+  return cross == 0;
+
+=== REQ-0011-05 the rows drawn for a curve stop at the hull of its points
+file: src/core/figure.c
+test: core-figure-curve
+--- find
+      if (lo - f.width - 2 > y_from)
+        y_from = lo - f.width - 2;
+--- replace
+      if (lo > y_from)
+        y_from = lo;
+
+=== REQ-0011-08 a closed polygon has no closing side
+file: src/core/figure.c
+test: core-figure-polygon
+--- find
+      if (i == n && !f->closed)
+--- replace
+      if (i == n)
+
+=== REQ-0011-08 the region takes the even stretches, not the odd ones
+file: src/core/figure.c
+test: core-figure-polygon
+--- find
+  for (int k = m - 2; k >= 0; k -= 2)              /* the odd stretches, from the right */
+--- replace
+  for (int k = m - 3; k >= 0; k -= 2)              /* the odd stretches, from the right */
+
+=== REQ-0011-08 the inside keeps the outline's pixels
+file: src/core/figure.c
+test: core-figure-polygon
+--- find
+          if (p >= n_out || ov[2 * p] > hi)
+--- replace
+          if (1)
+
+=== REQ-0011-15 a curve or polygon that runs out of memory leaves its pixels drawn
+file: src/core/figure.c
+test: core-figure-step
+--- find
+      log_restore (&l, img);
+      free (l.log);
+      return EASEL_FIGURE_NO_MEMORY;
+    }
+  if (l.n == 0)
+--- replace
+      free (l.log);
+      return EASEL_FIGURE_NO_MEMORY;
+    }
+  if (l.n == 0)
+
+=== REQ-0011-14 a polygon's log is pushed without shrinking
+file: src/core/figure.c
+test: core-figure-step
+--- find
+  if (l.cap > l.n)
+--- replace
+  if (0)
+
+=== REQ-0011-04 the second bend moves both control points
+file: src/ui/canvas.c
+test: ui-0011
+--- find
+      self->pend_pts[4] = x;
+      self->pend_pts[5] = y;
+    }
+  gtk_widget_queue_draw (GTK_WIDGET (self));
+--- replace
+      self->pend_pts[4] = self->pend_pts[2] = x;
+      self->pend_pts[5] = self->pend_pts[3] = y;
+    }
+  gtk_widget_queue_draw (GTK_WIDGET (self));
+
+=== REQ-0011-04 Shift constrains the first bend
+file: src/ui/canvas.c
+test: ui-0011
+--- find
+  else if (self->pend_step == 1)
+    {
+      self->pend_pts[2] = self->pend_pts[4] = x;
+--- replace
+  else if (self->pend_step == 1)
+    {
+      if (self->shift)
+        easel_figure_constrain (EASEL_FIGURE_LINE, self->pend_pts[0], self->pend_pts[1], &x, &y);
+      self->pend_pts[2] = self->pend_pts[4] = x;
+
+=== REQ-0011-10 a later stage takes the colors of its own press
+file: src/ui/canvas.c
+test: ui-0011
+--- find
+          self->pend_step++;
+--- replace
+          self->pend_step++;
+          self->pend_draw = button == GDK_BUTTON_PRIMARY ? self->foreground : self->background;
+
+=== REQ-0011-09 the pending curve is not shown
+file: src/ui/canvas.c
+test: ui-0011
+--- find
+  if (self->pending)
+    {
+      f = pending_figure (self);
+--- replace
+  if (0)
+    {
+      f = pending_figure (self);
+
+=== REQ-0011-04 the second bend does not put the curve down
+file: src/ui/canvas.c
+test: ui-0011
+--- find
+  if (!self->pend_polygon && self->pend_step == 2)
+    put_down_pending (self);
+--- replace
+  if (!self->pend_polygon && self->pend_step == 7)
+    put_down_pending (self);
+
+=== REQ-0011-09 the open polygon is shown closed, with its fill
+file: src/ui/canvas.c
+test: ui-0011
+--- find
+    return (EaselFigure) { EASEL_FIGURE_POLYGON, 0, 0, 0, 0, self->shape_width, self->shape_style, NULL, self->poly, self->poly_n,
+                           FALSE };
+--- replace
+    return (EaselFigure) { EASEL_FIGURE_POLYGON, 0, 0, 0, 0, self->shape_width, self->shape_style, NULL, self->poly, self->poly_n,
+                           TRUE };
+
+=== REQ-0011-06 the corner of a held side stays where it was pressed
+file: src/ui/canvas.c
+test: ui-0011
+--- find
+      self->poly[2 * (self->poly_n - 1)] = x;
+      self->poly[2 * (self->poly_n - 1) + 1] = y;
+--- replace
+      (void) x;
+      (void) y;
+
+=== REQ-0011-06 a side follows the pointer while no button is held
+file: src/ui/canvas.c
+test: ui-0011
+--- find
+  if (self->pend_held)
+    {
+      self->pend_wx = x;
+      self->pend_wy = y;
+      to_pixel (self, x, y, &px, &py);
+--- replace
+  if (self->pending)
+    {
+      self->pend_wx = x;
+      self->pend_wy = y;
+      to_pixel (self, x, y, &px, &py);
+
+=== REQ-0011-06 Shift does not constrain a polygon's side
+file: src/ui/canvas.c
+test: ui-0011
+--- find
+      if (self->shift && self->poly_n >= 2)
+--- replace
+      if (0)
+
+=== REQ-0011-06 a polygon's first side adds no second corner
+file: src/ui/canvas.c
+test: ui-0011
+--- find
+      if (!poly_add (self, px, py) || !poly_add (self, px, py))
+--- replace
+      if (!poly_add (self, px, py))
+
+=== REQ-0011-07 the first corner's nearness is counted in picture pixels
+file: src/ui/canvas.c
+test: ui-0011
+--- find
+      gboolean near_start = hypot (self->pend_wx - (self->poly[0] + 0.5) * l, self->pend_wy - (self->poly[1] + 0.5) * l) <= 4.0;
+--- replace
+      gboolean near_start = hypot (self->pend_px - self->poly[0], self->pend_py - self->poly[1]) <= 4.0 + 0 * l;
+
+=== REQ-0011-07 a first side that ends near the first corner closes
+file: src/ui/canvas.c
+test: ui-0011
+--- find
+  if (self->pend_polygon && self->poly_n >= 3)
+--- replace
+  if (self->pend_polygon && self->poly_n >= 2)
+
+=== REQ-0011-07 the side that closes a polygon adds its corner
+file: src/ui/canvas.c
+test: ui-0011
+--- find
+          self->poly_n--;
+          self->dbl_closed = dbl;
+--- replace
+          self->dbl_closed = dbl;
+
+=== REQ-0011-07 a double-click's second press closes wherever it is released
+file: src/ui/canvas.c
+test: ui-0011
+--- find
+      gboolean dbl = self->pend_dbl && within_double_click_distance (self, self->pend_wx, self->pend_wy, self->press_wx, self->press_wy);
+--- replace
+      gboolean dbl = self->pend_dbl;
+
+=== REQ-0011-07 a double-click takes no account of time
+file: src/ui/canvas.c
+test: ui-0011
+--- find
+  if (button == self->click_button && self->click_count > 0 && (guint32) (time_ms - self->click_time) <= (guint32) time
+      && hypot (x - self->click_x, y - self->click_y) <= distance)
+--- replace
+  if (button == self->click_button && self->click_count > 0 && hypot (x - self->click_x, y - self->click_y) <= distance + 0 * time)
+
+=== REQ-0011-07 a double-click takes no account of distance
+file: src/ui/canvas.c
+test: ui-0011
+--- find
+  if (button == self->click_button && self->click_count > 0 && (guint32) (time_ms - self->click_time) <= (guint32) time
+      && hypot (x - self->click_x, y - self->click_y) <= distance)
+--- replace
+  if (button == self->click_button && self->click_count > 0 && (guint32) (time_ms - self->click_time) <= (guint32) time + 0 * distance)
+
+=== REQ-0011-07 a third click of a multi-click starts a polygon
+file: src/ui/canvas.c
+test: ui-0011
+--- find
+  if (self->dbl_closed && self->click_count >= 3 && self->tool == EASEL_TOOL_POLYGON && !self->pending)
+--- replace
+  if (0)
+
+=== REQ-0011-07 Enter does not put a waiting polygon down
+file: src/ui/canvas.c
+test: ui-0011
+--- find
+  if (!self->pend_held)
+    put_down_pending (self);
+  return TRUE;
+--- replace
+  return TRUE;
+
+=== REQ-0011-11 Undo does not drop a pending curve or polygon
+file: src/ui/window.c
+test: ui-0011
+--- find
+      if (undo)
+        easel_canvas_drop (self->canvas);
+      return;
+--- replace
+      return;
+
+=== REQ-0011-11 Redo is available while a curve or polygon is pending
+file: src/ui/window.c
+test: ui-0011
+--- find
+    g_simple_action_set_enabled (G_SIMPLE_ACTION (redo), !pending && easel_history_can_redo (self->history));
+--- replace
+    g_simple_action_set_enabled (G_SIMPLE_ACTION (redo), easel_history_can_redo (self->history));
+
+=== REQ-0011-11 Undo is not available for a pending curve on a new picture
+file: src/ui/window.c
+test: ui-0011
+--- find
+    g_simple_action_set_enabled (G_SIMPLE_ACTION (undo), pending || easel_history_can_undo (self->history));
+--- replace
+    g_simple_action_set_enabled (G_SIMPLE_ACTION (undo), easel_history_can_undo (self->history));
+
+=== REQ-0011-11 Esc does not drop a pending curve or polygon
+file: src/ui/window.c
+test: ui-0011
+--- find
+  if (keyval == GDK_KEY_Escape && easel_canvas_is_pending (self->canvas) && !dialog_is_open (self))
+--- replace
+  if (0 && keyval == GDK_KEY_Escape && easel_canvas_is_pending (self->canvas) && !dialog_is_open (self))
+
+=== REQ-0011-11 the other button does not drop a pending curve or polygon
+file: src/ui/canvas.c
+test: ui-0011
+--- find
+      if (button != self->pend_button)
+        easel_canvas_drop (self);
+--- replace
+      if (button != self->pend_button)
+        (void) 0;
+
+=== REQ-0011-11 a drop while a button is held does not wait for its release
+file: src/ui/canvas.c
+test: ui-0011
+--- find
+      self->cancelled_button = self->pend_button;
+      g_signal_emit (self, signals[SIGNAL_STROKING_CHANGED], 0, FALSE);
+    }
+  set_pending (self, FALSE);
+--- replace
+      g_signal_emit (self, signals[SIGNAL_STROKING_CHANGED], 0, FALSE);
+    }
+  set_pending (self, FALSE);
+
+=== REQ-0011-12 Save, Save As, New and Open do not put a pending polygon down
+file: src/ui/window.c
+test: ui-0011
+--- find
+  easel_canvas_put_down (self->canvas);                    /* a pending curve or polygon too (REQ-0011-12) */
+--- replace
+  (void) 0;
+
+=== REQ-0011-12 Quit does not put a pending polygon down
+file: src/ui/window.c
+test: ui-0011
+--- find
+     chooser closes as Cancel (REQ-0003-14). */
+  easel_canvas_end_stroke (self->canvas);
+  easel_canvas_put_down (self->canvas);
+--- replace
+     chooser closes as Cancel (REQ-0003-14). */
+  easel_canvas_end_stroke (self->canvas);
+
+=== REQ-0011-12 another tool drops a pending polygon instead of putting it down
+file: src/ui/window.c
+test: ui-0011
+--- find
+  if (tool != self->tool)
+    easel_canvas_put_down (self->canvas);
+--- replace
+  if (tool != self->tool)
+    easel_canvas_drop (self->canvas);
+
+=== REQ-0011-12 choosing the same tool puts a pending polygon down
+file: src/ui/window.c
+test: ui-0011
+--- find
+  if (tool != self->tool)
+    easel_canvas_put_down (self->canvas);
+--- replace
+  if (1)
+    easel_canvas_put_down (self->canvas);
+
+=== REQ-0011-12 an Image action does not put a pending polygon down
+file: src/ui/window.c
+test: ui-0011
+--- find
+  easel_canvas_put_down (self->canvas);                    /* an Image action puts a pending curve or polygon down (REQ-0011-12) */
+--- replace
+  (void) 0;
+
+=== REQ-0011-12 a primary press on a handle does not put a pending curve down
+file: src/ui/canvas.c
+test: ui-0011
+--- find
+      if (button != GDK_BUTTON_PRIMARY)
+        return;
+      put_down_pending (self);
+--- replace
+      if (button != GDK_BUTTON_PRIMARY)
+        return;
+      (void) 0;
+
+=== REQ-0011-12 a secondary press on a handle puts a pending curve down
+file: src/ui/canvas.c
+test: ui-0011
+--- find
+      if (button != GDK_BUTTON_PRIMARY)
+        return;
+      put_down_pending (self);
+--- replace
+      if (button != GDK_BUTTON_PRIMARY)
+        put_down_pending (self);
+      put_down_pending (self);
+
+=== REQ-0011-12 a pending polygon is drawn with a width of 1 whatever is chosen
+file: src/ui/canvas.c
+test: ui-0011
+--- find
+    return (EaselFigure) { EASEL_FIGURE_POLYGON, 0, 0, 0, 0, self->shape_width, self->shape_style, NULL, self->poly, self->poly_n,
+--- replace
+    return (EaselFigure) { EASEL_FIGURE_POLYGON, 0, 0, 0, 0, 1, self->shape_style, NULL, self->poly, self->poly_n,
+
+=== REQ-0011-12 a lost focus drops a pending polygon
+file: src/ui/canvas.c
+test: ui-0011
+--- find
+  easel_canvas_end_stroke (self);
+  self->cancelled_button = 0;
+  self->action_button = 0;
+  if (self->resizing != EASEL_HANDLE_NONE)
+    stop_resizing (self);
+--- replace
+  easel_canvas_end_stroke (self);
+  easel_canvas_drop (self);
+  self->cancelled_button = 0;
+  self->action_button = 0;
+  if (self->resizing != EASEL_HANDLE_NONE)
+    stop_resizing (self);
+
+=== REQ-0011-13 a lost release does not end a held stage of a curve or polygon
+file: src/ui/canvas.c
+test: ui-0011
+--- find
+  if (self->stroke != NULL || self->picking || self->shaping || self->pend_held)
+    easel_canvas_end_stroke (self);
+  if (self->resizing != EASEL_HANDLE_NONE)
+    easel_canvas_release (self, self->resize_button);
+--- replace
+  if (self->stroke != NULL || self->picking || self->shaping)
+    easel_canvas_end_stroke (self);
+  if (self->resizing != EASEL_HANDLE_NONE)
+    easel_canvas_release (self, self->resize_button);
+
+=== REQ-0011-13 Enter puts a curve or polygon down while a stage's button is held
+file: src/ui/canvas.c
+test: ui-0011
+--- find
+  if (!self->pend_held)
+    put_down_pending (self);
+  return TRUE;
+--- replace
+  put_down_pending (self);
+  return TRUE;
+
+=== REQ-0011-13 a held stage stops at the picture's edge
+file: src/ui/canvas.c
+test: ui-0011
+--- find
+      self->pend_px = px;
+      self->pend_py = py;
+      pend_follow (self);
+--- replace
+      self->pend_px = px < 0 ? 0 : px >= self->img->width ? self->img->width - 1 : px;
+      self->pend_py = py < 0 ? 0 : py >= self->img->height ? self->img->height - 1 : py;
+      pend_follow (self);
+
+=== REQ-0011-12 Esc drops a pending polygon although a dialog is open
+file: src/ui/window.c
+test: ui-0011
+--- find
+  if (keyval == GDK_KEY_Escape && easel_canvas_is_pending (self->canvas) && !dialog_is_open (self))
+--- replace
+  if (keyval == GDK_KEY_Escape && easel_canvas_is_pending (self->canvas))
+
+=== REQ-0011-12 Enter puts a pending polygon down although a dialog is open
+file: src/ui/window.c
+test: ui-0011
+--- find
+  if ((keyval == GDK_KEY_Return || keyval == GDK_KEY_KP_Enter) && !dialog_is_open (self) && easel_canvas_enter (self->canvas))
+--- replace
+  if ((keyval == GDK_KEY_Return || keyval == GDK_KEY_KP_Enter) && easel_canvas_enter (self->canvas))
+
+=== REQ-0011-15 a pending shape that cannot get its memory shows no dialog
+file: src/ui/canvas.c
+test: ui-0011
+--- find
+  set_pending (self, FALSE);
+  if (r == EASEL_FIGURE_DONE)
+    easel_canvas_update (self);
+  else if (r == EASEL_FIGURE_NO_MEMORY)
+    g_signal_emit (self, signals[SIGNAL_SHAPE_FAILED], 0);
+--- replace
+  set_pending (self, FALSE);
+  if (r == EASEL_FIGURE_DONE)
+    easel_canvas_update (self);
+  else if (r == EASEL_FIGURE_NO_MEMORY)
+    (void) 0;
+
+=== REQ-0011-15 a put-down curve or polygon ignores the memory limit
+file: src/ui/canvas.c
+test: ui-0011
+--- find
+  r = easel_figure_apply_capped (self->img, self->history, &f, self->pend_draw, self->pend_other, NULL,
+                                 self->shape_max_bytes);
+--- replace
+  r = easel_figure_apply_capped (self->img, self->history, &f, self->pend_draw, self->pend_other, NULL,
+                                 SIZE_MAX);
+
+=== REQ-0011-07 Enter closes a pending polygon only while the canvas has the focus
+file: src/ui/window.c
+test: ui-0011
+--- find
+  if ((keyval == GDK_KEY_Return || keyval == GDK_KEY_KP_Enter) && !dialog_is_open (self) && easel_canvas_enter (self->canvas))
+--- replace
+  if ((keyval == GDK_KEY_Return || keyval == GDK_KEY_KP_Enter) && !dialog_is_open (self) && gtk_widget_has_focus (GTK_WIDGET (self->canvas))
+      && easel_canvas_enter (self->canvas))
 
 === REQ-0010-13 the fill-only style paints the inside in the other color
 file: src/core/figure.c
@@ -1851,16 +2452,13 @@ test: ui-0010
 file: src/ui/canvas.c
 test: ui-0010
 --- find
-  if (!self->shaping)
-    return;
-  if (!gtk_widget_compute_bounds (gtk_widget_get_parent (GTK_WIDGET (self)), GTK_WIDGET (self), &seen))
-    return;
-  picture
+  else if (self->shaping)
+    {
+      f = current_figure (self);
 --- replace
-  return;
-  if (!gtk_widget_compute_bounds (gtk_widget_get_parent (GTK_WIDGET (self)), GTK_WIDGET (self), &seen))
-    return;
-  picture
+  else if (0)
+    {
+      f = current_figure (self);
 
 === REQ-0010-06 the secondary button draws with the foreground color
 file: src/ui/canvas.c
@@ -1884,14 +2482,18 @@ test: ui-0010
 file: src/ui/canvas.c
 test: ui-0010
 --- find
+  g_signal_emit (self, signals[SIGNAL_STROKING_CHANGED], 0, FALSE);
+  if (r == EASEL_FIGURE_DONE)
+    {
       easel_canvas_update (self);
       g_signal_emit (self, signals[SIGNAL_STROKE_FINISHED], 0, (guint) changed);
     }
-  else if (r == EASEL_FIGURE_NO_MEMORY)
 --- replace
+  g_signal_emit (self, signals[SIGNAL_STROKING_CHANGED], 0, FALSE);
+  if (r == EASEL_FIGURE_DONE)
+    {
       easel_canvas_update (self);
     }
-  else if (r == EASEL_FIGURE_NO_MEMORY)
 
 === REQ-0010-08 Esc does not cancel a shape drag
 file: src/ui/window.c

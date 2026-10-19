@@ -202,11 +202,13 @@ sync_history_ui (EaselWindow *self)
 {
   GAction *undo = g_action_map_lookup_action (G_ACTION_MAP (self), "undo");
   GAction *redo = g_action_map_lookup_action (G_ACTION_MAP (self), "redo");
+  gboolean pending = easel_canvas_is_pending (self->canvas);
 
+  /* While a curve or polygon is pending, Undo is there to drop it, even with nothing to undo, and Redo is not (REQ-0011-11). */
   if (undo != NULL)
-    g_simple_action_set_enabled (G_SIMPLE_ACTION (undo), easel_history_can_undo (self->history));
+    g_simple_action_set_enabled (G_SIMPLE_ACTION (undo), pending || easel_history_can_undo (self->history));
   if (redo != NULL)
-    g_simple_action_set_enabled (G_SIMPLE_ACTION (redo), easel_history_can_redo (self->history));
+    g_simple_action_set_enabled (G_SIMPLE_ACTION (redo), !pending && easel_history_can_redo (self->history));
   update_title (self);
 }
 
@@ -393,7 +395,8 @@ save (EaselWindow *self, SaveDone done, gboolean as_new)
   const char *pictures = g_get_user_special_dir (G_USER_DIRECTORY_PICTURES);
   SaveRequest *req;
 
-  /* A stroke in progress is ended first and saved with the picture (REQ-0001-33). */
+  /* A stroke in progress is ended first and saved with the picture (REQ-0001-33); a pending curve or polygon was put down
+     by file_action_allowed, which every way into this function goes through (REQ-0011-12). */
   easel_canvas_end_stroke (self->canvas);
   easel_canvas_cancel_resize (self->canvas);
 
@@ -503,8 +506,10 @@ easel_window_close_request (GtkWindow *window)
 {
   EaselWindow *self = EASEL_WINDOW (window);
 
-  /* A stroke in progress is ended first (REQ-0001-33); an open color chooser closes as Cancel (REQ-0003-14). */
+  /* A stroke in progress is ended first (REQ-0001-33), a pending curve or polygon put down (REQ-0011-12); an open color
+     chooser closes as Cancel (REQ-0003-14). */
   easel_canvas_end_stroke (self->canvas);
+  easel_canvas_put_down (self->canvas);
   easel_canvas_cancel_resize (self->canvas);
   easel_window_finish_color_choice (self, NULL);
 
@@ -582,6 +587,7 @@ file_action_allowed (EaselWindow *self)
   if (self->picture == NULL || dialog_is_open (self))
     return FALSE;
   easel_canvas_end_stroke (self->canvas);
+  easel_canvas_put_down (self->canvas);                    /* a pending curve or polygon too (REQ-0011-12) */
   easel_canvas_cancel_resize (self->canvas);
   return TRUE;
 }
@@ -1016,6 +1022,10 @@ tool_hint (EaselTool tool, gboolean transparent)
       return "Draws a rounded rectangle with the selected fill style.";
     case EASEL_TOOL_ELLIPSE:
       return "Draws an ellipse with the selected fill style.";
+    case EASEL_TOOL_CURVE:
+      return "Draws a curved line with the selected line width.";
+    case EASEL_TOOL_POLYGON:
+      return "Draws a polygon with the selected fill style.";
     case EASEL_TOOL_PICK:
       return "Picks up a color from the picture for drawing.";
     case EASEL_TOOL_FILL:
@@ -1418,6 +1428,7 @@ attributes_activated (GSimpleAction *action, GVariant *parameter, gpointer user_
 
   if (!view_actions_allowed (self))
     return;
+  easel_canvas_put_down (self->canvas);                    /* an Image action puts a pending curve or polygon down (REQ-0011-12) */
   canvas_area_device (self, &area_w, &area_h);
   easel_settings_resolve_size (&self->settings, area_w, area_h, &default_w, &default_h);
   easel_attributes_dialog_present (GTK_WIDGET (self), self->picture->width, self->picture->height, default_w, default_h,
@@ -1433,6 +1444,13 @@ step_history (EaselWindow *self, gboolean undo)
   if (self->picture == NULL || dialog_is_open (self) || easel_canvas_is_resizing (self->canvas))
     return;
 
+  /* A pending curve or polygon: Undo drops it and undoes nothing else, Redo does nothing (REQ-0011-11). */
+  if (easel_canvas_is_pending (self->canvas))
+    {
+      if (undo)
+        easel_canvas_drop (self->canvas);
+      return;
+    }
   /* Undo during a stroke cancels it, as the other mouse button does; until the button is released, further
      undo and redo are ignored (REQ-0002-09). */
   if (easel_canvas_is_stroking (self->canvas))
@@ -1484,12 +1502,21 @@ on_resize_requested (EaselWindow *self, int width, int height)
 static gboolean
 on_key_pressed (EaselWindow *self, guint keyval, guint keycode, GdkModifierType state, GtkEventControllerKey *controller)
 {
+  if (keyval == GDK_KEY_Escape && easel_canvas_is_pending (self->canvas) && !dialog_is_open (self))
+    {
+      /* Esc drops a pending curve or polygon (REQ-0011-11); with a dialog, the quit prompt or the color chooser open it acts on
+         that and not on the shape (REQ-0011-12). */
+      easel_canvas_drop (self->canvas);
+      return GDK_EVENT_STOP;
+    }
   if (keyval == GDK_KEY_Escape && easel_tool_draws_shape (self->tool) && easel_canvas_is_stroking (self->canvas))
     {
       /* Esc cancels a shape drag (REQ-0010-08). */
       easel_canvas_cancel_stroke (self->canvas);
       return GDK_EVENT_STOP;
     }
+  if ((keyval == GDK_KEY_Return || keyval == GDK_KEY_KP_Enter) && !dialog_is_open (self) && easel_canvas_enter (self->canvas))
+    return GDK_EVENT_STOP;
   if (keyval != GDK_KEY_Escape || !easel_canvas_is_resizing (self->canvas))
     return GDK_EVENT_PROPAGATE;
   easel_canvas_cancel_resize (self->canvas);
@@ -1604,6 +1631,9 @@ change_tool_state (GSimpleAction *action, GVariant *value, gpointer user_data)
     return;
   if (!easel_tool_from_name (g_variant_get_string (value, NULL), &tool))
     return;
+  /* Another tool puts a pending curve or polygon down; the same tool keeps it (REQ-0011-12). */
+  if (tool != self->tool)
+    easel_canvas_put_down (self->canvas);
   if (tool == EASEL_TOOL_PICK && self->tool != EASEL_TOOL_PICK)
     self->pick_return_tool = self->tool;
   self->tool = tool;
@@ -1621,7 +1651,7 @@ step_preset (EaselWindow *self, int direction)
 {
   if (!view_actions_allowed (self))
     return;
-  if (easel_tool_draws_shape (self->tool))
+  if (easel_tool_draws_shape (self->tool) || easel_tool_draws_pending (self->tool))
     {
       /* The width of Line and the shapes, 1 to 5, stopping at the ends (REQ-0010-04); the fill style is not touched. */
       g_autoptr (GVariant) state = g_action_group_get_action_state (G_ACTION_GROUP (self), "line-width");
@@ -1912,6 +1942,7 @@ easel_window_init (EaselWindow *self)
   g_signal_connect_object (self->canvas, "pick-ended", G_CALLBACK (on_pick_ended), self, G_CONNECT_SWAPPED);
   g_signal_connect_object (self->canvas, "fill-failed", G_CALLBACK (on_fill_failed), self, G_CONNECT_SWAPPED);
   g_signal_connect_object (self->canvas, "shape-failed", G_CALLBACK (on_shape_failed), self, G_CONNECT_SWAPPED);
+  g_signal_connect_object (self->canvas, "pending-changed", G_CALLBACK (sync_history_ui), self, G_CONNECT_SWAPPED);
   g_signal_connect_object (self->canvas, "stroke-finished", G_CALLBACK (on_stroke_finished), self, G_CONNECT_SWAPPED);
   g_signal_connect (self, "notify::is-active", G_CALLBACK (on_active_changed), NULL);
 

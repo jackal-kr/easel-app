@@ -18,8 +18,8 @@ In this feature the only edit is a pencil stroke (0001); later features add thei
 - REQ-0002-03 When the user chooses Undo, the app shall restore the picture to how it was before the most recent step that has not been undone, and that step becomes redoable.
 - REQ-0002-04 When the user chooses Redo, the app shall reapply the most recently undone step, and it becomes undoable again.
 - REQ-0002-05 When an edit is completed after one or more undos, the app shall discard every redoable step.
-- REQ-0002-06 While there is nothing to undo, the Undo button shall be insensitive and the Undo shortcut shall do nothing.
-- REQ-0002-07 While there is nothing to redo, the Redo button shall be insensitive and the Redo shortcuts shall do nothing.
+- REQ-0002-06 While there is nothing to undo, the Undo button shall be insensitive and the Undo shortcut shall do nothing. (0011: while a curve or polygon is pending, Undo is available to drop it: REQ-0011-11.)
+- REQ-0002-07 While there is nothing to redo, the Redo button shall be insensitive and the Redo shortcuts shall do nothing. (0011: Redo is unavailable while a curve or polygon is pending: REQ-0011-11.)
 - REQ-0002-08 Undo and redo shall change only the picture: the zoom, the active tool and the colors stay as they are, and the scroll position stays as it is as far as the picture's size allows.
 - REQ-0002-09 If Undo is chosen during a stroke, then the app shall cancel the stroke as in REQ-0001-23 (nothing is added, no redo step appears); further Undo or Redo is ignored until the mouse button is released, or the window loses focus (as REQ-0001-25), in case the release never arrives.
 

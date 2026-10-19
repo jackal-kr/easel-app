@@ -2236,6 +2236,31 @@ as13_offset_is_displayed (void)
 
 /* ---- 0004: the pixel grid ---- */
 
+/* A run that cannot get a snapshot of the window ends with this line on stderr and this exit status (EX_TEMPFAIL): tools/mutate.sh
+   reads them as inconclusive. */
+#define NO_SNAPSHOT_MARKER "EASEL-INCONCLUSIVE: no snapshot"
+#define NO_SNAPSHOT_STATUS 75
+
+/* Test hooks for tools/mutate.sh's own test, never set in a normal run: EASEL_TEST_NO_SNAPSHOT=N makes the first N snapshots
+   of the process fail (under 30 the wait below gets past them, over 30 the run ends inconclusive); EASEL_TEST_NO_SNAPSHOT_ONCE=
+   FILE makes every snapshot of the first process fail, FILE being created then, so that the next process finds it and goes on. */
+static gboolean
+snapshot_withheld (void)
+{
+  static int first = -1, calls;
+  const char *many = g_getenv ("EASEL_TEST_NO_SNAPSHOT"), *once = g_getenv ("EASEL_TEST_NO_SNAPSHOT_ONCE");
+
+  if (first < 0)
+    {
+      first = once != NULL && !g_file_test (once, G_FILE_TEST_EXISTS);
+      if (first)
+        g_file_set_contents (once, "", 0, NULL);
+    }
+  if (first)
+    return TRUE;
+  return many != NULL && calls++ < atoi (many);
+}
+
 /* The window's pixels as drawn now (premultiplied 0xAARRGGBB), and the position of the canvas in them. */
 static uint32_t *
 render_pixels (EaselWindow *win, int *w, int *h, int *canvas_x, int *canvas_y)
@@ -2243,17 +2268,47 @@ render_pixels (EaselWindow *win, int *w, int *h, int *canvas_x, int *canvas_y)
   GtkWidget *widget = GTK_WIDGET (win);
   EaselCanvas *canvas = easel_window_get_canvas (win);
   g_autoptr (GdkPaintable) paintable = gtk_widget_paintable_new (widget);
-  GtkSnapshot *snapshot = gtk_snapshot_new ();
-  GskRenderNode *node;
+  GskRenderNode *node = NULL;
   g_autoptr (GdkTexture) texture = NULL;
   graphene_rect_t r;
   double scale = easel_canvas_get_scale (canvas);
   uint32_t *px;
 
-  *w = gtk_widget_get_width (widget);
-  *h = gtk_widget_get_height (widget);
-  gdk_paintable_snapshot (paintable, snapshot, *w, *h);
-  node = gtk_snapshot_free_to_node (snapshot);
+  /* The window's last frame as a render node. A window that has painted none gives no node and GSK aborts on it; so up to 30
+     frames are waited for, and a window that still has none ends the run as inconclusive (no snapshot), which is neither a
+     pass nor a failure of the test: tools/mutate.sh runs such a mutant again once, and never counts it as killed. */
+  for (int attempt = 0; attempt < 30 && node == NULL; attempt++)
+    {
+      GtkSnapshot *snapshot = gtk_snapshot_new ();
+
+      *w = gtk_widget_get_width (widget);
+      *h = gtk_widget_get_height (widget);
+      if (snapshot_withheld ())              /* the tool's own test: a window with no snapshot, on request */
+        gtk_snapshot_free_to_node (snapshot);
+      else
+        {
+          gdk_paintable_snapshot (paintable, snapshot, *w, *h);
+          node = gtk_snapshot_free_to_node (snapshot);
+        }
+      if (node == NULL)
+        {
+          /* One frame, or 100 ms if none comes. */
+          GdkFrameClock *clock = gtk_widget_get_frame_clock (widget);
+          gint64 before = clock != NULL ? gdk_frame_clock_get_frame_counter (clock) : 0;
+          gint64 end = g_get_monotonic_time () + 100 * 1000;
+
+          gtk_widget_queue_draw (widget);
+          while ((clock == NULL || gdk_frame_clock_get_frame_counter (clock) <= before) && g_get_monotonic_time () < end)
+            g_main_context_iteration (NULL, FALSE);
+        }
+    }
+  if (node == NULL)
+    {
+      g_printerr ("%s: the window gave no snapshot in 30 frames; the run is inconclusive (exit status %d)\n",
+                  NO_SNAPSHOT_MARKER, NO_SNAPSHOT_STATUS);
+      fflush (stderr);
+      _exit (NO_SNAPSHOT_STATUS);
+    }
   texture = gsk_renderer_render_texture (gtk_native_get_renderer (GTK_NATIVE (win)), node,
                                          &GRAPHENE_RECT_INIT (0, 0, *w, *h));
   gsk_render_node_unref (node);
@@ -6834,7 +6889,7 @@ static void
 as6_toolbox_width_is_the_same_for_every_tool (void)
 {
   static const char *const tools[] = { "pan", "pencil", "brush", "airbrush", "eraser", "magnifier", "pick", "fill", "line",
-                                       "rectangle", "rounded-rectangle", "ellipse" };
+                                       "curve", "rectangle", "rounded-rectangle", "ellipse", "polygon" };
   static const char *const lens[] = { "100 %", "200 %", "400 %", "600 %", "800 %" };
   GtkSettings *st = gtk_settings_get_default ();
   EaselWindow *win = start_window ();
@@ -7529,10 +7584,10 @@ as1_shape_tools_toolbox_hints (void)
     { "fill", "Fill", NULL, 0, 2, EASEL_TOOL_FILL }, { "pencil", "Pencil", NULL, 1, 2, EASEL_TOOL_PENCIL },
     { "brush", "Brush", NULL, 0, 3, EASEL_TOOL_BRUSH }, { "airbrush", "Airbrush", NULL, 1, 3, EASEL_TOOL_AIRBRUSH },
     { "line", "Line", "Draws a straight line with the selected line width.", 0, 4, EASEL_TOOL_LINE },
-    { "rectangle", "Rectangle", "Draws a rectangle with the selected fill style.", 1, 4, EASEL_TOOL_RECTANGLE },
-    { "rounded-rectangle", "Rounded Rectangle", "Draws a rounded rectangle with the selected fill style.", 0, 5,
+    { "rectangle", "Rectangle", "Draws a rectangle with the selected fill style.", 0, 5, EASEL_TOOL_RECTANGLE },
+    { "rounded-rectangle", "Rounded Rectangle", "Draws a rounded rectangle with the selected fill style.", 1, 5,
       EASEL_TOOL_ROUNDED_RECTANGLE },
-    { "ellipse", "Ellipse", "Draws an ellipse with the selected fill style.", 1, 5, EASEL_TOOL_ELLIPSE },
+    { "ellipse", "Ellipse", "Draws an ellipse with the selected fill style.", 0, 6, EASEL_TOOL_ELLIPSE },
   };
   EaselWindow *win = start_window ();
   EaselStatusBar *bar = easel_window_get_status_bar (win);
@@ -8268,14 +8323,1098 @@ as17_drag_outside_area (void)
 
   /* The scroll the wheel gives (100 points down), then the pointer moves at the same place in the view: the end is the
      pixel under it now, 100 points further down the picture. */
-  gtk_adjustment_set_value (v, scroll_v + 100);
-  wait_for_layout (win);
+  gtk_adjustment_set_value (v, scroll_v + 100);                    /* no main loop turns while the button is held: a real pointer
+                                                                      motion over the test window would move the end */
   easel_canvas_motion (canvas, x, 130.5);
   shape_release (win, 1);
   g_assert_cmphex (easel_image_get (img, end_x, (int) floor (130.5 * scale)), ==, 0xFF000000u);
   g_assert_cmphex (easel_image_get (img, end_x + 1, 20), ==, 0xFFFFFF00u);
   g_assert_cmphex (easel_image_get (img, 10, (int) floor (130.5 * scale) + 1), ==, 0xFFFFFF00u);
   g_assert_cmphex (easel_image_get (img, 10, 10), ==, 0xFF000000u);
+  close_windows ();
+}
+
+/* ---- 0011: Curve and Polygon ---- */
+
+/* AS-1 (REQ-0011-01, -02, -03): the two tools in their places, with their tooltips, hints and the crosshair, and their
+   options: Curve the widths, Polygon the fill styles and the widths, the choices shared with Line and the shapes. */
+static void
+as1_curve_polygon_toolbox_hints (void)
+{
+  static const struct { const char *name, *tip, *hint; int col, row; EaselTool tool; } tools[] = {
+    { "pan", "Pan", NULL, 0, 0, EASEL_TOOL_PAN }, { "magnifier", "Magnifier", NULL, 1, 0, EASEL_TOOL_MAGNIFIER },
+    { "eraser", "Eraser", NULL, 0, 1, EASEL_TOOL_ERASER }, { "pick", "Pick Color", NULL, 1, 1, EASEL_TOOL_PICK },
+    { "fill", "Fill", NULL, 0, 2, EASEL_TOOL_FILL }, { "pencil", "Pencil", NULL, 1, 2, EASEL_TOOL_PENCIL },
+    { "brush", "Brush", NULL, 0, 3, EASEL_TOOL_BRUSH }, { "airbrush", "Airbrush", NULL, 1, 3, EASEL_TOOL_AIRBRUSH },
+    { "line", "Line", NULL, 0, 4, EASEL_TOOL_LINE },
+    { "curve", "Curve", "Draws a curved line with the selected line width.", 1, 4, EASEL_TOOL_CURVE },
+    { "rectangle", "Rectangle", NULL, 0, 5, EASEL_TOOL_RECTANGLE },
+    { "rounded-rectangle", "Rounded Rectangle", NULL, 1, 5, EASEL_TOOL_ROUNDED_RECTANGLE },
+    { "ellipse", "Ellipse", NULL, 0, 6, EASEL_TOOL_ELLIPSE },
+    { "polygon", "Polygon", "Draws a polygon with the selected fill style.", 1, 6, EASEL_TOOL_POLYGON },
+  };
+  EaselWindow *win = start_window ();
+  EaselStatusBar *bar = easel_window_get_status_bar (win);
+  GtkToggleButton *buttons[14];
+  graphene_rect_t first, r;
+
+  wait_for_layout (win);
+  for (guint i = 0; i < G_N_ELEMENTS (tools); i++)
+    {
+      buttons[i] = find_tool_button (GTK_WIDGET (win), tools[i].name);
+      g_assert_nonnull (buttons[i]);
+      g_assert_cmpstr (gtk_widget_get_tooltip_text (GTK_WIDGET (buttons[i])), ==, tools[i].tip);
+      g_assert_cmpstr (gtk_button_get_icon_name (GTK_BUTTON (buttons[i])), !=, NULL);
+    }
+  /* Two columns, row by row: Line / Curve, Rectangle / Rounded Rectangle, Ellipse / Polygon. */
+  first = bounds_in (GTK_WIDGET (buttons[0]), GTK_WIDGET (win));
+  for (guint i = 1; i < G_N_ELEMENTS (tools); i++)
+    {
+      graphene_rect_t before = bounds_in (GTK_WIDGET (buttons[i - 1]), GTK_WIDGET (win));
+
+      r = bounds_in (GTK_WIDGET (buttons[i]), GTK_WIDGET (win));
+      if (tools[i].col == 0)
+        g_assert_cmpfloat_with_epsilon (r.origin.x, first.origin.x, 1.0);
+      else
+        g_assert_cmpfloat (r.origin.x, >, first.origin.x + first.size.width - 1);
+      if (tools[i].row > tools[i - 1].row)
+        g_assert_cmpfloat (r.origin.y, >, before.origin.y + 1);
+      else
+        g_assert_cmpfloat_with_epsilon (r.origin.y, before.origin.y, 1.0);
+    }
+  for (guint i = 0; i < G_N_ELEMENTS (tools); i++)
+    {
+      g_signal_emit_by_name (buttons[i], "clicked");
+      wait_for_layout (win);
+      g_assert_cmpint (easel_window_get_tool (win), ==, tools[i].tool);
+      for (guint j = 0; j < G_N_ELEMENTS (tools); j++)
+        g_assert_true (gtk_toggle_button_get_active (buttons[j]) == (i == j));
+      if (tools[i].hint != NULL)
+        {
+          GdkCursor *cursor = gtk_widget_get_cursor (GTK_WIDGET (easel_window_get_canvas (win)));
+
+          g_assert_cmpstr (easel_status_bar_get_text (bar, EASEL_STATUS_HINT), ==, tools[i].hint);
+          g_assert_nonnull (cursor);
+          g_assert_cmpstr (gdk_cursor_get_name (cursor), ==, "crosshair");
+        }
+    }
+
+  /* Curve: the five widths with the width chosen for Line, and no fill styles. */
+  use_tool (win, "line");
+  wait_for_layout (win);
+  g_signal_emit_by_name (find_mapped_by_tooltip (GTK_WIDGET (win), "4 pixels"), "clicked");
+  use_tool (win, "curve");
+  wait_for_layout (win);
+  g_assert_cmpint (shown_selected (win, width_tips, 5), ==, 3);
+  g_assert_null (find_int_action_button (GTK_WIDGET (win), "win.fill-style", 0));
+  /* Polygon: the fill style chosen for the shapes, and the widths. */
+  use_tool (win, "ellipse");
+  wait_for_layout (win);
+  g_signal_emit_by_name (find_int_action_button (GTK_WIDGET (win), "win.fill-style", 1), "clicked");
+  use_tool (win, "polygon");
+  wait_for_layout (win);
+  g_assert_cmpint (shown_selected (win, style_tips, 3), ==, 1);
+  g_assert_cmpint (shown_selected (win, width_tips, 5), ==, 3);
+  /* A choice made with Polygon is the choice of Curve and Line too. */
+  g_signal_emit_by_name (find_mapped_by_tooltip (GTK_WIDGET (win), "2 pixels"), "clicked");
+  use_tool (win, "curve");
+  wait_for_layout (win);
+  g_assert_cmpint (shown_selected (win, width_tips, 5), ==, 1);
+  /* Numpad + and − step the width with Curve and with Polygon, not the fill style. */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "preset-larger", NULL);
+  g_assert_cmpint (int_state (win, "line-width"), ==, 3);
+  use_tool (win, "polygon");
+  g_action_group_activate_action (G_ACTION_GROUP (win), "preset-smaller", NULL);
+  g_assert_cmpint (int_state (win, "line-width"), ==, 2);
+  g_assert_cmpint (int_state (win, "fill-style"), ==, 1);
+  g_assert_false (easel_window_get_modified (win));
+  close_windows ();
+}
+
+/* AS-2 (REQ-0011-04, -05, -09, -14): the curve in three stages. The picture is unchanged until the second bend is released;
+   what the window shows while it waits is what the release draws; one undo step. Shift constrains the line and not the
+   bends. */
+static void
+as2_curve_stages_and_preview (void)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  g_autofree uint32_t *waiting = NULL, *done = NULL, *without = NULL;
+  int w, h, cx, cy;
+
+  wait_for_layout (win);
+  use_tool (win, "curve");
+  wait_for_layout (win);
+  /* The line: held, then waiting. */
+  shape_press_move (win, 1, 10, 40, 50, 40);
+  g_assert_true (easel_canvas_is_stroking (canvas));
+  g_assert_true (easel_canvas_is_pending (canvas));
+  g_assert_cmpint (count_color (img, 0xFF000000u), ==, 0);
+  shape_release (win, 1);
+  g_assert_false (easel_canvas_is_stroking (canvas));
+  g_assert_true (easel_canvas_is_pending (canvas));
+  g_assert_cmpint (count_color (img, 0xFF000000u), ==, 0);
+  g_assert_false (easel_window_get_modified (win));
+  /* The first bend: a click at (30, 20). */
+  shape_press_move (win, 1, 30, 20, 30, 20);
+  g_assert_true (easel_canvas_is_stroking (canvas));
+  shape_release (win, 1);
+  g_assert_true (easel_canvas_is_pending (canvas));
+  g_assert_cmpint (count_color (img, 0xFF000000u), ==, 0);
+  wait_for_next_frame (win);
+  waiting = render_pixels (win, &w, &h, &cx, &cy);
+  /* The second bend, at the same place, puts the curve down: AS-2's 41 pixels, the top in row 25 from 28 to 32. */
+  shape_press_move (win, 1, 30, 20, 30, 20);
+  shape_release (win, 1);
+  g_assert_false (easel_canvas_is_pending (canvas));
+  g_assert_false (easel_canvas_is_stroking (canvas));
+  g_assert_cmpint (count_color (img, 0xFF000000u), ==, 41);
+  g_assert_true (easel_window_get_modified (win));
+  g_assert_cmphex (easel_image_get (img, 10, 40), ==, 0xFF000000u);
+  g_assert_cmphex (easel_image_get (img, 50, 40), ==, 0xFF000000u);
+  for (int x = 0; x < 300; x++)
+    g_assert_true ((x >= 28 && x <= 32) == (easel_image_get (img, x, 25) == 0xFF000000u));
+  for (int y = 0; y < 25; y++)
+    for (int x = 0; x < 300; x++)
+      g_assert_cmphex (easel_image_get (img, x, y), ==, 0xFFFFFF00u);
+  wait_for_next_frame (win);
+  done = render_pixels (win, &w, &h, &cx, &cy);
+  for (int y = 0; y < 200; y++)
+    for (int x = 0; x < 300; x++)
+      g_assert_cmphex (rendered_pixel (done, w, cx, cy, x, y), ==, rendered_pixel (waiting, w, cx, cy, x, y));
+  /* One step: one Undo restores the picture. */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_cmpint (count_color (img, 0xFF000000u), ==, 0);
+  g_assert_false (action_enabled (win, "undo"));
+
+  /* The second bend moves the second control point only: the S-curve of the core test (52 pixels, the lowest in row 54). */
+  shape_press_move (win, 1, 10, 40, 50, 40);
+  shape_release (win, 1);
+  shape_press_move (win, 1, 30, 20, 30, 20);
+  shape_release (win, 1);
+  shape_press_move (win, 1, 50, 80, 50, 80);
+  shape_release (win, 1);
+  g_assert_cmpint (count_color (img, 0xFF000000u), ==, 52);
+  for (int y = 55; y < 200; y++)
+    for (int x = 0; x < 300; x++)
+      g_assert_cmphex (easel_image_get (img, x, y), ==, 0xFFFFFF00u);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+
+  /* Shift flattens the line (pressed without a move, too) and leaves the bends alone: the curve is the one drawn without
+     Shift, whose bends are not on a 45-degree line from the start. */
+  shape_press_move (win, 1, 10, 40, 50, 40);
+  shape_release (win, 1);
+  shape_press_move (win, 1, 33, 22, 33, 22);
+  shape_release (win, 1);
+  shape_press_move (win, 1, 33, 22, 33, 22);
+  shape_release (win, 1);
+  without = g_memdup2 (img->px, (gsize) 300 * 200 * sizeof img->px[0]);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  shape_press_move (win, 1, 10, 40, 50, 47);
+  shift_key (win, TRUE);
+  shape_release (win, 1);
+  shape_press_move (win, 1, 33, 22, 33, 22);
+  shape_release (win, 1);
+  shape_press_move (win, 1, 33, 22, 33, 22);
+  shape_release (win, 1);
+  shift_key (win, FALSE);
+  g_assert_false (easel_canvas_is_pending (canvas));
+  g_assert_cmpint (memcmp (without, img->px, (gsize) 300 * 200 * sizeof img->px[0]), ==, 0);
+  g_assert_cmphex (easel_image_get (img, 50, 47), ==, 0xFFFFFF00u);
+  close_windows ();
+}
+
+/* AS-9 (REQ-0011-10), the colors: those of the first press, whatever happens to the colors between the stages; every stage
+   uses the same button. */
+static void
+as9_curve_colors_of_the_first_press (void)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  EaselPaletteBar *bar = easel_window_get_palette_bar (win);
+  uint32_t bg, fg;
+
+  wait_for_layout (win);
+  use_tool (win, "curve");
+  wait_for_layout (win);
+  /* Two colors that differ from each other and from the yellow picture: swatch 0 and swatch 4. */
+  easel_palette_bar_press (bar, 0, 1, 1);
+  easel_palette_bar_press (bar, 4, 3, 1);
+  fg = easel_window_get_foreground (win);
+  bg = easel_window_get_background (win);
+  g_assert_cmphex (fg, !=, bg);
+  g_assert_cmphex (bg, !=, 0xFFFFFF00u);
+  g_assert_cmphex (fg, !=, 0xFFFFFF00u);
+  /* The secondary button throughout; the colors swap while the curve waits. */
+  shape_press_move (win, 3, 10, 40, 50, 40);
+  shape_release (win, 3);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "swap-colors", NULL);
+  g_assert_cmphex (easel_window_get_background (win), ==, fg);
+  shape_press_move (win, 3, 30, 20, 30, 20);
+  shape_release (win, 3);
+  shape_press_move (win, 3, 30, 20, 30, 20);
+  shape_release (win, 3);
+  g_assert_false (easel_canvas_is_pending (canvas));
+  g_assert_cmpint (count_color (img, bg), ==, 41);                 /* the background of the first press */
+  g_assert_cmpint (count_color (img, fg), ==, 0);                  /* not the one it became by the swap */
+  close_windows ();
+}
+
+/* A polygon of three corners, each put with a press, a move and a release of the primary button: from (10, 10) the first side
+   to (30, 10), then the corners (10, 30) and, if closing_corner, (10, 10) again (the same outline as the closed triangle). */
+static void
+place_triangle (EaselWindow *win, gboolean closing_corner)
+{
+  shape_press_move (win, 1, 10, 10, 30, 10);
+  shape_release (win, 1);
+  shape_press_move (win, 1, 10, 30, 10, 30);
+  shape_release (win, 1);
+  if (closing_corner)
+    {
+      shape_press_move (win, 1, 10, 10, 10, 10);
+      shape_release (win, 1);
+    }
+}
+
+/* AS-5 (REQ-0011-06, -08, -09), the clicks: the first side, the next sides held and following the pointer, the corners put
+   by the releases, no side following the pointer between clicks, the open polygon shown without a fill, and the three fill
+   styles after a close. */
+static void
+as5_polygon_clicks (void)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  EaselPaletteBar *bar = easel_window_get_palette_bar (win);
+  g_autofree uint32_t *waiting = NULL, *done = NULL;
+  uint32_t fg, bg;
+  int w, h, cx, cy;
+
+  wait_for_layout (win);
+  easel_palette_bar_press (bar, 0, 1, 1);
+  easel_palette_bar_press (bar, 4, 3, 1);
+  fg = easel_window_get_foreground (win);
+  bg = easel_window_get_background (win);
+  use_tool (win, "polygon");
+  wait_for_layout (win);
+  /* The first side: held, then released: waiting, nothing drawn. */
+  shape_press_move (win, 1, 10, 10, 30, 10);
+  g_assert_true (easel_canvas_is_stroking (canvas));
+  g_assert_true (easel_canvas_is_pending (canvas));
+  g_assert_cmpint (count_color (img, fg), ==, 0);
+  shape_release (win, 1);
+  g_assert_false (easel_canvas_is_stroking (canvas));
+  g_assert_true (easel_canvas_is_pending (canvas));
+  /* The next side follows the pointer while held; the release puts its corner where it was shown, not where it was pressed. */
+  shape_press_move (win, 1, 20, 20, 10, 25);
+  g_assert_true (easel_canvas_is_stroking (canvas));
+  {
+    double x, y;
+
+    canvas_point (win, 10.5, 30.5, &x, &y);
+    easel_canvas_motion (canvas, x, y);
+  }
+  shape_release (win, 1);
+  /* No side follows the pointer while no button is held. */
+  easel_canvas_motion (canvas, 80.5, 80.5);
+  g_assert_false (easel_canvas_is_stroking (canvas));
+  g_assert_cmpint (count_color (img, fg), ==, 0);
+  easel_canvas_put_down (canvas);                                  /* closes it: the triangle of AS-5 */
+  g_assert_false (easel_canvas_is_pending (canvas));
+  g_assert_cmpint (count_color (img, fg), ==, 60);
+  g_assert_cmpint (count_color (img, bg), ==, 0);
+  g_assert_true (easel_window_get_modified (win));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_cmpint (count_color (img, fg), ==, 0);
+
+  /* "Outline and fill": the 60 in the drawing color, the 171 inside in the other. "Fill": all 231 in the drawing color. */
+  g_action_group_change_action_state (G_ACTION_GROUP (win), "fill-style", g_variant_new_int32 (1));
+  place_triangle (win, FALSE);
+  easel_canvas_put_down (canvas);
+  g_assert_cmpint (count_color (img, fg), ==, 60);
+  g_assert_cmpint (count_color (img, bg), ==, 171);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_action_group_change_action_state (G_ACTION_GROUP (win), "fill-style", g_variant_new_int32 (2));
+  place_triangle (win, FALSE);
+  easel_canvas_put_down (canvas);
+  g_assert_cmpint (count_color (img, fg), ==, 231);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+
+  /* The open polygon is shown with its sides only, whatever the style (here "Fill"): the pixel (12, 15), inside the triangle
+     to come, is not drawn while it waits. */
+  place_triangle (win, FALSE);
+  wait_for_next_frame (win);
+  waiting = render_pixels (win, &w, &h, &cx, &cy);
+  g_assert_cmphex (rendered_pixel (waiting, w, cx, cy, 12, 15), ==, 0xFFFFFF00u);
+  g_assert_cmphex (rendered_pixel (waiting, w, cx, cy, 20, 10), ==, 0xFF000000u | (fg & 0x00FFFFFFu));
+  easel_canvas_drop (canvas);
+  g_assert_cmpint (count_color (img, fg), ==, 0);
+
+  /* What is shown while it waits is what is drawn: a fourth corner on the first makes the open outline the closed one. */
+  g_action_group_change_action_state (G_ACTION_GROUP (win), "fill-style", g_variant_new_int32 (0));
+  place_triangle (win, TRUE);
+  wait_for_next_frame (win);
+  g_free (waiting);
+  waiting = render_pixels (win, &w, &h, &cx, &cy);
+  easel_canvas_put_down (canvas);
+  wait_for_next_frame (win);
+  done = render_pixels (win, &w, &h, &cx, &cy);
+  for (int y = 0; y < 200; y++)
+    for (int x = 0; x < 300; x++)
+      g_assert_cmphex (rendered_pixel (done, w, cx, cy, x, y), ==, rendered_pixel (waiting, w, cx, cy, x, y));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+
+  /* A click with no move adds the second corner, short as the first side is, and puts nothing down. */
+  shape_press_move (win, 1, 50, 50, 50, 50);
+  shape_release (win, 1);
+  g_assert_true (easel_canvas_is_pending (canvas));
+  g_assert_false (easel_window_get_modified (win));
+  easel_canvas_drop (canvas);
+
+  /* Shift constrains the side being dragged as it constrains a Line: from (10, 10) toward (30, 13): flat to (30, 10). */
+  shape_press_move (win, 1, 10, 10, 30, 13);
+  shift_key (win, TRUE);
+  shape_release (win, 1);
+  shift_key (win, FALSE);
+  easel_canvas_put_down (canvas);
+  g_assert_cmpint (count_color (img, fg), ==, 21);                 /* 21 pixels of row 10: the side and its closing one */
+  g_assert_cmphex (easel_image_get (img, 30, 10), ==, fg);
+  g_assert_cmphex (easel_image_get (img, 30, 13), ==, 0xFFFFFF00u);
+  close_windows ();
+}
+
+/* Enter, as the window's key controller gets it (the main keyboard's and the keypad's). */
+static void
+press_enter (EaselWindow *win, guint keyval)
+{
+  g_autoptr (GListModel) controllers = gtk_widget_observe_controllers (GTK_WIDGET (win));
+
+  for (guint i = 0; i < g_list_model_get_n_items (controllers); i++)
+    {
+      g_autoptr (GtkEventController) c = g_list_model_get_item (controllers, i);
+      gboolean handled = FALSE;
+
+      if (GTK_IS_EVENT_CONTROLLER_KEY (c))
+        g_signal_emit_by_name (c, "key-pressed", keyval, 0, 0, &handled);
+    }
+}
+
+/* The press of the primary button at the center of picture pixel (x, y) at time t ms, and its release at the center of (rx, ry)
+   after a move there; at any zoom (canvas_point gives the canvas position). */
+static void
+press_at (EaselWindow *win, guint32 t, int x, int y)
+{
+  double cx, cy;
+
+  canvas_point (win, x + 0.5, y + 0.5, &cx, &cy);
+  easel_canvas_press_timed (easel_window_get_canvas (win), 1, cx, cy, t);
+}
+
+static void
+release_at (EaselWindow *win, double dx, double dy, int x, int y)
+{
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  double cx, cy;
+
+  canvas_point (win, x + 0.5, y + 0.5, &cx, &cy);
+  easel_canvas_motion (canvas, cx + dx, cy + dy);
+  easel_canvas_release (canvas, 1);
+}
+
+static void
+click_at (EaselWindow *win, guint32 t, int x, int y)
+{
+  press_at (win, t, x, y);
+  release_at (win, 0, 0, x, y);
+}
+
+/* The triangle (10, 10), (30, 10), (10, 30) with its first two corners placed by slow clicks, so that none is a double-click. */
+static void
+place_two_corners (EaselWindow *win)
+{
+  press_at (win, 1000, 10, 10);
+  release_at (win, 0, 0, 30, 10);
+  click_at (win, 3000, 10, 30);                   /* the third corner, by one click */
+}
+
+/* AS-6 (REQ-0011-07): what closes a polygon, and what does not. */
+static void
+as6_polygon_closing (void)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  EaselPaletteBar *bar = easel_window_get_palette_bar (win);
+  uint32_t fg;
+
+  wait_for_layout (win);
+  easel_palette_bar_press (bar, 0, 1, 1);
+  fg = easel_window_get_foreground (win);
+  use_tool (win, "polygon");
+  wait_for_layout (win);
+
+  /* A double-click at the third corner closes the polygon with the same three corners: the triangle's 60 pixels. */
+  place_two_corners (win);
+  g_assert_true (easel_canvas_is_pending (canvas));
+  press_at (win, 3100, 10, 30);
+  release_at (win, 0, 0, 10, 30);
+  g_assert_false (easel_canvas_is_pending (canvas));
+  g_assert_cmpint (count_color (img, fg), ==, 60);
+  /* A third click of the same multi-click starts nothing, and neither does its release. */
+  press_at (win, 3200, 10, 30);
+  g_assert_false (easel_canvas_is_pending (canvas));
+  g_assert_false (easel_canvas_is_stroking (canvas));
+  release_at (win, 0, 0, 10, 30);
+  g_assert_false (easel_canvas_is_pending (canvas));
+  g_assert_cmpint (count_color (img, fg), ==, 60);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);          /* one step */
+  g_assert_cmpint (count_color (img, fg), ==, 0);
+  g_assert_false (action_enabled (win, "undo"));
+
+  /* Enter after the third corner: the same triangle; the keypad's Enter too; Enter while a side is held does nothing. */
+  place_two_corners (win);
+  press_at (win, 5000, 20, 20);                    /* a side is held */
+  press_enter (win, GDK_KEY_Return);
+  g_assert_true (easel_canvas_is_pending (canvas));
+  g_assert_true (easel_canvas_is_stroking (canvas));
+  release_at (win, 0, 0, 10, 10);                  /* it ends in the first corner's pixel: closes (REQ-0011-07) */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  place_two_corners (win);
+  press_enter (win, GDK_KEY_Return);
+  g_assert_false (easel_canvas_is_pending (canvas));
+  g_assert_cmpint (count_color (img, fg), ==, 60);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  place_two_corners (win);
+  press_enter (win, GDK_KEY_KP_Enter);
+  g_assert_cmpint (count_color (img, fg), ==, 60);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+
+  /* A second press released far from itself adds a corner, as any side does; so does a click too long after the first, or
+     too far from it. */
+  place_two_corners (win);
+  press_at (win, 3100, 10, 30);
+  release_at (win, 0, 0, 40, 40);
+  g_assert_true (easel_canvas_is_pending (canvas));
+  easel_canvas_drop (canvas);
+  place_two_corners (win);
+  click_at (win, 4000, 10, 30);                    /* 1000 ms after: not a double-click */
+  g_assert_true (easel_canvas_is_pending (canvas));
+  easel_canvas_drop (canvas);
+  place_two_corners (win);
+  click_at (win, 3100, 40, 60);                    /* in time, but far away: not a double-click */
+  g_assert_true (easel_canvas_is_pending (canvas));
+  easel_canvas_drop (canvas);
+
+  /* A click with no move, and a first side 2 pixels long, put nothing down: the first side always adds its second corner. */
+  click_at (win, 9000, 50, 50);
+  g_assert_true (easel_canvas_is_pending (canvas));
+  easel_canvas_drop (canvas);
+  press_at (win, 12000, 50, 50);
+  release_at (win, 0, 0, 52, 50);
+  g_assert_true (easel_canvas_is_pending (canvas));
+  g_assert_false (easel_window_get_modified (win));
+  easel_canvas_drop (canvas);
+
+  /* Near the first corner: 3 logical pixels from its center closes it, 6 adds a corner, at 400 % and at 25 %. */
+  {
+    static const int zooms[] = { 400, 25 };
+
+    for (guint z = 0; z < G_N_ELEMENTS (zooms); z++)
+      for (int far = 0; far <= 1; far++)
+        {
+          double cx, cy;
+
+          easel_canvas_set_zoom (canvas, zooms[z]);                  /* 25 % is no preset of zoom-to */
+          wait_for_layout (win);
+          g_assert_cmpint (easel_window_get_zoom (win), ==, zooms[z]);
+          place_two_corners (win);
+          press_at (win, 20000, 20, 20);                         /* a fourth side from (20, 20) */
+          canvas_point (win, 10.5, 10.5, &cx, &cy);              /* the first corner's center */
+          easel_canvas_motion (canvas, cx + (far ? 6 : 3), cy);
+          easel_canvas_release (canvas, 1);
+          if (far)
+            {
+              g_assert_true (easel_canvas_is_pending (canvas));
+              easel_canvas_drop (canvas);
+            }
+          else
+            {
+              g_assert_false (easel_canvas_is_pending (canvas));
+              g_assert_cmpint (count_color (img, fg), ==, 60);   /* the three corners placed; the side that closed adds none */
+              g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+            }
+        }
+  }
+  close_windows ();
+}
+
+/* A curve or a polygon waiting for its next stage: the curve has its line placed, the polygon two corners. */
+static void
+start_pending (EaselWindow *win, const char *tool)
+{
+  use_tool (win, tool);
+  shape_press_move (win, 1, 10, 40, 50, 40);
+  shape_release (win, 1);
+  g_assert_true (easel_canvas_is_pending (easel_window_get_canvas (win)));
+}
+
+/* AS-9 (REQ-0011-11), AS-11: what drops a pending curve or polygon (the other button, Esc, Undo), that it leaves the history
+   and its redo steps alone, that Undo is available for it on a new picture and Redo is not, and what does not drop it. */
+static void
+as9_drops_and_undo (void)
+{
+  static const char *const tools[] = { "curve", "polygon" };
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  EaselPaletteBar *bar = easel_window_get_palette_bar (win);
+
+  wait_for_layout (win);
+  for (guint t = 0; t < G_N_ELEMENTS (tools); t++)
+    {
+      /* The other button, while waiting: dropped, nothing drawn, no step; its press and release draw nothing. */
+      start_pending (win, tools[t]);
+      shape_press_move (win, 3, 30, 20, 30, 20);
+      g_assert_false (easel_canvas_is_pending (canvas));
+      g_assert_false (easel_canvas_is_stroking (canvas));
+      shape_release (win, 3);
+      g_assert_cmpint (count_color (img, 0xFF000000u), ==, 0);
+      g_assert_false (easel_window_get_modified (win));
+      g_assert_false (action_enabled (win, "undo"));
+      /* The other button, while a stage's button is held: dropped; the release of the first button does nothing. */
+      use_tool (win, tools[t]);
+      shape_press_move (win, 1, 10, 40, 50, 40);
+      g_assert_true (easel_canvas_is_stroking (canvas));
+      shape_press_move (win, 3, 30, 20, 30, 20);
+      g_assert_false (easel_canvas_is_pending (canvas));
+      g_assert_false (easel_canvas_is_stroking (canvas));
+      shape_release (win, 3);
+      shape_release (win, 1);
+      g_assert_false (easel_canvas_is_pending (canvas));
+      g_assert_cmpint (count_color (img, 0xFF000000u), ==, 0);
+      /* Esc, while waiting and while held. */
+      start_pending (win, tools[t]);
+      press_escape (win);
+      g_assert_false (easel_canvas_is_pending (canvas));
+      use_tool (win, tools[t]);
+      shape_press_move (win, 1, 10, 40, 50, 40);
+      press_escape (win);
+      g_assert_false (easel_canvas_is_pending (canvas));
+      g_assert_false (easel_canvas_is_stroking (canvas));
+      shape_release (win, 1);
+      g_assert_cmpint (count_color (img, 0xFF000000u), ==, 0);
+      g_assert_false (easel_window_get_modified (win));
+      /* A middle-button press and a right-click on the palette keep it pending. */
+      start_pending (win, tools[t]);
+      easel_canvas_press (canvas, 2, 100.5, 100.5);
+      easel_canvas_release (canvas, 2);
+      g_assert_true (easel_canvas_is_pending (canvas));
+      easel_palette_bar_press (bar, 4, 3, 1);
+      g_assert_true (easel_canvas_is_pending (canvas));
+      easel_canvas_drop (canvas);
+    }
+
+  /* Undo on a new picture, with nothing to undo: available while pending, and it drops; Redo is not available. */
+  start_pending (win, "curve");
+  g_assert_true (action_enabled (win, "undo"));
+  g_assert_false (action_enabled (win, "redo"));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_false (easel_canvas_is_pending (canvas));
+  g_assert_false (action_enabled (win, "undo"));
+  g_assert_cmpint (count_color (img, 0xFF000000u), ==, 0);
+
+  /* With a step and a redo step: a Line drawn and undone leaves a redo step; a pending polygon makes Redo unavailable, Undo
+     drops it and the redo step is still there, and the picture was not redone. */
+  use_tool (win, "line");
+  shape_press_move (win, 1, 10, 10, 60, 10);
+  shape_release (win, 1);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_true (action_enabled (win, "redo"));
+  start_pending (win, "polygon");
+  g_assert_false (action_enabled (win, "redo"));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "redo", NULL);                  /* does nothing */
+  g_assert_true (easel_canvas_is_pending (canvas));
+  g_assert_cmpint (count_color (img, 0xFF000000u), ==, 0);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_false (easel_canvas_is_pending (canvas));
+  g_assert_cmpint (count_color (img, 0xFF000000u), ==, 0);
+  g_assert_true (action_enabled (win, "redo"));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "redo", NULL);
+  g_assert_cmpint (count_color (img, 0xFF000000u), ==, 51);                           /* the Line is back */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+
+  /* Undo while a stage's button is held: dropped; a further Undo and Redo are ignored until the release (REQ-0002-09). */
+  use_tool (win, "curve");
+  shape_press_move (win, 1, 10, 40, 50, 40);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_false (easel_canvas_is_pending (canvas));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "redo", NULL);
+  g_assert_cmpint (count_color (img, 0xFF000000u), ==, 0);                            /* the Line was not redone */
+  shape_release (win, 1);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "redo", NULL);
+  g_assert_cmpint (count_color (img, 0xFF000000u), ==, 51);
+  close_windows ();
+}
+
+/* AS-8 (REQ-0011-12): what puts a waiting polygon or curve down, one undo step each, and what keeps it pending. */
+static void
+as8_put_down_sites (void)
+{
+  g_autofree char *dir = g_dir_make_tmp ("easel-ui-XXXXXX", NULL);
+  g_autofree char *path = g_build_filename (dir, "a.png", NULL);
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  EaselPaletteBar *bar = easel_window_get_palette_bar (win);
+  g_autofree uint32_t *before = NULL, *after = NULL;
+  EaselWindow *alive = NULL;
+  uint32_t fg;
+  int w, h, cx, cy;
+  double x, y;
+
+  wait_for_layout (win);
+  easel_palette_bar_press (bar, 0, 1, 1);
+  fg = easel_window_get_foreground (win);
+  use_tool (win, "polygon");
+  wait_for_layout (win);
+
+  /* The width chosen while it waits redraws it at once: the pixel (20, 9) is on the side's 3-pixel width only. "Fill" changes
+     nothing that is shown (an open polygon has no fill); another tool puts it down filled, with 3 pixels, as one step. */
+  place_two_corners (win);
+  wait_for_next_frame (win);
+  before = render_pixels (win, &w, &h, &cx, &cy);
+  g_assert_cmphex (rendered_pixel (before, w, cx, cy, 20, 9), ==, 0xFFFFFF00u);
+  g_action_group_change_action_state (G_ACTION_GROUP (win), "line-width", g_variant_new_int32 (3));
+  wait_for_next_frame (win);
+  after = render_pixels (win, &w, &h, &cx, &cy);
+  g_assert_cmphex (rendered_pixel (after, w, cx, cy, 20, 9), ==, fg);
+  g_assert_cmpint (count_color (img, fg), ==, 0);
+  g_assert_true (easel_canvas_is_pending (canvas));
+  g_action_group_change_action_state (G_ACTION_GROUP (win), "fill-style", g_variant_new_int32 (2));
+  g_assert_true (easel_canvas_is_pending (canvas));
+  use_tool (win, "pencil");
+  g_assert_false (easel_canvas_is_pending (canvas));
+  g_assert_cmpint (count_color (img, fg), ==, 319);                 /* the triangle, filled, with 3 pixels */
+  g_assert_true (easel_window_get_modified (win));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_cmpint (count_color (img, fg), ==, 0);
+  g_assert_false (action_enabled (win, "undo"));                    /* one step */
+  g_action_group_change_action_state (G_ACTION_GROUP (win), "line-width", g_variant_new_int32 (1));
+  g_action_group_change_action_state (G_ACTION_GROUP (win), "fill-style", g_variant_new_int32 (0));
+
+  /* The same tool again keeps it pending; Curve chosen while a polygon waits is another tool; a redo step is discarded. */
+  use_tool (win, "line");
+  shape_press_move (win, 1, 10, 100, 60, 100);
+  shape_release (win, 1);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_true (action_enabled (win, "redo"));
+  use_tool (win, "polygon");
+  place_two_corners (win);
+  use_tool (win, "polygon");
+  g_assert_true (easel_canvas_is_pending (canvas));
+  use_tool (win, "curve");
+  g_assert_false (easel_canvas_is_pending (canvas));
+  g_assert_cmpint (count_color (img, fg), ==, 60);
+  g_assert_false (action_enabled (win, "redo"));                    /* the Line's redo step went at the put-down */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+
+  /* Zoom In, a scroll and a focus loss are covered by AS-11; a secondary press on a resize handle does nothing and keeps a
+     curve pending, a primary one puts it down and starts the resize. */
+  start_pending (win, "curve");
+  wait_for_layout (win);
+  handle_center (canvas, EASEL_HANDLE_CORNER, &x, &y);
+  easel_canvas_press (canvas, 3, x, y);
+  easel_canvas_release (canvas, 3);
+  g_assert_true (easel_canvas_is_pending (canvas));
+  g_assert_false (easel_canvas_is_resizing (canvas));
+  easel_canvas_press (canvas, 1, x, y);
+  g_assert_false (easel_canvas_is_pending (canvas));
+  g_assert_true (easel_canvas_is_resizing (canvas));
+  easel_canvas_release (canvas, 1);
+  g_assert_cmpint (count_color (img, fg), ==, 41);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+
+  /* Attributes (an Image action): put down, then the dialog opens. */
+  use_tool (win, "polygon");
+  place_two_corners (win);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "attributes", NULL);
+  g_assert_false (easel_canvas_is_pending (canvas));
+  g_assert_cmpint (count_color (img, fg), ==, 60);
+  wait_for_layout (win);
+  g_assert_nonnull (adw_application_window_get_visible_dialog (ADW_APPLICATION_WINDOW (win)));
+  adw_dialog_close (adw_application_window_get_visible_dialog (ADW_APPLICATION_WINDOW (win)));
+  close_windows ();
+
+  /* Save: put down first, so the file and the saved state hold it. */
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  img = easel_window_get_picture (win);
+  wait_for_layout (win);
+  easel_palette_bar_press (easel_window_get_palette_bar (win), 0, 1, 1);
+  g_assert_true (easel_window_save_to (win, path));
+  use_tool (win, "polygon");
+  place_two_corners (win);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "save", NULL);
+  g_assert_false (easel_canvas_is_pending (canvas));
+  g_assert_cmpint (count_color (img, fg), ==, 60);
+  g_assert_false (easel_window_get_modified (win));                  /* the saved state is the one after the put-down */
+  {
+    g_autoptr (GError) error = NULL;
+    g_autoptr (GdkPixbuf) saved = gdk_pixbuf_new_from_file (path, &error);
+    const guchar *row = NULL;
+
+    g_assert_no_error (error);
+    row = gdk_pixbuf_get_pixels (saved) + 10 * gdk_pixbuf_get_rowstride (saved);     /* row 10: the polygon's first side */
+    g_assert_cmpint (row[20 * 4], ==, (fg >> 16) & 0xFF);
+    g_assert_cmpint (row[20 * 4 + 2], ==, fg & 0xFF);
+    g_assert_cmpint (gdk_pixbuf_get_pixels (saved)[100 * gdk_pixbuf_get_rowstride (saved) + 200 * 4 + 2], ==, 0);   /* yellow */
+  }
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_cmpstr (gtk_window_get_title (GTK_WINDOW (win)), ==, "• a.png – Easel");
+  close_windows ();
+
+  /* New: put down, then the prompt about unsaved changes; Cancel leaves it put down. */
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  img = easel_window_get_picture (win);
+  wait_for_layout (win);
+  easel_palette_bar_press (easel_window_get_palette_bar (win), 0, 1, 1);
+  use_tool (win, "polygon");
+  place_two_corners (win);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "new", NULL);
+  wait_for_dialogs (win, 1);
+  g_assert_false (easel_canvas_is_pending (canvas));
+  respond (win, "cancel");
+  g_assert_cmpint (count_color (img, fg), ==, 60);
+  g_assert_true (easel_window_get_modified (win));
+  close_windows ();
+
+  /* Quit on an unmodified picture: it was not modified, but putting the polygon down modifies it, so the prompt comes. */
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  img = easel_window_get_picture (win);
+  wait_for_layout (win);
+  easel_palette_bar_press (easel_window_get_palette_bar (win), 0, 1, 1);
+  use_tool (win, "polygon");
+  place_two_corners (win);
+  g_assert_false (easel_window_get_modified (win));
+  alive = win;
+  g_object_add_weak_pointer (G_OBJECT (win), (gpointer *) &alive);
+  gtk_window_close (GTK_WINDOW (win));
+  g_assert_nonnull (alive);                                          /* it did not close: the prompt is there */
+  wait_for_dialogs (win, 1);
+  g_assert_false (easel_canvas_is_pending (canvas));
+  respond (win, "cancel");
+  g_assert_cmpint (count_color (img, fg), ==, 60);
+  g_object_remove_weak_pointer (G_OBJECT (win), (gpointer *) &alive);
+  close_windows ();
+}
+
+/* AS-11 (REQ-0011-12): the view and the focus leave a pending polygon as it is. */
+static void
+as11_pending_survives_view_and_focus (void)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  GtkAdjustment *v;
+  int zoom;
+
+  wait_for_layout (win);
+  use_tool (win, "polygon");
+  place_two_corners (win);
+  g_assert_true (easel_canvas_is_pending (canvas));
+  zoom = easel_window_get_zoom (win);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-in", NULL);
+  wait_for_layout (win);
+  g_assert_cmpint (easel_window_get_zoom (win), >, zoom);
+  g_assert_true (easel_canvas_is_pending (canvas));
+  v = gtk_scrollable_get_vadjustment (GTK_SCROLLABLE (gtk_widget_get_parent (GTK_WIDGET (canvas))));
+  gtk_adjustment_set_value (v, gtk_adjustment_get_value (v) + 10);
+  g_assert_true (easel_canvas_is_pending (canvas));
+  easel_canvas_reset_pointer (canvas);                              /* what the window does when it loses focus */
+  g_assert_true (easel_canvas_is_pending (canvas));
+  g_assert_cmpint (count_color (img, 0xFF000000u), ==, 0);
+  g_assert_false (easel_window_get_modified (win));
+  close_windows ();
+}
+
+/* AS-10 (REQ-0011-13): a held stage whose release never comes, a lost focus, Save and Enter; a held stage follows the pointer
+   outside the area; a release with nothing held does nothing. */
+static void
+as10_lost_release_focus_save (void)
+{
+  g_autofree char *dir = g_dir_make_tmp ("easel-ui-XXXXXX", NULL);
+  g_autofree char *path = g_build_filename (dir, "a.png", NULL);
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  EaselPaletteBar *bar = easel_window_get_palette_bar (win);
+  uint32_t fg;
+
+  wait_for_layout (win);
+  easel_palette_bar_press (bar, 0, 1, 1);
+  fg = easel_window_get_foreground (win);
+  use_tool (win, "polygon");
+  wait_for_layout (win);
+
+  /* A side held whose release never arrives, the next pointer move or press coming with no button down: the side ends as it
+     was shown, and a press does what a press does: here it starts the next side. */
+  press_at (win, 1000, 10, 10);
+  release_at (win, 0, 0, 30, 10);
+  press_at (win, 3000, 10, 30);
+  g_assert_true (easel_canvas_is_stroking (canvas));
+  easel_canvas_buttons_released (canvas);
+  g_assert_false (easel_canvas_is_stroking (canvas));
+  g_assert_true (easel_canvas_is_pending (canvas));
+  press_at (win, 5000, 20, 20);
+  g_assert_true (easel_canvas_is_stroking (canvas));
+  g_assert_true (easel_canvas_is_pending (canvas));
+  /* A lost focus ends it too, and the polygon waits. */
+  easel_canvas_reset_pointer (canvas);
+  g_assert_false (easel_canvas_is_stroking (canvas));
+  g_assert_true (easel_canvas_is_pending (canvas));
+  g_assert_cmpint (count_color (img, fg), ==, 0);
+  /* A release with nothing held does nothing. */
+  easel_canvas_release (canvas, 1);
+  g_assert_true (easel_canvas_is_pending (canvas));
+  g_assert_false (easel_window_get_modified (win));
+  easel_canvas_drop (canvas);
+
+  /* The second bend of a curve held when the release is lost, or the focus: that stage's release puts the curve down. */
+  use_tool (win, "curve");
+  shape_press_move (win, 1, 10, 40, 50, 40);
+  shape_release (win, 1);
+  shape_press_move (win, 1, 30, 20, 30, 20);
+  shape_release (win, 1);
+  shape_press_move (win, 1, 30, 20, 30, 20);
+  easel_canvas_buttons_released (canvas);
+  g_assert_false (easel_canvas_is_pending (canvas));
+  g_assert_cmpint (count_color (img, fg), ==, 41);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  shape_press_move (win, 1, 10, 40, 50, 40);
+  shape_release (win, 1);
+  shape_press_move (win, 1, 30, 20, 30, 20);
+  shape_release (win, 1);
+  shape_press_move (win, 1, 30, 20, 30, 20);
+  easel_canvas_reset_pointer (canvas);
+  g_assert_false (easel_canvas_is_pending (canvas));
+  g_assert_cmpint (count_color (img, fg), ==, 41);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+
+  /* Save while a polygon's side is held: it ends as shown, the polygon is closed and put down, and the file holds it. */
+  g_assert_true (easel_window_save_to (win, path));
+  use_tool (win, "polygon");
+  press_at (win, 20000, 10, 10);
+  release_at (win, 0, 0, 30, 10);
+  click_at (win, 22000, 10, 30);
+  press_at (win, 24000, 20, 20);                                       /* a side is held, ending in (20, 20) */
+  g_assert_true (easel_canvas_is_stroking (canvas));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "save", NULL);
+  g_assert_false (easel_canvas_is_stroking (canvas));
+  g_assert_false (easel_canvas_is_pending (canvas));
+  g_assert_false (easel_window_get_modified (win));
+  g_assert_cmphex (easel_image_get (img, 20, 20), ==, fg);              /* the fourth corner is there: the side ended as shown */
+  easel_canvas_release (canvas, 1);
+  g_assert_false (easel_canvas_is_pending (canvas));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+
+  /* A held stage follows the pointer far outside the area, and only the pixels inside the picture are drawn: a first side from
+     (10, 10) to (1510, 400), closed back along itself: the Pencil's line there and the one back differ in the columns 35, 85,
+     135, 185, 235 and 285, so 290 + 6 pixels; at column 100 it is in row 33, where a side clamped to the picture's corner
+     (299, 199) would have it in row 69. */
+  press_at (win, 40000, 10, 10);
+  release_at (win, 0, 0, 1510, 400);
+  g_assert_true (easel_canvas_is_pending (canvas));
+  easel_canvas_put_down (canvas);
+  g_assert_cmpint (count_color (img, fg), ==, 296);
+  g_assert_cmphex (easel_image_get (img, 100, 33), ==, fg);
+  g_assert_cmphex (easel_image_get (img, 100, 69), !=, fg);
+  close_windows ();
+}
+
+/* One press-drag-release with each of Curve and Polygon and each button; true if anything started or changed. */
+static gboolean
+pending_tools_change_something (EaselWindow *win, int x0, int y0, int x1, int y1)
+{
+  static const char *const tools[] = { "curve", "polygon" };
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  gboolean changed = FALSE;
+
+  for (guint i = 0; i < G_N_ELEMENTS (tools); i++)
+    for (guint button = 1; button <= 3; button += 2)
+      {
+        use_tool (win, tools[i]);
+        shape_press_move (win, button, x0, y0, x1, y1);
+        changed |= easel_canvas_is_stroking (canvas) || easel_canvas_is_pending (canvas);
+        shape_release (win, button);
+        changed |= easel_canvas_is_pending (canvas) || easel_window_get_modified (win) || action_enabled (win, "undo");
+        easel_canvas_drop (canvas);
+      }
+  return changed;
+}
+
+/* AS-12 (REQ-0011-12, -14, -15): a curve that changes no pixel adds no step; with no memory the dialog "Could Not Draw the
+   Shape" comes and nothing changes; presses are ignored while a dialog or the color chooser is open or before the picture
+   exists; Esc and Enter act on an open dialog and not on the pending shape. */
+static void
+as12_nothing_memory_blocked (void)
+{
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  const EaselImage *img;
+  EaselPaletteBar *bar;
+  AdwAlertDialog *dialog;
+
+  /* Before the picture exists. */
+  write_settings ("[new-picture]\nwidth=auto\nheight=auto\n");
+  win = easel_window_new (app);
+  g_assert_null (easel_window_get_picture (win));
+  g_assert_false (pending_tools_change_something (win, 3, 3, 40, 30));
+  gtk_window_destroy (GTK_WINDOW (win));
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  img = easel_window_get_picture (win);
+  bar = easel_window_get_palette_bar (win);
+  wait_for_layout (win);
+
+  /* A curve in the picture's own color changes no pixel: no step, no mark. */
+  easel_canvas_set_colors (canvas, 0xFFFFFF00u, 0xFFFFFFFFu);
+  use_tool (win, "curve");
+  shape_press_move (win, 1, 10, 40, 50, 40);
+  shape_release (win, 1);
+  shape_press_move (win, 1, 30, 20, 30, 20);
+  shape_release (win, 1);
+  shape_press_move (win, 1, 30, 20, 30, 20);
+  shape_release (win, 1);
+  g_assert_false (easel_canvas_is_pending (canvas));
+  g_assert_false (easel_window_get_modified (win));
+  g_assert_false (action_enabled (win, "undo"));
+  easel_canvas_set_colors (canvas, 0xFF000000u, 0xFFFFFFFFu);
+
+  /* No memory for the curve's step: at the release of the second bend the dialog comes, nothing changes, it is not pending. */
+  easel_canvas_set_shape_memory_limit (canvas, 1000);
+  shape_press_move (win, 1, 10, 40, 50, 40);
+  shape_release (win, 1);
+  shape_press_move (win, 1, 30, 20, 30, 20);
+  shape_release (win, 1);
+  shape_press_move (win, 1, 30, 20, 30, 20);
+  shape_release (win, 1);
+  easel_canvas_set_shape_memory_limit (canvas, SIZE_MAX);
+  wait_for_dialogs (win, 1);
+  dialog = open_alert (win);
+  g_assert_nonnull (dialog);
+  g_assert_cmpstr (adw_alert_dialog_get_heading (dialog), ==, "Could Not Draw the Shape");
+  g_assert_cmpstr (adw_alert_dialog_get_body (dialog), ==, "There is not enough memory to draw this shape.");
+  g_assert_false (easel_canvas_is_pending (canvas));
+  g_assert_cmpint (count_color (img, 0xFF000000u), ==, 0);
+  g_assert_false (easel_window_get_modified (win));
+  g_assert_false (action_enabled (win, "undo"));
+  adw_dialog_close (ADW_DIALOG (dialog));
+  wait_for_dialogs (win, 0);
+
+  /* The same for a polygon closed by Enter: the dialog at once, nothing changed. */
+  use_tool (win, "polygon");
+  g_action_group_change_action_state (G_ACTION_GROUP (win), "fill-style", g_variant_new_int32 (2));
+  place_two_corners (win);
+  easel_canvas_set_shape_memory_limit (canvas, 1000);
+  press_enter (win, GDK_KEY_Return);
+  easel_canvas_set_shape_memory_limit (canvas, SIZE_MAX);
+  wait_for_dialogs (win, 1);
+  g_assert_nonnull (open_alert (win));
+  g_assert_false (easel_canvas_is_pending (canvas));
+  g_assert_cmpint (count_color (img, 0xFF000000u), ==, 0);
+  adw_dialog_close (ADW_DIALOG (open_alert (win)));
+  wait_for_dialogs (win, 0);
+  g_action_group_change_action_state (G_ACTION_GROUP (win), "fill-style", g_variant_new_int32 (0));
+
+  /* Presses are ignored with a dialog open (the Grid dialog) and with the color chooser open. */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "grid-dialog", NULL);
+  wait_for_layout (win);
+  g_assert_false (pending_tools_change_something (win, 50, 50, 90, 80));
+  adw_dialog_close (adw_application_window_get_visible_dialog (ADW_APPLICATION_WINDOW (win)));
+  wait_for_layout (win);
+  easel_palette_bar_press (bar, 17, 1, 1);
+  easel_palette_bar_press (bar, 17, 1, 2);
+  g_assert_true (easel_window_is_choosing_color (win));
+  g_assert_false (pending_tools_change_something (win, 50, 50, 90, 80));
+  /* Esc and Enter act on the chooser: the polygon, pending before it opened, stays pending. */
+  choose (win, NULL);
+  use_tool (win, "polygon");
+  place_two_corners (win);
+  easel_palette_bar_press (bar, 17, 1, 1);
+  easel_palette_bar_press (bar, 17, 1, 2);
+  g_assert_true (easel_window_is_choosing_color (win));
+  press_escape (win);
+  press_enter (win, GDK_KEY_Return);
+  g_assert_true (easel_canvas_is_pending (canvas));
+  choose (win, NULL);
+  /* ... and with the Grid dialog open. */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "grid-dialog", NULL);
+  wait_for_layout (win);
+  press_escape (win);
+  press_enter (win, GDK_KEY_Return);
+  g_assert_true (easel_canvas_is_pending (canvas));
+  g_assert_cmpint (count_color (img, 0xFF000000u), ==, 0);
+  adw_dialog_close (adw_application_window_get_visible_dialog (ADW_APPLICATION_WINDOW (win)));
+  wait_for_layout (win);
+  easel_canvas_drop (canvas);
+  close_windows ();
+}
+
+/* Enter as the window's key controller gets it; true if a controller took it, so that GTK does not hand it on to the widget
+   that has the focus. */
+static gboolean
+enter_taken (EaselWindow *win, guint keyval)
+{
+  g_autoptr (GListModel) controllers = gtk_widget_observe_controllers (GTK_WIDGET (win));
+  gboolean taken = FALSE;
+
+  for (guint i = 0; i < g_list_model_get_n_items (controllers); i++)
+    {
+      g_autoptr (GtkEventController) c = g_list_model_get_item (controllers, i);
+      gboolean handled = FALSE;
+
+      if (GTK_IS_EVENT_CONTROLLER_KEY (c))
+        {
+          g_signal_emit_by_name (c, "key-pressed", keyval, 0, 0, &handled);
+          taken |= handled;
+        }
+    }
+  return taken;
+}
+
+/* The Plan's risk of AS-6: Enter with a toolbox button focused closes the polygon and the button is not also activated (the
+   window takes the key before the button gets it, so the Pencil's button is not pressed and the tool stays Polygon). */
+static void
+as6_enter_with_a_toolbox_button_focused (void)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  GtkWidget *pencil;
+  uint32_t fg;
+
+  wait_for_layout (win);
+  easel_palette_bar_press (easel_window_get_palette_bar (win), 0, 1, 1);
+  fg = easel_window_get_foreground (win);
+  use_tool (win, "polygon");
+  wait_for_layout (win);
+  place_two_corners (win);
+  pencil = GTK_WIDGET (find_tool_button (GTK_WIDGET (win), "pencil"));
+  gtk_widget_grab_focus (pencil);
+  g_assert_true (gtk_window_get_focus (GTK_WINDOW (win)) == pencil);
+  g_assert_true (enter_taken (win, GDK_KEY_Return));
+  g_assert_false (easel_canvas_is_pending (canvas));
+  g_assert_cmpint (count_color (img, fg), ==, 60);
+  g_assert_cmpint (easel_window_get_tool (win), ==, EASEL_TOOL_POLYGON);
+  g_assert_false (gtk_toggle_button_get_active (GTK_TOGGLE_BUTTON (pencil)));
+  /* With nothing pending the key is not ours: the button gets it. */
+  g_assert_false (enter_taken (win, GDK_KEY_Return));
   close_windows ();
 }
 
@@ -8444,6 +9583,17 @@ main (int argc, char **argv)
   g_test_add_func ("/0010/as14_shapes_ignored_when_blocked", as14_shapes_ignored_when_blocked);
   g_test_add_func ("/0010/as16_shape_memory_dialog", as16_shape_memory_dialog);
   g_test_add_func ("/0010/as17_drag_outside_area", as17_drag_outside_area);
+  g_test_add_func ("/0011/as1_curve_polygon_toolbox_hints", as1_curve_polygon_toolbox_hints);
+  g_test_add_func ("/0011/as2_curve_stages_and_preview", as2_curve_stages_and_preview);
+  g_test_add_func ("/0011/as9_curve_colors_of_the_first_press", as9_curve_colors_of_the_first_press);
+  g_test_add_func ("/0011/as5_polygon_clicks", as5_polygon_clicks);
+  g_test_add_func ("/0011/as6_polygon_closing", as6_polygon_closing);
+  g_test_add_func ("/0011/as6_enter_with_a_toolbox_button_focused", as6_enter_with_a_toolbox_button_focused);
+  g_test_add_func ("/0011/as9_drops_and_undo", as9_drops_and_undo);
+  g_test_add_func ("/0011/as8_put_down_sites", as8_put_down_sites);
+  g_test_add_func ("/0011/as10_lost_release_focus_save", as10_lost_release_focus_save);
+  g_test_add_func ("/0011/as12_nothing_memory_blocked", as12_nothing_memory_blocked);
+  g_test_add_func ("/0011/as11_pending_survives_view_and_focus", as11_pending_survives_view_and_focus);
   g_test_add_func ("/0009/as5_fit_to_window_with_margin", as5_fit_to_window_with_margin);
   g_test_add_func ("/0009/as6_zoom_anchors_with_margin", as6_zoom_anchors_with_margin);
   g_test_add_func ("/0009/as8_grid_with_margin", as8_grid_with_margin);

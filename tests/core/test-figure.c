@@ -499,6 +499,49 @@ as9_shift_constraint (void)
     }
 }
 
+/* ---- Many runs (0011, REQ-0011-08, -09) ---- */
+
+/* The buffer a caller sizes with easel_figure_max_runs holds the runs of every row of every figure: the bound is no smaller
+   than the most runs a row has, and a row asked with exactly that many gives them all. */
+static void
+as5_max_runs_bounds_the_rows (void)
+{
+  static const EaselFigureKind kinds[] = { EASEL_FIGURE_LINE, EASEL_FIGURE_RECTANGLE, EASEL_FIGURE_ROUNDED,
+                                           EASEL_FIGURE_ELLIPSE };
+  unsigned int seed = 7;
+  size_t most = 0;
+
+  for (int n = 0; n < 400; n++)
+    {
+      EaselFigure f = { kinds[n % 4], 0, 0, 0, 0, 1 + n % 5, (EaselFigureStyle) (n % 3), NULL };
+      size_t max;
+      EaselFigureRun *runs;
+
+      seed = seed * 1103515245u + 12345u;
+      f.x0 = (int) ((seed >> 8) % 60) - 10;
+      f.y0 = (int) ((seed >> 16) % 60) - 10;
+      seed = seed * 1103515245u + 12345u;
+      f.x1 = (int) ((seed >> 8) % 60) - 10;
+      f.y1 = (int) ((seed >> 16) % 60) - 10;
+      max = easel_figure_max_runs (&f);
+      CHECK (max >= 3);
+      runs = malloc (max * sizeof *runs);
+      CHECK (runs != NULL);
+      CHECK (easel_figure_prepare (&f, -30, 60));
+      for (int y = -30; y <= 60; y++)
+        {
+          size_t k = easel_figure_row (&f, y, runs, max);
+
+          CHECK (k <= max);
+          if (k > most)
+            most = k;
+        }
+      easel_figure_release (&f);
+      free (runs);
+    }
+  CHECK (most == 3);                 /* a row of an outline-and-fill shape: left edge, inside, right edge */
+}
+
 int
 main (void)
 {
@@ -510,5 +553,6 @@ main (void)
   RUN (as5_square_pen);
   RUN (line_matches_the_stamps);
   RUN (as9_shift_constraint);
+  RUN (as5_max_runs_bounds_the_rows);
   return 0;
 }
