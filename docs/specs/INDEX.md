@@ -15,7 +15,7 @@ Vertical slices first (a thin end-to-end feature), breadth later.
 | 0008 | zoom-presets | One list of zoom presets for the Magnifier's options and a new View > Zoom submenu | Accepted 2026-10-18, from JOD's screencast; the lens list (no 300 %) is the preset list, Zoom In and Out keep their own steps with 300 % |
 | 0009 | view-polish | A 12 px margin and a soft shadow around the picture, a workspace color setting | Implemented 2026-10-18, from JOD's reference measurements; touches every rule that maps the pointer to a picture pixel After it, the picture-color key `background` was renamed `canvas-color` (still read as `background`; a new settings file writes the new name; a valid `canvas-color` wins): REQ-0001-03, done 2026-10-18 |
 | 0010 | lines-and-shapes | Line, rectangle, rounded rectangle, ellipse, the line width and the fill style | Implemented 2026-10-19; split from "lines, curves and shapes" by JOD; widths 1-5 shared, a square pen. After it, a small change to the freehand tools: the stroke history's log is shrunk to its length before it is pushed, as the shapes' log now is, and a test checks the memory held against the memory counted for a long stroke (REQ-0002-16) |
-| 0011 | curve-and-polygon | Curve and polygon: the multi-click tools, with their pending state | Split from "lines, curves and shapes"; uses the line width of lines and shapes |
+| 0011 | curve-and-polygon | Curve and polygon: the multi-click tools, with their pending state | Implemented 2026-10-19; split from "lines, curves and shapes"; uses the line width of lines and shapes; the first pending shape (put down by what changes the picture or its file, dropped by Esc and Undo). After it, a small change: the ui tests and the mutation tool run in an isolated display, spiked first with `xvfb-run` and `GDK_BACKEND=x11` or a headless compositor, so a real pointer and JOD's own work cannot affect them |
 | 0012 | gradient | The Gradient tool (`docs/reference/new-behaviors.md`) | Split from "lines, curves and shapes" |
 | 0013 | selection | Rect and free-form select, floating selection, move, smear, stamp, transparent mode | |
 | 0014 | clipboard | Cut, copy, paste, oversize paste, paste from / copy to file | |
@@ -28,17 +28,21 @@ Vertical slices first (a thin end-to-end feature), breadth later.
 | 0021 | packaging-release | Flatpak, deb, AppImage, metadata | |
 
 ## Known flakes
-- `/0006/as6_airbrush_follows_the_pointer` (found in 0006, failed again in 0007, cause not found; the log has the data). Read
-  on 2026-10-18, nothing changed: yes, its result depends on the wall clock and a real GLib timer. The test holds the
-  press with `run_for (300)`, which spins the main loop for 300 ms of real time (`tests/ui/test-window.c`:
-  `gint64 end = g_get_monotonic_time () + ms * 1000; while (g_get_monotonic_time () < end) g_main_context_iteration (NULL, FALSE);`),
-  and the canvas sprays from `g_timeout_add (5, on_spray_tick, self)`, which asks `easel_spray_due (g_get_monotonic_time () -
-  self->spray_start_us)` how many sprays are due (`src/ui/canvas.c`), with the seed from `g_get_monotonic_time ()` and
-  `g_get_real_time ()`. No clock is injected; the core's exact count (201 in 1000 ms) uses a simulated clock, the ui test
-  does not. Hypothesis (not tested): displaced pixels mean a different number of random draws, which means a different
-  spray count under load. Doubt to check first: a different count changes how many pixels land, and where they land only
-  if the draws shift the sequence between the two points; the pixels seen were about 91, 32 pixels away, which a count alone
-  does not explain. Not hunted.
+- `/0006/as6_airbrush_sprays` and `/0006/as6_airbrush_follows_the_pointer` (found in 0006, failed again in 0007 and 0008). Cause
+  established in the 0011 check (2026-10-19): a real pointer motion over the test window with no button down reads as a lost
+  release (REQ-0007-18) and ends the test's held (synthetic) stroke, so the airbrush stops spraying (`made >= 100`: 4, 3, 3, 3,
+  1, 1). With a virtual mouse sweeping about 100 pixels over the windows `ui-0006` failed 6 of 6 at `as6_airbrush_sprays`; with
+  the pointer parked there it passed 5 of 5 (`ui-0010`: 5 of 5 both ways). The earlier reading (its result depends on the wall
+  clock and a real GLib timer) is true but is not the cause. Not fixed: the ui tests and the mutation runs are started with the
+  pointer parked and the mouse left alone, until they run in an isolated display (the note of the curve-and-polygon row below).
+
+- `/0011/as5_polygon_clicks` and a mutant run of `/0011/as2_curve_stages_and_preview` (found in 0011: once in about 17 runs after
+  a rebuild, and once as a crash of the full check's mutation run, `crash-210.log`): `Gsk-FATAL-CRITICAL:
+  gsk_renderer_render_texture: assertion 'GSK_IS_RENDER_NODE (root)' failed` in `render_pixels`, a window with no snapshot; not
+  reproduced under CPU load, the mutant alone died by its assertion 3 of 3 times. Cause unknown. Changed in the 0011 check (F6):
+  `render_pixels` waits up to 30 frames for a snapshot, and a window with none ends the run with `EASEL-INCONCLUSIVE: no
+  snapshot` and exit status 75, which is no longer a crash: `tools/mutate.sh` runs that mutant once more and counts a second one
+  apart (failing the run), never as killed. Hunted when it recurs as "inconclusive".
 
 ## Milestones
 | Milestone | Features | Outcome |

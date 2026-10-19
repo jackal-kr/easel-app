@@ -23,7 +23,7 @@ Input: feature number or name from `docs/specs/INDEX.md`.
 4. Take behavior from XP Paint knowledge, jspaint (behavior, not code), JOD's descriptions and `docs/reference`; never from the
    source code of an existing implementation. If behavior is unknown or has several reasonable answers, do not decide:
    add `- [NEEDS CLARIFICATION: question and the options you see]`. A number in a requirement that comes from arithmetic is
-   computed with a script, not estimated.
+   computed with a script, not estimated. A direction on the pixel grid is said as larger or smaller x or y, never above or below, and a statement that two things are the same is checked with the script that makes the numbers, in both directions.
 5. Run the `spec-reviewer` agent once and merge its findings.
 6. For a menu, dialog or bar, ask the user for a reference screenshot or mock-up before drafting, and when a widget choice
    changes a rule (a spin row clamps where a text row disables OK), say so in the same question.

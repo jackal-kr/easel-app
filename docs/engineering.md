@@ -88,6 +88,8 @@ Defined by the packaging and release feature.
   with one open from a manual check, three ui cases failed in every run until it was closed (learning log, 2026-10-16).
   `test-window` refuses to start, and `tools/mutate.sh` refuses to run a mutant of a ui test, while another `easel` or
   `test-window` process exists (the core and io tests do not check).
+- A ui test does not turn the main loop while a synthetic button is held; ui tests and mutation runs are started with the pointer parked and the mouse left alone, until they run in an isolated display. A real pointer motion with no button down reads as a lost release (REQ-0007-18) and ends the held test stroke: with the pointer wiggling over the test windows `ui-0006` failed 6 of 6 at `as6_airbrush_sprays`, parked it passed 5 of 5.
+- `render_pixels` waits up to 30 frames for the window to have painted one. A window that still gives no snapshot ends the run with the line `EASEL-INCONCLUSIVE: no snapshot` and exit status 75, never an ordinary assertion; `tools/mutate.sh` reads that as inconclusive: the mutant is run once more, a second one is counted apart and fails the run, and none is ever counted as killed. Its own test hooks: `EASEL_TEST_NO_SNAPSHOT=N` (the first N snapshots of a process fail) and `EASEL_TEST_NO_SNAPSHOT_ONCE=FILE` (every snapshot of the first process fails).
 - A ui test that fires several actions waits for a layout between them.
 - A red check copies the file aside and restores it; git stash is never used for it.
 - A ui test that checks a color sets its own theme and puts the default back at the end.
@@ -109,7 +111,7 @@ Defined by the packaging and release feature.
 - **What to run when (the skills point here):** after a task, the tests of the feature touched (`meson test -C build
   --print-errorlogs ui-NNNN`, plus the core and io tests) and the mutants of the task's requirements (`tools/mutate.sh
   REQ-NNNN-xx`, and `tools/mutate.sh --lint`, seconds, which lists mutants whose find text no longer occurs, for example
-  after the task edited a block a mutant quotes); at a group boundary, the full `meson test -C build --print-errorlogs`; at `/sdd-check`, everything: the
+  after the task edited a block a mutant quotes); at a group boundary, the full `meson test -C build --print-errorlogs` and the feature's mutants again (`tools/mutate.sh REQ-NNNN-xx` for each ID so far), since a later task can make a mutant equivalent; at `/sdd-check`, everything: the
   full `meson test` and the whole mutation list.
 - **Code that can abort the process** (a failed allocation in GLib, gdk-pixbuf or glycin) is tested in a subprocess
   (`g_test_trap_subprocess`, as `as19_save_without_memory` and `as8_open_without_memory` do), so that an abort is a failed
@@ -131,6 +133,8 @@ Rule P5 applies: no optimization without a measurement against a budget here.
 | Idle | 0% CPU when nothing is happening |
 | Fill, a whole 8000x8000 picture (core) | < 500 ms (JOD, 2026-10-18; measured 160 ms) |
 | Fill or Magnifier press to the painted frame | < 100 ms at 1920x1080 and 8000x8000 (JOD, 2026-10-18; measured one frame) |
+
+A benchmark refuses to run while another Easel or test window is open (`perf-common.h`), as the ui tests do, since a second window changes its timings.
 
 The Fill and Magnifier budgets are benchmark budgets: `perf-0007` prints the numbers, `/sdd-check` reports them against the
 table, and no test fails on them (timing tests flake on a loaded machine). The worst-case fill (the comb) has no time budget;
