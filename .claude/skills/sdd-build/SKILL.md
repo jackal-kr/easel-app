@@ -40,7 +40,8 @@ Precondition: `Status: accepted` in the spec. Otherwise stop and say so.
    - when work from a later task is pulled forward, its tests are written and run red before that code too;
    - a test of a layout or drawing rule checks what the window lays out or draws, at a scrolled position too, never a value computed from the same constant;
    - `ninja -C build` must be warning-free and the tests green as the Testing section of `docs/engineering.md` says for a task
-     and for the end of a group. A test that fails once and then passes is logged with its values and how it was hunted,
+     and for the end of a group, and how to run the suites is in that section too (the ui tests and the mutation tool run through
+     `tools/isolated.sh`, the benchmarks in the real session). A test that fails once and then passes is logged with its values and how it was hunted,
      never just re-run until green;
    - tick the task and report in one line, and fill its `Result:` line in the spec: the test that failed first and its
      message, or `characterization: <why there was no red run>` (a test that passes on its first run is reported as that),

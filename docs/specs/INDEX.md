@@ -15,7 +15,7 @@ Vertical slices first (a thin end-to-end feature), breadth later.
 | 0008 | zoom-presets | One list of zoom presets for the Magnifier's options and a new View > Zoom submenu | Accepted 2026-10-18, from JOD's screencast; the lens list (no 300 %) is the preset list, Zoom In and Out keep their own steps with 300 % |
 | 0009 | view-polish | A 12 px margin and a soft shadow around the picture, a workspace color setting | Implemented 2026-10-18, from JOD's reference measurements; touches every rule that maps the pointer to a picture pixel After it, the picture-color key `background` was renamed `canvas-color` (still read as `background`; a new settings file writes the new name; a valid `canvas-color` wins): REQ-0001-03, done 2026-10-18 |
 | 0010 | lines-and-shapes | Line, rectangle, rounded rectangle, ellipse, the line width and the fill style | Implemented 2026-10-19; split from "lines, curves and shapes" by JOD; widths 1-5 shared, a square pen. After it, a small change to the freehand tools: the stroke history's log is shrunk to its length before it is pushed, as the shapes' log now is, and a test checks the memory held against the memory counted for a long stroke (REQ-0002-16) |
-| 0011 | curve-and-polygon | Curve and polygon: the multi-click tools, with their pending state | Implemented 2026-10-19; split from "lines, curves and shapes"; uses the line width of lines and shapes; the first pending shape (put down by what changes the picture or its file, dropped by Esc and Undo). After it, a small change: the ui tests and the mutation tool run in an isolated display, spiked first with `xvfb-run` and `GDK_BACKEND=x11` or a headless compositor, so a real pointer and JOD's own work cannot affect them |
+| 0011 | curve-and-polygon | Curve and polygon: the multi-click tools, with their pending state | Implemented 2026-10-19; split from "lines, curves and shapes"; uses the line width of lines and shapes; the first pending shape (put down by what changes the picture or its file, dropped by Esc and Undo). After it, a small change, done 2026-10-19: `tools/isolated.sh` runs the ui tests, the mutation tool and `/sdd-check` in a private session (a headless GNOME Shell with its own display; the spike found no `Xvfb` or Weston here, and `GDK_BACKEND=x11` would test another backend), so a real pointer and JOD's own work cannot affect them; the benchmarks stay in the real session |
 | 0012 | gradient | The Gradient tool (`docs/reference/new-behaviors.md`) | Split from "lines, curves and shapes" |
 | 0013 | selection | Rect and free-form select, floating selection, move, smear, stamp, transparent mode | |
 | 0014 | clipboard | Cut, copy, paste, oversize paste, paste from / copy to file | |
@@ -33,8 +33,10 @@ Vertical slices first (a thin end-to-end feature), breadth later.
   release (REQ-0007-18) and ends the test's held (synthetic) stroke, so the airbrush stops spraying (`made >= 100`: 4, 3, 3, 3,
   1, 1). With a virtual mouse sweeping about 100 pixels over the windows `ui-0006` failed 6 of 6 at `as6_airbrush_sprays`; with
   the pointer parked there it passed 5 of 5 (`ui-0010`: 5 of 5 both ways). The earlier reading (its result depends on the wall
-  clock and a real GLib timer) is true but is not the cause. Not fixed: the ui tests and the mutation runs are started with the
-  pointer parked and the mouse left alone, until they run in an isolated display (the note of the curve-and-polygon row below).
+  clock and a real GLib timer) is true but is not the cause. Avoided, not fixed in the test: the ui tests and the mutation runs
+  go through `tools/isolated.sh` (a headless GNOME Shell with its own display, 2026-10-19). With the same virtual mouse wiggling
+  over the real screen, `ui-0006` passed 5 of 5 in the isolated display and, as the control, failed in the real session (`made
+  >= 100`: 3); the whole ui suite passed 11 of 11 there.
 
 - `/0011/as5_polygon_clicks` and a mutant run of `/0011/as2_curve_stages_and_preview` (found in 0011: once in about 17 runs after
   a rebuild, and once as a crash of the full check's mutation run, `crash-210.log`): `Gsk-FATAL-CRITICAL:

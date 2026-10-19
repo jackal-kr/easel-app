@@ -8,7 +8,7 @@ description: Step 3 of the loop, also usable any time. Read-only check of a feat
 1. `tools/spec.sh lint`, `tools/spec.sh lint --names NNNN` and `tools/spec.sh status`.
 2. Coverage: for every REQ and AS -> task -> test or manual check -> passing? Flag any requirement without code or test, any test
    without a requirement, any task without a trace. Run everything as the Testing section of `docs/engineering.md` says for
-   `/sdd-check` (all tests, the whole mutation list); a rule that guards against data loss and has no mutant in
+   `/sdd-check`, and how to run the suites is in that section too (all tests, the whole mutation list; through `tools/isolated.sh`); a rule that guards against data loss and has no mutant in
    `tests/mutants.txt` gets one, a mutant that survives is a finding, and so is one killed only by a crash (add an
    assertion). If none does, first check whether any input could observe the change; an equivalent mutant is not a finding.
    A background run is awaited by its process id or by the summary line `tools/mutate.sh` prints, and its counts are copied from that summary line, never from a search of the log.
