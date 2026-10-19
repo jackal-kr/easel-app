@@ -21,7 +21,7 @@ struct _EaselToolOptions
 
   GtkWidget *line;           /* the separator above the presets */
   GtkWidget *stack;          /* one page per group, and an empty page: as wide as its widest page (REQ-0008-07) */
-  GtkWidget *groups[4];      /* Brush, Airbrush, Eraser, Magnifier: a vertical box each */
+  GtkWidget *groups[6];      /* Brush, Airbrush, Eraser, Magnifier, Line, the shapes: a vertical box each */
   GtkToggleButton *brush[EASEL_BRUSH_N_PRESETS];
   GtkToggleButton *airbrush[EASEL_AIRBRUSH_N_PRESETS];
   GtkToggleButton *eraser[EASEL_ERASER_N_SIZES];
@@ -135,6 +135,100 @@ add_level_button (EaselToolOptions *self, GtkGrid *grid, int index, int pct)
   return GTK_TOGGLE_BUTTON (button);
 }
 
+/* The width buttons and the fill-style buttons of the four shape tools (REQ-0010-02): drawn buttons bound to the window's
+   actions win.line-width and win.fill-style, so each choice is one state shared by every page that shows it. */
+static void
+draw_width (GtkDrawingArea *area, cairo_t *cr, int width, int height, gpointer data)
+{
+  int w = GPOINTER_TO_INT (data);
+  GdkRGBA color;
+
+  gtk_widget_get_color (GTK_WIDGET (area), &color);
+  gdk_cairo_set_source_rgba (cr, &color);
+  cairo_rectangle (cr, 4, (height - w) / 2, width - 8, w);       /* a horizontal line w logical pixels thick */
+  cairo_fill (cr);
+}
+
+static void
+draw_fill_style (GtkDrawingArea *area, cairo_t *cr, int width, int height, gpointer data)
+{
+  int style = GPOINTER_TO_INT (data);                           /* 0 outline, 1 outline and fill, 2 fill */
+  GdkRGBA color;
+  double x = 6, y = 4, w = width - 12, h = height - 8;
+
+  gtk_widget_get_color (GTK_WIDGET (area), &color);
+  gdk_cairo_set_source_rgba (cr, &color);
+  if (style == 2)
+    {
+      cairo_rectangle (cr, x, y, w, h);
+      cairo_fill (cr);
+      return;
+    }
+  if (style == 1)
+    {
+      GdkRGBA inner = color;
+
+      inner.alpha *= 0.35f;
+      gdk_cairo_set_source_rgba (cr, &inner);
+      cairo_rectangle (cr, x + 2, y + 2, w - 4, h - 4);
+      cairo_fill (cr);
+      gdk_cairo_set_source_rgba (cr, &color);
+    }
+  cairo_set_line_width (cr, 2);
+  cairo_rectangle (cr, x + 1, y + 1, w - 2, h - 2);
+  cairo_stroke (cr);
+}
+
+static GtkWidget *
+add_shape_button (GtkBox *box, const char *tip, const char *action, int target, GtkDrawingAreaDrawFunc draw, int content_w,
+                  int content_h)
+{
+  GtkWidget *button = gtk_toggle_button_new (), *area = gtk_drawing_area_new ();
+
+  gtk_widget_add_css_class (button, "flat");
+  gtk_widget_add_css_class (button, "compact");
+  gtk_widget_set_tooltip_text (button, tip);
+  gtk_accessible_update_property (GTK_ACCESSIBLE (button), GTK_ACCESSIBLE_PROPERTY_LABEL, tip, -1);
+  gtk_drawing_area_set_content_width (GTK_DRAWING_AREA (area), content_w);
+  gtk_drawing_area_set_content_height (GTK_DRAWING_AREA (area), content_h);
+  gtk_drawing_area_set_draw_func (GTK_DRAWING_AREA (area), draw, GINT_TO_POINTER (target), NULL);
+  gtk_button_set_child (GTK_BUTTON (button), area);
+  gtk_actionable_set_action_name (GTK_ACTIONABLE (button), action);
+  gtk_actionable_set_action_target_value (GTK_ACTIONABLE (button), g_variant_new_int32 (target));
+  gtk_box_append (box, button);
+  return button;
+}
+
+static void
+add_width_buttons (GtkBox *box)
+{
+  static const char *const tips[5] = { "1 pixel", "2 pixels", "3 pixels", "4 pixels", "5 pixels" };
+
+  for (int w = 1; w <= 5; w++)
+    add_shape_button (box, tips[w - 1], "win.line-width", w, draw_width, 52, 14);
+}
+
+static GtkWidget *
+new_shape_box (gboolean with_fill_styles)
+{
+  GtkWidget *box = gtk_box_new (GTK_ORIENTATION_VERTICAL, 2);
+
+  gtk_widget_set_margin_start (box, 4);
+  gtk_widget_set_margin_end (box, 4);
+  gtk_widget_set_margin_top (box, 6);
+  gtk_widget_set_margin_bottom (box, 6);
+  if (with_fill_styles)
+    {
+      static const char *const tips[3] = { "Outline", "Outline and fill", "Fill" };
+
+      for (int i = 0; i < 3; i++)
+        add_shape_button (GTK_BOX (box), tips[i], "win.fill-style", i, draw_fill_style, 52, 22);
+      gtk_box_append (GTK_BOX (box), gtk_separator_new (GTK_ORIENTATION_HORIZONTAL));
+    }
+  add_width_buttons (GTK_BOX (box));
+  return box;
+}
+
 static GtkWidget *
 new_grid (void)
 {
@@ -213,13 +307,15 @@ build_presets (EaselToolOptions *self)
   self->groups[0] = brush_grid;
   self->groups[1] = air_grid;
   self->groups[2] = eraser_box;
+  self->groups[4] = new_shape_box (FALSE);          /* Line: the widths */
+  self->groups[5] = new_shape_box (TRUE);           /* the shapes: the fill styles, a line, the widths */
   /* The groups are the pages of a stack as wide as its widest page and as high as the page shown, so that the toolbox has
      one width for every tool at any text size; a tool without options shows the empty page (REQ-0008-07, REQ-0006-02). */
   self->stack = gtk_stack_new ();
   gtk_stack_set_hhomogeneous (GTK_STACK (self->stack), TRUE);
   gtk_stack_set_vhomogeneous (GTK_STACK (self->stack), FALSE);
   gtk_stack_set_transition_type (GTK_STACK (self->stack), GTK_STACK_TRANSITION_TYPE_NONE);
-  for (int i = 0; i < 4; i++)
+  for (int i = 0; i < 6; i++)
     gtk_stack_add_named (GTK_STACK (self->stack), self->groups[i], NULL);
   gtk_stack_add_named (GTK_STACK (self->stack), gtk_box_new (GTK_ORIENTATION_VERTICAL, 0), "none");
   gtk_box_append (GTK_BOX (self), self->stack);
@@ -284,7 +380,7 @@ void
 easel_tool_options_show_tool (EaselToolOptions *self, EaselTool tool)
 {
   int group = tool == EASEL_TOOL_BRUSH ? 0 : tool == EASEL_TOOL_AIRBRUSH ? 1 : tool == EASEL_TOOL_ERASER ? 2
-              : tool == EASEL_TOOL_MAGNIFIER ? 3 : -1;
+              : tool == EASEL_TOOL_MAGNIFIER ? 3 : tool == EASEL_TOOL_LINE ? 4 : easel_tool_draws_shape (tool) ? 5 : -1;
 
   /* Nothing of the options shows for a tool without any: the empty page, and no line above it (REQ-0006-02). */
   if (group >= 0)

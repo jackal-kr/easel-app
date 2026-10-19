@@ -11,7 +11,18 @@ static const char *const names[] = {
   [EASEL_TOOL_MAGNIFIER] = "magnifier",
   [EASEL_TOOL_PICK] = "pick",
   [EASEL_TOOL_FILL] = "fill",
+  [EASEL_TOOL_LINE] = "line",
+  [EASEL_TOOL_RECTANGLE] = "rectangle",
+  [EASEL_TOOL_ROUNDED_RECTANGLE] = "rounded-rectangle",
+  [EASEL_TOOL_ELLIPSE] = "ellipse",
 };
+
+gboolean
+easel_tool_draws_shape (EaselTool tool)
+{
+  return tool == EASEL_TOOL_LINE || tool == EASEL_TOOL_RECTANGLE || tool == EASEL_TOOL_ROUNDED_RECTANGLE
+         || tool == EASEL_TOOL_ELLIPSE;
+}
 
 const char *
 easel_tool_name (EaselTool tool)

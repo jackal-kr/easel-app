@@ -14,16 +14,18 @@ Vertical slices first (a thin end-to-end feature), breadth later.
 | 0007 | fill-pick-magnify | Fill, pick color, magnifier | Magnifier levels 1/10x, 1/4x, 1/2x, 1x, 2x (default), 4x, 6x, 8x, chosen then applied on a click; Pick Color returns to the previous tool |
 | 0008 | zoom-presets | One list of zoom presets for the Magnifier's options and a new View > Zoom submenu | Accepted 2026-10-18, from JOD's screencast; the lens list (no 300 %) is the preset list, Zoom In and Out keep their own steps with 300 % |
 | 0009 | view-polish | A 12 px margin and a soft shadow around the picture, a workspace color setting | Implemented 2026-10-18, from JOD's reference measurements; touches every rule that maps the pointer to a picture pixel After it, the picture-color key `background` was renamed `canvas-color` (still read as `background`; a new settings file writes the new name; a valid `canvas-color` wins): REQ-0001-03, done 2026-10-18 |
-| 0010 | lines-curves-shapes | Line, curve, polygon, rectangle, rounded rectangle, ellipse, fill styles, gradient | |
-| 0011 | selection | Rect and free-form select, floating selection, move, smear, stamp, transparent mode | |
-| 0012 | clipboard | Cut, copy, paste, oversize paste, paste from / copy to file | |
-| 0013 | text | Text box, fonts, styles, per-selection fonts | |
-| 0014 | image-transforms | Flip, rotate, stretch, skew, invert, clear, black and white | |
-| 0015 | preferences | Appearance, new-picture and drawing defaults, palette persistence, undo budget | Dialog edits the same configuration file the app already reads. Open question from 0005: ask before Save overwrites an opened file (today silent, as in XP)? Candidates: a setting, once per opened file, or only for lossy formats; also `[save] jpeg-quality` |
-| 0016 | window-extras | Shortcuts window, thumbnail, frame time, print, context menus, About with acknowledgements (XP Paint, JS Paint) | Adds the View menu's Show Thumbnail item (not in 0004); Frame Time has no View item, only a Preferences setting (0013) |
-| 0017 | accessibility | Names/roles, keyboard-only drawing and palette | |
-| 0018 | i18n | UI languages (pl, uk, ru, de, cs, it, es, pt + English) | Mark the 0001 strings (title, quit and save prompts, errors) translatable; deferred from the 0001 check |
-| 0019 | packaging-release | Flatpak, deb, AppImage, metadata | |
+| 0010 | lines-and-shapes | Line, rectangle, rounded rectangle, ellipse, the line width and the fill style | Implemented 2026-10-19; split from "lines, curves and shapes" by JOD; widths 1-5 shared, a square pen. After it, a small change to the freehand tools: the stroke history's log is shrunk to its length before it is pushed, as the shapes' log now is, and a test checks the memory held against the memory counted for a long stroke (REQ-0002-16) |
+| 0011 | curve-and-polygon | Curve and polygon: the multi-click tools, with their pending state | Split from "lines, curves and shapes"; uses the line width of lines and shapes |
+| 0012 | gradient | The Gradient tool (`docs/reference/new-behaviors.md`) | Split from "lines, curves and shapes" |
+| 0013 | selection | Rect and free-form select, floating selection, move, smear, stamp, transparent mode | |
+| 0014 | clipboard | Cut, copy, paste, oversize paste, paste from / copy to file | |
+| 0015 | text | Text box, fonts, styles, per-selection fonts | |
+| 0016 | image-transforms | Flip, rotate, stretch, skew, invert, clear, black and white | |
+| 0017 | preferences | Appearance, new-picture and drawing defaults, palette persistence, undo budget | Dialog edits the same configuration file the app already reads. Open question from 0005: ask before Save overwrites an opened file (today silent, as in XP)? Candidates: a setting, once per opened file, or only for lossy formats; also `[save] jpeg-quality` |
+| 0018 | window-extras | Shortcuts window, thumbnail, frame time, print, context menus, About with acknowledgements (XP Paint, JS Paint) | Adds the View menu's Show Thumbnail item (not in 0004); Frame Time has no View item, only a Preferences setting (0013) |
+| 0019 | accessibility | Names/roles, keyboard-only drawing and palette | |
+| 0020 | i18n | UI languages (pl, uk, ru, de, cs, it, es, pt + English) | Mark the 0001 strings (title, quit and save prompts, errors) translatable; deferred from the 0001 check |
+| 0021 | packaging-release | Flatpak, deb, AppImage, metadata | |
 
 ## Known flakes
 - `/0006/as6_airbrush_follows_the_pointer` (found in 0006, failed again in 0007, cause not found; the log has the data). Read
@@ -43,6 +45,6 @@ Vertical slices first (a thin end-to-end feature), breadth later.
 |---|---|---|
 | M0 Pilot | 0001 | Whole loop felt once; templates and skills tuned |
 | M1 Core drawing | 0002-0009 | Usable paint program: draw, fill, pick, zoom, undo, open/save |
-| M2 Shapes and selection | 0010-0014 | XP feature parity for editing |
-| M3 Polish | 0015-0018 | Preferences, accessibility, languages |
-| M4 Release | 0019 | Flatpak, deb, AppImage |
+| M2 Shapes and selection | 0010-0016 | XP feature parity for editing |
+| M3 Polish | 0017-0020 | Preferences, accessibility, languages |
+| M4 Release | 0021 | Flatpak, deb, AppImage |

@@ -16,10 +16,18 @@ typedef enum
   EASEL_TOOL_MAGNIFIER,
   EASEL_TOOL_PICK,
   EASEL_TOOL_FILL,
+  EASEL_TOOL_LINE,
+  EASEL_TOOL_RECTANGLE,
+  EASEL_TOOL_ROUNDED_RECTANGLE,
+  EASEL_TOOL_ELLIPSE,
 } EaselTool;
 
-/* Reads a win.tool action target ("pan", "pencil", "brush", "airbrush", "eraser", "magnifier", "pick", "fill"). */
+/* Reads a win.tool action target ("pan", "pencil", "brush", "airbrush", "eraser", "magnifier", "pick", "fill", "line", "rectangle",
+   "rounded-rectangle", "ellipse"). */
 gboolean easel_tool_from_name (const char *name, EaselTool *tool);
+
+/* TRUE for Line, Rectangle, Rounded Rectangle and Ellipse: the tools that draw a shape by one drag (0010). */
+gboolean easel_tool_draws_shape (EaselTool tool);
 
 /* The win.tool action target of a tool: "pan", "pencil", ... */
 const char *easel_tool_name (EaselTool tool);

@@ -59,6 +59,11 @@ void easel_canvas_set_footprint (EaselCanvas *self, EaselFootprint footprint);
 
 /* The Magnifier's selected level in percent (200, 400, ...), as the options panel has it (REQ-0007-02). */
 void easel_canvas_set_magnifier_level (EaselCanvas *self, int pct);
+/* The line width (1 to 5) and the fill style (0 outline, 1 outline and fill, 2 fill) of the shape tools (REQ-0010-02). */
+void easel_canvas_set_shape_options (EaselCanvas *self, int width, int style);
+void easel_canvas_set_shift (EaselCanvas *self, gboolean down);
+/* The wheel handler: dy in notches, the point in view coordinates; GDK_EVENT_PROPAGATE lets the view scroll as usual. */
+gboolean easel_canvas_wheel (EaselCanvas *self, GdkModifierType state, double notches_dy, double view_x, double view_y);
 /* The Magnifier's preview box in picture pixels (REQ-0007-04); FALSE when none is shown (not the Magnifier, not 100 %, a
    level that does not zoom in, or the pointer not over a picture pixel). */
 gboolean easel_canvas_get_magnifier_box (EaselCanvas *self, int *x, int *y, int *w, int *h);
@@ -69,6 +74,8 @@ void easel_canvas_buttons_released (EaselCanvas *self);
 
 /* Test hook: what a Fill may use for its work buffers before it fails with the memory dialog (default: no limit). */
 void easel_canvas_set_fill_memory_limit (EaselCanvas *self, size_t max_bytes);
+/* Test hook: the most a shape's undo log may use, to make a release fail (REQ-0010-20). */
+void easel_canvas_set_shape_memory_limit (EaselCanvas *self, size_t max_bytes);
 void easel_canvas_set_eraser_transparent (EaselCanvas *self, gboolean transparent);
 
 /* Test hook: how many sprays the current or the last Airbrush stroke has made. */
@@ -110,7 +117,7 @@ void easel_canvas_end_stroke (EaselCanvas *self);
 
 /* Input entry points, in canvas coordinates (logical pixels from the picture's top-left). The event
    controller feeds them; tests call them directly. Emit "stroke-finished" (guint changed_pixels), also for a Fill (REQ-0007-05);
-   a Fill that cannot get its memory emits "fill-failed" and changes nothing (REQ-0007-07). A Pick Color press is a stroke
+   a Fill that cannot get its memory emits "fill-failed" and changes nothing (REQ-0007-07), and so does a shape release ("shape-failed", REQ-0010-20). A Pick Color press is a stroke
    as far as easel_canvas_is_stroking, Undo and the other button are concerned: "color-picked" (guint button, guint color)
    comes at the press and when the pointer moves to another pixel, "pick-ended" (gboolean cancelled) when it ends. */
 void easel_canvas_press (EaselCanvas *self, guint button, double x, double y);

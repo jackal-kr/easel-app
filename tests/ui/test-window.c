@@ -5131,6 +5131,12 @@ as11_save_as_fails (void)
   g_chmod (dir, 0700);
   adw_dialog_close (ADW_DIALOG (open_alert (win)));
   wait_for_dialogs (win, 0);
+  /* The picture's file is still the old one: Save writes it, not the name the failed Save As chose. */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "save", NULL);
+  wait_for_layout (win);
+  g_assert_false (easel_window_get_modified (win));
+  g_assert_false (g_file_test (target, G_FILE_TEST_EXISTS));
+  g_assert_cmpstr (gtk_window_get_title (GTK_WINDOW (win)), ==, "rgba.png – Easel");
   close_windows ();
 }
 
@@ -6758,6 +6764,7 @@ as3_zoom_check_follows_zoom (void)
   write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
 }
 
+static const char *const width_tips[5] = { "1 pixel", "2 pixels", "3 pixels", "4 pixels", "5 pixels" };
 /* The toolbox panel: the box that holds the tool grid and the options, found from the Pan button. */
 static GtkWidget *
 toolbox_panel (EaselWindow *win)
@@ -6826,7 +6833,8 @@ assert_lens_like_tool_buttons (EaselWindow *win)
 static void
 as6_toolbox_width_is_the_same_for_every_tool (void)
 {
-  static const char *const tools[] = { "pan", "pencil", "brush", "airbrush", "eraser", "magnifier", "pick", "fill" };
+  static const char *const tools[] = { "pan", "pencil", "brush", "airbrush", "eraser", "magnifier", "pick", "fill", "line",
+                                       "rectangle", "rounded-rectangle", "ellipse" };
   static const char *const lens[] = { "100 %", "200 %", "400 %", "600 %", "800 %" };
   GtkSettings *st = gtk_settings_get_default ();
   EaselWindow *win = start_window ();
@@ -6860,6 +6868,8 @@ as6_toolbox_width_is_the_same_for_every_tool (void)
             }
           else if (g_str_equal (tools[i], "magnifier"))
             assert_options_fit (win, lens, 5);
+          else if (g_str_equal (tools[i], "line"))
+            assert_options_fit (win, width_tips, 5);          /* 0010: the shapes' options keep the toolbox's width */
         }
       if (pct == 100)
         {
@@ -7437,6 +7447,838 @@ as9_workspace_dark_theme (void)
 }
 
 
+/* ---- 0010: lines and shapes ---- */
+
+/* The first widget with this tooltip that is on screen (a width appears on two pages of the options, Line's and the shapes'). */
+static GtkWidget *
+find_mapped_by_tooltip (GtkWidget *root, const char *text)
+{
+  for (GtkWidget *child = gtk_widget_get_first_child (root); child; child = gtk_widget_get_next_sibling (child))
+    {
+      GtkWidget *found;
+
+      if (gtk_widget_get_mapped (child) && g_strcmp0 (gtk_widget_get_tooltip_text (child), text) == 0)
+        return child;
+      found = find_mapped_by_tooltip (child, text);
+      if (found != NULL)
+        return found;
+    }
+  return NULL;
+}
+
+/* The state of a window action that holds an integer. */
+static int
+int_state (EaselWindow *win, const char *action)
+{
+  g_autoptr (GVariant) state = g_action_group_get_action_state (G_ACTION_GROUP (win), action);
+
+  return g_variant_get_int32 (state);
+}
+
+/* The shown button bound to an action with this integer target (the tooltip "Fill" is also the toolbox's Fill tool). */
+static GtkWidget *
+find_int_action_button (GtkWidget *root, const char *action, int target)
+{
+  for (GtkWidget *child = gtk_widget_get_first_child (root); child; child = gtk_widget_get_next_sibling (child))
+    {
+      GtkWidget *found;
+
+      if (GTK_IS_TOGGLE_BUTTON (child) && gtk_widget_get_mapped (child)
+          && g_strcmp0 (gtk_actionable_get_action_name (GTK_ACTIONABLE (child)), action) == 0)
+        {
+          GVariant *t = gtk_actionable_get_action_target_value (GTK_ACTIONABLE (child));
+
+          if (t != NULL && g_variant_get_int32 (t) == target)
+            return child;
+        }
+      found = find_int_action_button (child, action, target);
+      if (found != NULL)
+        return found;
+    }
+  return NULL;
+}
+
+static const char *const style_tips[3] = { "Outline", "Outline and fill", "Fill" };
+
+/* The index of the selected one of n shown buttons with these tooltips, -1 if none, and a failure if one is not on screen. */
+static int
+shown_selected (EaselWindow *win, const char *const *tips, int n)
+{
+  int on = -1;
+
+  for (int i = 0; i < n; i++)
+    {
+      /* The fill styles are found by their action, the widths by tooltip too (their tooltips are unique among tools). */
+      GtkWidget *b = tips == style_tips ? find_int_action_button (GTK_WIDGET (win), "win.fill-style", i)
+                                        : find_mapped_by_tooltip (GTK_WIDGET (win), tips[i]);
+
+      g_assert_nonnull (b);
+      if (gtk_toggle_button_get_active (GTK_TOGGLE_BUTTON (b)))
+        on = i;
+    }
+  return on;
+}
+
+/* AS-1 (REQ-0010-01, -15, -16): the four tools in their places, with their tooltips, hints and the crosshair. */
+static void
+as1_shape_tools_toolbox_hints (void)
+{
+  static const struct { const char *name, *tip, *hint; int col, row; EaselTool tool; } tools[] = {
+    { "pan", "Pan", NULL, 0, 0, EASEL_TOOL_PAN }, { "magnifier", "Magnifier", NULL, 1, 0, EASEL_TOOL_MAGNIFIER },
+    { "eraser", "Eraser", NULL, 0, 1, EASEL_TOOL_ERASER }, { "pick", "Pick Color", NULL, 1, 1, EASEL_TOOL_PICK },
+    { "fill", "Fill", NULL, 0, 2, EASEL_TOOL_FILL }, { "pencil", "Pencil", NULL, 1, 2, EASEL_TOOL_PENCIL },
+    { "brush", "Brush", NULL, 0, 3, EASEL_TOOL_BRUSH }, { "airbrush", "Airbrush", NULL, 1, 3, EASEL_TOOL_AIRBRUSH },
+    { "line", "Line", "Draws a straight line with the selected line width.", 0, 4, EASEL_TOOL_LINE },
+    { "rectangle", "Rectangle", "Draws a rectangle with the selected fill style.", 1, 4, EASEL_TOOL_RECTANGLE },
+    { "rounded-rectangle", "Rounded Rectangle", "Draws a rounded rectangle with the selected fill style.", 0, 5,
+      EASEL_TOOL_ROUNDED_RECTANGLE },
+    { "ellipse", "Ellipse", "Draws an ellipse with the selected fill style.", 1, 5, EASEL_TOOL_ELLIPSE },
+  };
+  EaselWindow *win = start_window ();
+  EaselStatusBar *bar = easel_window_get_status_bar (win);
+  GtkToggleButton *buttons[12];
+  graphene_rect_t first, r;
+
+  wait_for_layout (win);
+  for (guint i = 0; i < G_N_ELEMENTS (tools); i++)
+    {
+      buttons[i] = find_tool_button (GTK_WIDGET (win), tools[i].name);
+      g_assert_nonnull (buttons[i]);
+      g_assert_cmpstr (gtk_widget_get_tooltip_text (GTK_WIDGET (buttons[i])), ==, tools[i].tip);
+      g_assert_cmpstr (gtk_button_get_icon_name (GTK_BUTTON (buttons[i])), !=, NULL);
+    }
+  /* Two columns, row by row, the four new ones last. */
+  first = bounds_in (GTK_WIDGET (buttons[0]), GTK_WIDGET (win));
+  for (guint i = 1; i < G_N_ELEMENTS (tools); i++)
+    {
+      graphene_rect_t before = bounds_in (GTK_WIDGET (buttons[i - 1]), GTK_WIDGET (win));
+
+      r = bounds_in (GTK_WIDGET (buttons[i]), GTK_WIDGET (win));
+      if (tools[i].col == 0)
+        g_assert_cmpfloat_with_epsilon (r.origin.x, first.origin.x, 1.0);
+      else
+        g_assert_cmpfloat (r.origin.x, >, first.origin.x + first.size.width - 1);
+      if (tools[i].row > tools[i - 1].row)
+        g_assert_cmpfloat (r.origin.y, >, before.origin.y + 1);
+      else
+        g_assert_cmpfloat_with_epsilon (r.origin.y, before.origin.y, 1.0);
+    }
+  /* Each can be chosen and shows selected alone; the four show their hint and the crosshair. */
+  for (guint i = 0; i < G_N_ELEMENTS (tools); i++)
+    {
+      g_signal_emit_by_name (buttons[i], "clicked");
+      wait_for_layout (win);
+      g_assert_cmpint (easel_window_get_tool (win), ==, tools[i].tool);
+      for (guint j = 0; j < G_N_ELEMENTS (tools); j++)
+        g_assert_true (gtk_toggle_button_get_active (buttons[j]) == (i == j));
+      if (tools[i].hint != NULL)
+        {
+          GdkCursor *cursor = gtk_widget_get_cursor (GTK_WIDGET (easel_window_get_canvas (win)));
+
+          g_assert_cmpstr (easel_status_bar_get_text (bar, EASEL_STATUS_HINT), ==, tools[i].hint);
+          g_assert_nonnull (cursor);
+          g_assert_cmpstr (gdk_cursor_get_name (cursor), ==, "crosshair");
+        }
+    }
+  close_windows ();
+}
+
+/* AS-2 (REQ-0010-02, -03): the options of the four tools and the two choices they share. */
+static void
+as2_width_and_fill_style_shared (void)
+{
+  EaselWindow *win = start_window ();
+
+  wait_for_layout (win);
+  /* Line: the five widths, 1 pixel on, and no fill styles. */
+  use_tool (win, "line");
+  wait_for_layout (win);
+  g_assert_cmpint (shown_selected (win, width_tips, 5), ==, 0);
+  g_assert_null (find_int_action_button (GTK_WIDGET (win), "win.fill-style", 0));
+  /* 3 pixels, then Rectangle: Outline on, the widths with 3 on. */
+  g_signal_emit_by_name (find_mapped_by_tooltip (GTK_WIDGET (win), "3 pixels"), "clicked");
+  g_assert_cmpint (int_state (win, "line-width"), ==, 3);
+  use_tool (win, "rectangle");
+  wait_for_layout (win);
+  g_assert_cmpint (shown_selected (win, style_tips, 3), ==, 0);
+  g_assert_cmpint (shown_selected (win, width_tips, 5), ==, 2);
+  /* A line between the fill styles and the widths, drawn on screen. */
+  {
+    GtkWidget *last_style = find_int_action_button (GTK_WIDGET (win), "win.fill-style", 2);
+    GtkWidget *first_width = find_mapped_by_tooltip (GTK_WIDGET (win), "1 pixel");
+    graphene_rect_t rs = bounds_in (last_style, GTK_WIDGET (win)), rw = bounds_in (first_width, GTK_WIDGET (win));
+
+    g_assert_cmpfloat (rw.origin.y, >, rs.origin.y + rs.size.height);
+  }
+  /* "Fill", then Ellipse: Fill on there too, and the width still 3. */
+  g_signal_emit_by_name (find_int_action_button (GTK_WIDGET (win), "win.fill-style", 2), "clicked");
+  g_assert_cmpint (int_state (win, "fill-style"), ==, 2);
+  use_tool (win, "ellipse");
+  wait_for_layout (win);
+  g_assert_cmpint (shown_selected (win, style_tips, 3), ==, 2);
+  g_assert_cmpint (shown_selected (win, width_tips, 5), ==, 2);
+  /* Another shape and back to Line: the choices stay. */
+  use_tool (win, "rounded-rectangle");
+  wait_for_layout (win);
+  g_assert_cmpint (shown_selected (win, style_tips, 3), ==, 2);
+  use_tool (win, "pencil");
+  use_tool (win, "line");
+  wait_for_layout (win);
+  g_assert_cmpint (shown_selected (win, width_tips, 5), ==, 2);
+  g_assert_null (find_int_action_button (GTK_WIDGET (win), "win.fill-style", 1));
+  /* Choosing changes no pixel and does not mark the picture. */
+  g_assert_false (easel_window_get_modified (win));
+  g_assert_false (action_enabled (win, "undo"));
+  close_windows ();
+}
+
+/* AS-3 (REQ-0010-04): Numpad + and - step the width, stopping at 5 and at 1, and leave the fill style alone. */
+static void
+as3_numpad_steps_width (void)
+{
+  EaselWindow *win = start_window ();
+
+  wait_for_layout (win);
+  use_tool (win, "line");
+  g_assert_true (has_accel ("win.preset-larger", GDK_KEY_KP_Add, 0));
+  for (int i = 0; i < 5; i++)
+    g_action_group_activate_action (G_ACTION_GROUP (win), "preset-larger", NULL);
+  g_assert_cmpint (int_state (win, "line-width"), ==, 5);
+  for (int i = 0; i < 6; i++)
+    g_action_group_activate_action (G_ACTION_GROUP (win), "preset-smaller", NULL);
+  g_assert_cmpint (int_state (win, "line-width"), ==, 1);
+  /* With a shape the same keys change the width and not the fill style. */
+  use_tool (win, "rectangle");
+  g_action_group_change_action_state (G_ACTION_GROUP (win), "fill-style", g_variant_new_int32 (1));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "preset-larger", NULL);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "preset-larger", NULL);
+  g_assert_cmpint (int_state (win, "line-width"), ==, 3);
+  g_assert_cmpint (int_state (win, "fill-style"), ==, 1);
+  /* Ctrl+Numpad still zooms. */
+  g_assert_true (has_accel ("win.zoom-in", GDK_KEY_KP_Add, GDK_CONTROL_MASK));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-in", NULL);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 200);
+  g_assert_cmpint (int_state (win, "line-width"), ==, 3);
+  close_windows ();
+}
+
+
+/* A shape drag with the mouse: press at the center of picture pixel (x0, y0), move to (x1, y1), at the current zoom; the
+   release is left to the caller. Coordinates are canvas coordinates, so pixels outside the picture are negative. */
+static void
+shape_press_move (EaselWindow *win, guint button, int x0, int y0, int x1, int y1)
+{
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  double x, y;
+
+  canvas_point (win, x0 + 0.5, y0 + 0.5, &x, &y);
+  easel_canvas_press (canvas, button, x, y);
+  canvas_point (win, x1 + 0.5, y1 + 0.5, &x, &y);
+  easel_canvas_motion (canvas, x, y);
+}
+
+static void
+shape_release (EaselWindow *win, guint button)
+{
+  easel_canvas_release (easel_window_get_canvas (win), button);
+}
+
+/* The Pencil's line as a set of pixels, from the core, on a scratch picture the size of the window's. */
+static EaselImage *
+pencil_set (const EaselImage *like, int x0, int y0, int x1, int y1)
+{
+  EaselImage *img = easel_image_new (like->width, like->height, 0xFFFFFFFFu);
+  EaselStroke *st = easel_stroke_begin (img, x0, y0, 0xFF000000u);
+
+  easel_stroke_to (st, x1, y1);
+  easel_stroke_end (st, NULL);
+  return img;
+}
+
+/* The rendered color of picture pixel (x, y) at 100 %: the canvas's origin in the window plus the pixel. */
+static uint32_t
+rendered_pixel (const uint32_t *px, int w, int cx, int cy, int x, int y)
+{
+  return px[(gsize) (cy + y) * w + cx + x];
+}
+
+/* AS-4 (REQ-0010-05, -07, -10): a Line drag shows the line without changing the picture; the release draws it, one undo
+   step, the title marked. */
+static void
+as4_line_preview_and_step (void)
+{
+  EaselWindow *win = start_window ();
+  const EaselImage *img = easel_window_get_picture (win);
+  EaselImage *expected;
+  int w, h, cx, cy;
+  g_autofree uint32_t *during = NULL, *after = NULL;
+
+  wait_for_layout (win);
+  use_tool (win, "line");
+  wait_for_layout (win);
+  expected = pencil_set (img, 10, 10, 40, 20);
+  shape_press_move (win, 1, 10, 10, 40, 20);
+  g_assert_cmpint (count_color (img, 0xFF000000u), ==, 0);             /* the picture is unchanged while dragging */
+  g_assert_false (easel_window_get_modified (win));
+  wait_for_next_frame (win);
+  during = render_pixels (win, &w, &h, &cx, &cy);
+  for (int y = 5; y < 25; y++)
+    for (int x = 5; x < 45; x++)
+      g_assert_cmpint (rendered_pixel (during, w, cx, cy, x, y) == 0xFF000000u, ==,
+                       easel_image_get (expected, x, y) == 0xFF000000u);       /* the preview is the line */
+  shape_release (win, 1);
+  wait_for_next_frame (win);
+  after = render_pixels (win, &w, &h, &cx, &cy);
+  g_assert_cmpint (count_color (img, 0xFF000000u), ==, 31);
+  for (int y = 0; y < 30; y++)
+    for (int x = 0; x < 50; x++)
+      {
+        g_assert_cmpint (easel_image_get (img, x, y) == 0xFF000000u, ==, easel_image_get (expected, x, y) == 0xFF000000u);
+        g_assert_cmphex (rendered_pixel (after, w, cx, cy, x, y), ==, rendered_pixel (during, w, cx, cy, x, y));
+      }
+  g_assert_true (easel_window_get_modified (win));
+  g_assert_true (action_enabled (win, "undo"));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_cmpint (count_color (img, 0xFF000000u), ==, 0);
+  g_assert_false (action_enabled (win, "undo"));
+  g_assert_false (easel_window_get_modified (win));
+  easel_image_free (expected);
+  close_windows ();
+}
+
+/* AS-6 (REQ-0010-11 to -13): a Rectangle with the three fill styles and a width, with either button's colors. */
+static void
+as6_rectangle_on_canvas (void)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  const uint32_t black = 0xFF000000u, red = 0xFFFF0000u, yellow = 0xFFFFFF00u;
+
+  wait_for_layout (win);
+  easel_canvas_set_colors (canvas, black, red);
+  use_tool (win, "rectangle");
+  wait_for_layout (win);
+  /* Outline: the border of the 10 x 5 box in the foreground, the inside kept. */
+  shape_press_move (win, 1, 10, 10, 19, 14);
+  shape_release (win, 1);
+  g_assert_cmpint (count_color (img, black), ==, 26);
+  g_assert_cmpint (count_color (img, yellow), ==, 300 * 200 - 26);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  /* Outline and fill: the inside in the background color. */
+  g_action_group_change_action_state (G_ACTION_GROUP (win), "fill-style", g_variant_new_int32 (1));
+  shape_press_move (win, 1, 10, 10, 19, 14);
+  shape_release (win, 1);
+  g_assert_cmpint (count_color (img, black), ==, 26);
+  g_assert_cmpint (count_color (img, red), ==, 24);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  /* Fill: all in the foreground. */
+  g_action_group_change_action_state (G_ACTION_GROUP (win), "fill-style", g_variant_new_int32 (2));
+  shape_press_move (win, 1, 10, 10, 19, 14);
+  shape_release (win, 1);
+  g_assert_cmpint (count_color (img, black), ==, 50);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  /* The secondary button swaps the two colors: outline and fill, 2 pixels wide, red outline and black inside. */
+  g_action_group_change_action_state (G_ACTION_GROUP (win), "fill-style", g_variant_new_int32 (1));
+  g_action_group_change_action_state (G_ACTION_GROUP (win), "line-width", g_variant_new_int32 (2));
+  shape_press_move (win, 3, 10, 10, 19, 14);
+  shape_release (win, 3);
+  g_assert_cmpint (count_color (img, red), ==, 44);
+  g_assert_cmpint (count_color (img, black), ==, 6);
+  close_windows ();
+}
+
+/* AS-10 (REQ-0010-05, -06): a press outside the picture starts a shape, only its pixels inside are drawn, exactly in the
+   color, also with transparency; the middle button does nothing. */
+static void
+as10_line_from_outside (void)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+
+  wait_for_layout (win);
+  easel_canvas_set_colors (canvas, 0x80FF0000u, 0xFFFFFFFFu);
+  use_tool (win, "line");
+  wait_for_layout (win);
+  shape_press_move (win, 1, -20, 50, 50, 50);
+  shape_release (win, 1);
+  g_assert_cmpint (count_color (img, 0x80FF0000u), ==, 51);                 /* x 0 to 50 of row 50, exactly #FF000080 (half transparent red) */
+  for (int x = 0; x < 300; x++)
+    g_assert_cmpint (easel_image_get (img, x, 50) == 0x80FF0000u, ==, x <= 50);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_cmpint (count_color (img, 0x80FF0000u), ==, 0);
+  /* The middle button does nothing. */
+  shape_press_move (win, 2, 10, 10, 60, 10);
+  shape_release (win, 2);
+  g_assert_cmpint (count_color (img, 0x80FF0000u), ==, 0);
+  g_assert_false (easel_window_get_modified (win));
+  close_windows ();
+}
+
+/* AS-13 (REQ-0010-07): a shape that changes no pixel adds no step and no modified mark. */
+static void
+as13_shape_changing_nothing (void)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+
+  wait_for_layout (win);
+  easel_canvas_set_colors (canvas, 0xFFFFFF00u, 0xFFFFFF00u);              /* the picture's own color */
+  use_tool (win, "rectangle");
+  wait_for_layout (win);
+  shape_press_move (win, 1, 10, 10, 60, 40);
+  shape_release (win, 1);
+  g_assert_false (easel_window_get_modified (win));
+  g_assert_false (action_enabled (win, "undo"));
+  close_windows ();
+}
+
+/* The Plan's risk: what the preview shows is what is drawn: the canvas area rendered during a drag and after the release
+   is the same, for a filled, wide Ellipse at a scrolled 400 %, and for a transparent color, where the checkerboard shows
+   under the shape. */
+static void
+as4_preview_equals_drawing (void)
+{
+  static const uint32_t colors[] = { 0xFF3465A4u, 0x80FF0000u };           /* opaque, and #FF000080: half transparent red */
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  View view;
+  const char *settings = "[new-picture]\nwidth=3000\nheight=2000\nbackground=#FFFF00\n";
+
+  write_settings (settings);
+  for (guint c = 0; c < G_N_ELEMENTS (colors); c++)
+    {
+      graphene_rect_t area;
+      int w, h, cx, cy;
+      g_autofree uint32_t *during = NULL, *after = NULL;
+      double x, y;
+      int px, py, scale;
+
+      win = start_window ();
+      canvas = easel_window_get_canvas (win);
+      view = view_of (win);
+      wait_for_layout (win);
+      g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-large", NULL);          /* 400 %, scrolled */
+      wait_for_layout (win);
+      g_assert_cmpfloat (gtk_adjustment_get_value (view.h), >, gtk_adjustment_get_page_size (view.h));
+      easel_canvas_set_colors (canvas, colors[c], 0xFFFFFFFFu);
+      g_action_group_change_action_state (G_ACTION_GROUP (win), "fill-style", g_variant_new_int32 (2));
+      g_action_group_change_action_state (G_ACTION_GROUP (win), "line-width", g_variant_new_int32 (3));
+      use_tool (win, "ellipse");
+      wait_for_layout (win);
+      /* From the view's center to 120 view pixels right and 80 down. */
+      x = view_to_canvas (view.h, gtk_adjustment_get_page_size (view.h) / 2);
+      y = view_to_canvas (view.v, gtk_adjustment_get_page_size (view.v) / 2);
+      easel_canvas_press (canvas, 1, x, y);
+      easel_canvas_motion (canvas, x + 120, y + 80);
+      wait_for_next_frame (win);
+      during = render_pixels (win, &w, &h, &cx, &cy);
+      easel_canvas_release (canvas, 1);
+      wait_for_next_frame (win);
+      after = render_pixels (win, &w, &h, &cx, &cy);
+      area = bounds_in (view.scroller, GTK_WIDGET (win));
+      scale = (int) easel_canvas_get_scale (canvas);
+      /* The canvas area, except 40 pixels along its edges (the scrolled area animates a shading there), is the same. */
+      for (py = (int) (area.origin.y * scale) + 40; py < (int) ((area.origin.y + area.size.height) * scale) - 40; py++)
+        for (px = (int) (area.origin.x * scale) + 40; px < (int) ((area.origin.x + area.size.width) * scale) - 40; px++)
+          g_assert_cmphex (after[(gsize) py * w + px], ==, during[(gsize) py * w + px]);
+      /* The shape is there: the picture holds its pixels in exactly the color. */
+      g_assert_cmpint (count_color (easel_window_get_picture (win), colors[c]), >, 300);      /* a 30 x 20 pixel ellipse */
+      close_windows ();
+    }
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* AS-11 (REQ-0010-08, -18): the other button, Esc and Undo cancel a shape drag and the release does nothing more; during
+   it the tools, the widths, the fill styles, the zoom and the numpad are ignored; Save draws the shape first. */
+static void
+as11_cancel_and_ignored_during_drag (void)
+{
+  g_autofree char *dir = g_dir_make_tmp ("easel-ui-XXXXXX", NULL);
+  g_autofree char *path = g_build_filename (dir, "a.png", NULL);
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+
+  wait_for_layout (win);
+  use_tool (win, "rectangle");
+  wait_for_layout (win);
+  g_action_group_change_action_state (G_ACTION_GROUP (win), "fill-style", g_variant_new_int32 (2));
+  /* The other button cancels: nothing drawn, no step, and the release afterwards does nothing. */
+  shape_press_move (win, 1, 10, 10, 60, 40);
+  g_assert_true (easel_canvas_is_stroking (canvas));
+  shape_press_move (win, 3, 10, 10, 60, 40);
+  g_assert_false (easel_canvas_is_stroking (canvas));
+  shape_release (win, 3);
+  shape_release (win, 1);
+  g_assert_cmpint (count_color (img, 0xFF000000u), ==, 0);
+  g_assert_false (easel_window_get_modified (win));
+  g_assert_false (action_enabled (win, "undo"));
+  /* Esc cancels too. */
+  shape_press_move (win, 1, 10, 10, 60, 40);
+  press_escape (win);
+  g_assert_false (easel_canvas_is_stroking (canvas));
+  shape_release (win, 1);
+  g_assert_cmpint (count_color (img, 0xFF000000u), ==, 0);
+  g_assert_false (action_enabled (win, "undo"));
+  /* Undo cancels it; a second Undo before the release does nothing (an earlier stroke stays), after it Undo works. */
+  use_pencil (win);
+  A_STROKE (win);
+  g_assert_cmpint (count_color (img, 0xFF000000u), ==, 7);
+  use_tool (win, "rectangle");
+  wait_for_layout (win);
+  shape_press_move (win, 1, 10, 10, 60, 40);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_false (easel_canvas_is_stroking (canvas));
+  g_assert_cmpint (count_color (img, 0xFF000000u), ==, 7);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_cmpint (count_color (img, 0xFF000000u), ==, 7);                   /* ignored until the release */
+  shape_release (win, 1);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_cmpint (count_color (img, 0xFF000000u), ==, 0);
+  /* During a drag: another tool, a width, a fill style, Zoom In and the numpad do nothing. */
+  shape_press_move (win, 1, 10, 10, 60, 40);
+  use_tool (win, "pencil");
+  g_assert_cmpint (easel_window_get_tool (win), ==, EASEL_TOOL_RECTANGLE);
+  g_action_group_change_action_state (G_ACTION_GROUP (win), "line-width", g_variant_new_int32 (4));
+  g_action_group_change_action_state (G_ACTION_GROUP (win), "fill-style", g_variant_new_int32 (0));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "preset-larger", NULL);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-in", NULL);
+  g_assert_cmpint (int_state (win, "line-width"), ==, 1);
+  g_assert_cmpint (int_state (win, "fill-style"), ==, 2);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 100);
+  g_assert_false (gtk_widget_is_sensitive (GTK_WIDGET (easel_window_get_tool_options (win))));
+  /* Save before the release: the rectangle is drawn as shown, then saved. */
+  g_assert_true (easel_window_save_to (win, path));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "save", NULL);
+  g_assert_false (easel_canvas_is_stroking (canvas));
+  g_assert_cmpint (count_color (img, 0xFF000000u), ==, 51 * 31);
+  shape_release (win, 1);
+  g_assert_cmpint (count_color (img, 0xFF000000u), ==, 51 * 31);             /* the release does nothing more */
+  g_assert_cmpstr (gtk_window_get_title (GTK_WINDOW (win)), ==, "a.png – Easel");
+  g_unlink (path);
+  g_rmdir (dir);
+  close_windows ();
+}
+
+/* AS-12 (REQ-0010-09): a release that never arrives: the next pointer move with no button down draws the shape as last
+   shown, one undo step, and the options are usable again. */
+static void
+as12_lost_release_draws_shape (void)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+
+  wait_for_layout (win);
+  use_tool (win, "ellipse");
+  wait_for_layout (win);
+  g_action_group_change_action_state (G_ACTION_GROUP (win), "fill-style", g_variant_new_int32 (2));
+  shape_press_move (win, 1, 20, 20, 60, 50);
+  g_assert_false (gtk_widget_is_sensitive (GTK_WIDGET (easel_window_get_tool_options (win))));
+  g_assert_cmpint (count_color (img, 0xFF000000u), ==, 0);
+  easel_canvas_buttons_released (canvas);
+  g_assert_false (easel_canvas_is_stroking (canvas));
+  g_assert_true (gtk_widget_is_sensitive (GTK_WIDGET (easel_window_get_tool_options (win))));
+  g_assert_cmpint (count_color (img, 0xFF000000u), >, 800);                  /* the ellipse, as shown */
+  g_assert_true (easel_window_get_modified (win));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);       /* one step */
+  g_assert_cmpint (count_color (img, 0xFF000000u), ==, 0);
+  close_windows ();
+}
+
+/* AS-15 (REQ-0010-19): losing the window's focus during a drag draws the shape as last shown. */
+static void
+as15_focus_loss_draws_shape (void)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+
+  wait_for_layout (win);
+  use_tool (win, "line");
+  wait_for_layout (win);
+  shape_press_move (win, 1, 10, 10, 60, 30);
+  easel_canvas_reset_pointer (canvas);
+  g_assert_false (easel_canvas_is_stroking (canvas));
+  g_assert_cmpint (count_color (img, 0xFF000000u), ==, 51);                  /* the line from (10, 10) to (60, 30) */
+  g_assert_true (easel_window_get_modified (win));
+  shape_release (win, 1);                                                    /* the later release does nothing more */
+  g_assert_cmpint (count_color (img, 0xFF000000u), ==, 51);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_cmpint (count_color (img, 0xFF000000u), ==, 0);
+  close_windows ();
+}
+
+/* Shift going down or up, as the window's key controller reports it (the modifiers signal, whose state is the new one). */
+static void
+shift_key (EaselWindow *win, gboolean down)
+{
+  g_autoptr (GListModel) controllers = gtk_widget_observe_controllers (GTK_WIDGET (win));
+
+  for (guint i = 0; i < g_list_model_get_n_items (controllers); i++)
+    {
+      g_autoptr (GtkEventController) c = g_list_model_get_item (controllers, i);
+      gboolean handled = FALSE;
+
+      if (GTK_IS_EVENT_CONTROLLER_KEY (c))
+        g_signal_emit_by_name (c, "modifiers", down ? GDK_SHIFT_MASK : 0, &handled);
+    }
+}
+
+/* AS-9, the ui part (REQ-0010-14): Shift pressed or released during the drag, with or without a move, and held before the
+   press, changes the shape at once. */
+static void
+as9_shift_during_drag (void)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+
+  wait_for_layout (win);
+  g_action_group_change_action_state (G_ACTION_GROUP (win), "fill-style", g_variant_new_int32 (2));     /* fill only */
+  /* A Line to (40, 22), then Shift down with no move: horizontal, to (40, 10). */
+  use_tool (win, "line");
+  wait_for_layout (win);
+  shape_press_move (win, 1, 10, 10, 40, 22);
+  shift_key (win, TRUE);
+  shape_release (win, 1);
+  shift_key (win, FALSE);
+  g_assert_cmpint (count_color (img, 0xFF000000u), ==, 31);
+  for (int x = 10; x <= 40; x++)
+    g_assert_cmphex (easel_image_get (img, x, 10), ==, 0xFF000000u);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  /* A Rectangle to (49, 34): Shift down gives the 25 x 25 square, Shift up again (no move) the 40 x 25 rectangle. */
+  use_tool (win, "rectangle");
+  wait_for_layout (win);
+  shape_press_move (win, 1, 10, 10, 49, 34);
+  shift_key (win, TRUE);
+  shift_key (win, FALSE);
+  shape_release (win, 1);
+  g_assert_cmpint (count_color (img, 0xFF000000u), ==, 40 * 25);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  shape_press_move (win, 1, 10, 10, 49, 34);
+  shift_key (win, TRUE);
+  shape_release (win, 1);
+  shift_key (win, FALSE);
+  g_assert_cmpint (count_color (img, 0xFF000000u), ==, 25 * 25);
+  g_assert_cmphex (easel_image_get (img, 34, 34), ==, 0xFF000000u);
+  g_assert_cmphex (easel_image_get (img, 35, 10), ==, 0xFFFFFF00u);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  /* Shift down, then a move: still constrained; from (50, 50) toward the upper left a 21 x 21 square. */
+  shape_press_move (win, 1, 50, 50, 60, 55);
+  shift_key (win, TRUE);
+  shape_press_move (win, 1, 50, 50, 30, 20);
+  shape_release (win, 1);
+  shift_key (win, FALSE);
+  g_assert_cmpint (count_color (img, 0xFF000000u), ==, 21 * 21);
+  g_assert_cmphex (easel_image_get (img, 30, 30), ==, 0xFF000000u);
+  g_assert_cmphex (easel_image_get (img, 50, 50), ==, 0xFF000000u);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  /* Shift held before the press: the Ellipse is a circle from the start. */
+  use_tool (win, "ellipse");
+  wait_for_layout (win);
+  shift_key (win, TRUE);
+  shape_press_move (win, 1, 10, 10, 49, 34);
+  shape_release (win, 1);
+  shift_key (win, FALSE);
+  g_assert_cmpint (count_color (img, 0xFF000000u), ==, 489);                  /* the 25 x 25 circle */
+  g_assert_cmphex (easel_image_get (img, 40, 20), ==, 0xFFFFFF00u);
+  g_assert_false (easel_canvas_is_stroking (canvas));
+  close_windows ();
+}
+
+static const char *const shape_tools[] = { "line", "rectangle", "rounded-rectangle", "ellipse" };
+
+/* One drag with each of the four shape tools and each button; true if anything changed (the picture, the colors, the
+   history). */
+static gboolean
+shape_tools_change_something (EaselWindow *win, int x0, int y0, int x1, int y1)
+{
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  uint32_t fg = easel_window_get_foreground (win), bg = easel_window_get_background (win);
+  gboolean changed = FALSE;
+
+  for (guint i = 0; i < G_N_ELEMENTS (shape_tools); i++)
+    for (guint button = 1; button <= 3; button += 2)
+      {
+        use_tool (win, shape_tools[i]);
+        shape_press_move (win, button, x0, y0, x1, y1);
+        changed |= easel_canvas_is_stroking (canvas);
+        shape_release (win, button);
+        changed |= easel_window_get_modified (win) || easel_window_get_foreground (win) != fg
+                   || easel_window_get_background (win) != bg || easel_canvas_is_stroking (canvas)
+                   || action_enabled (win, "undo");
+      }
+  return changed;
+}
+
+/* AS-14 (REQ-0010-17): before the picture exists, with the color chooser, the Grid dialog or the quit prompt open and
+   during a resize drag, a press with each shape tool does nothing. */
+static void
+as14_shapes_ignored_when_blocked (void)
+{
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  EaselPaletteBar *bar;
+  double x, y;
+
+  write_settings ("[new-picture]\nwidth=auto\nheight=auto\n");
+  win = easel_window_new (app);
+  g_assert_null (easel_window_get_picture (win));
+  g_assert_false (shape_tools_change_something (win, 3, 3, 40, 30));
+  gtk_window_destroy (GTK_WINDOW (win));
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+
+  win = start_window ();
+  bar = easel_window_get_palette_bar (win);
+  wait_for_layout (win);
+  easel_palette_bar_press (bar, 17, 1, 1);
+  easel_palette_bar_press (bar, 17, 1, 2);
+  g_assert_true (easel_window_is_choosing_color (win));
+  g_assert_false (shape_tools_change_something (win, 50, 50, 90, 80));
+  choose (win, NULL);
+  close_windows ();
+
+  win = start_window ();
+  wait_for_layout (win);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "grid-dialog", NULL);
+  wait_for_dialogs (win, 1);
+  g_assert_false (shape_tools_change_something (win, 50, 50, 90, 80));
+  close_windows ();
+
+  win = start_window ();
+  wait_for_layout (win);
+  use_tool (win, "pencil");
+  shape_press_move (win, 1, 5, 5, 6, 6);
+  shape_release (win, 1);
+  g_assert_true (easel_window_get_modified (win));
+  gtk_window_close (GTK_WINDOW (win));
+  wait_for_dialogs (win, 1);
+  {
+    uint32_t before = count_color (easel_window_get_picture (win), 0xFFFFFF00u);
+
+    for (guint i = 0; i < G_N_ELEMENTS (shape_tools); i++)
+      {
+        use_tool (win, shape_tools[i]);
+        shape_press_move (win, 1, 50, 50, 90, 80);
+        shape_release (win, 1);
+      }
+    g_assert_cmpint (count_color (easel_window_get_picture (win), 0xFFFFFF00u), ==, before);
+  }
+  close_windows ();
+
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  for (guint i = 0; i < G_N_ELEMENTS (shape_tools); i++)
+    {
+      use_tool (win, shape_tools[i]);
+      wait_for_layout (win);
+      handle_center (canvas, EASEL_HANDLE_CORNER, &x, &y);
+      easel_canvas_press (canvas, 1, x, y);
+      g_assert_true (easel_canvas_is_resizing (canvas));
+      easel_canvas_press (canvas, 1, 50.5, 50.5);
+      easel_canvas_release (canvas, 1);
+      g_assert_false (easel_window_get_modified (win));
+      g_assert_false (easel_canvas_is_resizing (canvas));
+    }
+  close_windows ();
+}
+
+/* AS-16 (REQ-0010-20), the ui part: a shape that cannot get its memory shows the dialog at the release and changes
+   nothing. The failure is made with the canvas's test hook (the core test does it with a real address-space limit). */
+static void
+as16_shape_memory_dialog (void)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  AdwAlertDialog *dialog;
+
+  wait_for_layout (win);
+  use_tool (win, "ellipse");
+  g_action_group_change_action_state (G_ACTION_GROUP (win), "fill-style", g_variant_new_int32 (2));
+  easel_canvas_set_shape_memory_limit (canvas, 1000);
+  shape_press_move (win, 1, 0, 0, 299, 199);
+  shape_release (win, 1);
+  easel_canvas_set_shape_memory_limit (canvas, SIZE_MAX);
+  wait_for_dialogs (win, 1);
+  dialog = open_alert (win);
+  g_assert_nonnull (dialog);
+  g_assert_cmpstr (adw_alert_dialog_get_heading (dialog), ==, "Could Not Draw the Shape");
+  g_assert_cmpstr (adw_alert_dialog_get_body (dialog), ==, "There is not enough memory to draw this shape.");
+  g_assert_cmpint (count_color (img, 0xFFFFFF00u), ==, 300 * 200);
+  g_assert_false (easel_window_get_modified (win));
+  g_assert_false (action_enabled (win, "undo"));
+  g_assert_false (easel_canvas_is_stroking (canvas));
+  adw_dialog_close (ADW_DIALOG (dialog));
+  wait_for_dialogs (win, 0);
+
+  shape_press_move (win, 1, 0, 0, 299, 199);
+  shape_release (win, 1);
+  g_assert_cmpint (count_color (img, 0xFFFFFF00u), <, 300 * 200);
+  g_assert_true (action_enabled (win, "undo"));
+  close_windows ();
+}
+
+/* AS-17 (REQ-0010-21): the end follows the pointer past the area's edge; the view does not scroll by itself; Ctrl+wheel
+   goes through the wheel handler and does not zoom (the view scrolls as usual), the pinch does nothing; after a scroll the
+   end moves at the next pointer motion. */
+static void
+as17_drag_outside_area (void)
+{
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  const EaselImage *img;
+  GtkAdjustment *h, *v;
+  graphene_rect_t seen;
+  double scroll_h, scroll_v, x, scale;
+  int end_x;
+
+  write_settings ("[new-picture]\nwidth=3000\nheight=2000\nbackground=#FFFF00\n");
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  img = easel_window_get_picture (win);
+  wait_for_layout (win);
+  h = gtk_scrollable_get_hadjustment (GTK_SCROLLABLE (gtk_widget_get_parent (GTK_WIDGET (canvas))));
+  v = gtk_scrollable_get_vadjustment (GTK_SCROLLABLE (gtk_widget_get_parent (GTK_WIDGET (canvas))));
+  scroll_h = gtk_adjustment_get_value (h);
+  scroll_v = gtk_adjustment_get_value (v);
+  scale = easel_canvas_get_scale (canvas);
+  use_tool (win, "rectangle");
+  g_action_group_change_action_state (G_ACTION_GROUP (win), "fill-style", g_variant_new_int32 (2));
+  shape_press_move (win, 1, 10, 10, 20, 20);
+
+  /* 200 pixels past the right edge of the area (the area is the canvas's parent). */
+  g_assert_true (gtk_widget_compute_bounds (gtk_widget_get_parent (GTK_WIDGET (canvas)), GTK_WIDGET (canvas), &seen));
+  x = seen.origin.x + seen.size.width + 200;
+  end_x = (int) floor (x * scale);
+  easel_canvas_motion (canvas, x, 30.5);
+  g_assert_cmpfloat (gtk_adjustment_get_value (h), ==, scroll_h);
+  g_assert_cmpfloat (gtk_adjustment_get_value (v), ==, scroll_v);
+
+  /* Ctrl+wheel, three notches: not handled, so the view scrolls as usual, and no zoom; the pinch does nothing. */
+  g_assert_true (easel_canvas_wheel (canvas, GDK_CONTROL_MASK, 3, 50, 50) == GDK_EVENT_PROPAGATE);
+  easel_canvas_pinch_begin (canvas);
+  easel_canvas_pinch (canvas, 2.0, 50, 50);
+  easel_canvas_pinch_end (canvas);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 100);
+  g_assert_true (easel_canvas_is_stroking (canvas));
+
+  /* The scroll the wheel gives (100 points down), then the pointer moves at the same place in the view: the end is the
+     pixel under it now, 100 points further down the picture. */
+  gtk_adjustment_set_value (v, scroll_v + 100);
+  wait_for_layout (win);
+  easel_canvas_motion (canvas, x, 130.5);
+  shape_release (win, 1);
+  g_assert_cmphex (easel_image_get (img, end_x, (int) floor (130.5 * scale)), ==, 0xFF000000u);
+  g_assert_cmphex (easel_image_get (img, end_x + 1, 20), ==, 0xFFFFFF00u);
+  g_assert_cmphex (easel_image_get (img, 10, (int) floor (130.5 * scale) + 1), ==, 0xFFFFFF00u);
+  g_assert_cmphex (easel_image_get (img, 10, 10), ==, 0xFF000000u);
+  close_windows ();
+}
+
 int
 main (int argc, char **argv)
 {
@@ -7587,6 +8429,21 @@ main (int argc, char **argv)
   g_test_add_func ("/0009/as1_margin_and_workspace", as1_margin_and_workspace);
   g_test_add_func ("/0009/as4_pointer_maps_with_margin", as4_pointer_maps_with_margin);
   g_test_add_func ("/0009/as7_handles_in_margin", as7_handles_in_margin);
+  g_test_add_func ("/0010/as1_shape_tools_toolbox_hints", as1_shape_tools_toolbox_hints);
+  g_test_add_func ("/0010/as2_width_and_fill_style_shared", as2_width_and_fill_style_shared);
+  g_test_add_func ("/0010/as3_numpad_steps_width", as3_numpad_steps_width);
+  g_test_add_func ("/0010/as4_line_preview_and_step", as4_line_preview_and_step);
+  g_test_add_func ("/0010/as6_rectangle_on_canvas", as6_rectangle_on_canvas);
+  g_test_add_func ("/0010/as10_line_from_outside", as10_line_from_outside);
+  g_test_add_func ("/0010/as13_shape_changing_nothing", as13_shape_changing_nothing);
+  g_test_add_func ("/0010/as4_preview_equals_drawing", as4_preview_equals_drawing);
+  g_test_add_func ("/0010/as11_cancel_and_ignored_during_drag", as11_cancel_and_ignored_during_drag);
+  g_test_add_func ("/0010/as12_lost_release_draws_shape", as12_lost_release_draws_shape);
+  g_test_add_func ("/0010/as15_focus_loss_draws_shape", as15_focus_loss_draws_shape);
+  g_test_add_func ("/0010/as9_shift_during_drag", as9_shift_during_drag);
+  g_test_add_func ("/0010/as14_shapes_ignored_when_blocked", as14_shapes_ignored_when_blocked);
+  g_test_add_func ("/0010/as16_shape_memory_dialog", as16_shape_memory_dialog);
+  g_test_add_func ("/0010/as17_drag_outside_area", as17_drag_outside_area);
   g_test_add_func ("/0009/as5_fit_to_window_with_margin", as5_fit_to_window_with_margin);
   g_test_add_func ("/0009/as6_zoom_anchors_with_margin", as6_zoom_anchors_with_margin);
   g_test_add_func ("/0009/as8_grid_with_margin", as8_grid_with_margin);

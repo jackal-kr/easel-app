@@ -559,10 +559,8 @@ test: ui-0005 ui-0001
 --- find
   if (!easel_picture_save (self->picture, path, save_format (path), self->settings.jpeg_quality, &error))
 --- replace
-  char *mutant_path = g_strdup (path);   /* copied first: path can be self->path itself, which is freed next */
-  g_free (self->path);
-  self->path = mutant_path;
-  if (!easel_picture_save (self->picture, self->path, save_format (self->path), self->settings.jpeg_quality, &error))
+  self->path = g_strdup (path);   /* the old path is leaked, not freed: path can be it, and the lines below still read path */
+  if (!easel_picture_save (self->picture, path, save_format (path), self->settings.jpeg_quality, &error))
 
 === REQ-0005-04 Cancel in the unsaved-changes prompt goes on like Discard
 file: src/ui/window.c
@@ -817,10 +815,11 @@ test: ui-0006
 file: src/ui/window.c
 test: ui-0006
 --- find
-  if (view_actions_allowed (self)
-      && (self->tool == EASEL_TOOL_BRUSH || self->tool == EASEL_TOOL_AIRBRUSH || self->tool == EASEL_TOOL_ERASER))
+  if (!view_actions_allowed (self))
+    return;
+  if (easel_tool_draws_shape (self->tool))
 --- replace
-  if (self->tool == EASEL_TOOL_BRUSH || self->tool == EASEL_TOOL_AIRBRUSH || self->tool == EASEL_TOOL_ERASER)
+  if (easel_tool_draws_shape (self->tool))
 
 === REQ-0006-14 Numpad + steps down and Numpad - steps up
 file: src/ui/window.c
@@ -1184,9 +1183,9 @@ test: ui-0007
 file: src/ui/canvas.c
 test: ui-0007
 --- find
-  return self->stroke != NULL || self->picking;
+  return self->stroke != NULL || self->picking || self->shaping;
 --- replace
-  return self->stroke != NULL;
+  return self->stroke != NULL || self->shaping;
 
 === REQ-0007-03 the selected Magnifier level never reaches the canvas
 file: src/ui/window.c
@@ -1249,7 +1248,7 @@ test: ui-0007
 file: src/ui/canvas.c
 test: ui-0007
 --- find
-  if (self->stroke != NULL || self->picking)
+  if (self->stroke != NULL || self->picking || self->shaping)
     easel_canvas_end_stroke (self);
   if (self->resizing != EASEL_HANDLE_NONE)
     easel_canvas_release (self, self->resize_button);
@@ -1440,13 +1439,13 @@ test: core-settings
 file: src/ui/canvas.c
 test: ui-0009
 --- find
-  if (!gtk_widget_compute_bounds (gtk_widget_get_parent (GTK_WIDGET (self)), GTK_WIDGET (self), &seen))
     return;
+  vx0 = fmax (0, seen.origin.x);
 --- replace
-  if (!gtk_widget_compute_bounds (gtk_widget_get_parent (GTK_WIDGET (self)), GTK_WIDGET (self), &seen))
     return;
   seen.origin.x = gtk_adjustment_get_value (adjustment (self, GTK_ORIENTATION_HORIZONTAL));
   seen.origin.y = gtk_adjustment_get_value (adjustment (self, GTK_ORIENTATION_VERTICAL));
+  vx0 = fmax (0, seen.origin.x);
 
 === REQ-0009-07 a Pan drag that starts in the margin or on the shadow does not pan
 file: src/ui/canvas.c
@@ -1570,3 +1569,373 @@ test: io-settings-file core-settings
   "canvas-color=#FFFFFF\n"
 --- replace
   "background=#FFFFFF\n"
+
+# ---- lines and shapes (0010) ----
+
+=== REQ-0010-03 the width is not shared: the shapes' width buttons are not on the width action
+file: src/ui/tool-options.c
+test: ui-0010
+--- find
+  add_width_buttons (GTK_BOX (box));
+  return box;
+--- replace
+  add_width_buttons (GTK_BOX (box));
+  if (with_fill_styles)
+    for (GtkWidget *c = gtk_widget_get_last_child (box); c != NULL; c = gtk_widget_get_prev_sibling (c))
+      if (GTK_IS_TOGGLE_BUTTON (c))
+        gtk_actionable_set_action_name (GTK_ACTIONABLE (c), "win.fill-style");
+  return box;
+
+=== REQ-0010-02 Line shows the fill styles
+file: src/ui/tool-options.c
+test: ui-0010
+--- find
+: tool == EASEL_TOOL_LINE ? 4 : easel_tool_draws_shape (tool) ? 5 : -1
+--- replace
+: tool == EASEL_TOOL_LINE ? 5 : easel_tool_draws_shape (tool) ? 5 : -1
+
+=== REQ-0010-04 Numpad changes the fill style and not the width
+file: src/ui/window.c
+test: ui-0010
+--- find
+      g_action_group_change_action_state (G_ACTION_GROUP (self), "line-width", g_variant_new_int32 (next));
+--- replace
+      g_action_group_change_action_state (G_ACTION_GROUP (self), "fill-style", g_variant_new_int32 (next - 1));
+
+=== REQ-0010-11 the box runs from the pixel centers, so the end pixel is left out
+file: src/core/figure.c
+test: core-figure
+--- find
+  *w = (x0 < x1 ? x1 - x0 : x0 - x1) + 1;
+  *h = (y0 < y1 ? y1 - y0 : y0 - y1) + 1;
+--- replace
+  *w = (x0 < x1 ? x1 - x0 : x0 - x1);
+  *h = (y0 < y1 ? y1 - y0 : y0 - y1);
+
+=== REQ-0010-11 the rounded corners are not capped at 8
+file: src/core/figure.c
+test: core-figure
+--- find
+  if (b.r > ROUND_RADIUS)
+    b.r = ROUND_RADIUS;
+--- replace
+
+=== REQ-0010-12 the inside is shrunk by w minus one, not w
+file: src/core/figure.c
+test: core-figure
+--- find
+  inner.x = outer.x + w;
+  inner.y = outer.y + w;
+  inner.w = outer.w - 2 * w;
+  inner.h = outer.h - 2 * w;
+--- replace
+  inner.x = outer.x + w - 1;
+  inner.y = outer.y + w - 1;
+  inner.w = outer.w - 2 * (w - 1);
+  inner.h = outer.h - 2 * (w - 1);
+
+=== REQ-0010-12 the corner radius of the inside is not made smaller by w
+file: src/core/figure.c
+test: core-figure
+--- find
+  inner.r = outer.r > w ? outer.r - w : 0;
+--- replace
+  inner.r = outer.r;
+
+=== REQ-0010-11 the ellipse is drawn with its own box one pixel too small on the right (an ellipse test on the left half only)
+file: src/core/figure.c
+test: core-figure
+--- find
+      lo = b->x + b->w / 2.0 - h;
+      hi = b->x + b->w / 2.0 + h;
+--- replace
+      lo = b->x + b->w / 2.0 - h;
+      hi = b->x + b->w / 2.0 + h - 3;
+
+=== REQ-0010-10 the pen is placed with the line's pixel at the square's corner, not at (w - 1) / 2
+file: src/core/figure.c
+test: core-figure
+--- find
+  int w = f->width, a = (w - 1) / 2, lo = INT_MAX, hi = INT_MIN;
+--- replace
+  int w = f->width, a = 0, lo = INT_MAX, hi = INT_MIN;
+
+=== REQ-0010-10 the line is 4-connected (a step in x or in y, never both)
+file: src/core/figure.c
+test: core-figure
+--- find
+      if (e2 <= dx)
+        {
+          err += dx;
+          y0 += sy;
+        }
+    }
+}
+
+bool
+easel_figure_prepare
+--- replace
+      else if (e2 <= dx)
+        {
+          err += dx;
+          y0 += sy;
+        }
+    }
+}
+
+bool
+easel_figure_prepare
+
+=== REQ-0010-10 the pen covers one pixel too few on the right
+file: src/core/figure.c
+test: core-figure
+--- find
+      if (r->xmax[k] - a + w - 1 > hi)
+        hi = r->xmax[k] - a + w - 1;
+--- replace
+      if (r->xmax[k] - a + w - 2 > hi)
+        hi = r->xmax[k] - a + w - 2;
+
+=== REQ-0010-14 Shift takes the larger side for a square or a circle
+file: src/core/figure.c
+test: core-figure
+--- find
+    int side = (ax < ay ? ax : ay);                              /* the smaller of the box's sides, less one */
+--- replace
+    int side = (ax < ay ? ay : ax);
+
+=== REQ-0010-14 Shift's 45-degree line takes the larger distance
+file: src/core/figure.c
+test: core-figure
+--- find
+          int d = ax < ay ? ax : ay;
+--- replace
+          int d = ax < ay ? ay : ax;
+
+=== REQ-0010-14 Shift's nearest direction is cut at 45 degrees (a line is only horizontal or vertical by the larger distance)
+file: src/core/figure.c
+test: core-figure
+--- find
+      if ((double) ax > k * ay)
+--- replace
+      if (ax > ay)
+
+=== REQ-0010-14 Shift going down does not change the shape being dragged
+file: src/ui/canvas.c
+test: ui-0010
+--- find
+  self->shift = down;
+  if (self->shaping)
+    update_shape_end (self);
+--- replace
+  self->shift = down;
+
+=== REQ-0010-17 a press reaching the canvas while a dialog is open draws
+file: src/ui/window.c
+test: ui-0010
+--- find
+                                  || adw_application_window_get_visible_dialog (ADW_APPLICATION_WINDOW (self)) != NULL);
+--- replace
+                                  || FALSE);
+
+=== REQ-0010-20 the shape release ignores the memory limit
+file: src/ui/canvas.c
+test: ui-0010
+--- find
+                                 self->shape_max_bytes);
+--- replace
+                                 SIZE_MAX);
+
+=== REQ-0010-20 a refused shape shows no dialog
+file: src/ui/canvas.c
+test: ui-0010
+--- find
+    g_signal_emit (self, signals[SIGNAL_SHAPE_FAILED], 0);
+--- replace
+    (void) 0;
+
+=== REQ-0010-21 the end of a drag does not follow the pointer beyond the area
+file: src/ui/canvas.c
+test: ui-0010
+--- find
+      self->shape_px = px;
+      self->shape_py = py;
+--- replace
+      if (x > gtk_widget_get_width (gtk_widget_get_parent (GTK_WIDGET (self))))
+        return;
+      self->shape_px = px;
+      self->shape_py = py;
+
+=== REQ-0010-07 the log is pushed without shrinking
+file: src/core/figure.c
+test: core-figure-apply
+--- find
+  if (l.cap > l.n)
+--- replace
+  if (0)
+
+=== REQ-0010-21 Ctrl+wheel zooms during a shape drag (and still lets the view scroll)
+file: src/ui/canvas.c
+test: ui-0010
+--- find
+  if (!(state & GDK_CONTROL_MASK) || self->tool != EASEL_TOOL_PAN)
+    return GDK_EVENT_PROPAGATE;
+  notches = easel_view_take_notches (&self->notch_acc, notches_dy);
+--- replace
+  if ((state & GDK_CONTROL_MASK) && easel_view_zoom_step (self->zoom, 3) != self->zoom)
+    zoom_around (self, easel_view_zoom_step (self->zoom, 3), view_x, view_y);
+  if (!(state & GDK_CONTROL_MASK) || self->tool != EASEL_TOOL_PAN)
+    return GDK_EVENT_PROPAGATE;
+  notches = easel_view_take_notches (&self->notch_acc, notches_dy);
+
+=== REQ-0010-13 the fill-only style paints the inside in the other color
+file: src/core/figure.c
+test: core-figure-apply
+--- find
+          else if (f.style == EASEL_FIGURE_FILL_ONLY)
+            ok = paint_run (img, &l, y, runs[i].x0, runs[i].x1, draw);
+--- replace
+          else if (f.style == EASEL_FIGURE_FILL_ONLY)
+            ok = paint_run (img, &l, y, runs[i].x0, runs[i].x1, other);
+
+=== REQ-0010-20 a figure that runs out of memory leaves its pixels drawn
+file: src/core/figure.c
+test: core-figure-apply
+--- find
+  if (!ok)
+    {
+      log_restore (&l, img);
+--- replace
+  if (!ok)
+    {
+
+=== REQ-0010-05 a figure is not clipped at the left edge of the picture
+file: src/core/figure.c
+test: core-figure-apply
+--- find
+  if (x_from < 0)
+    x_from = 0;
+  if (x_to > img->width - 1)
+--- replace
+  if (x_to > img->width - 1)
+
+=== REQ-0010-07 a figure that changes nothing still adds an undo step
+file: src/core/figure.c
+test: core-figure-apply
+--- find
+  if (l.n == 0)
+    {
+      free (l.log);
+      return EASEL_FIGURE_NOTHING;
+    }
+--- replace
+  if (l.n == 0 && history == NULL)
+    {
+      free (l.log);
+      return EASEL_FIGURE_NOTHING;
+    }
+
+=== REQ-0010-05 the preview of a transparent color shows no checkerboard under it
+file: src/ui/canvas.c
+test: ui-0010
+--- find
+  if ((color >> 24) != 0xFF)
+    {
+      gtk_snapshot_push_clip (snapshot, r);
+--- replace
+  if (FALSE)
+    {
+      gtk_snapshot_push_clip (snapshot, r);
+
+=== REQ-0010-05 the shape is not shown while dragging
+file: src/ui/canvas.c
+test: ui-0010
+--- find
+  if (!self->shaping)
+    return;
+  if (!gtk_widget_compute_bounds (gtk_widget_get_parent (GTK_WIDGET (self)), GTK_WIDGET (self), &seen))
+    return;
+  picture
+--- replace
+  return;
+  if (!gtk_widget_compute_bounds (gtk_widget_get_parent (GTK_WIDGET (self)), GTK_WIDGET (self), &seen))
+    return;
+  picture
+
+=== REQ-0010-06 the secondary button draws with the foreground color
+file: src/ui/canvas.c
+test: ui-0010
+--- find
+      self->shape_draw = button == GDK_BUTTON_PRIMARY ? self->foreground : self->background;
+--- replace
+      self->shape_draw = self->foreground;
+
+=== REQ-0010-05 the release does not draw the shape
+file: src/ui/canvas.c
+test: ui-0010
+--- find
+  if (self->shaping && button == self->shape_button)
+    end_shape (self);
+--- replace
+  if (self->shaping && button == self->shape_button)
+    self->shaping = FALSE;
+
+=== REQ-0010-07 a drawn shape does not mark the picture modified
+file: src/ui/canvas.c
+test: ui-0010
+--- find
+      easel_canvas_update (self);
+      g_signal_emit (self, signals[SIGNAL_STROKE_FINISHED], 0, (guint) changed);
+    }
+  else if (r == EASEL_FIGURE_NO_MEMORY)
+--- replace
+      easel_canvas_update (self);
+    }
+  else if (r == EASEL_FIGURE_NO_MEMORY)
+
+=== REQ-0010-08 Esc does not cancel a shape drag
+file: src/ui/window.c
+test: ui-0010
+--- find
+      /* Esc cancels a shape drag (REQ-0010-08). */
+      easel_canvas_cancel_stroke (self->canvas);
+--- replace
+      /* Esc cancels a shape drag (REQ-0010-08). */
+
+=== REQ-0010-08 the other button does not cancel a shape drag
+file: src/ui/canvas.c
+test: ui-0010
+--- find
+      if (button != self->shape_button)
+        easel_canvas_cancel_stroke (self);
+--- replace
+      if (FALSE)
+        easel_canvas_cancel_stroke (self);
+
+=== REQ-0010-09 a lost release or a lost focus drops the shape instead of drawing it
+file: src/ui/canvas.c
+test: ui-0010
+--- find
+      /* Save, Quit, a lost focus and a lost release draw the shape as last shown (REQ-0010-09, -18, -19). */
+      end_shape (self);
+--- replace
+      /* Save, Quit, a lost focus and a lost release draw the shape as last shown (REQ-0010-09, -18, -19). */
+      self->shaping = FALSE;
+      g_signal_emit (self, signals[SIGNAL_STROKING_CHANGED], 0, FALSE);
+
+=== REQ-0010-08 a width can be chosen during a drag
+file: src/ui/window.c
+test: ui-0010
+--- find
+  if (w >= 1 && w <= 5 && !easel_canvas_is_stroking (self->canvas))      /* ignored during a drag (REQ-0010-08) */
+--- replace
+  if (w >= 1 && w <= 5)
+
+=== REQ-0010-08 after Undo cancels a shape drag, another Undo before the release is not ignored
+file: src/ui/canvas.c
+test: ui-0010
+--- find
+      self->shaping = FALSE;
+      self->cancelled_button = self->shape_button;
+--- replace
+      self->shaping = FALSE;

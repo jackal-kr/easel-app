@@ -843,6 +843,15 @@ dialog_is_open (EaselWindow *self)
          || adw_application_window_get_visible_dialog (ADW_APPLICATION_WINDOW (self)) != NULL;
 }
 
+/* While a dialog is open, a press on the canvas does nothing (REQ-0010-17; the dialog is modal for the pointer, this holds
+   it for a press that reaches the canvas anyway). */
+static void
+on_visible_dialog_changed (EaselWindow *self)
+{
+  easel_canvas_set_input_blocked (self->canvas, self->chooser_open || self->loading
+                                  || adw_application_window_get_visible_dialog (ADW_APPLICATION_WINDOW (self)) != NULL);
+}
+
 /* Colors are not edits: no undo step, no modified mark (REQ-0003-09). */
 static void
 set_colors (EaselWindow *self, uint32_t foreground, uint32_t background)
@@ -999,6 +1008,14 @@ tool_hint (EaselTool tool, gboolean transparent)
                          : "Erase to the background color. The secondary button changes only the foreground color.";
     case EASEL_TOOL_MAGNIFIER:
       return "Changes the magnification.";
+    case EASEL_TOOL_LINE:
+      return "Draws a straight line with the selected line width.";
+    case EASEL_TOOL_RECTANGLE:
+      return "Draws a rectangle with the selected fill style.";
+    case EASEL_TOOL_ROUNDED_RECTANGLE:
+      return "Draws a rounded rectangle with the selected fill style.";
+    case EASEL_TOOL_ELLIPSE:
+      return "Draws an ellipse with the selected fill style.";
     case EASEL_TOOL_PICK:
       return "Picks up a color from the picture for drawing.";
     case EASEL_TOOL_FILL:
@@ -1252,6 +1269,35 @@ magnifier_level_changed (GSimpleAction *action, GVariant *value, gpointer user_d
   easel_canvas_set_magnifier_level (self->canvas, g_variant_get_int32 (value));
 }
 
+/* The line width and the fill style of the shape tools (REQ-0010-03): one state each, shared by every tool that shows it. */
+static void
+line_width_changed (GSimpleAction *action, GVariant *value, gpointer user_data)
+{
+  EaselWindow *self = user_data;
+  int w = g_variant_get_int32 (value);
+  g_autoptr (GVariant) style = g_action_group_get_action_state (G_ACTION_GROUP (self), "fill-style");
+
+  if (w >= 1 && w <= 5 && !easel_canvas_is_stroking (self->canvas))      /* ignored during a drag (REQ-0010-08) */
+    {
+      g_simple_action_set_state (action, value);
+      easel_canvas_set_shape_options (self->canvas, w, g_variant_get_int32 (style));
+    }
+}
+
+static void
+fill_style_changed (GSimpleAction *action, GVariant *value, gpointer user_data)
+{
+  EaselWindow *self = user_data;
+  int style = g_variant_get_int32 (value);
+  g_autoptr (GVariant) width = g_action_group_get_action_state (G_ACTION_GROUP (self), "line-width");
+
+  if (style >= 0 && style <= 2 && !easel_canvas_is_stroking (self->canvas))
+    {
+      g_simple_action_set_state (action, value);
+      easel_canvas_set_shape_options (self->canvas, g_variant_get_int32 (width), style);
+    }
+}
+
 /* View > Zoom (REQ-0008-04): a preset, through the same path as the other zoom commands, which keeps the center still. */
 static void
 zoom_to_activated (GSimpleAction *action, GVariant *parameter, gpointer user_data)
@@ -1438,10 +1484,24 @@ on_resize_requested (EaselWindow *self, int width, int height)
 static gboolean
 on_key_pressed (EaselWindow *self, guint keyval, guint keycode, GdkModifierType state, GtkEventControllerKey *controller)
 {
+  if (keyval == GDK_KEY_Escape && easel_tool_draws_shape (self->tool) && easel_canvas_is_stroking (self->canvas))
+    {
+      /* Esc cancels a shape drag (REQ-0010-08). */
+      easel_canvas_cancel_stroke (self->canvas);
+      return GDK_EVENT_STOP;
+    }
   if (keyval != GDK_KEY_Escape || !easel_canvas_is_resizing (self->canvas))
     return GDK_EVENT_PROPAGATE;
   easel_canvas_cancel_resize (self->canvas);
   return GDK_EVENT_STOP;
+}
+
+/* Shift going down or up changes a shape being dragged at once (REQ-0010-14); the state is the new one. */
+static gboolean
+on_modifiers_changed (EaselWindow *self, GdkModifierType state, GtkEventControllerKey *controller)
+{
+  easel_canvas_set_shift (self->canvas, (state & GDK_SHIFT_MASK) != 0);
+  return GDK_EVENT_PROPAGATE;
 }
 
 /* Losing focus ends a stroke and keeps it (REQ-0001-25), and stops waiting for a release that may never come
@@ -1509,6 +1569,23 @@ on_fill_failed (EaselWindow *self)
   g_idle_add (show_fill_error, g_object_ref (self));
 }
 
+/* REQ-0010-20: the same, for a shape. */
+static gboolean
+show_shape_error (gpointer data)
+{
+  EaselWindow *self = data;
+
+  show_save_error (self, "Could Not Draw the Shape", "There is not enough memory to draw this shape.");
+  g_object_unref (self);
+  return G_SOURCE_REMOVE;
+}
+
+static void
+on_shape_failed (EaselWindow *self)
+{
+  g_idle_add (show_shape_error, g_object_ref (self));
+}
+
 /* Choosing a preset is not possible while a stroke is in progress (REQ-0006-03). */
 static void
 on_stroking_changed (EaselWindow *self, gboolean stroking)
@@ -1542,8 +1619,17 @@ change_tool_state (GSimpleAction *action, GVariant *value, gpointer user_data)
 static void
 step_preset (EaselWindow *self, int direction)
 {
-  if (view_actions_allowed (self)
-      && (self->tool == EASEL_TOOL_BRUSH || self->tool == EASEL_TOOL_AIRBRUSH || self->tool == EASEL_TOOL_ERASER))
+  if (!view_actions_allowed (self))
+    return;
+  if (easel_tool_draws_shape (self->tool))
+    {
+      /* The width of Line and the shapes, 1 to 5, stopping at the ends (REQ-0010-04); the fill style is not touched. */
+      g_autoptr (GVariant) state = g_action_group_get_action_state (G_ACTION_GROUP (self), "line-width");
+      int next = CLAMP (g_variant_get_int32 (state) + direction, 1, 5);
+
+      g_action_group_change_action_state (G_ACTION_GROUP (self), "line-width", g_variant_new_int32 (next));
+    }
+  else if (self->tool == EASEL_TOOL_BRUSH || self->tool == EASEL_TOOL_AIRBRUSH || self->tool == EASEL_TOOL_ERASER)
     easel_tool_options_step (self->tool_options, self->tool, direction);
 }
 
@@ -1577,6 +1663,8 @@ static const GActionEntry win_actions[] = {
   { .name = "zoom-fit", .activate = zoom_fit_activated },
   { .name = "zoom-to", .parameter_type = "i", .state = "0", .activate = zoom_to_activated },
   { .name = "magnifier-level", .parameter_type = "i", .state = "200", .change_state = magnifier_level_changed },
+  { .name = "line-width", .parameter_type = "i", .state = "1", .change_state = line_width_changed },
+  { .name = "fill-style", .parameter_type = "i", .state = "0", .change_state = fill_style_changed },
   { .name = "grid", .state = "false", .change_state = grid_state_changed },
   { .name = "grid-dialog", .activate = grid_dialog_activated },
   { .name = "attributes", .activate = attributes_activated },
@@ -1811,16 +1899,19 @@ easel_window_init (EaselWindow *self)
   g_signal_connect_object (self->palette_bar, "indicator-pressed", G_CALLBACK (on_indicator_pressed), self,
                            G_CONNECT_SWAPPED);
   g_signal_connect_object (self->canvas, "resize-requested", G_CALLBACK (on_resize_requested), self, G_CONNECT_SWAPPED);
+  g_signal_connect_swapped (self, "notify::visible-dialog", G_CALLBACK (on_visible_dialog_changed), self);
   {
     GtkEventController *keys = gtk_event_controller_key_new ();
 
     gtk_event_controller_set_propagation_phase (keys, GTK_PHASE_CAPTURE);
     g_signal_connect_swapped (keys, "key-pressed", G_CALLBACK (on_key_pressed), self);
+    g_signal_connect_swapped (keys, "modifiers", G_CALLBACK (on_modifiers_changed), self);
     gtk_widget_add_controller (GTK_WIDGET (self), keys);
   }
   g_signal_connect_object (self->canvas, "color-picked", G_CALLBACK (on_color_picked), self, G_CONNECT_SWAPPED);
   g_signal_connect_object (self->canvas, "pick-ended", G_CALLBACK (on_pick_ended), self, G_CONNECT_SWAPPED);
   g_signal_connect_object (self->canvas, "fill-failed", G_CALLBACK (on_fill_failed), self, G_CONNECT_SWAPPED);
+  g_signal_connect_object (self->canvas, "shape-failed", G_CALLBACK (on_shape_failed), self, G_CONNECT_SWAPPED);
   g_signal_connect_object (self->canvas, "stroke-finished", G_CALLBACK (on_stroke_finished), self, G_CONNECT_SWAPPED);
   g_signal_connect (self, "notify::is-active", G_CALLBACK (on_active_changed), NULL);
 

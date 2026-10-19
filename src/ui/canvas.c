@@ -6,6 +6,7 @@
 #include "canvas.h"
 #include "cursor-shape.h"
 #include "fill.h"
+#include "figure.h"
 #include "grid.h"
 #include "magnifier.h"
 #include "stroke.h"
@@ -56,6 +57,15 @@ struct _EaselCanvas
   double pointer_ax, pointer_ay;  /* where, relative to the area (so a scroll or a zoom moves the picture under it) */
   int box_px, box_py;     /* the pixel the preview box was last drawn for, to redraw only when it changes */
   size_t fill_max_bytes;  /* test hook: what a Fill may use for its work buffers */
+  size_t shape_max_bytes; /* test hook: what a shape's undo log may use */
+  gboolean shaping;       /* a shape drag is held: a pending gesture of Line, Rectangle, Rounded Rectangle or Ellipse (0010) */
+  guint shape_button;
+  int shape_x0, shape_y0, shape_x1, shape_y1;   /* the start pixel and the end pixel (the pointer's, or Shift's constraint of it) */
+  int shape_px, shape_py;                       /* the pixel under the pointer now */
+  gboolean shift;                               /* Shift is down (REQ-0010-14) */
+  uint32_t shape_draw, shape_other;             /* the colors of the press, kept until the release (REQ-0010-06) */
+  int shape_width;                              /* 1 to 5, and the fill style: set by the window from its two actions */
+  EaselFigureStyle shape_style;
   guint action_button;    /* button held after a press that acted at once (Fill): no other press acts until it is released */
   gboolean input_blocked;
   gboolean busy;          /* a picture is loading: the busy cursor */
@@ -88,6 +98,7 @@ enum
   SIGNAL_STROKE_FINISHED,
   SIGNAL_STROKING_CHANGED,
   SIGNAL_FILL_FAILED,
+  SIGNAL_SHAPE_FAILED,
   SIGNAL_COLOR_PICKED,
   SIGNAL_PICK_ENDED,
   SIGNAL_ZOOM_CHANGED,
@@ -102,6 +113,7 @@ static guint signals[N_SIGNALS];
 static GtkAdjustment *adjustment (EaselCanvas *self, GtkOrientation orientation);
 static void to_pixel (EaselCanvas *self, double x, double y, int *px, int *py);
 static void update_cursor (EaselCanvas *self);
+static void end_shape (EaselCanvas *self);
 static void stop_spray (EaselCanvas *self);
 static void commit_zoom (EaselCanvas *self, int zoom, double scroll_h, double scroll_v);
 static gboolean on_spray_tick (gpointer data);
@@ -496,6 +508,122 @@ append_magnifier_box (EaselCanvas *self, GtkSnapshot *snapshot)
     }
 }
 
+/* The end pixel follows the pointer, or the pointer's constraint while Shift is down (REQ-0010-14). */
+static void
+update_shape_end (EaselCanvas *self)
+{
+  EaselFigureKind kind = self->tool == EASEL_TOOL_LINE ? EASEL_FIGURE_LINE
+                         : self->tool == EASEL_TOOL_RECTANGLE ? EASEL_FIGURE_RECTANGLE
+                         : self->tool == EASEL_TOOL_ROUNDED_RECTANGLE ? EASEL_FIGURE_ROUNDED : EASEL_FIGURE_ELLIPSE;
+  int x = self->shape_px, y = self->shape_py;
+
+  if (self->shift)
+    easel_figure_constrain (kind, self->shape_x0, self->shape_y0, &x, &y);
+  if (x != self->shape_x1 || y != self->shape_y1)
+    {
+      self->shape_x1 = x;
+      self->shape_y1 = y;
+      gtk_widget_queue_draw (GTK_WIDGET (self));
+    }
+}
+
+void
+easel_canvas_set_shift (EaselCanvas *self, gboolean down)
+{
+  self->shift = down;
+  if (self->shaping)
+    update_shape_end (self);
+}
+
+/* The shape being dragged, as the core describes it (REQ-0010-05). */
+static EaselFigure
+current_figure (EaselCanvas *self)
+{
+  EaselFigureKind kind = self->tool == EASEL_TOOL_LINE ? EASEL_FIGURE_LINE
+                         : self->tool == EASEL_TOOL_RECTANGLE ? EASEL_FIGURE_RECTANGLE
+                         : self->tool == EASEL_TOOL_ROUNDED_RECTANGLE ? EASEL_FIGURE_ROUNDED : EASEL_FIGURE_ELLIPSE;
+
+  return (EaselFigure) { kind, self->shape_x0, self->shape_y0, self->shape_x1, self->shape_y1, self->shape_width,
+                         self->shape_style, NULL };
+}
+
+static GdkRGBA
+rgba_of (uint32_t c)
+{
+  return (GdkRGBA) { ((c >> 16) & 0xFF) / 255.0f, ((c >> 8) & 0xFF) / 255.0f, (c & 0xFF) / 255.0f, (c >> 24) / 255.0f };
+}
+
+/* One run of the shape's pixels as a colored rectangle. A color with transparency replaces the pixel, so the checkerboard
+   is drawn under it, clipped to the run, as the picture's own transparent pixels show it (REQ-0001-11). */
+static void
+append_shape_run (GtkSnapshot *snapshot, const graphene_rect_t *r, const graphene_rect_t *picture, uint32_t color)
+{
+  GdkRGBA rgba = rgba_of (color);
+
+  if ((color >> 24) != 0xFF)
+    {
+      gtk_snapshot_push_clip (snapshot, r);
+      easel_snapshot_append_checkerboard (snapshot, picture, CHECKER_SIZE);
+      gtk_snapshot_pop (snapshot);
+    }
+  if ((color >> 24) != 0)
+    gtk_snapshot_append_color (snapshot, &rgba, r);
+}
+
+/* The shape being dragged, drawn over the picture as it will be drawn: the same runs the release applies, only for the rows
+   the view shows (REQ-0010-05). At a zoom where a device pixel holds many rows, one row in step is drawn, so a frame costs
+   what the view costs and not what the shape does. */
+static void
+append_shape_preview (EaselCanvas *self, GtkSnapshot *snapshot)
+{
+  EaselFigure f;
+  graphene_rect_t seen, picture;
+  double l = self->zoom / (100.0 * easel_canvas_get_scale (self));
+  int row0, row1, step;
+
+  if (!self->shaping)
+    return;
+  if (!gtk_widget_compute_bounds (gtk_widget_get_parent (GTK_WIDGET (self)), GTK_WIDGET (self), &seen))
+    return;
+  picture = GRAPHENE_RECT_INIT (0, 0, (float) (self->img->width * l), (float) (self->img->height * l));
+  row0 = (int) floor (fmax (0, seen.origin.y) / l);
+  row1 = (int) ceil (fmin (self->img->height * l, seen.origin.y + seen.size.height) / l) - 1;
+  if (row1 > self->img->height - 1)
+    row1 = self->img->height - 1;
+  if (row0 > row1)
+    return;
+  f = current_figure (self);
+  if (!easel_figure_prepare (&f, row0, row1))
+    return;
+  step = (row1 - row0 + 1) / 3000 + 1;
+  for (int y = row0; y <= row1; y += step)
+    {
+      EaselFigureRun runs[4];
+      size_t n = easel_figure_row (&f, y, runs, 4);
+
+      for (size_t i = 0; i < n; i++)
+        {
+          uint32_t color;
+          int x0 = runs[i].x0 < 0 ? 0 : runs[i].x0, x1 = runs[i].x1 > self->img->width - 1 ? self->img->width - 1 : runs[i].x1;
+          graphene_rect_t r;
+
+          if (x0 > x1)
+            continue;
+          if (!runs[i].inside)
+            color = self->shape_draw;
+          else if (f.style == EASEL_FIGURE_OUTLINE_AND_FILL)
+            color = self->shape_other;
+          else if (f.style == EASEL_FIGURE_FILL_ONLY)
+            color = self->shape_draw;
+          else
+            continue;
+          r = GRAPHENE_RECT_INIT ((float) (x0 * l), (float) (y * l), (float) ((x1 - x0 + 1) * l), (float) (step * l));
+          append_shape_run (snapshot, &r, &picture, color);
+        }
+    }
+  easel_figure_release (&f);
+}
+
 static void
 easel_canvas_snapshot (GtkWidget *widget, GtkSnapshot *snapshot)
 {
@@ -521,6 +649,7 @@ easel_canvas_snapshot (GtkWidget *widget, GtkSnapshot *snapshot)
 
         gtk_snapshot_append_scaled_texture (snapshot, tile, GSK_SCALING_FILTER_NEAREST, &r);
       }
+  append_shape_preview (self, snapshot);
   if (easel_canvas_grid_is_drawn (self))
     append_grid (self, snapshot);
   append_handles (self, snapshot);
@@ -634,6 +763,11 @@ update_cursor (EaselCanvas *self)
 
       cursor = g_object_ref (texture_cursor (&dropper, "pick.svg", 2, 30));
     }
+  else if (easel_tool_draws_shape (self->tool))
+    {
+      /* The crosshair: its center is the pixel a shape would start from (REQ-0010-15). */
+      cursor = gdk_cursor_new_from_name ("crosshair", NULL);
+    }
   else if (self->tool == EASEL_TOOL_MAGNIFIER)
     {
       static GdkCursor *glass;
@@ -692,6 +826,19 @@ easel_canvas_set_magnifier_level (EaselCanvas *self, int pct)
 }
 
 void
+easel_canvas_set_shape_options (EaselCanvas *self, int width, int style)
+{
+  self->shape_width = width;
+  self->shape_style = (EaselFigureStyle) style;
+}
+
+void
+easel_canvas_set_shape_memory_limit (EaselCanvas *self, size_t max_bytes)
+{
+  self->shape_max_bytes = max_bytes;
+}
+
+void
 easel_canvas_set_fill_memory_limit (EaselCanvas *self, size_t max_bytes)
 {
   self->fill_max_bytes = max_bytes;
@@ -713,7 +860,7 @@ easel_canvas_set_colors (EaselCanvas *self, uint32_t foreground, uint32_t backgr
 gboolean
 easel_canvas_is_stroking (EaselCanvas *self)
 {
-  return self->stroke != NULL || self->picking;
+  return self->stroke != NULL || self->picking || self->shaping;
 }
 
 static GtkAdjustment *
@@ -750,6 +897,16 @@ easel_canvas_cancel_stroke (EaselCanvas *self)
       finish_pick (self, TRUE);
       return;
     }
+  if (self->shaping)
+    {
+      /* A shape drag is cancelled: nothing was drawn, nothing is added; its button is held until the release
+         (REQ-0010-08). */
+      self->shaping = FALSE;
+      self->cancelled_button = self->shape_button;
+      g_signal_emit (self, signals[SIGNAL_STROKING_CHANGED], 0, FALSE);
+      gtk_widget_queue_draw (GTK_WIDGET (self));
+      return;
+    }
   if (self->stroke == NULL)
     return;
   easel_stroke_cancel (self->stroke);
@@ -765,7 +922,7 @@ easel_canvas_buttons_released (EaselCanvas *self)
 {
   /* What a release would have done, for each press the canvas still holds (REQ-0007-18). */
   self->action_button = 0;
-  if (self->stroke != NULL || self->picking)
+  if (self->stroke != NULL || self->picking || self->shaping)
     easel_canvas_end_stroke (self);
   if (self->resizing != EASEL_HANDLE_NONE)
     easel_canvas_release (self, self->resize_button);
@@ -841,6 +998,12 @@ easel_canvas_end_stroke (EaselCanvas *self)
   if (self->picking)
     {
       finish_pick (self, FALSE);
+      return;
+    }
+  if (self->shaping)
+    {
+      /* Save, Quit, a lost focus and a lost release draw the shape as last shown (REQ-0010-09, -18, -19). */
+      end_shape (self);
       return;
     }
   if (self->stroke == NULL)
@@ -923,6 +1086,13 @@ easel_canvas_press (EaselCanvas *self, guint button, double x, double y)
       /* The other button cancels the pick, as it cancels a stroke (REQ-0007-10). */
       if (button != self->stroke_button)
         finish_pick (self, TRUE);
+      return;
+    }
+  if (self->shaping)
+    {
+      /* The other button cancels the shape drag, as it cancels a stroke (REQ-0010-08). */
+      if (button != self->shape_button)
+        easel_canvas_cancel_stroke (self);
       return;
     }
   if (self->stroke != NULL)
@@ -1008,6 +1178,20 @@ easel_canvas_press (EaselCanvas *self, guint button, double x, double y)
       fill_at (self, button, px, py);
       return;
     }
+  if (easel_tool_draws_shape (self->tool))
+    {
+      /* A shape drag: the start is the pixel under the press, also outside the picture (REQ-0010-05); the colors are those
+         of the press (REQ-0010-06). */
+      self->shaping = TRUE;
+      self->shape_button = button;
+      self->shape_x0 = self->shape_x1 = self->shape_px = px;
+      self->shape_y0 = self->shape_y1 = self->shape_py = py;
+      self->shape_draw = button == GDK_BUTTON_PRIMARY ? self->foreground : self->background;
+      self->shape_other = button == GDK_BUTTON_PRIMARY ? self->background : self->foreground;
+      g_signal_emit (self, signals[SIGNAL_STROKING_CHANGED], 0, TRUE);
+      gtk_widget_queue_draw (GTK_WIDGET (self));
+      return;
+    }
   if (self->tool == EASEL_TOOL_AIRBRUSH)
     {
       /* The random sequence starts differently each time (REQ-0006-09). */
@@ -1088,6 +1272,14 @@ easel_canvas_motion (EaselCanvas *self, double x, double y)
         }
       return;
     }
+  if (self->shaping)
+    {
+      to_pixel (self, x, y, &px, &py);
+      self->shape_px = px;
+      self->shape_py = py;
+      update_shape_end (self);
+      return;
+    }
   if (self->stroke == NULL)
     return;
   to_pixel (self, x, y, &px, &py);
@@ -1095,6 +1287,29 @@ easel_canvas_motion (EaselCanvas *self, double x, double y)
   self->spray_y = py;
   easel_stroke_to (self->stroke, px, py);
   easel_canvas_update (self);
+}
+
+/* The shape drag ends: the shape is drawn into the picture as one undo step, or not at all if it changes no pixel
+   (REQ-0010-05, REQ-0010-07). */
+static void
+end_shape (EaselCanvas *self)
+{
+  EaselFigure f = current_figure (self);
+  size_t changed = 0;
+  EaselFigureResult r;
+
+  self->shaping = FALSE;
+  r = easel_figure_apply_capped (self->img, self->history, &f, self->shape_draw, self->shape_other, &changed,
+                                 self->shape_max_bytes);
+  g_signal_emit (self, signals[SIGNAL_STROKING_CHANGED], 0, FALSE);
+  if (r == EASEL_FIGURE_DONE)
+    {
+      easel_canvas_update (self);
+      g_signal_emit (self, signals[SIGNAL_STROKE_FINISHED], 0, (guint) changed);
+    }
+  else if (r == EASEL_FIGURE_NO_MEMORY)
+    g_signal_emit (self, signals[SIGNAL_SHAPE_FAILED], 0);
+  gtk_widget_queue_draw (GTK_WIDGET (self));
 }
 
 void
@@ -1119,6 +1334,8 @@ easel_canvas_release (EaselCanvas *self, guint button)
       self->panning = FALSE;
       update_cursor (self);
     }
+  if (self->shaping && button == self->shape_button)
+    end_shape (self);
   if ((self->stroke != NULL || self->picking) && button == self->stroke_button)
     easel_canvas_end_stroke (self);
 }
@@ -1333,6 +1550,21 @@ on_pinch_scale_changed (GtkGestureZoom *gesture, double scale, EaselCanvas *self
   easel_canvas_pinch (self, scale, x, y);
 }
 
+gboolean
+easel_canvas_wheel (EaselCanvas *self, GdkModifierType state, double notches_dy, double view_x, double view_y)
+{
+  int notches;
+
+  /* Without Ctrl, or with Ctrl in another tool, the wheel scrolls as usual (REQ-0001-15, REQ-0001-17), also during a shape
+     drag, whose end then moves at the next pointer motion (REQ-0010-21). */
+  if (!(state & GDK_CONTROL_MASK) || self->tool != EASEL_TOOL_PAN)
+    return GDK_EVENT_PROPAGATE;
+  notches = easel_view_take_notches (&self->notch_acc, notches_dy);
+  if (notches != 0)
+    easel_canvas_zoom_at (self, notches, view_x, view_y);
+  return GDK_EVENT_STOP;
+}
+
 static gboolean
 on_scroll (GtkEventControllerScroll *controller, double dx, double dy, EaselCanvas *self)
 {
@@ -1342,26 +1574,17 @@ on_scroll (GtkEventControllerScroll *controller, double dx, double dy, EaselCanv
   GtkNative *native = gtk_widget_get_native (area);
   graphene_point_t p = GRAPHENE_POINT_INIT (0, 0);
   double x, y, nx, ny;
-  int notches;
-
-  /* Without Ctrl, or with Ctrl in another tool, the wheel scrolls as usual (REQ-0001-15, REQ-0001-17). */
-  if (!(state & GDK_CONTROL_MASK) || self->tool != EASEL_TOOL_PAN)
-    return GDK_EVENT_PROPAGATE;
 
   if (gtk_event_controller_scroll_get_unit (controller) == GDK_SCROLL_UNIT_SURFACE)
     dy /= PIXELS_PER_NOTCH;
-  notches = easel_view_take_notches (&self->notch_acc, dy);
-
-  if (event != NULL && gdk_event_get_position (event, &x, &y))
+  if ((state & GDK_CONTROL_MASK) && event != NULL && gdk_event_get_position (event, &x, &y))
     {
       gtk_native_get_surface_transform (native, &nx, &ny);
       if (!gtk_widget_compute_point (GTK_WIDGET (native), area,
                                      &GRAPHENE_POINT_INIT ((float) (x - nx), (float) (y - ny)), &p))
         p = GRAPHENE_POINT_INIT (0, 0);
     }
-  if (notches != 0)
-    easel_canvas_zoom_at (self, notches, p.x, p.y);
-  return GDK_EVENT_STOP;
+  return easel_canvas_wheel (self, state, dy, p.x, p.y);
 }
 
 static gboolean
@@ -1415,6 +1638,8 @@ on_event (GtkEventControllerLegacy *controller, GdkEvent *event, EaselCanvas *se
   if ((type == GDK_MOTION_NOTIFY || type == GDK_BUTTON_PRESS)
       && !(gdk_event_get_modifier_state (event) & (GDK_BUTTON1_MASK | GDK_BUTTON2_MASK | GDK_BUTTON3_MASK)))
     easel_canvas_buttons_released (self);
+  if (type == GDK_MOTION_NOTIFY || type == GDK_BUTTON_PRESS)
+    self->shift = (gdk_event_get_modifier_state (event) & GDK_SHIFT_MASK) != 0;
   if (type == GDK_MOTION_NOTIFY)
     easel_canvas_pointer_at (self, x, y);
   if (type == GDK_BUTTON_PRESS)
@@ -1569,6 +1794,8 @@ easel_canvas_class_init (EaselCanvasClass *klass)
                                              G_TYPE_NONE, 1, G_TYPE_BOOLEAN);
   signals[SIGNAL_FILL_FAILED] = g_signal_new ("fill-failed", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST, 0, NULL, NULL, NULL,
                                               G_TYPE_NONE, 0);
+  signals[SIGNAL_SHAPE_FAILED] = g_signal_new ("shape-failed", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST, 0, NULL, NULL, NULL,
+                                              G_TYPE_NONE, 0);
   signals[SIGNAL_STROKING_CHANGED] = g_signal_new ("stroking-changed", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST, 0, NULL,
                                                    NULL, NULL, G_TYPE_NONE, 1, G_TYPE_BOOLEAN);
   signals[SIGNAL_STROKE_FINISHED] = g_signal_new ("stroke-finished", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST,
@@ -1580,6 +1807,8 @@ easel_canvas_init (EaselCanvas *self)
 {
   self->zoom = 100;
   self->fill_max_bytes = SIZE_MAX;
+  self->shape_max_bytes = SIZE_MAX;
+  self->shape_width = 1;
   self->magnifier_level = easel_magnifier_levels[EASEL_MAGNIFIER_DEFAULT];
   self->grid_cell = 1;
   self->pinch_base = 1.0;

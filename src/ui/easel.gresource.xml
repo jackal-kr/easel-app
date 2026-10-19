@@ -11,6 +11,10 @@
     <file preprocess="xml-stripblanks">icons/scalable/actions/easel-tool-magnifier-symbolic.svg</file>
     <file preprocess="xml-stripblanks">icons/scalable/actions/easel-tool-pick-symbolic.svg</file>
     <file preprocess="xml-stripblanks">icons/scalable/actions/easel-tool-fill-symbolic.svg</file>
+    <file preprocess="xml-stripblanks">icons/scalable/actions/easel-tool-line-symbolic.svg</file>
+    <file preprocess="xml-stripblanks">icons/scalable/actions/easel-tool-rectangle-symbolic.svg</file>
+    <file preprocess="xml-stripblanks">icons/scalable/actions/easel-tool-rounded-rectangle-symbolic.svg</file>
+    <file preprocess="xml-stripblanks">icons/scalable/actions/easel-tool-ellipse-symbolic.svg</file>
     <file preprocess="xml-stripblanks">cursors/pencil.svg</file>
     <file preprocess="xml-stripblanks">cursors/airbrush.svg</file>
     <file preprocess="xml-stripblanks">cursors/magnifier.svg</file>

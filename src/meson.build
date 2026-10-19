@@ -5,6 +5,7 @@ easel_core_inc = include_directories('core')
 easel_core = static_library('easel-core',
   'core/cursor-shape.c',
   'core/fill.c',
+  'core/figure.c',
   'core/footprint.c',
   'core/magnifier.c',
   'core/format.c',
