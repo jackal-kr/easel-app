@@ -184,6 +184,7 @@ PY
     result="killed"; killed=$((killed + 1)); reason="by $FAILED_TEST: $(why_failed)"
   else
     result="crashed"; crashed=$((crashed + 1)); reason="killed by crash (test gap), by $FAILED_TEST: $(why_failed)"
+    cp "$SCRATCH/test.log" "$SCRATCH/crash-$n.log"; reason="$reason (log: .scratch/mutate/crash-$n.log)"
   fi
   cp "$SCRATCH/original" "$target"          # the original text back, before the next mutant
   printf '%-9s %s  %s  (%d s)\n' "$result" "$req" "$name" $(( $(date +%s) - start ))
