@@ -16,6 +16,8 @@ Precondition: `Status: accepted` in the spec. Otherwise stop and say so.
    A change to the layout lists every reader of it, sizes as well as offsets, in code and in tests.
    A style rule that must follow the theme lives in `style.css` or is reloaded on `notify::dark`; a media query in the app's own provider is probed where it is used.
    For a data structure that grows with use, say what it stores per item and what it copies.
+   A buffer that grows by doubling and is handed to the history is shrunk to its length first.
+   A signal handler's return type is checked against the signal's.
    Write an ADR in `docs/decisions/` only if a choice contradicts the constitution or would be questioned later.
    Show the plan. Wait for JOD's "go".
 2. **Tasks.** Fill `## Tasks`: small ordered slices, each `- [ ] T001 title (REQ-..., AS-...) - done when ...`. Every REQ and AS
@@ -28,6 +30,9 @@ Precondition: `Status: accepted` in the spec. Otherwise stop and say so.
    - write the test from the scenario text first, run it and see it fail before writing the code (and say so in the task
      report), then the smallest code that passes; a ui test of anything that
      moves the view also checks where the picture is drawn, by rendering the window; a new case also passes when run alone;
+   - a step or buffer kept under a memory budget has a test that compares the memory held (capacity) with the memory counted, not only the length;
+   - a test of an input rule calls the function the signal callback calls, with the event's modifier state, never a function deeper down;
+   - a pure function and its test are written in two separate edits, with a build and a red run between them;
    - when work from a later task is pulled forward, its tests are written and run red before that code too;
    - a test of a layout or drawing rule checks what the window lays out or draws, at a scrolled position too, never a value computed from the same constant;
    - `ninja -C build` must be warning-free and the tests green as the Testing section of `docs/engineering.md` says for a task

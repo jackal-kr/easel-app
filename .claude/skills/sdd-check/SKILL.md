@@ -12,11 +12,13 @@ description: Step 3 of the loop, also usable any time. Read-only check of a feat
    `tests/mutants.txt` gets one, a mutant that survives is a finding, and so is one killed only by a crash (add an
    assertion). If none does, first check whether any input could observe the change; an equivalent mutant is not a finding.
    A background run is awaited by its process id or by the summary line `tools/mutate.sh` prints, and its counts are copied from that summary line, never from a search of the log.
+   A crashed mutant is reported with its saved log, `.scratch/mutate/crash-N.log`.
    Read the `Result:` line of every task: copy them into Check, report every `characterization` task as a finding, and
    report a manual step (or a task) without a `Result:` as a finding.
 3. Drift: behavior in code that is not in the spec; Plan items not built; spec statements contradicted by tests.
 4. Constitution: layering, warnings, tests shipped with the change, no AI trailers in commits.
 5. Read `git diff` for correctness: pixel bounds and overflow, GTK object lifetime, one undo step per user-visible edit.
+   A step or buffer kept under a memory budget is checked for the memory held (capacity) against the memory counted, not only the length.
 6. Report findings ranked by severity with file and id references, then a one-line verdict. If clean and JOD agrees, propose
    `Status: implemented` and any lines worth adding to `docs/learning-log.md`.
 7. Last, write the `## Check` section of the spec (see `docs/specs/_template.md`): date, commit, tests, mutants, warnings, and
