@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+#include "change-log.h"
 #include "figure.h"
 
 #define COORD_LIMIT 1000000
@@ -945,62 +946,17 @@ easel_figure_row (const EaselFigure *f, int y, EaselFigureRun *runs, size_t max)
   return n;
 }
 
-/* The log of the pixels a figure changes, and what restoring them takes. */
-typedef struct
-{
-  EaselChange *log;
-  size_t n, cap;
-  size_t max_bytes;
-} Log;
-
-static bool
-log_add (Log *l, uint32_t index, uint32_t old_value, uint32_t new_value)
-{
-  if (l->n == l->cap)
-    {
-      size_t cap = l->cap ? l->cap * 2 : 1024;
-      EaselChange *p;
-
-      if (cap > SIZE_MAX / sizeof *l->log || cap * sizeof *l->log > l->max_bytes)
-        return false;
-      p = realloc (l->log, cap * sizeof *l->log);
-      if (p == NULL)
-        return false;
-      l->log = p;
-      l->cap = cap;
-    }
-  l->log[l->n++] = (EaselChange) { index, old_value, new_value };
-  return true;
-}
-
-/* Puts every logged pixel back, last first, through easel_image_set so that the screen update sees them. */
-static void
-log_restore (const Log *l, EaselImage *img)
-{
-  for (size_t i = l->n; i > 0; i--)
-    easel_image_set (img, (int) (l->log[i - 1].index % (uint32_t) img->width),
-                     (int) (l->log[i - 1].index / (uint32_t) img->width), l->log[i - 1].old_value);
-}
-
 /* Sets the pixels x_from to x_to of the row y (inside the picture) to color, logging each one that changes. */
 static bool
-paint_run (EaselImage *img, Log *l, int y, int x_from, int x_to, uint32_t color)
+paint_run (EaselImage *img, EaselChangeLog *l, int y, int x_from, int x_to, uint32_t color)
 {
   if (x_from < 0)
     x_from = 0;
   if (x_to > img->width - 1)
     x_to = img->width - 1;
   for (int x = x_from; x <= x_to; x++)
-    {
-      uint32_t old = img->px[(size_t) y * (size_t) img->width + (size_t) x];
-
-      if (old != color)
-        {
-          if (!log_add (l, (uint32_t) ((size_t) y * (size_t) img->width + (size_t) x), old, color))
-            return false;
-          easel_image_set (img, x, y, color);          /* through easel_image_set: the screen update sees it */
-        }
-    }
+    if (!easel_change_log_set (l, img, x, y, color))
+      return false;
   return true;
 }
 
@@ -1009,7 +965,7 @@ easel_figure_apply_capped (EaselImage *img, EaselHistory *history, const EaselFi
                            uint32_t other, size_t *changed, size_t max_bytes)
 {
   EaselFigure f = *figure;
-  Log l = { NULL, 0, 0, max_bytes };
+  EaselChangeLog l;
   int y_from = 0, y_to = img->height - 1;
   size_t max_runs;
   EaselFigureRun *runs;
@@ -1017,6 +973,7 @@ easel_figure_apply_capped (EaselImage *img, EaselHistory *history, const EaselFi
 
   if (changed != NULL)
     *changed = 0;
+  easel_change_log_init (&l, max_bytes);
   if (f.kind == EASEL_FIGURE_CURVE || f.kind == EASEL_FIGURE_POLYGON)
     {
       /* The figure lies within the hull of its points, a pixel off, and the pen reaches the width further. */
@@ -1077,35 +1034,26 @@ easel_figure_apply_capped (EaselImage *img, EaselHistory *history, const EaselFi
   free (runs);
   if (!ok)
     {
-      log_restore (&l, img);
-      free (l.log);
+      easel_change_log_restore (&l, img);
+      easel_change_log_free (&l);
       return EASEL_FIGURE_NO_MEMORY;
     }
   if (l.n == 0)
     {
-      free (l.log);
+      easel_change_log_free (&l);
       return EASEL_FIGURE_NOTHING;
     }
   if (changed != NULL)
     *changed = l.n;
   if (history == NULL)
     {
-      free (l.log);
+      easel_change_log_free (&l);
       return EASEL_FIGURE_DONE;
     }
-  /* The log doubled as it grew: the history keeps it at its length, so the memory held is the memory the budget counts
-     (REQ-0002-16). A shrink that fails keeps the bigger block, which is still valid. */
-  if (l.cap > l.n)
+  if (!easel_change_log_push (&l, history))
     {
-      EaselChange *p = realloc (l.log, l.n * sizeof *l.log);
-
-      if (p != NULL)
-        l.log = p;
-    }
-  if (!easel_history_push (history, l.log, l.n))
-    {
-      log_restore (&l, img);
-      free (l.log);
+      easel_change_log_restore (&l, img);
+      easel_change_log_free (&l);
       if (changed != NULL)
         *changed = 0;
       return EASEL_FIGURE_NO_MEMORY;

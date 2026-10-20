@@ -1026,6 +1026,8 @@ tool_hint (EaselTool tool, gboolean transparent)
       return "Draws a curved line with the selected line width.";
     case EASEL_TOOL_POLYGON:
       return "Draws a polygon with the selected fill style.";
+    case EASEL_TOOL_GRADIENT:
+      return "Fades the drawing color to transparent along a drag. A click or Enter applies it, Esc cancels it.";
     case EASEL_TOOL_PICK:
       return "Picks up a color from the picture for drawing.";
     case EASEL_TOOL_FILL:
@@ -1613,6 +1615,23 @@ on_shape_failed (EaselWindow *self)
   g_idle_add (show_shape_error, g_object_ref (self));
 }
 
+/* REQ-0012-09: the same, for a gradient (its apply, or its preview at the release of the drag). */
+static gboolean
+show_gradient_error (gpointer data)
+{
+  EaselWindow *self = data;
+
+  show_save_error (self, "Could Not Apply the Gradient", "There is not enough memory to apply this gradient.");
+  g_object_unref (self);
+  return G_SOURCE_REMOVE;
+}
+
+static void
+on_gradient_failed (EaselWindow *self)
+{
+  g_idle_add (show_gradient_error, g_object_ref (self));
+}
+
 /* Choosing a preset is not possible while a stroke is in progress (REQ-0006-03). */
 static void
 on_stroking_changed (EaselWindow *self, gboolean stroking)
@@ -1651,7 +1670,7 @@ step_preset (EaselWindow *self, int direction)
 {
   if (!view_actions_allowed (self))
     return;
-  if (easel_tool_draws_shape (self->tool) || easel_tool_draws_pending (self->tool))
+  if (easel_tool_uses_line_width (self->tool))
     {
       /* The width of Line and the shapes, 1 to 5, stopping at the ends (REQ-0010-04); the fill style is not touched. */
       g_autoptr (GVariant) state = g_action_group_get_action_state (G_ACTION_GROUP (self), "line-width");
@@ -1942,6 +1961,7 @@ easel_window_init (EaselWindow *self)
   g_signal_connect_object (self->canvas, "pick-ended", G_CALLBACK (on_pick_ended), self, G_CONNECT_SWAPPED);
   g_signal_connect_object (self->canvas, "fill-failed", G_CALLBACK (on_fill_failed), self, G_CONNECT_SWAPPED);
   g_signal_connect_object (self->canvas, "shape-failed", G_CALLBACK (on_shape_failed), self, G_CONNECT_SWAPPED);
+  g_signal_connect_object (self->canvas, "gradient-failed", G_CALLBACK (on_gradient_failed), self, G_CONNECT_SWAPPED);
   g_signal_connect_object (self->canvas, "pending-changed", G_CALLBACK (sync_history_ui), self, G_CONNECT_SWAPPED);
   g_signal_connect_object (self->canvas, "stroke-finished", G_CALLBACK (on_stroke_finished), self, G_CONNECT_SWAPPED);
   g_signal_connect (self, "notify::is-active", G_CALLBACK (on_active_changed), NULL);

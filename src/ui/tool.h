@@ -22,6 +22,7 @@ typedef enum
   EASEL_TOOL_ELLIPSE,
   EASEL_TOOL_CURVE,
   EASEL_TOOL_POLYGON,
+  EASEL_TOOL_GRADIENT,
 } EaselTool;
 
 /* Reads a win.tool action target ("pan", "pencil", "brush", "airbrush", "eraser", "magnifier", "pick", "fill", "line", "rectangle",
@@ -31,8 +32,11 @@ gboolean easel_tool_from_name (const char *name, EaselTool *tool);
 /* TRUE for Line, Rectangle, Rounded Rectangle and Ellipse: the tools that draw a shape by one drag (0010). */
 gboolean easel_tool_draws_shape (EaselTool tool);
 
-/* TRUE for Curve and Polygon: the tools that draw by several clicks and keep a pending shape between them (0011). */
+/* TRUE for Curve, Polygon and Gradient: the tools that keep a pending shape until it is put down (0011, 0012). */
 gboolean easel_tool_draws_pending (EaselTool tool);
+
+/* TRUE for Line, the three shapes, Curve and Polygon: the tools whose line width Numpad + and - step (REQ-0010-04). */
+gboolean easel_tool_uses_line_width (EaselTool tool);
 
 /* The win.tool action target of a tool: "pan", "pencil", ... */
 const char *easel_tool_name (EaselTool tool);

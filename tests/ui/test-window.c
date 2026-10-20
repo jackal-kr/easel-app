@@ -4,6 +4,7 @@
 #include <adwaita.h>
 #include <gdk-pixbuf/gdk-pixbuf.h>
 #include <glib/gstdio.h>
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/resource.h>
@@ -11,6 +12,7 @@
 
 #include "application.h"
 #include "canvas.h"
+#include "gradient.h"
 #include "magnifier.h"
 #include "palette-bar.h"
 #include "picture-file.h"
@@ -3305,8 +3307,8 @@ as1_toolbox_and_options (void)
 {
   static const struct { const char *name, *tip; int col, row; EaselTool tool; } tools[] = {
     { "pan", "Pan", 0, 0, EASEL_TOOL_PAN }, { "eraser", "Eraser", 0, 1, EASEL_TOOL_ERASER },
-    { "pencil", "Pencil", 1, 2, EASEL_TOOL_PENCIL }, { "brush", "Brush", 0, 3, EASEL_TOOL_BRUSH },
-    { "airbrush", "Airbrush", 1, 3, EASEL_TOOL_AIRBRUSH },
+    { "pencil", "Pencil", 0, 3, EASEL_TOOL_PENCIL }, { "brush", "Brush", 1, 3, EASEL_TOOL_BRUSH },
+    { "airbrush", "Airbrush", 0, 4, EASEL_TOOL_AIRBRUSH },
   };
   EaselWindow *win = start_window ();
   GtkToggleButton *buttons[5];
@@ -5481,8 +5483,8 @@ as1_new_tools_toolbox_hints (void)
   static const struct { const char *name, *tip; int col, row; EaselTool tool; } tools[] = {
     { "pan", "Pan", 0, 0, EASEL_TOOL_PAN }, { "magnifier", "Magnifier", 1, 0, EASEL_TOOL_MAGNIFIER },
     { "eraser", "Eraser", 0, 1, EASEL_TOOL_ERASER }, { "pick", "Pick Color", 1, 1, EASEL_TOOL_PICK },
-    { "fill", "Fill", 0, 2, EASEL_TOOL_FILL }, { "pencil", "Pencil", 1, 2, EASEL_TOOL_PENCIL },
-    { "brush", "Brush", 0, 3, EASEL_TOOL_BRUSH }, { "airbrush", "Airbrush", 1, 3, EASEL_TOOL_AIRBRUSH },
+    { "fill", "Fill", 0, 2, EASEL_TOOL_FILL }, { "pencil", "Pencil", 0, 3, EASEL_TOOL_PENCIL },
+    { "brush", "Brush", 1, 3, EASEL_TOOL_BRUSH }, { "airbrush", "Airbrush", 0, 4, EASEL_TOOL_AIRBRUSH },
   };
   EaselWindow *win = start_window ();
   EaselStatusBar *bar = easel_window_get_status_bar (win);
@@ -6888,8 +6890,8 @@ assert_lens_like_tool_buttons (EaselWindow *win)
 static void
 as6_toolbox_width_is_the_same_for_every_tool (void)
 {
-  static const char *const tools[] = { "pan", "pencil", "brush", "airbrush", "eraser", "magnifier", "pick", "fill", "line",
-                                       "curve", "rectangle", "rounded-rectangle", "ellipse", "polygon" };
+  static const char *const tools[] = { "pan", "pencil", "brush", "airbrush", "eraser", "magnifier", "pick", "fill", "gradient",
+                                       "line", "curve", "rectangle", "rounded-rectangle", "ellipse", "polygon" };
   static const char *const lens[] = { "100 %", "200 %", "400 %", "600 %", "800 %" };
   GtkSettings *st = gtk_settings_get_default ();
   EaselWindow *win = start_window ();
@@ -7581,13 +7583,13 @@ as1_shape_tools_toolbox_hints (void)
   static const struct { const char *name, *tip, *hint; int col, row; EaselTool tool; } tools[] = {
     { "pan", "Pan", NULL, 0, 0, EASEL_TOOL_PAN }, { "magnifier", "Magnifier", NULL, 1, 0, EASEL_TOOL_MAGNIFIER },
     { "eraser", "Eraser", NULL, 0, 1, EASEL_TOOL_ERASER }, { "pick", "Pick Color", NULL, 1, 1, EASEL_TOOL_PICK },
-    { "fill", "Fill", NULL, 0, 2, EASEL_TOOL_FILL }, { "pencil", "Pencil", NULL, 1, 2, EASEL_TOOL_PENCIL },
-    { "brush", "Brush", NULL, 0, 3, EASEL_TOOL_BRUSH }, { "airbrush", "Airbrush", NULL, 1, 3, EASEL_TOOL_AIRBRUSH },
-    { "line", "Line", "Draws a straight line with the selected line width.", 0, 4, EASEL_TOOL_LINE },
-    { "rectangle", "Rectangle", "Draws a rectangle with the selected fill style.", 0, 5, EASEL_TOOL_RECTANGLE },
-    { "rounded-rectangle", "Rounded Rectangle", "Draws a rounded rectangle with the selected fill style.", 1, 5,
+    { "fill", "Fill", NULL, 0, 2, EASEL_TOOL_FILL }, { "pencil", "Pencil", NULL, 0, 3, EASEL_TOOL_PENCIL },
+    { "brush", "Brush", NULL, 1, 3, EASEL_TOOL_BRUSH }, { "airbrush", "Airbrush", NULL, 0, 4, EASEL_TOOL_AIRBRUSH },
+    { "line", "Line", "Draws a straight line with the selected line width.", 1, 4, EASEL_TOOL_LINE },
+    { "rectangle", "Rectangle", "Draws a rectangle with the selected fill style.", 1, 5, EASEL_TOOL_RECTANGLE },
+    { "rounded-rectangle", "Rounded Rectangle", "Draws a rounded rectangle with the selected fill style.", 0, 6,
       EASEL_TOOL_ROUNDED_RECTANGLE },
-    { "ellipse", "Ellipse", "Draws an ellipse with the selected fill style.", 0, 6, EASEL_TOOL_ELLIPSE },
+    { "ellipse", "Ellipse", "Draws an ellipse with the selected fill style.", 1, 6, EASEL_TOOL_ELLIPSE },
   };
   EaselWindow *win = start_window ();
   EaselStatusBar *bar = easel_window_get_status_bar (win);
@@ -8344,14 +8346,14 @@ as1_curve_polygon_toolbox_hints (void)
   static const struct { const char *name, *tip, *hint; int col, row; EaselTool tool; } tools[] = {
     { "pan", "Pan", NULL, 0, 0, EASEL_TOOL_PAN }, { "magnifier", "Magnifier", NULL, 1, 0, EASEL_TOOL_MAGNIFIER },
     { "eraser", "Eraser", NULL, 0, 1, EASEL_TOOL_ERASER }, { "pick", "Pick Color", NULL, 1, 1, EASEL_TOOL_PICK },
-    { "fill", "Fill", NULL, 0, 2, EASEL_TOOL_FILL }, { "pencil", "Pencil", NULL, 1, 2, EASEL_TOOL_PENCIL },
-    { "brush", "Brush", NULL, 0, 3, EASEL_TOOL_BRUSH }, { "airbrush", "Airbrush", NULL, 1, 3, EASEL_TOOL_AIRBRUSH },
-    { "line", "Line", NULL, 0, 4, EASEL_TOOL_LINE },
-    { "curve", "Curve", "Draws a curved line with the selected line width.", 1, 4, EASEL_TOOL_CURVE },
-    { "rectangle", "Rectangle", NULL, 0, 5, EASEL_TOOL_RECTANGLE },
-    { "rounded-rectangle", "Rounded Rectangle", NULL, 1, 5, EASEL_TOOL_ROUNDED_RECTANGLE },
-    { "ellipse", "Ellipse", NULL, 0, 6, EASEL_TOOL_ELLIPSE },
-    { "polygon", "Polygon", "Draws a polygon with the selected fill style.", 1, 6, EASEL_TOOL_POLYGON },
+    { "fill", "Fill", NULL, 0, 2, EASEL_TOOL_FILL }, { "pencil", "Pencil", NULL, 0, 3, EASEL_TOOL_PENCIL },
+    { "brush", "Brush", NULL, 1, 3, EASEL_TOOL_BRUSH }, { "airbrush", "Airbrush", NULL, 0, 4, EASEL_TOOL_AIRBRUSH },
+    { "line", "Line", NULL, 1, 4, EASEL_TOOL_LINE },
+    { "curve", "Curve", "Draws a curved line with the selected line width.", 0, 5, EASEL_TOOL_CURVE },
+    { "rectangle", "Rectangle", NULL, 1, 5, EASEL_TOOL_RECTANGLE },
+    { "rounded-rectangle", "Rounded Rectangle", NULL, 0, 6, EASEL_TOOL_ROUNDED_RECTANGLE },
+    { "ellipse", "Ellipse", NULL, 1, 6, EASEL_TOOL_ELLIPSE },
+    { "polygon", "Polygon", "Draws a polygon with the selected fill style.", 0, 7, EASEL_TOOL_POLYGON },
   };
   EaselWindow *win = start_window ();
   EaselStatusBar *bar = easel_window_get_status_bar (win);
@@ -9418,6 +9420,1705 @@ as6_enter_with_a_toolbox_button_focused (void)
   close_windows ();
 }
 
+/* ---- 0012: Gradient ---- */
+
+/* AS-1 (REQ-0012-01, -02): Gradient after Fill, rows read from REQ-0012-01 (a slash between rows, a comma between the two
+   columns), its tooltip, hint and crosshair, no options, and Numpad doing nothing with it. */
+static void
+as1_gradient_toolbox_hints (void)
+{
+  static const struct { const char *name, *tip; int col, row; EaselTool tool; } tools[] = {
+    { "pan", "Pan", 0, 0, EASEL_TOOL_PAN }, { "magnifier", "Magnifier", 1, 0, EASEL_TOOL_MAGNIFIER },
+    { "eraser", "Eraser", 0, 1, EASEL_TOOL_ERASER }, { "pick", "Pick Color", 1, 1, EASEL_TOOL_PICK },
+    { "fill", "Fill", 0, 2, EASEL_TOOL_FILL }, { "gradient", "Gradient", 1, 2, EASEL_TOOL_GRADIENT },
+    { "pencil", "Pencil", 0, 3, EASEL_TOOL_PENCIL }, { "brush", "Brush", 1, 3, EASEL_TOOL_BRUSH },
+    { "airbrush", "Airbrush", 0, 4, EASEL_TOOL_AIRBRUSH }, { "line", "Line", 1, 4, EASEL_TOOL_LINE },
+    { "curve", "Curve", 0, 5, EASEL_TOOL_CURVE }, { "rectangle", "Rectangle", 1, 5, EASEL_TOOL_RECTANGLE },
+    { "rounded-rectangle", "Rounded Rectangle", 0, 6, EASEL_TOOL_ROUNDED_RECTANGLE },
+    { "ellipse", "Ellipse", 1, 6, EASEL_TOOL_ELLIPSE },
+    { "polygon", "Polygon", 0, 7, EASEL_TOOL_POLYGON },
+  };
+  EaselWindow *win = start_window ();
+  EaselStatusBar *bar = easel_window_get_status_bar (win);
+  GtkToggleButton *buttons[15];
+  graphene_rect_t first, r;
+  GdkCursor *cursor;
+  int width, zoom;
+
+  wait_for_layout (win);
+  for (guint i = 0; i < G_N_ELEMENTS (tools); i++)
+    {
+      buttons[i] = find_tool_button (GTK_WIDGET (win), tools[i].name);
+      g_assert_nonnull (buttons[i]);
+      g_assert_cmpstr (gtk_widget_get_tooltip_text (GTK_WIDGET (buttons[i])), ==, tools[i].tip);
+      g_assert_cmpstr (gtk_button_get_icon_name (GTK_BUTTON (buttons[i])), !=, NULL);
+    }
+  first = bounds_in (GTK_WIDGET (buttons[0]), GTK_WIDGET (win));
+  for (guint i = 1; i < G_N_ELEMENTS (tools); i++)
+    {
+      graphene_rect_t before = bounds_in (GTK_WIDGET (buttons[i - 1]), GTK_WIDGET (win));
+
+      r = bounds_in (GTK_WIDGET (buttons[i]), GTK_WIDGET (win));
+      if (tools[i].col == 0)
+        g_assert_cmpfloat_with_epsilon (r.origin.x, first.origin.x, 1.0);
+      else
+        g_assert_cmpfloat (r.origin.x, >, first.origin.x + first.size.width - 1);
+      if (tools[i].row > tools[i - 1].row)
+        g_assert_cmpfloat (r.origin.y, >, before.origin.y + 1);
+      else
+        g_assert_cmpfloat_with_epsilon (r.origin.y, before.origin.y, 1.0);
+    }
+  /* Gradient: chosen alone, the hint, the crosshair, no options. */
+  g_signal_emit_by_name (buttons[5], "clicked");
+  wait_for_layout (win);
+  g_assert_cmpint (easel_window_get_tool (win), ==, EASEL_TOOL_GRADIENT);
+  for (guint j = 0; j < G_N_ELEMENTS (tools); j++)
+    g_assert_true (gtk_toggle_button_get_active (buttons[j]) == (j == 5));
+  g_assert_cmpstr (easel_status_bar_get_text (bar, EASEL_STATUS_HINT), ==,
+                   "Fades the drawing color to transparent along a drag. A click or Enter applies it, Esc cancels it.");
+  cursor = gtk_widget_get_cursor (GTK_WIDGET (easel_window_get_canvas (win)));
+  g_assert_nonnull (cursor);
+  g_assert_cmpstr (gdk_cursor_get_name (cursor), ==, "crosshair");
+  /* Over the corner handle the resize cursor wins (REQ-0004-17); away from it, the crosshair again. */
+  {
+    EaselCanvas *canvas = easel_window_get_canvas (win);
+    graphene_rect_t h;
+
+    g_assert_true (easel_canvas_get_handle_rect (canvas, EASEL_HANDLE_CORNER, &h));
+    easel_canvas_pointer_at (canvas, h.origin.x + h.size.width / 2, h.origin.y + h.size.height / 2);
+    g_assert_cmpstr (gdk_cursor_get_name (gtk_widget_get_cursor (GTK_WIDGET (canvas))), ==, "nwse-resize");
+    easel_canvas_pointer_at (canvas, 10, 10);
+    g_assert_cmpstr (gdk_cursor_get_name (gtk_widget_get_cursor (GTK_WIDGET (canvas))), ==, "crosshair");
+  }
+  assert_no_options_shown (win);
+  /* Numpad + and - do nothing with Gradient: the line width and the zoom stay; Ctrl+Numpad + still zooms. */
+  width = int_state (win, "line-width");
+  zoom = easel_window_get_zoom (win);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "preset-larger", NULL);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "preset-smaller", NULL);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "preset-larger", NULL);
+  g_assert_cmpint (int_state (win, "line-width"), ==, width);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, zoom);
+  g_assert_true (has_accel ("win.zoom-in", GDK_KEY_KP_Add, GDK_CONTROL_MASK));
+  g_assert_false (easel_window_get_modified (win));
+  close_windows ();
+}
+
+#define YELLOW 0xFFFFFF00u
+
+G_DEFINE_AUTOPTR_CLEANUP_FUNC (EaselImage, easel_image_free)
+
+/* The start-up picture (300 x 200 yellow) with a gradient of color from (x0, y0) to (x1, y1) laid over it, from the core. */
+static EaselImage *
+gradient_over_yellow (int x0, int y0, int x1, int y1, uint32_t color)
+{
+  EaselImage *want = easel_image_new (300, 200, YELLOW);
+  EaselGradient g = { x0, y0, x1, y1, color };
+
+  g_assert_nonnull (want);
+  g_assert_cmpint (easel_gradient_apply (want, NULL, &g, NULL), !=, EASEL_GRADIENT_NO_MEMORY);
+  return want;
+}
+
+/* A copy of base with a gradient of color from (x0, y0) to (x1, y1) laid over it, from the core. */
+static EaselImage *
+gradient_over (const EaselImage *base, int x0, int y0, int x1, int y1, uint32_t color)
+{
+  EaselImage *want = easel_image_new (base->width, base->height, 0);
+  EaselGradient g = { x0, y0, x1, y1, color };
+
+  g_assert_nonnull (want);
+  memcpy (want->px, base->px, (size_t) base->width * base->height * sizeof base->px[0]);
+  g_assert_cmpint (easel_gradient_apply (want, NULL, &g, NULL), !=, EASEL_GRADIENT_NO_MEMORY);
+  return want;
+}
+
+static void
+assert_same_picture (const EaselImage *img, const EaselImage *want)
+{
+  g_assert_cmpint (img->width, ==, want->width);
+  g_assert_cmpint (img->height, ==, want->height);
+  for (int i = 0; i < img->width * img->height; i++)
+    g_assert_cmphex (img->px[i], ==, want->px[i]);
+}
+
+/* Black as the foreground (swatch 0), Gradient the tool; both asserted. */
+static void
+gradient_with_black (EaselWindow *win)
+{
+  wait_for_layout (win);
+  easel_palette_bar_press (easel_window_get_palette_bar (win), 0, 1, 1);
+  g_assert_cmphex (easel_window_get_foreground (win), ==, 0xFF000000u);
+  use_tool (win, "gradient");
+  wait_for_layout (win);
+  g_assert_cmpint (easel_window_get_tool (win), ==, EASEL_TOOL_GRADIENT);
+  /* The markers and the guide line are hidden, so that a rendered region is the picture alone: AS-16, AS-21 and AS-25, which
+     check the guides, show them again. */
+  easel_canvas_set_guides_hidden (easel_window_get_canvas (win), TRUE);
+  g_assert_true (easel_canvas_get_guides_hidden (easel_window_get_canvas (win)));
+}
+
+/* AS-2 (REQ-0012-03, -07, -09, -11), the stages: the picture unchanged while dragging and while waiting, Enter applying the
+   gradient as one step with the modified mark, one Undo restoring the picture. Over the yellow picture black gives the grays of
+   AS-2 in red and green, blue staying 0. A click with nothing waiting starts nothing; Enter with nothing waiting is not taken. */
+static void
+as2_gradient_stages (void)
+{
+  static const unsigned gray[21] = { 0, 0, 0, 0, 0, 0, 25, 51, 76, 102, 127, 153, 178, 204, 229, 255, 255, 255, 255, 255, 255 };
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+
+  gradient_with_black (win);
+  g_assert_cmpint (count_color (img, YELLOW), ==, 300 * 200);
+  shape_press_move (win, 1, 5, 5, 15, 5);
+  g_assert_true (easel_canvas_is_stroking (canvas));
+  g_assert_true (easel_canvas_is_pending (canvas));
+  g_assert_cmpint (count_color (img, YELLOW), ==, 300 * 200);
+  shape_release (win, 1);
+  g_assert_false (easel_canvas_is_stroking (canvas));
+  g_assert_true (easel_canvas_is_pending (canvas));
+  g_assert_cmpint (count_color (img, YELLOW), ==, 300 * 200);
+  g_assert_false (easel_window_get_modified (win));
+  press_enter (win, GDK_KEY_Return);
+  g_assert_false (easel_canvas_is_pending (canvas));
+  for (int y = 0; y < 200; y++)
+    for (int x = 0; x < 300; x++)
+      {
+        unsigned g = x < 21 ? gray[x] : 255;
+
+        g_assert_cmphex (easel_image_get (img, x, y), ==, 0xFF000000u | g << 16 | g << 8);
+      }
+  g_assert_cmpint (count_color (img, YELLOW), ==, 300 * 200 - 15 * 200);
+  g_assert_true (easel_window_get_modified (win));
+  g_assert_true (action_enabled (win, "undo"));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_cmpint (count_color (img, YELLOW), ==, 300 * 200);
+  g_assert_false (action_enabled (win, "undo"));
+
+  /* A click with nothing waiting: nothing pending, nothing changed; Enter is then not taken. */
+  shape_press_move (win, 1, 8, 8, 8, 8);
+  shape_release (win, 1);
+  g_assert_false (easel_canvas_is_pending (canvas));
+  g_assert_false (easel_canvas_is_stroking (canvas));
+  g_assert_cmpint (count_color (img, YELLOW), ==, 300 * 200);
+  g_assert_false (enter_taken (win, GDK_KEY_Return));
+  /* The keypad's Enter applies too. */
+  shape_press_move (win, 1, 5, 5, 15, 5);
+  shape_release (win, 1);
+  g_assert_true (easel_canvas_is_pending (canvas));
+  g_assert_true (enter_taken (win, GDK_KEY_KP_Enter));
+  g_assert_false (easel_canvas_is_pending (canvas));
+  g_assert_cmpint (count_color (img, YELLOW), ==, 300 * 200 - 15 * 200);
+  close_windows ();
+}
+
+/* AS-3 (REQ-0012-03), the ui part: Shift pressed or released while the button is held changes the end at once, without a
+   pointer move; the release keeps the end as it then is. */
+static void
+as3_shift_during_gradient_drag (void)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  g_autoptr (EaselImage) flat = gradient_over_yellow (5, 5, 14, 5, 0xFF000000u);
+  g_autoptr (EaselImage) slant = gradient_over_yellow (5, 5, 14, 8, 0xFF000000u);
+
+  gradient_with_black (win);
+  /* The core numbers of AS-3 in row 5, and the two ends told apart at (14, 5). */
+  for (int x = 4; x <= 15; x++)
+    {
+      static const unsigned gray[12] = { 0, 0, 28, 57, 85, 113, 142, 170, 198, 227, 255, 255 };
+
+      g_assert_cmphex (easel_image_get (flat, x, 5), ==, 0xFF000000u | gray[x - 4] << 16 | gray[x - 4] << 8);
+    }
+  g_assert_cmphex (easel_image_get (flat, 14, 5), !=, easel_image_get (slant, 14, 5));
+  /* Shift pressed with the pointer still at (14, 8): the end is (14, 5). */
+  shape_press_move (win, 1, 5, 5, 14, 8);
+  shift_key (win, TRUE);
+  shape_release (win, 1);
+  shift_key (win, FALSE);
+  g_assert_true (easel_canvas_is_pending (canvas));
+  press_enter (win, GDK_KEY_Return);
+  assert_same_picture (img, flat);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  /* Shift held from the press, released with the pointer still: the end is (14, 8) at once. */
+  shift_key (win, TRUE);
+  shape_press_move (win, 1, 5, 5, 14, 8);
+  shift_key (win, FALSE);
+  shape_release (win, 1);
+  press_enter (win, GDK_KEY_Return);
+  assert_same_picture (img, slant);
+  close_windows ();
+}
+
+/* AS-7 (REQ-0012-05, -09), the ui part: the same gradient applied twice is two steps, the second over the first. */
+static void
+as7_two_gradients_two_steps (void)
+{
+  EaselWindow *win = start_window ();
+  const EaselImage *img = easel_window_get_picture (win);
+  static const struct { int x; unsigned g; } cols[] = { { 6, 2 }, { 10, 63 }, { 14, 206 } };
+
+  gradient_with_black (win);
+  for (int k = 0; k < 2; k++)
+    {
+      shape_press_move (win, 1, 5, 5, 15, 5);
+      shape_release (win, 1);
+      press_enter (win, GDK_KEY_Return);
+    }
+  for (guint k = 0; k < G_N_ELEMENTS (cols); k++)
+    g_assert_cmphex (easel_image_get (img, cols[k].x, 7), ==, 0xFF000000u | cols[k].g << 16 | cols[k].g << 8);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_true (action_enabled (win, "undo"));
+  g_assert_cmphex (easel_image_get (img, 10, 7), ==, 0xFF7F7F00u);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_false (action_enabled (win, "undo"));
+  g_assert_cmpint (count_color (img, YELLOW), ==, 300 * 200);
+  close_windows ();
+}
+
+static void gradient_waiting (EaselWindow *win, guint button);
+
+/* AS-8 (REQ-0012-04), the ui part: the secondary button draws in the background color (its changes while the gradient
+   waits or is held are AS-19). */
+static void
+as8_secondary_button (void)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  EaselPaletteBar *bar = easel_window_get_palette_bar (win);
+  g_autoptr (EaselImage) want = NULL;
+  uint32_t fg, bg;
+
+  gradient_with_black (win);
+  easel_palette_bar_press (bar, 4, 3, 1);
+  fg = easel_window_get_foreground (win);
+  bg = easel_window_get_background (win);
+  g_assert_cmphex (bg, !=, fg);
+  g_assert_cmphex (bg, !=, YELLOW);
+  want = gradient_over_yellow (5, 5, 15, 5, bg);
+  gradient_waiting (win, 3);
+  g_assert_true (easel_canvas_is_pending (canvas));
+  press_enter (win, GDK_KEY_Return);
+  assert_same_picture (img, want);
+  g_assert_cmphex (easel_image_get (img, 10, 5), ==, easel_gradient_blend (YELLOW, bg, 128));
+  close_windows ();
+}
+
+/* AS-9 (REQ-0012-03), the ui part: a press outside the picture inside the canvas area starts a gradient, and the end follows
+   the pointer outside the canvas area and the window; only the picture's pixels are applied, with the opacities of the end
+   wherever it is. */
+static void
+as9_drag_outside_area (void)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  g_autoptr (EaselImage) near = gradient_over_yellow (-10, 5, 30, 5, 0xFF000000u);
+  g_autoptr (EaselImage) far = gradient_over_yellow (-10, 5, 3000, 2000, 0xFF000000u);
+
+  gradient_with_black (win);
+  g_assert_cmphex (easel_image_get (near, 0, 9), ==, 0xFF404000u);       /* AS-9: gray 64, 127, 191 */
+  g_assert_cmphex (easel_image_get (near, 10, 9), ==, 0xFF7F7F00u);
+  g_assert_cmphex (easel_image_get (near, 20, 9), ==, 0xFFBFBF00u);
+  shape_press_move (win, 1, -10, 5, 30, 5);
+  g_assert_true (easel_canvas_is_pending (canvas));
+  shape_release (win, 1);
+  press_enter (win, GDK_KEY_Return);
+  assert_same_picture (img, near);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  /* The end far beyond the window's right and bottom edges. */
+  shape_press_move (win, 1, -10, 5, 3000, 2000);
+  shape_release (win, 1);
+  press_enter (win, GDK_KEY_Return);
+  assert_same_picture (img, far);
+  close_windows ();
+}
+
+/* A marker of REQ-0012-13 as the window draws it: its rectangle (from the canvas, in canvas logical pixels) falls on whole
+   device pixels and is 5 x 5 logical pixels; the outer ring, one logical pixel wide, is black, the inside white. px is the
+   window rendered, (cx, cy) the canvas's place in it. */
+static void
+assert_marker_drawn (const uint32_t *px, int w, int cx, int cy, int scale, const graphene_rect_t *r)
+{
+  int x0 = cx + (int) lround (r->origin.x * scale), y0 = cy + (int) lround (r->origin.y * scale), side = 5 * scale;
+
+  g_assert_cmpfloat_with_epsilon (r->size.width, 5.0, 1e-4);
+  g_assert_cmpfloat_with_epsilon (r->size.height, 5.0, 1e-4);
+  g_assert_cmpfloat_with_epsilon (r->origin.x * scale, rint (r->origin.x * scale), 1e-3);
+  g_assert_cmpfloat_with_epsilon (r->origin.y * scale, rint (r->origin.y * scale), 1e-3);
+  for (int dy = 0; dy < side; dy++)
+    for (int dx = 0; dx < side; dx++)
+      {
+        gboolean ring = dx < scale || dy < scale || dx >= side - scale || dy >= side - scale;
+
+        g_assert_cmphex (px[(gsize) (y0 + dy) * w + x0 + dx], ==, ring ? 0xFF000000u : 0xFFFFFFFFu);
+      }
+}
+
+/* Is the device pixel (x, y) of the window inside one of the n marker rectangles? */
+static gboolean
+in_markers (int x, int y, int cx, int cy, int scale, const graphene_rect_t *r, int n)
+{
+  for (int k = 0; k < n; k++)
+    {
+      int x0 = cx + (int) lround (r[k].origin.x * scale), y0 = cy + (int) lround (r[k].origin.y * scale);
+
+      if (x >= x0 && x < x0 + 5 * scale && y >= y0 && y < y0 + 5 * scale)
+        return TRUE;
+    }
+  return FALSE;
+}
+
+/* Is the device pixel (x, y) of the window within d device pixels of the guide line, the segment between the two markers'
+   centers? */
+static gboolean
+near_guide (int x, int y, int cx, int cy, int scale, const graphene_rect_t *m, double d)
+{
+  double ax = cx + (m[0].origin.x + 2.5) * scale, ay = cy + (m[0].origin.y + 2.5) * scale;
+  double bx = cx + (m[1].origin.x + 2.5) * scale, by = cy + (m[1].origin.y + 2.5) * scale;
+  double px = x + 0.5, py = y + 0.5, vx = bx - ax, vy = by - ay, len2 = vx * vx + vy * vy, t;
+
+  t = len2 > 0 ? ((px - ax) * vx + (py - ay) * vy) / len2 : 0;
+  t = t < 0 ? 0 : t > 1 ? 1 : t;
+  return hypot (px - (ax + t * vx), py - (ay + t * vy)) <= d;
+}
+
+/* The marker of end k (0 the start, 1 the end) is centered on the picture pixel (x, y): its center within half a device pixel
+   of that pixel's center. */
+static void
+assert_marker_on (EaselWindow *win, const graphene_rect_t *r, int x, int y)
+{
+  double l = easel_window_get_zoom (win) / 100.0 / easel_canvas_get_scale (easel_window_get_canvas (win));
+  double half = 0.5 / easel_canvas_get_scale (easel_window_get_canvas (win));
+
+  g_assert_cmpfloat (fabs (r->origin.x + r->size.width / 2 - (x + 0.5) * l), <=, half + 1e-6);
+  g_assert_cmpfloat (fabs (r->origin.y + r->size.height / 2 - (y + 0.5) * l), <=, half + 1e-6);
+}
+
+/* One case of AS-16: a 3000 x 2000 yellow picture, made partly transparent if asked (every third column transparent, the
+   next half-transparent white), the foreground fg, the zoom of zoom_action; a gradient dragged from the view's center to 120
+   view pixels right and 80 down. The canvas area rendered while the button is held and while the gradient waits equals the
+   one rendered after Enter (40 pixels along its edges left out: the scrolled area animates a shading there), and differs
+   from the one before the drag, so the gradient is there to see. */
+static void
+preview_case (uint32_t fg, gboolean partly_transparent, const char *zoom_action)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  EaselImage *img = (EaselImage *) easel_window_get_picture (win);
+  View view = view_of (win);
+  g_autofree uint32_t *before = NULL, *during = NULL, *waiting = NULL, *hidden = NULL, *after = NULL;
+  graphene_rect_t area;
+  int w, h, cx, cy, scale, differ = 0, sx, sy;
+  double x, y;
+  uint32_t start_before;
+  graphene_rect_t markers[2];
+  int ex, ey;
+
+  wait_for_layout (win);
+  g_assert_cmpint (img->width, ==, 3000);
+  g_action_group_activate_action (G_ACTION_GROUP (win), zoom_action, NULL);
+  wait_for_layout (win);
+  if (strcmp (zoom_action, "zoom-large") == 0)
+    {
+      g_assert_cmpint (easel_window_get_zoom (win), ==, 400);
+      g_assert_cmpfloat (gtk_adjustment_get_value (view.h), >, gtk_adjustment_get_page_size (view.h));
+    }
+  else if (strcmp (zoom_action, "zoom-normal") == 0)
+    g_assert_cmpint (easel_window_get_zoom (win), ==, 100);
+  else
+    g_assert_cmpint (easel_window_get_zoom (win), <, 100);
+  if (partly_transparent)
+    {
+      for (int py = 0; py < img->height; py++)
+        for (int px = 0; px < img->width; px += 3)
+          {
+            easel_image_set (img, px, py, 0x00000000u);
+            easel_image_set (img, px + 1, py, 0x80FFFFFFu);
+          }
+      easel_canvas_update (canvas);
+      g_assert_cmpint (count_color (img, 0x00000000u), ==, 1000 * 2000);
+    }
+  easel_canvas_set_colors (canvas, fg, 0xFFFFFFFFu);
+  use_tool (win, "gradient");
+  wait_for_layout (win);
+  g_assert_cmpint (easel_window_get_tool (win), ==, EASEL_TOOL_GRADIENT);
+  x = view_to_canvas (view.h, gtk_adjustment_get_page_size (view.h) / 2);
+  y = view_to_canvas (view.v, gtk_adjustment_get_page_size (view.v) / 2);
+  easel_view_to_pixel (x, y, easel_window_get_zoom (win), easel_canvas_get_scale (canvas), &sx, &sy);
+  start_before = easel_image_get (img, sx, sy);
+  wait_for_next_frame (win);
+  before = render_pixels (win, &w, &h, &cx, &cy);
+  easel_canvas_press (canvas, 1, x, y);
+  easel_canvas_motion (canvas, x + 120, y + 80);
+  wait_for_next_frame (win);
+  during = render_pixels (win, &w, &h, &cx, &cy);
+  g_assert_false (easel_canvas_get_marker_rect (canvas, 0, &markers[0]));       /* no markers while the drag is held */
+  easel_canvas_release (canvas, 1);
+  g_assert_true (easel_canvas_is_pending (canvas));
+  wait_for_next_frame (win);
+  waiting = render_pixels (win, &w, &h, &cx, &cy);
+  easel_canvas_set_guides_hidden (canvas, TRUE);
+  g_assert_true (easel_canvas_get_guides_hidden (canvas));
+  wait_for_next_frame (win);
+  hidden = render_pixels (win, &w, &h, &cx, &cy);
+  easel_canvas_set_guides_hidden (canvas, FALSE);
+  easel_view_to_pixel (x + 120, y + 80, easel_window_get_zoom (win), easel_canvas_get_scale (canvas), &ex, &ey);
+  g_assert_true (easel_canvas_get_marker_rect (canvas, 0, &markers[0]));
+  g_assert_true (easel_canvas_get_marker_rect (canvas, 1, &markers[1]));
+  assert_marker_on (win, &markers[0], sx, sy);
+  assert_marker_on (win, &markers[1], ex, ey);
+  press_enter (win, GDK_KEY_Return);
+  g_assert_false (easel_canvas_is_pending (canvas));
+  /* The color applied is fg (asserted here, as the canvas has no getter for it): the start pixel has it at its own alpha. */
+  g_assert_cmphex (easel_image_get (img, sx, sy), ==, easel_gradient_blend (start_before, fg, fg >> 24));
+  wait_for_next_frame (win);
+  after = render_pixels (win, &w, &h, &cx, &cy);
+  area = bounds_in (view.scroller, GTK_WIDGET (win));
+  scale = (int) easel_canvas_get_scale (canvas);
+  /* The two markers, each where it is drawn; every other pixel of the waiting window is the applied one. */
+  assert_marker_drawn (waiting, w, cx, cy, scale, &markers[0]);
+  assert_marker_drawn (waiting, w, cx, cy, scale, &markers[1]);
+  for (int py = (int) (area.origin.y * scale) + 40; py < (int) ((area.origin.y + area.size.height) * scale) - 40; py++)
+    for (int px = (int) (area.origin.x * scale) + 40; px < (int) ((area.origin.x + area.size.width) * scale) - 40; px++)
+      {
+        gsize i = (gsize) py * w + px;
+
+        /* With the guides hidden the waiting window is the applied one; shown, it differs only in the markers and near the
+           line. */
+        g_assert_cmphex (hidden[i], ==, after[i]);
+        if (waiting[i] != after[i])
+          g_assert_true (in_markers (px, py, cx, cy, scale, markers, 2) || near_guide (px, py, cx, cy, scale, markers, 2.0));
+        g_assert_cmphex (during[i], ==, after[i]);
+        differ += before[i] != after[i];
+      }
+  g_assert_cmpint (differ, >, 10000);
+  close_windows ();
+}
+
+/* AS-16 (REQ-0012-07): the window while the gradient waits equals the window after Enter: an opaque and a half-transparent
+   foreground, over an opaque and a partly transparent picture, at 100 % and at a scrolled 400 %; and, the Plan's risk, at
+   the fit zoom, where a device pixel shows one of many picture pixels. */
+static void
+as16_preview_equals_applied (void)
+{
+  static const uint32_t colors[] = { 0xFF3465A4u, 0x80FF0000u };
+  static const char *const zooms[] = { "zoom-normal", "zoom-large", "zoom-fit" };
+
+  write_settings ("[new-picture]\nwidth=3000\nheight=2000\nbackground=#FFFF00\n");
+  for (guint z = 0; z < G_N_ELEMENTS (zooms); z++)
+    for (guint c = 0; c < G_N_ELEMENTS (colors); c++)
+      for (int t = 0; t < 2; t++)
+        preview_case (colors[c], t, zooms[z]);
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+static void assert_gradient_dialog (EaselWindow *win);
+
+static void
+count_signal (gpointer user_data)
+{
+  (*(int *) user_data)++;
+}
+
+/* REQ-0012-09, the canvas part of AS-14: a gradient whose preview cannot get its memory is dropped at the release, with
+   "gradient-failed", the picture, the title and Undo unchanged; with the memory, the same drag waits. */
+static void
+as14_preview_memory_refused (void)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  int failed = 0;
+
+  gradient_with_black (win);
+  g_signal_connect_swapped (canvas, "gradient-failed", G_CALLBACK (count_signal), &failed);
+  easel_canvas_set_preview_memory_limit (canvas, 1000);
+  shape_press_move (win, 1, 5, 5, 150, 100);
+  wait_for_next_frame (win);
+  g_assert_true (easel_canvas_is_stroking (canvas));
+  g_assert_cmpint (failed, ==, 0);                             /* not before the release */
+  shape_release (win, 1);
+  g_assert_false (easel_canvas_is_pending (canvas));
+  g_assert_cmpint (failed, ==, 1);
+  g_assert_cmpint (count_color (img, YELLOW), ==, 300 * 200);
+  g_assert_false (easel_window_get_modified (win));
+  g_assert_false (action_enabled (win, "undo"));
+  assert_gradient_dialog (win);                               /* the window's dialog (T011), closed */
+  /* The memory back: the same drag waits and Enter applies it. */
+  easel_canvas_set_preview_memory_limit (canvas, SIZE_MAX);
+  shape_press_move (win, 1, 5, 5, 150, 100);
+  wait_for_next_frame (win);
+  shape_release (win, 1);
+  g_assert_true (easel_canvas_is_pending (canvas));
+  press_enter (win, GDK_KEY_Return);
+  g_assert_cmpint (failed, ==, 1);
+  g_assert_cmpint (count_color (img, YELLOW), <, 300 * 200);
+  g_signal_handlers_disconnect_by_data (canvas, &failed);
+  close_windows ();
+}
+
+/* The window rendered at 100 % after a zoom to 400 % and back, and its color at picture pixel (x, y). */
+static uint32_t
+rendered_after_zooming (EaselWindow *win, int x, int y)
+{
+  g_autofree uint32_t *px = NULL;
+  int w, h, cx, cy;
+
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-large", NULL);
+  wait_for_layout (win);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 400);
+  wait_for_next_frame (win);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-normal", NULL);
+  wait_for_layout (win);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 100);
+  wait_for_next_frame (win);
+  px = render_pixels (win, &w, &h, &cx, &cy);
+  return rendered_pixel (px, w, cx, cy, x, y);
+}
+
+/* AS-14 (REQ-0012-09), a gradient that already waits: when a later view cannot get the preview's memory it stays waiting,
+   unshown, the picture shown as it is, with no "gradient-failed"; with the memory back it is shown again, and Enter applies
+   it as it is. */
+static void
+as14_waiting_gradient_unshown (void)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  g_autoptr (EaselImage) want = gradient_over_yellow (5, 5, 150, 100, 0xFF000000u);
+  int failed = 0;
+
+  gradient_with_black (win);
+  g_signal_connect_swapped (canvas, "gradient-failed", G_CALLBACK (count_signal), &failed);
+  shape_press_move (win, 1, 5, 5, 150, 100);
+  wait_for_next_frame (win);
+  shape_release (win, 1);
+  g_assert_true (easel_canvas_is_pending (canvas));
+  g_assert_cmphex (rendered_after_zooming (win, 1, 5), ==, 0xFF000000u);          /* shown: black behind the start (its marker covers (5, 5)) */
+  /* The preview's memory too small: zoomed, the picture shows as it is, the gradient waits, no dialog. */
+  easel_canvas_set_preview_memory_limit (canvas, 1000);
+  g_assert_cmphex (rendered_after_zooming (win, 1, 5), ==, YELLOW);
+  g_assert_true (easel_canvas_is_pending (canvas));
+  /* Its markers (and guide line) are still shown, drawn where its ends are (REQ-0012-09, -13). */
+  {
+    g_autofree uint32_t *px = NULL;
+    graphene_rect_t m[2];
+    int w, h, cx, cy, scale = (int) easel_canvas_get_scale (canvas);
+
+    easel_canvas_set_guides_hidden (canvas, FALSE);
+    g_assert_false (easel_canvas_get_guides_hidden (canvas));
+    g_assert_true (easel_canvas_get_marker_rect (canvas, 0, &m[0]));
+    g_assert_true (easel_canvas_get_marker_rect (canvas, 1, &m[1]));
+    wait_for_next_frame (win);
+    px = render_pixels (win, &w, &h, &cx, &cy);
+    assert_marker_drawn (px, w, cx, cy, scale, &m[0]);
+    assert_marker_drawn (px, w, cx, cy, scale, &m[1]);
+    g_assert_cmphex (rendered_pixel (px, w, cx, cy, 1 * scale, 5 * scale), ==, YELLOW);      /* still unshown */
+    easel_canvas_set_guides_hidden (canvas, TRUE);
+  }
+  g_assert_cmpint (failed, ==, 0);
+  g_assert_cmpint (count_color (img, YELLOW), ==, 300 * 200);
+  g_assert_false (easel_window_get_modified (win));
+  /* The memory back: shown again; Enter applies it as it is. */
+  easel_canvas_set_preview_memory_limit (canvas, SIZE_MAX);
+  g_assert_cmphex (rendered_after_zooming (win, 1, 5), ==, 0xFF000000u);
+  g_assert_true (easel_canvas_is_pending (canvas));
+  easel_canvas_set_preview_memory_limit (canvas, 1000);
+  wait_for_next_frame (win);
+  press_enter (win, GDK_KEY_Return);
+  g_assert_false (easel_canvas_is_pending (canvas));
+  g_assert_cmpint (failed, ==, 0);
+  assert_same_picture (img, want);
+  g_assert_true (easel_window_get_modified (win));
+  g_signal_handlers_disconnect_by_data (canvas, &failed);
+  close_windows ();
+}
+
+/* The window shows, over the picture's 40 x 20 top-left pixels at 100 %, exactly the pixels of want (opaque pixels, so the
+   rendered and the picture's values are the same). */
+/* The rendered window px shows over the picture's 40 x 20 top-left pixels at 100 % exactly the pixels of want (opaque pixels,
+   so the rendered and the picture's values are the same). A waiting gradient's markers and guide line are hidden by the test
+   (gradient_with_black); they are checked by AS-16, AS-21 and AS-25. */
+static void
+assert_region_is (EaselWindow *win, const uint32_t *px, int w, int cx, int cy, const EaselImage *want)
+{
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  int scale = (int) easel_canvas_get_scale (canvas);
+  graphene_rect_t m;
+
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 100);
+  g_assert_true (easel_canvas_get_guides_hidden (canvas) || !easel_canvas_get_marker_rect (canvas, 0, &m));
+  for (int y = 0; y < 20 * scale; y++)
+    for (int x = 0; x < 40 * scale; x++)
+      g_assert_cmphex (px[(gsize) (cy + y) * w + cx + x], ==, easel_image_get (want, x / scale, y / scale));
+}
+
+static void
+assert_shown (EaselWindow *win, const EaselImage *want)
+{
+  g_autofree uint32_t *px = NULL;
+  int w, h, cx, cy;
+
+  wait_for_next_frame (win);
+  px = render_pixels (win, &w, &h, &cx, &cy);
+  assert_region_is (win, px, w, cx, cy, want);
+}
+
+
+/* The AS-2 gradient, black, waiting. */
+static void
+gradient_waiting (EaselWindow *win, guint button)
+{
+  shape_press_move (win, button, 5, 5, 15, 5);
+  shape_release (win, button);
+  g_assert_true (easel_canvas_is_pending (easel_window_get_canvas (win)));
+}
+
+/* The saved file's pixel (x, y) as 0xRRGGBB. */
+static uint32_t
+saved_rgb (const char *path, int x, int y)
+{
+  g_autoptr (GError) error = NULL;
+  g_autoptr (GdkPixbuf) saved = gdk_pixbuf_new_from_file (path, &error);
+  const guchar *p;
+
+  g_assert_no_error (error);
+  p = gdk_pixbuf_get_pixels (saved) + y * gdk_pixbuf_get_rowstride (saved) + x * gdk_pixbuf_get_n_channels (saved);
+  return (uint32_t) p[0] << 16 | (uint32_t) p[1] << 8 | p[2];
+}
+
+/* AS-11 (REQ-0012-07, -11): what drops a waiting gradient (Esc, Undo, also with nothing to undo), what keeps
+   it (a middle press, a right-click on the palette, Zoom In, a scroll, a lost focus) and what applies it as shown, one step
+   (another tool, an Image action, Save, New, Quit). */
+static void
+as11_drops_and_put_down (void)
+{
+  g_autofree char *dir = g_dir_make_tmp ("easel-ui-XXXXXX", NULL);
+  g_autofree char *path = g_build_filename (dir, "a.png", NULL);
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  g_autoptr (EaselImage) across = gradient_over_yellow (5, 5, 15, 5, 0xFF000000u);
+  EaselWindow *alive = NULL;
+  GtkAdjustment *v;
+  int zoom;
+
+  gradient_with_black (win);
+  /* Esc. */
+  gradient_waiting (win, 1);
+  press_escape (win);
+  g_assert_false (easel_canvas_is_pending (canvas));
+  /* Undo with nothing to undo: available while it waits, Redo not; it drops it. */
+  gradient_waiting (win, 1);
+  g_assert_true (action_enabled (win, "undo"));
+  g_assert_false (action_enabled (win, "redo"));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_false (easel_canvas_is_pending (canvas));
+  g_assert_false (action_enabled (win, "undo"));
+  g_assert_cmpint (count_color (img, YELLOW), ==, 300 * 200);
+  g_assert_false (easel_window_get_modified (win));
+
+  /* Kept: a middle press, a right-click on the palette, Zoom In, a scroll, a lost focus. */
+  gradient_waiting (win, 1);
+  easel_canvas_press (canvas, 2, 100.5, 100.5);
+  easel_canvas_release (canvas, 2);
+  g_assert_true (easel_canvas_is_pending (canvas));
+  easel_palette_bar_press (easel_window_get_palette_bar (win), 4, 3, 1);
+  g_assert_true (easel_canvas_is_pending (canvas));
+  zoom = easel_window_get_zoom (win);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-in", NULL);
+  wait_for_layout (win);
+  g_assert_cmpint (easel_window_get_zoom (win), >, zoom);
+  g_assert_true (easel_canvas_is_pending (canvas));
+  v = gtk_scrollable_get_vadjustment (GTK_SCROLLABLE (gtk_widget_get_parent (GTK_WIDGET (canvas))));
+  gtk_adjustment_set_value (v, gtk_adjustment_get_value (v) + 10);
+  g_assert_true (easel_canvas_is_pending (canvas));
+  easel_canvas_reset_pointer (canvas);                              /* what the window does when it loses focus */
+  g_assert_true (easel_canvas_is_pending (canvas));
+  g_assert_cmpint (count_color (img, YELLOW), ==, 300 * 200);
+  /* Another tool applies it as shown, one step. */
+  use_tool (win, "pencil");
+  g_assert_false (easel_canvas_is_pending (canvas));
+  assert_same_picture (img, across);
+  g_assert_true (easel_window_get_modified (win));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_false (action_enabled (win, "undo"));
+  g_assert_cmpint (count_color (img, YELLOW), ==, 300 * 200);
+  /* An Image action (Attributes): applied, then the dialog. */
+  use_tool (win, "gradient");
+  gradient_waiting (win, 1);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "attributes", NULL);
+  g_assert_false (easel_canvas_is_pending (canvas));
+  assert_same_picture (img, across);
+  wait_for_layout (win);
+  g_assert_nonnull (adw_application_window_get_visible_dialog (ADW_APPLICATION_WINDOW (win)));
+  adw_dialog_close (adw_application_window_get_visible_dialog (ADW_APPLICATION_WINDOW (win)));
+  close_windows ();
+
+  /* Save: applied first, so the file and the saved state hold it. */
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  img = easel_window_get_picture (win);
+  gradient_with_black (win);
+  g_assert_true (easel_window_save_to (win, path));
+  gradient_waiting (win, 1);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "save", NULL);
+  g_assert_false (easel_canvas_is_pending (canvas));
+  assert_same_picture (img, across);
+  g_assert_false (easel_window_get_modified (win));
+  g_assert_cmphex (saved_rgb (path, 10, 5), ==, 0x7F7F00u);
+  g_assert_cmphex (saved_rgb (path, 20, 5), ==, 0xFFFF00u);
+  close_windows ();
+
+  /* New: applied, then the prompt about unsaved changes; Cancel leaves it applied. */
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  img = easel_window_get_picture (win);
+  gradient_with_black (win);
+  gradient_waiting (win, 1);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "new", NULL);
+  wait_for_dialogs (win, 1);
+  g_assert_false (easel_canvas_is_pending (canvas));
+  respond (win, "cancel");
+  assert_same_picture (img, across);
+  g_assert_true (easel_window_get_modified (win));
+  close_windows ();
+
+  /* Quit on an unmodified picture: applying it modifies the picture, so the prompt comes. */
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  img = easel_window_get_picture (win);
+  gradient_with_black (win);
+  gradient_waiting (win, 1);
+  g_assert_false (easel_window_get_modified (win));
+  alive = win;
+  g_object_add_weak_pointer (G_OBJECT (win), (gpointer *) &alive);
+  gtk_window_close (GTK_WINDOW (win));
+  g_assert_nonnull (alive);
+  wait_for_dialogs (win, 1);
+  g_assert_false (easel_canvas_is_pending (canvas));
+  respond (win, "cancel");
+  assert_same_picture (img, across);
+  g_object_remove_weak_pointer (G_OBJECT (win), (gpointer *) &alive);
+  close_windows ();
+}
+
+/* AS-12 (REQ-0012-07): a drag whose release never comes ends as last shown when the next press comes with no button down, and
+   that press acts as a press of its own (the same button aims again, the other drops it); a lost focus ends it too; Enter
+   while the button is held does nothing; Save while it is held applies it as shown and saves it. */
+static void
+as12_lost_release_focus_save (void)
+{
+  g_autofree char *dir = g_dir_make_tmp ("easel-ui-XXXXXX", NULL);
+  g_autofree char *path = g_build_filename (dir, "a.png", NULL);
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  g_autoptr (EaselImage) across = gradient_over_yellow (5, 5, 15, 5, 0xFF000000u);
+  g_autoptr (EaselImage) both = gradient_over (across, 10, 0, 10, 10, 0xFF000000u);
+
+  gradient_with_black (win);
+  /* The release lost; the next press, with no button down, first ends the drag as shown, then acts as a press of its own: it
+     applies the waiting gradient and starts a new drag (REQ-0012-08). */
+  shape_press_move (win, 1, 5, 5, 15, 5);
+  easel_canvas_buttons_released (canvas);
+  g_assert_false (easel_canvas_is_stroking (canvas));
+  g_assert_true (easel_canvas_is_pending (canvas));
+  shape_press_move (win, 1, 10, 0, 10, 10);
+  g_assert_true (easel_canvas_is_stroking (canvas));
+  assert_same_picture (img, across);
+  shape_release (win, 1);
+  press_enter (win, GDK_KEY_Return);
+  assert_same_picture (img, both);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  /* ... the other button too: it applies it, and its own drag starts. */
+  shape_press_move (win, 1, 5, 5, 15, 5);
+  easel_canvas_buttons_released (canvas);
+  g_assert_true (easel_canvas_is_pending (canvas));
+  shape_press_move (win, 3, 10, 0, 10, 10);
+  assert_same_picture (img, across);
+  g_assert_true (easel_canvas_is_stroking (canvas));
+  shape_release (win, 3);
+  g_assert_true (easel_canvas_is_pending (canvas));
+  easel_canvas_drop (canvas);
+  assert_same_picture (img, across);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_cmpint (count_color (img, YELLOW), ==, 300 * 200);
+  /* A lost focus ends the drag as shown; the gradient waits. */
+  shape_press_move (win, 1, 5, 5, 15, 5);
+  easel_canvas_reset_pointer (canvas);
+  g_assert_false (easel_canvas_is_stroking (canvas));
+  g_assert_true (easel_canvas_is_pending (canvas));
+  assert_shown (win, across);
+  /* Enter while the button is held does nothing (the press applied the waiting one; the new drag is held). */
+  shape_press_move (win, 1, 10, 0, 10, 10);
+  g_assert_true (easel_canvas_is_stroking (canvas));
+  assert_same_picture (img, across);
+  press_enter (win, GDK_KEY_Return);
+  g_assert_true (easel_canvas_is_stroking (canvas));
+  g_assert_true (easel_canvas_is_pending (canvas));
+  assert_same_picture (img, across);
+  easel_canvas_drop (canvas);
+  shape_release (win, 1);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_cmpint (count_color (img, YELLOW), ==, 300 * 200);
+  /* Save while the button is held: applied as shown, and saved. */
+  g_assert_true (easel_window_save_to (win, path));
+  shape_press_move (win, 1, 5, 5, 15, 5);
+  g_assert_true (easel_canvas_is_stroking (canvas));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "save", NULL);
+  g_assert_false (easel_canvas_is_stroking (canvas));
+  g_assert_false (easel_canvas_is_pending (canvas));
+  assert_same_picture (img, across);
+  g_assert_false (easel_window_get_modified (win));
+  g_assert_cmphex (saved_rgb (path, 10, 5), ==, 0x7F7F00u);
+  shape_release (win, 1);
+  g_assert_false (easel_canvas_is_pending (canvas));
+  close_windows ();
+}
+
+/* AS-17 (REQ-0012-12): a press on a resize handle follows the handle's rules: a secondary one does nothing and keeps the
+   gradient; a primary one applies it as shown and starts the resize, whichever button started it. */
+static void
+as17_handle_presses (void)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  g_autoptr (EaselImage) across = gradient_over_yellow (5, 5, 15, 5, 0xFF000000u);
+  g_autoptr (EaselImage) across_bg = NULL;
+  double x, y;
+
+  gradient_with_black (win);
+  easel_palette_bar_press (easel_window_get_palette_bar (win), 4, 3, 1);
+  g_assert_cmphex (easel_window_get_background (win), !=, 0xFF000000u);
+  across_bg = gradient_over_yellow (5, 5, 15, 5, easel_window_get_background (win));
+  handle_center (canvas, EASEL_HANDLE_CORNER, &x, &y);
+  for (guint started = 1; started <= 3; started += 2)
+    {
+      gradient_waiting (win, started);
+      easel_canvas_press (canvas, 3, x, y);
+      easel_canvas_release (canvas, 3);
+      g_assert_true (easel_canvas_is_pending (canvas));
+      g_assert_false (easel_canvas_is_resizing (canvas));
+      g_assert_cmpint (count_color (img, YELLOW), ==, 300 * 200);
+      easel_canvas_press (canvas, 1, x, y);
+      g_assert_false (easel_canvas_is_pending (canvas));
+      g_assert_true (easel_canvas_is_resizing (canvas));
+      easel_canvas_release (canvas, 1);
+      assert_same_picture (img, started == 1 ? across : across_bg);
+      g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+      g_assert_false (action_enabled (win, "undo"));
+    }
+  close_windows ();
+}
+
+/* AS-13 (REQ-0012-09), the ui part: a gradient that changes no pixel adds no step and no mark: the picture's own color, a
+   foreground of alpha 0, and the picture's color at half opacity over it. */
+static void
+as13_gradient_changing_nothing (void)
+{
+  static const uint32_t colors[] = { YELLOW, 0x00000000u, 0x80FFFF00u };
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+
+  gradient_with_black (win);
+  for (guint c = 0; c < G_N_ELEMENTS (colors); c++)
+    {
+      easel_canvas_set_colors (canvas, colors[c], 0xFFFFFFFFu);
+      gradient_waiting (win, 1);
+      press_enter (win, GDK_KEY_Return);
+      g_assert_false (easel_canvas_is_pending (canvas));
+      g_assert_cmpint (count_color (img, YELLOW), ==, 300 * 200);
+      g_assert_false (easel_window_get_modified (win));
+      g_assert_false (action_enabled (win, "undo"));
+      g_assert_cmpstr (gtk_window_get_title (GTK_WINDOW (win)), !=, NULL);
+      g_assert_false (g_str_has_prefix (gtk_window_get_title (GTK_WINDOW (win)), "•"));
+    }
+  close_windows ();
+}
+
+/* The alert open now is the gradient's memory dialog of REQ-0012-09; it is closed. */
+static void
+assert_gradient_dialog (EaselWindow *win)
+{
+  AdwAlertDialog *dialog;
+
+  wait_for_dialogs (win, 1);
+  dialog = open_alert (win);
+  g_assert_nonnull (dialog);
+  g_assert_cmpstr (adw_alert_dialog_get_heading (dialog), ==, "Could Not Apply the Gradient");
+  g_assert_cmpstr (adw_alert_dialog_get_body (dialog), ==, "There is not enough memory to apply this gradient.");
+  adw_dialog_close (ADW_DIALOG (dialog));
+  wait_for_dialogs (win, 0);
+}
+
+/* AS-14 (REQ-0012-09), the ui part: no memory for the step at Enter: the dialog, the picture, the title and Undo unchanged,
+   nothing pending; at Save: the dialog, and the picture saved as it was, without the gradient; a drag whose preview cannot
+   get its memory: the dialog at the release. */
+static void
+as14_gradient_memory_dialog (void)
+{
+  g_autofree char *dir = g_dir_make_tmp ("easel-ui-XXXXXX", NULL);
+  g_autofree char *path = g_build_filename (dir, "a.png", NULL);
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+
+  gradient_with_black (win);
+  /* Enter. */
+  gradient_waiting (win, 1);
+  easel_canvas_set_shape_memory_limit (canvas, 1000);
+  press_enter (win, GDK_KEY_Return);
+  easel_canvas_set_shape_memory_limit (canvas, SIZE_MAX);
+  assert_gradient_dialog (win);
+  g_assert_false (easel_canvas_is_pending (canvas));
+  g_assert_cmpint (count_color (img, YELLOW), ==, 300 * 200);
+  g_assert_false (easel_window_get_modified (win));
+  g_assert_false (action_enabled (win, "undo"));
+  /* Save: it goes on, without the gradient. */
+  g_assert_true (easel_window_save_to (win, path));
+  gradient_waiting (win, 1);
+  easel_canvas_set_shape_memory_limit (canvas, 1000);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "save", NULL);
+  easel_canvas_set_shape_memory_limit (canvas, SIZE_MAX);
+  assert_gradient_dialog (win);
+  g_assert_false (easel_canvas_is_pending (canvas));
+  g_assert_cmpint (count_color (img, YELLOW), ==, 300 * 200);
+  g_assert_false (easel_window_get_modified (win));
+  g_assert_cmphex (saved_rgb (path, 5, 5), ==, 0xFFFF00u);
+  /* The preview without its memory: the dialog at the release. */
+  easel_canvas_set_preview_memory_limit (canvas, 1000);
+  shape_press_move (win, 1, 5, 5, 150, 100);
+  wait_for_next_frame (win);
+  shape_release (win, 1);
+  easel_canvas_set_preview_memory_limit (canvas, SIZE_MAX);
+  assert_gradient_dialog (win);
+  g_assert_false (easel_canvas_is_pending (canvas));
+  g_assert_cmpint (count_color (img, YELLOW), ==, 300 * 200);
+  close_windows ();
+}
+
+/* A drag with Gradient and each button; true if anything started or changed. */
+static gboolean
+gradient_changes_something (EaselWindow *win, int x0, int y0, int x1, int y1)
+{
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  gboolean changed = FALSE;
+
+  g_action_group_activate_action (G_ACTION_GROUP (win), "tool", g_variant_new_string ("gradient"));
+  g_assert_cmpint (easel_window_get_tool (win), ==, EASEL_TOOL_GRADIENT);
+  for (guint button = 1; button <= 3; button += 2)
+    {
+      shape_press_move (win, button, x0, y0, x1, y1);
+      changed |= easel_canvas_is_stroking (canvas) || easel_canvas_is_pending (canvas);
+      shape_release (win, button);
+      changed |= easel_canvas_is_pending (canvas) || easel_window_get_modified (win) || action_enabled (win, "undo");
+      easel_canvas_drop (canvas);
+    }
+  return changed;
+}
+
+/* AS-15 (REQ-0012-10, -11): presses with Gradient start nothing before the picture exists, with the Grid dialog, the color
+   chooser or the quit prompt open, and during a resize drag; with a dialog or the chooser open, Esc and Enter act on it and a
+   waiting gradient stays waiting. */
+static void
+as15_gradient_ignored_when_blocked (void)
+{
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  const EaselImage *img;
+  EaselPaletteBar *bar;
+  double x, y;
+
+  /* Before the picture exists. */
+  write_settings ("[new-picture]\nwidth=auto\nheight=auto\n");
+  win = easel_window_new (app);
+  g_assert_null (easel_window_get_picture (win));
+  g_assert_false (gradient_changes_something (win, 3, 3, 40, 30));
+  gtk_window_destroy (GTK_WINDOW (win));
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  img = easel_window_get_picture (win);
+  bar = easel_window_get_palette_bar (win);
+  gradient_with_black (win);
+  /* The Grid dialog, then the color chooser. */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "grid-dialog", NULL);
+  wait_for_layout (win);
+  g_assert_nonnull (adw_application_window_get_visible_dialog (ADW_APPLICATION_WINDOW (win)));
+  g_assert_false (gradient_changes_something (win, 50, 50, 90, 80));
+  adw_dialog_close (adw_application_window_get_visible_dialog (ADW_APPLICATION_WINDOW (win)));
+  wait_for_layout (win);
+  easel_palette_bar_press (bar, 17, 1, 1);
+  easel_palette_bar_press (bar, 17, 1, 2);
+  g_assert_true (easel_window_is_choosing_color (win));
+  g_assert_false (gradient_changes_something (win, 50, 50, 90, 80));
+  choose (win, NULL);
+  g_assert_false (easel_window_is_choosing_color (win));
+  /* A resize drag in progress: the other button cancels it and starts nothing. */
+  handle_center (canvas, EASEL_HANDLE_CORNER, &x, &y);
+  easel_canvas_press (canvas, 1, x, y);
+  g_assert_true (easel_canvas_is_resizing (canvas));
+  shape_press_move (win, 3, 50, 50, 90, 80);
+  g_assert_false (easel_canvas_is_pending (canvas));
+  g_assert_false (easel_canvas_is_stroking (canvas));
+  shape_release (win, 3);
+  easel_canvas_release (canvas, 1);
+  g_assert_false (easel_canvas_is_pending (canvas));
+  g_assert_cmpint (img->width, ==, 300);
+  /* Esc and Enter act on the chooser and on the Grid dialog: the waiting gradient stays. */
+  gradient_waiting (win, 1);
+  easel_palette_bar_press (bar, 17, 1, 1);
+  easel_palette_bar_press (bar, 17, 1, 2);
+  g_assert_true (easel_window_is_choosing_color (win));
+  press_escape (win);
+  press_enter (win, GDK_KEY_Return);
+  g_assert_true (easel_canvas_is_pending (canvas));
+  choose (win, NULL);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "grid-dialog", NULL);
+  wait_for_layout (win);
+  press_escape (win);
+  press_enter (win, GDK_KEY_Return);
+  g_assert_true (easel_canvas_is_pending (canvas));
+  g_assert_cmpint (count_color (img, YELLOW), ==, 300 * 200);
+  adw_dialog_close (adw_application_window_get_visible_dialog (ADW_APPLICATION_WINDOW (win)));
+  wait_for_layout (win);
+  easel_canvas_drop (canvas);
+  /* The quit prompt: a modified picture closed. */
+  easel_canvas_set_colors (canvas, 0xFF000000u, 0xFFFFFFFFu);
+  gradient_waiting (win, 1);
+  press_enter (win, GDK_KEY_Return);
+  g_assert_true (easel_window_get_modified (win));
+  gtk_window_close (GTK_WINDOW (win));
+  wait_for_dialogs (win, 1);
+  g_assert_nonnull (open_alert (win));
+  /* The picture is modified now, so a press is checked by what it starts. */
+  for (guint button = 1; button <= 3; button += 2)
+    {
+      shape_press_move (win, button, 50, 50, 90, 80);
+      g_assert_false (easel_canvas_is_stroking (canvas));
+      g_assert_false (easel_canvas_is_pending (canvas));
+      shape_release (win, button);
+      g_assert_false (easel_canvas_is_pending (canvas));
+    }
+  respond (win, "cancel");
+  close_windows ();
+}
+
+/* The window as it is drawn now, without asking the canvas to draw again (the pending main-loop work done first), shows over
+   the picture's 40 x 20 top-left pixels at 100 % exactly the pixels of want: so a change that does not redraw the canvas by
+   itself is seen. */
+static void
+assert_shown_as_is (EaselWindow *win, const EaselImage *want)
+{
+  g_autofree uint32_t *px = NULL;
+  int w, h, cx, cy;
+
+  for (int i = 0; i < 1000 && g_main_context_pending (NULL); i++)
+    g_main_context_iteration (NULL, FALSE);
+  px = render_pixels (win, &w, &h, &cx, &cy);
+  assert_region_is (win, px, w, cx, cy, want);
+}
+
+/* AS-19 (REQ-0012-04): the drawing color follows the palette: a waiting gradient is recolored at once by a palette click, one
+   the secondary button started by Ctrl+Shift+X (while it waits and while its drag is held), not by a change of the foreground
+   alone; what is applied is what is shown; a new gradient takes the color current at its press. */
+static void
+as19_recolor (void)
+{
+  EaselWindow *win = start_window ();
+  const EaselImage *img = easel_window_get_picture (win);
+  EaselPaletteBar *bar = easel_window_get_palette_bar (win);
+  g_autoptr (EaselImage) black = gradient_over_yellow (5, 5, 15, 5, 0xFF000000u);
+  g_autoptr (EaselImage) red = gradient_over_yellow (5, 5, 15, 5, 0xFFFF0000u);
+  g_autoptr (EaselImage) olive = gradient_over_yellow (5, 5, 15, 5, 0xFF808000u);
+  g_autoptr (EaselImage) green = gradient_over_yellow (5, 5, 15, 5, 0xFF008000u);
+  g_autoptr (EaselImage) blue = gradient_over_yellow (5, 5, 15, 5, 0xFF0000FFu);
+
+  gradient_with_black (win);
+  /* A palette click recolors the waiting gradient at once; Enter applies it in the new color. */
+  gradient_waiting (win, 1);
+  assert_shown (win, black);
+  easel_palette_bar_press (bar, 17, 1, 1);
+  g_assert_cmphex (easel_window_get_foreground (win), ==, 0xFFFF0000u);
+  assert_shown_as_is (win, red);
+  g_assert_cmpint (count_color (img, YELLOW), ==, 300 * 200);
+  press_enter (win, GDK_KEY_Return);
+  assert_same_picture (img, red);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+
+  /* Started by the secondary button (olive, swatch 4): Ctrl+Shift+X gives it the new background, red; the foreground alone
+     changing (to green, swatch 5) leaves it red. */
+  easel_palette_bar_press (bar, 4, 3, 1);
+  g_assert_cmphex (easel_window_get_background (win), ==, 0xFF808000u);
+  gradient_waiting (win, 3);
+  assert_shown (win, olive);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "swap-colors", NULL);
+  g_assert_cmphex (easel_window_get_background (win), ==, 0xFFFF0000u);
+  assert_shown_as_is (win, red);
+  easel_palette_bar_press (bar, 5, 1, 1);
+  g_assert_cmphex (easel_window_get_foreground (win), ==, 0xFF008000u);
+  assert_shown_as_is (win, red);
+  press_enter (win, GDK_KEY_Return);
+  assert_same_picture (img, red);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+
+  /* While its drag is held: Ctrl+Shift+X (green to the background) recolors it at once. */
+  shape_press_move (win, 3, 5, 5, 15, 5);
+  assert_shown (win, red);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "swap-colors", NULL);
+  g_assert_cmphex (easel_window_get_background (win), ==, 0xFF008000u);
+  assert_shown_as_is (win, green);
+  shape_release (win, 3);
+  press_enter (win, GDK_KEY_Return);
+  assert_same_picture (img, green);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+
+  /* A new gradient takes the color current at its press: blue (swatch 21). */
+  easel_palette_bar_press (bar, 21, 1, 1);
+  g_assert_cmphex (easel_window_get_foreground (win), ==, 0xFF0000FFu);
+  gradient_waiting (win, 1);
+  assert_shown (win, blue);
+  press_enter (win, GDK_KEY_Return);
+  assert_same_picture (img, blue);
+  close_windows ();
+}
+
+/* AS-10 (REQ-0012-06, -08): a press of either button while a gradient waits applies it as one step and starts a new drag with
+   that button; Esc, the other button and Undo during the new drag drop it only; without the memory for the step, the press
+   shows the dialog, applies nothing and starts no drag. */
+static void
+as10_new_press_applies (void)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  EaselPaletteBar *bar = easel_window_get_palette_bar (win);
+  g_autoptr (EaselImage) yellow = easel_image_new (300, 200, YELLOW);
+  g_autoptr (EaselImage) across = gradient_over_yellow (5, 5, 15, 5, 0xFF000000u);
+  g_autoptr (EaselImage) both = gradient_over (across, 10, 0, 10, 10, 0xFF000000u);
+  g_autoptr (EaselImage) both_bg = NULL;
+  double x, y;
+
+  gradient_with_black (win);
+  /* AS-10's numbers over the yellow picture (red and green as the gray, blue 0). */
+  g_assert_cmphex (easel_image_get (both, 10, 5), ==, 0xFF3F3F00u);
+  g_assert_cmphex (easel_image_get (both, 18, 5), ==, 0xFF7F7F00u);
+  g_assert_cmphex (easel_image_get (both, 10, 0), ==, 0xFF000000u);
+  g_assert_cmphex (easel_image_get (both, 10, 10), ==, 0xFF7F7F00u);
+  /* The press at (10, 0), outside both markers' hit areas, applies the waiting gradient at once and starts a new drag. */
+  gradient_waiting (win, 1);
+  canvas_point (win, 10.5, 0.5, &x, &y);
+  easel_canvas_press (canvas, 1, x, y);
+  assert_same_picture (img, across);
+  g_assert_true (easel_window_get_modified (win));
+  g_assert_true (easel_canvas_is_stroking (canvas));
+  g_assert_true (easel_canvas_is_pending (canvas));
+  canvas_point (win, 10.5, 10.5, &x, &y);
+  easel_canvas_motion (canvas, x, y);
+  shape_release (win, 1);
+  g_assert_true (easel_canvas_is_pending (canvas));
+  assert_shown (win, both);
+  assert_same_picture (img, across);
+  press_enter (win, GDK_KEY_Return);
+  assert_same_picture (img, both);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  assert_same_picture (img, across);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  assert_same_picture (img, yellow);
+  g_assert_false (action_enabled (win, "undo"));
+
+  /* The secondary button on a gradient the primary started: applied, and the new drag is in the background (olive). */
+  easel_palette_bar_press (bar, 4, 3, 1);
+  g_assert_cmphex (easel_window_get_background (win), ==, 0xFF808000u);
+  both_bg = gradient_over (across, 10, 0, 10, 10, 0xFF808000u);
+  gradient_waiting (win, 1);
+  shape_press_move (win, 3, 10, 0, 10, 10);
+  assert_same_picture (img, across);
+  shape_release (win, 3);
+  press_enter (win, GDK_KEY_Return);
+  assert_same_picture (img, both_bg);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  assert_same_picture (img, yellow);
+
+  /* Esc, the other button and Undo during the new drag drop it only: the applied gradient stays, one step. */
+  for (int way = 0; way < 3; way++)
+    {
+      gradient_waiting (win, 1);
+      shape_press_move (win, 1, 30, 5, 40, 5);
+      g_assert_true (easel_canvas_is_stroking (canvas));
+      assert_same_picture (img, across);
+      if (way == 0)
+        press_escape (win);
+      else if (way == 1)
+        {
+          shape_press_move (win, 3, 30, 5, 40, 5);
+          shape_release (win, 3);
+        }
+      else
+        g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+      g_assert_false (easel_canvas_is_pending (canvas));
+      g_assert_false (easel_canvas_is_stroking (canvas));
+      shape_release (win, 1);
+      g_assert_false (easel_canvas_is_pending (canvas));
+      assert_same_picture (img, across);
+      g_assert_true (action_enabled (win, "undo"));
+      g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+      assert_same_picture (img, yellow);
+      g_assert_false (action_enabled (win, "undo"));
+    }
+
+  /* No memory for the step: the press shows the dialog, applies nothing and starts no drag. */
+  gradient_waiting (win, 1);
+  easel_canvas_set_shape_memory_limit (canvas, 1000);
+  shape_press_move (win, 1, 30, 5, 40, 5);
+  easel_canvas_set_shape_memory_limit (canvas, SIZE_MAX);
+  g_assert_false (easel_canvas_is_stroking (canvas));
+  g_assert_false (easel_canvas_is_pending (canvas));
+  shape_release (win, 1);
+  g_assert_false (easel_canvas_is_pending (canvas));
+  assert_gradient_dialog (win);
+  assert_same_picture (img, yellow);
+  g_assert_false (action_enabled (win, "undo"));
+  close_windows ();
+}
+
+/* AS-20 (REQ-0012-06, -08): a click, with either button, applies a waiting gradient and leaves nothing pending; with none
+   waiting a click does nothing. */
+static void
+as20_click_applies (void)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  g_autoptr (EaselImage) yellow = easel_image_new (300, 200, YELLOW);
+  g_autoptr (EaselImage) across = gradient_over_yellow (5, 5, 15, 5, 0xFF000000u);
+
+  gradient_with_black (win);
+  for (guint button = 1; button <= 3; button += 2)
+    {
+      gradient_waiting (win, 1);
+      shape_press_move (win, button, 10, 10, 10, 10);
+      shape_release (win, button);
+      g_assert_false (easel_canvas_is_pending (canvas));
+      g_assert_false (easel_canvas_is_stroking (canvas));
+      assert_same_picture (img, across);
+      g_assert_true (easel_window_get_modified (win));
+      g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+      g_assert_false (action_enabled (win, "undo"));
+      assert_same_picture (img, yellow);
+    }
+  /* None waiting: a click leaves nothing pending and changes nothing. */
+  shape_press_move (win, 1, 8, 8, 8, 8);
+  shape_release (win, 1);
+  g_assert_false (easel_canvas_is_pending (canvas));
+  assert_same_picture (img, yellow);
+  g_assert_false (easel_window_get_modified (win));
+  close_windows ();
+}
+
+/* AS-21 (REQ-0012-13), the shown part: a waiting gradient shows a white marker with a black border centered on each end, not
+   part of the picture or of the applied pixels; over a marker the cursor is the move cursor; a drag that makes a new gradient
+   shows none. */
+static void
+as21_markers (void)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  g_autoptr (EaselImage) yellow = easel_image_new (300, 200, YELLOW);
+  g_autoptr (EaselImage) across = gradient_over_yellow (5, 5, 15, 5, 0xFF000000u);
+  g_autofree uint32_t *px = NULL;
+  graphene_rect_t m[2];
+  int w, h, cx, cy, scale;
+
+  gradient_with_black (win);
+  easel_canvas_set_guides_hidden (canvas, FALSE);
+  g_assert_false (easel_canvas_get_guides_hidden (canvas));
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 100);
+  scale = (int) easel_canvas_get_scale (canvas);
+  g_assert_false (easel_canvas_get_marker_rect (canvas, 0, &m[0]));
+  gradient_waiting (win, 1);
+  g_assert_true (easel_canvas_get_marker_rect (canvas, 0, &m[0]));
+  g_assert_true (easel_canvas_get_marker_rect (canvas, 1, &m[1]));
+  assert_marker_on (win, &m[0], 5, 5);
+  assert_marker_on (win, &m[1], 15, 5);
+  wait_for_next_frame (win);
+  px = render_pixels (win, &w, &h, &cx, &cy);
+  assert_marker_drawn (px, w, cx, cy, scale, &m[0]);
+  assert_marker_drawn (px, w, cx, cy, scale, &m[1]);
+  for (int y = 0; y < 20 * scale; y++)
+    for (int x = 0; x < 40 * scale; x++)
+      if (!in_markers (cx + x, cy + y, cx, cy, scale, m, 2) && !near_guide (cx + x, cy + y, cx, cy, scale, m, 2.0))
+        g_assert_cmphex (px[(gsize) (cy + y) * w + cx + x], ==, easel_image_get (across, x / scale, y / scale));
+  assert_same_picture (img, yellow);
+  /* The move cursor over each marker, the crosshair beside it. */
+  easel_canvas_pointer_at (canvas, m[0].origin.x + 2.5, m[0].origin.y + 2.5);
+  g_assert_cmpstr (gdk_cursor_get_name (gtk_widget_get_cursor (GTK_WIDGET (canvas))), ==, "move");
+  easel_canvas_pointer_at (canvas, 60.5, 60.5);
+  g_assert_cmpstr (gdk_cursor_get_name (gtk_widget_get_cursor (GTK_WIDGET (canvas))), ==, "crosshair");
+  easel_canvas_pointer_at (canvas, m[1].origin.x + 2.5, m[1].origin.y + 2.5);
+  g_assert_cmpstr (gdk_cursor_get_name (gtk_widget_get_cursor (GTK_WIDGET (canvas))), ==, "move");
+  easel_canvas_pointer_at (canvas, 60.5, 60.5);
+  /* Applied: the pixels of AS-2, no marker in them, none shown. */
+  press_enter (win, GDK_KEY_Return);
+  assert_same_picture (img, across);
+  g_assert_false (easel_canvas_get_marker_rect (canvas, 0, &m[0]));
+  assert_shown (win, across);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  /* A drag that makes a new gradient shows none. */
+  gradient_waiting (win, 1);
+  shape_press_move (win, 1, 30, 5, 40, 5);
+  g_assert_true (easel_canvas_is_stroking (canvas));
+  g_assert_false (easel_canvas_get_marker_rect (canvas, 0, &m[0]));
+  easel_canvas_drop (canvas);
+  shape_release (win, 1);
+  close_windows ();
+}
+
+/* A press of button on the marker of end k (0 the start, 1 the end), at its center. */
+static void
+press_marker (EaselWindow *win, guint button, int k)
+{
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  graphene_rect_t r;
+
+  g_assert_true (easel_canvas_get_marker_rect (canvas, k, &r));
+  easel_canvas_press (canvas, button, r.origin.x + r.size.width / 2, r.origin.y + r.size.height / 2);
+}
+
+/* The pointer moved to the center of picture pixel (x, y). */
+static void
+move_to (EaselWindow *win, int x, int y)
+{
+  double cx, cy;
+
+  canvas_point (win, x + 0.5, y + 0.5, &cx, &cy);
+  easel_canvas_motion (easel_window_get_canvas (win), cx, cy);
+}
+
+/* Enter, then the picture is want; then Undo back to yellow. */
+static void
+enter_gives (EaselWindow *win, const EaselImage *want)
+{
+  g_assert_true (easel_canvas_is_pending (easel_window_get_canvas (win)));
+  press_enter (win, GDK_KEY_Return);
+  assert_same_picture (easel_window_get_picture (win), want);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_cmpint (count_color (easel_window_get_picture (win), YELLOW), ==, 300 * 200);
+}
+
+/* AS-21 (REQ-0012-13), moving an end: a press on a marker (either button) applies nothing and moves that end, Shift
+   constraining it; the markers are shown while it moves; the release leaves the gradient waiting; an end moved onto the other
+   is put back; the other button and Undo cancel the move; a lost release and a lost focus end it as last shown. */
+static void
+as21_markers_moving (void)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  g_autoptr (EaselImage) across = gradient_over_yellow (5, 5, 15, 5, 0xFF000000u);
+  g_autoptr (EaselImage) down = gradient_over_yellow (5, 5, 5, 10, 0xFF000000u);
+  g_autoptr (EaselImage) wider = gradient_over_yellow (0, 5, 15, 5, 0xFF000000u);
+  g_autoptr (EaselImage) shorter = gradient_over_yellow (5, 5, 14, 5, 0xFF000000u);
+  graphene_rect_t m;
+
+  gradient_with_black (win);
+  /* AS-21's numbers over the yellow picture. */
+  g_assert_cmphex (easel_image_get (down, 5, 7), ==, 0xFF666600u);
+  g_assert_cmphex (easel_image_get (down, 5, 10), ==, YELLOW);
+  g_assert_cmphex (easel_image_get (wider, 5, 5), ==, 0xFF555500u);
+  g_assert_cmphex (easel_image_get (wider, 10, 5), ==, 0xFFAAAA00u);
+  g_assert_cmphex (easel_image_get (wider, 15, 5), ==, YELLOW);
+  g_assert_cmphex (easel_image_get (shorter, 10, 5), ==, 0xFF8E8E00u);
+  /* The end's marker to (5, 10): nothing applied by the press, both markers shown while it moves. */
+  gradient_waiting (win, 1);
+  press_marker (win, 1, 1);
+  g_assert_true (easel_canvas_is_stroking (canvas));
+  g_assert_false (easel_window_get_modified (win));
+  g_assert_cmpint (count_color (img, YELLOW), ==, 300 * 200);
+  move_to (win, 5, 10);
+  g_assert_true (easel_canvas_get_marker_rect (canvas, 0, &m));
+  assert_marker_on (win, &m, 5, 5);
+  g_assert_true (easel_canvas_get_marker_rect (canvas, 1, &m));
+  assert_marker_on (win, &m, 5, 10);
+  assert_shown (win, down);
+  shape_release (win, 1);
+  g_assert_false (easel_canvas_is_stroking (canvas));
+  enter_gives (win, down);
+  /* The start's marker to (0, 5), with the secondary button (a press on a marker moves it with either button; the color stays
+     the foreground of the primary press that made it). */
+  gradient_waiting (win, 1);
+  press_marker (win, 3, 0);
+  move_to (win, 0, 5);
+  shape_release (win, 3);
+  enter_gives (win, wider);
+  /* Shift: the end's marker toward (14, 8) gives (14, 5) at once. */
+  gradient_waiting (win, 1);
+  press_marker (win, 1, 1);
+  move_to (win, 14, 8);
+  shift_key (win, TRUE);
+  shape_release (win, 1);
+  shift_key (win, FALSE);
+  enter_gives (win, shorter);
+  /* Onto the other end: put back. */
+  gradient_waiting (win, 1);
+  press_marker (win, 1, 1);
+  move_to (win, 5, 5);
+  shape_release (win, 1);
+  g_assert_true (easel_canvas_get_marker_rect (canvas, 1, &m));
+  assert_marker_on (win, &m, 15, 5);
+  enter_gives (win, across);
+  /* The other button and Undo cancel the move: put back, still waiting. */
+  for (int way = 0; way < 2; way++)
+    {
+      gradient_waiting (win, 1);
+      press_marker (win, 1, 1);
+      move_to (win, 5, 10);
+      if (way == 0)
+        {
+          shape_press_move (win, 3, 40, 40, 40, 40);
+          shape_release (win, 3);
+        }
+      else
+        g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+      g_assert_false (easel_canvas_is_stroking (canvas));
+      g_assert_true (easel_canvas_is_pending (canvas));
+      shape_release (win, 1);
+      g_assert_true (easel_canvas_get_marker_rect (canvas, 1, &m));
+      assert_marker_on (win, &m, 15, 5);
+      enter_gives (win, across);
+    }
+  /* A lost release and a lost focus end the move as last shown. */
+  gradient_waiting (win, 1);
+  press_marker (win, 1, 1);
+  move_to (win, 5, 10);
+  easel_canvas_buttons_released (canvas);
+  g_assert_false (easel_canvas_is_stroking (canvas));
+  enter_gives (win, down);
+  gradient_waiting (win, 1);
+  press_marker (win, 1, 1);
+  move_to (win, 5, 10);
+  easel_canvas_reset_pointer (canvas);
+  g_assert_false (easel_canvas_is_stroking (canvas));
+  enter_gives (win, down);
+  close_windows ();
+}
+
+/* AS-22 (REQ-0012-12, -13): an end whose marker lies on the corner resize handle: a primary press there applies the gradient
+   as shown and starts the resize; the end does not move. */
+static void
+as22_marker_on_handle (void)
+{
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  const EaselImage *img;
+  g_autoptr (EaselImage) small = easel_image_new (21, 11, YELLOW);
+  g_autoptr (EaselImage) want = NULL;
+  graphene_rect_t m, hr;
+  double mx, my;
+
+  write_settings ("[new-picture]\nwidth=21\nheight=11\nbackground=#FFFF00\n");
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  img = easel_window_get_picture (win);
+  want = gradient_over (small, 5, 5, 22, 12, 0xFF000000u);
+  gradient_with_black (win);
+  g_assert_cmpint (img->width, ==, 21);
+  shape_press_move (win, 1, 5, 5, 22, 12);
+  shape_release (win, 1);
+  g_assert_true (easel_canvas_is_pending (canvas));
+  /* The end's marker is on the corner handle. */
+  g_assert_true (easel_canvas_get_marker_rect (canvas, 1, &m));
+  assert_marker_on (win, &m, 22, 12);
+  g_assert_true (easel_canvas_get_handle_rect (canvas, EASEL_HANDLE_CORNER, &hr));
+  mx = m.origin.x + m.size.width / 2;
+  my = m.origin.y + m.size.height / 2;
+  g_assert_true (mx >= hr.origin.x && mx < hr.origin.x + hr.size.width && my >= hr.origin.y && my < hr.origin.y + hr.size.height);
+  g_assert_cmpint (easel_canvas_handle_at (canvas, mx, my), ==, EASEL_HANDLE_CORNER);
+  /* The primary press there: applied as shown, the resize starts, the end did not move. */
+  easel_canvas_press (canvas, 1, mx, my);
+  g_assert_false (easel_canvas_is_pending (canvas));
+  g_assert_true (easel_canvas_is_resizing (canvas));
+  easel_canvas_release (canvas, 1);
+  assert_same_picture (img, want);
+  g_assert_true (action_enabled (win, "undo"));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  assert_same_picture (img, small);
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* AS-23 (REQ-0012-13): on a gradient of two pixels the hit areas overlap; a press takes the marker whose center is nearest,
+   the end's on a tie. */
+static void
+as23_nearest_marker (void)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  g_autoptr (EaselImage) start_moved = gradient_over_yellow (2, 5, 7, 5, 0xFF000000u);
+  g_autoptr (EaselImage) end_moved = gradient_over_yellow (5, 5, 12, 5, 0xFF000000u);
+  double x, y;
+
+  gradient_with_black (win);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 100);
+  shape_press_move (win, 1, 5, 5, 7, 5);
+  shape_release (win, 1);
+  /* (6.0, 5.5): 0.5 from the start's center, 1.5 from the end's, within both hit areas. */
+  canvas_point (win, 6.0, 5.5, &x, &y);
+  easel_canvas_press (canvas, 1, x, y);
+  g_assert_true (easel_canvas_is_stroking (canvas));
+  move_to (win, 2, 5);
+  shape_release (win, 1);
+  enter_gives (win, start_moved);
+  /* (6.5, 5.5): as far from both: the end's. */
+  shape_press_move (win, 1, 5, 5, 7, 5);
+  shape_release (win, 1);
+  canvas_point (win, 6.5, 5.5, &x, &y);
+  easel_canvas_press (canvas, 1, x, y);
+  move_to (win, 12, 5);
+  shape_release (win, 1);
+  enter_gives (win, end_moved);
+  close_windows ();
+}
+
+/* AS-24 (REQ-0012-07, -13): Esc during a move puts the end back and the gradient keeps waiting; Esc with no move drops it. */
+static void
+as24_esc_cancels_a_move (void)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  graphene_rect_t m;
+
+  gradient_with_black (win);
+  gradient_waiting (win, 1);
+  press_marker (win, 1, 1);
+  move_to (win, 5, 10);
+  press_escape (win);
+  g_assert_false (easel_canvas_is_stroking (canvas));
+  g_assert_true (easel_canvas_is_pending (canvas));
+  g_assert_true (easel_canvas_get_marker_rect (canvas, 1, &m));
+  assert_marker_on (win, &m, 15, 5);
+  shape_release (win, 1);
+  g_assert_true (easel_canvas_is_pending (canvas));
+  g_assert_true (easel_canvas_get_marker_rect (canvas, 1, &m));
+  assert_marker_on (win, &m, 15, 5);
+  press_escape (win);
+  g_assert_false (easel_canvas_is_pending (canvas));
+  g_assert_cmpint (count_color (img, YELLOW), ==, 300 * 200);
+  g_assert_false (action_enabled (win, "undo"));
+  close_windows ();
+}
+
+/* Counts the black and the white device pixels of the rendered window along the device row of picture row y at 100 %, between
+   picture columns x0 and x1 (both outside the markers). */
+static void
+count_guide_row (const uint32_t *px, int w, int cx, int cy, int scale, int y, int x0, int x1, int *black, int *white)
+{
+  *black = *white = 0;
+  for (int x = x0 * scale; x <= x1 * scale + scale - 1; x++)
+    {
+      uint32_t c = px[(gsize) (cy + y * scale + scale / 2) * w + cx + x];
+
+      *black += c == 0xFF000000u;
+      *white += c == 0xFFFFFFFFu;
+    }
+}
+
+/* AS-25 (REQ-0012-13): a dashed black-and-white line between the markers, under them, not in the picture; it follows a moved
+   end; none after Enter or during a drag that makes a new gradient. */
+static void
+as25_guide_line (void)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  g_autoptr (EaselImage) yellow = easel_image_new (300, 200, YELLOW);
+  g_autoptr (EaselImage) far = gradient_over_yellow (5, 5, 35, 5, 0xFF000000u);
+  g_autoptr (EaselImage) applied_then_held = NULL;
+  g_autofree uint32_t *px = NULL;
+  graphene_rect_t m[2];
+  int w, h, cx, cy, scale, black, white;
+
+  gradient_with_black (win);
+  easel_canvas_set_guides_hidden (canvas, FALSE);
+  g_assert_false (easel_canvas_get_guides_hidden (canvas));
+  scale = (int) easel_canvas_get_scale (canvas);
+  /* A gradient long enough for several dashes: (5, 5) to (35, 5). Along row 5 between the markers (columns 9 to 31), black and
+     white dashes; rows 4 and 6 are the picture with the gradient; the markers are whole over it. */
+  shape_press_move (win, 1, 5, 5, 35, 5);
+  shape_release (win, 1);
+  g_assert_true (easel_canvas_get_marker_rect (canvas, 0, &m[0]));
+  g_assert_true (easel_canvas_get_marker_rect (canvas, 1, &m[1]));
+  wait_for_next_frame (win);
+  px = render_pixels (win, &w, &h, &cx, &cy);
+  count_guide_row (px, w, cx, cy, scale, 5, 9, 31, &black, &white);
+  g_assert_cmpint (black, >=, 8 * scale);
+  g_assert_cmpint (white, >=, 8 * scale);
+  for (int x = 9; x <= 31; x++)
+    {
+      g_assert_cmphex (rendered_pixel (px, w, cx, cy, x * scale, 3 * scale), ==, easel_image_get (far, x, 3));
+      g_assert_cmphex (rendered_pixel (px, w, cx, cy, x * scale, 7 * scale), ==, easel_image_get (far, x, 7));
+    }
+  assert_marker_drawn (px, w, cx, cy, scale, &m[0]);
+  assert_marker_drawn (px, w, cx, cy, scale, &m[1]);
+  assert_same_picture (img, yellow);
+  g_clear_pointer (&px, g_free);
+  /* The end moved to (35, 25): the line leaves row 5 (no dash there now) and follows it; a diagonal line is blended with the
+     picture, so near its middle, (20, 15), the window differs from the moved gradient's own pixels. */
+  press_marker (win, 1, 1);
+  move_to (win, 35, 25);
+  wait_for_next_frame (win);
+  px = render_pixels (win, &w, &h, &cx, &cy);
+  count_guide_row (px, w, cx, cy, scale, 5, 20, 30, &black, &white);
+  g_assert_cmpint (black + white, ==, 0);
+  {
+    g_autoptr (EaselImage) moved = gradient_over_yellow (5, 5, 35, 25, 0xFF000000u);
+    int differ = 0;
+
+    for (int x = 18; x <= 22; x++)
+      differ += rendered_pixel (px, w, cx, cy, x * scale, 15 * scale) != easel_image_get (moved, x, 15);
+    g_assert_cmpint (differ, >, 0);
+  }
+  g_clear_pointer (&px, g_free);
+  shape_release (win, 1);
+  /* Applied: no line in the picture, none shown. */
+  press_enter (win, GDK_KEY_Return);
+  wait_for_next_frame (win);
+  px = render_pixels (win, &w, &h, &cx, &cy);
+  for (int y = 0; y < 30; y++)
+    for (int x = 0; x < 40; x++)
+      {
+        g_assert_cmphex (rendered_pixel (px, w, cx, cy, x * scale, y * scale), ==, easel_image_get (img, x, y));
+        g_assert_cmphex (easel_image_get (img, x, y), !=, 0xFFFFFFFFu);
+      }
+  g_clear_pointer (&px, g_free);
+  /* During a drag that makes a new gradient: none (the press applied the waiting one first). */
+  shape_press_move (win, 1, 5, 5, 35, 5);
+  shape_release (win, 1);
+  shape_press_move (win, 1, 10, 12, 30, 12);
+  g_assert_true (easel_canvas_is_stroking (canvas));
+  g_assert_false (easel_canvas_get_marker_rect (canvas, 0, &m[0]));
+  applied_then_held = gradient_over (img, 10, 12, 30, 12, 0xFF000000u);
+  wait_for_next_frame (win);
+  px = render_pixels (win, &w, &h, &cx, &cy);
+  for (int x = 10; x <= 30; x++)
+    g_assert_cmphex (rendered_pixel (px, w, cx, cy, x * scale, 12 * scale), ==, easel_image_get (applied_then_held, x, 12));
+  easel_canvas_drop (canvas);
+  shape_release (win, 1);
+  close_windows ();
+}
+
 int
 main (int argc, char **argv)
 {
@@ -9585,6 +11286,30 @@ main (int argc, char **argv)
   g_test_add_func ("/0010/as16_shape_memory_dialog", as16_shape_memory_dialog);
   g_test_add_func ("/0010/as17_drag_outside_area", as17_drag_outside_area);
   g_test_add_func ("/0011/as1_curve_polygon_toolbox_hints", as1_curve_polygon_toolbox_hints);
+  g_test_add_func ("/0012/as1_gradient_toolbox_hints", as1_gradient_toolbox_hints);
+  g_test_add_func ("/0012/as2_gradient_stages", as2_gradient_stages);
+  g_test_add_func ("/0012/as3_shift_during_gradient_drag", as3_shift_during_gradient_drag);
+  g_test_add_func ("/0012/as7_two_gradients_two_steps", as7_two_gradients_two_steps);
+  g_test_add_func ("/0012/as8_secondary_button", as8_secondary_button);
+  g_test_add_func ("/0012/as9_drag_outside_area", as9_drag_outside_area);
+  g_test_add_func ("/0012/as16_preview_equals_applied", as16_preview_equals_applied);
+  g_test_add_func ("/0012/as14_preview_memory_refused", as14_preview_memory_refused);
+  g_test_add_func ("/0012/as14_waiting_gradient_unshown", as14_waiting_gradient_unshown);
+  g_test_add_func ("/0012/as10_new_press_applies", as10_new_press_applies);
+  g_test_add_func ("/0012/as20_click_applies", as20_click_applies);
+  g_test_add_func ("/0012/as11_drops_and_put_down", as11_drops_and_put_down);
+  g_test_add_func ("/0012/as12_lost_release_focus_save", as12_lost_release_focus_save);
+  g_test_add_func ("/0012/as17_handle_presses", as17_handle_presses);
+  g_test_add_func ("/0012/as13_gradient_changing_nothing", as13_gradient_changing_nothing);
+  g_test_add_func ("/0012/as14_gradient_memory_dialog", as14_gradient_memory_dialog);
+  g_test_add_func ("/0012/as15_gradient_ignored_when_blocked", as15_gradient_ignored_when_blocked);
+  g_test_add_func ("/0012/as19_recolor", as19_recolor);
+  g_test_add_func ("/0012/as21_markers", as21_markers);
+  g_test_add_func ("/0012/as21_markers_moving", as21_markers_moving);
+  g_test_add_func ("/0012/as22_marker_on_handle", as22_marker_on_handle);
+  g_test_add_func ("/0012/as23_nearest_marker", as23_nearest_marker);
+  g_test_add_func ("/0012/as24_esc_cancels_a_move", as24_esc_cancels_a_move);
+  g_test_add_func ("/0012/as25_guide_line", as25_guide_line);
   g_test_add_func ("/0011/as2_curve_stages_and_preview", as2_curve_stages_and_preview);
   g_test_add_func ("/0011/as9_curve_colors_of_the_first_press", as9_curve_colors_of_the_first_press);
   g_test_add_func ("/0011/as5_polygon_clicks", as5_polygon_clicks);

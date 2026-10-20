@@ -817,9 +817,9 @@ test: ui-0006
 --- find
   if (!view_actions_allowed (self))
     return;
-  if (easel_tool_draws_shape (self->tool) || easel_tool_draws_pending (self->tool))
+  if (easel_tool_uses_line_width (self->tool))
 --- replace
-  if (easel_tool_draws_shape (self->tool) || easel_tool_draws_pending (self->tool))
+  if (easel_tool_uses_line_width (self->tool))
 
 === REQ-0006-14 Numpad + steps down and Numpad - steps up
 file: src/ui/window.c
@@ -1783,10 +1783,10 @@ test: ui-0010
       self->shape_py = py;
 
 === REQ-0010-07 the log is pushed without shrinking
-file: src/core/figure.c
+file: src/core/change-log.c
 test: core-figure-apply
 --- find
-  if (l.cap > l.n)
+  if (l->cap > l->n && l->n > 0)
 --- replace
   if (0)
 
@@ -1839,16 +1839,12 @@ test: ui-0011
   else if (easel_tool_draws_shape (self->tool))
 
 === REQ-0011-02 Numpad does not step the width with Curve and Polygon
-file: src/ui/window.c
+file: src/ui/tool.c
 test: ui-0011
 --- find
-  if (easel_tool_draws_shape (self->tool) || easel_tool_draws_pending (self->tool))
-    {
-      /* The width of Line and the shapes
+  return easel_tool_draws_shape (tool) || tool == EASEL_TOOL_CURVE || tool == EASEL_TOOL_POLYGON;
 --- replace
-  if (easel_tool_draws_shape (self->tool))
-    {
-      /* The width of Line and the shapes
+  return easel_tool_draws_shape (tool);
 
 === REQ-0011-09 the bound of the runs of a row is too small
 file: src/core/figure.c
@@ -1949,22 +1945,22 @@ test: core-figure-polygon
 file: src/core/figure.c
 test: core-figure-step
 --- find
-      log_restore (&l, img);
-      free (l.log);
+      easel_change_log_restore (&l, img);
+      easel_change_log_free (&l);
       return EASEL_FIGURE_NO_MEMORY;
     }
   if (l.n == 0)
 --- replace
-      free (l.log);
+      easel_change_log_free (&l);
       return EASEL_FIGURE_NO_MEMORY;
     }
   if (l.n == 0)
 
 === REQ-0011-14 a polygon's log is pushed without shrinking
-file: src/core/figure.c
+file: src/core/change-log.c
 test: core-figure-step
 --- find
-  if (l.cap > l.n)
+  if (l->cap > l->n && l->n > 0)
 --- replace
   if (0)
 
@@ -2362,7 +2358,7 @@ test: ui-0011
   if (r == EASEL_FIGURE_DONE)
     easel_canvas_update (self);
   else if (r == EASEL_FIGURE_NO_MEMORY)
-    g_signal_emit (self, signals[SIGNAL_SHAPE_FAILED], 0);
+    g_signal_emit (self, signals[gradient ? SIGNAL_GRADIENT_FAILED : SIGNAL_SHAPE_FAILED], 0);
 --- replace
   set_pending (self, FALSE);
   if (r == EASEL_FIGURE_DONE)
@@ -2374,11 +2370,11 @@ test: ui-0011
 file: src/ui/canvas.c
 test: ui-0011
 --- find
-  r = easel_figure_apply_capped (self->img, self->history, &f, self->pend_draw, self->pend_other, NULL,
-                                 self->shape_max_bytes);
+    r = easel_figure_apply_capped (self->img, self->history, &f, self->pend_draw, self->pend_other, NULL,
+                                   self->shape_max_bytes);
 --- replace
-  r = easel_figure_apply_capped (self->img, self->history, &f, self->pend_draw, self->pend_other, NULL,
-                                 SIZE_MAX);
+    r = easel_figure_apply_capped (self->img, self->history, &f, self->pend_draw, self->pend_other, NULL,
+                                   SIZE_MAX);
 
 === REQ-0011-07 Enter closes a pending polygon only while the canvas has the focus
 file: src/ui/window.c
@@ -2388,6 +2384,590 @@ test: ui-0011
 --- replace
   if ((keyval == GDK_KEY_Return || keyval == GDK_KEY_KP_Enter) && !dialog_is_open (self) && gtk_widget_has_focus (GTK_WIDGET (self->canvas))
       && easel_canvas_enter (self->canvas))
+
+=== REQ-0012-01 Gradient shows the widths page of the options
+file: src/ui/tool-options.c
+test: ui-0012
+--- find
+tool == EASEL_TOOL_LINE || tool == EASEL_TOOL_CURVE ? 4
+--- replace
+tool == EASEL_TOOL_LINE || tool == EASEL_TOOL_CURVE || tool == EASEL_TOOL_GRADIENT ? 4
+
+=== REQ-0012-01 Numpad steps the line width with Gradient
+file: src/ui/tool.c
+test: ui-0012
+--- find
+  return easel_tool_draws_shape (tool) || tool == EASEL_TOOL_CURVE || tool == EASEL_TOOL_POLYGON;
+--- replace
+  return easel_tool_draws_shape (tool) || tool == EASEL_TOOL_CURVE || tool == EASEL_TOOL_POLYGON || tool == EASEL_TOOL_GRADIENT;
+
+=== REQ-0012-02 Gradient has no crosshair
+file: src/ui/canvas.c
+test: ui-0012
+--- find
+  else if (easel_tool_draws_shape (self->tool) || easel_tool_draws_pending (self->tool))
+--- replace
+  else if (easel_tool_draws_shape (self->tool) || self->tool == EASEL_TOOL_CURVE || self->tool == EASEL_TOOL_POLYGON)
+
+=== REQ-0012-02 Gradient has another tool's hint
+file: src/ui/window.c
+test: ui-0012
+--- find
+      return "Fades the drawing color to transparent along a drag. A click or Enter applies it, Esc cancels it.";
+--- replace
+      return "Draws a polygon with the selected fill style.";
+
+=== REQ-0012-04 a half of the gradient's opacity rounds down
+file: src/core/gradient.c
+test: core-gradient
+--- find
+  return (unsigned) ((2 * alpha * (length2 - d) + length2) / (2 * length2));
+--- replace
+  return (unsigned) ((2 * alpha * (length2 - d) + length2 - 1) / (2 * length2));
+
+=== REQ-0012-04 the pixels behind the start are not limited to the full opacity
+file: src/core/gradient.c
+test: core-gradient
+--- find
+  if (d < 0)
+    d = 0;
+  else if (d > length2)
+    d = length2;
+--- replace
+  if (d > length2)
+    d = length2;
+
+=== REQ-0012-04 the pixels beyond the end are not limited to opacity 0
+file: src/core/gradient.c
+test: core-gradient
+--- find
+  if (d < 0)
+    d = 0;
+  else if (d > length2)
+    d = length2;
+--- replace
+  if (d < 0)
+    d = 0;
+
+=== REQ-0012-04 the drawing color's own alpha is ignored
+file: src/core/gradient.c
+test: core-gradient
+--- find
+  long long length2 = dx * dx + dy * dy, d, alpha = g->color >> 24;
+--- replace
+  long long length2 = dx * dx + dy * dy, d, alpha = 255;
+
+=== REQ-0012-05 the alpha of a picture pixel is not blended
+file: src/core/gradient.c
+test: core-gradient
+--- find
+  out = round_div (m, 255) << 24;
+--- replace
+  out = da << 24;
+
+=== REQ-0012-05 the shortcut for an opaque picture pixel is used for every pixel
+file: src/core/gradient.c
+test: core-gradient
+--- find
+  if (da == 255)
+    {
+--- replace
+  if (da == 255 || 1)
+    {
+
+=== REQ-0012-05 a transparent pixel of opacity 0 loses its color channels
+file: src/core/gradient.c
+test: core-gradient
+--- find
+  if (a == 0)
+    return picture;
+--- replace
+  if (a == 0)
+    return da == 0 ? 0 : picture;
+
+=== REQ-0012-09 a gradient that runs out of memory is not undone
+file: src/core/gradient.c
+test: core-gradient
+--- find
+  if (!ok)
+    {
+      easel_change_log_restore (&l, img);
+--- replace
+  if (!ok)
+    {
+
+=== REQ-0012-09 the gradient's log is pushed without being shrunk to its length
+file: src/core/gradient.c
+test: core-gradient
+--- find
+  if (!easel_change_log_push (&l, history))
+--- replace
+  if (!easel_history_push (history, l.log, l.n) || (l.log = NULL, l.n = l.cap = 0, false))
+
+=== REQ-0012-11 Enter does not apply a waiting gradient
+file: src/ui/canvas.c
+test: ui-0012
+--- find
+  if (!self->pend_held)
+    put_down_pending (self);
+  return TRUE;
+--- replace
+  if (!self->pend_held && !self->pend_gradient)
+    put_down_pending (self);
+  return TRUE;
+
+=== REQ-0012-03 Shift does not constrain the gradient's end
+file: src/ui/canvas.c
+test: ui-0012
+--- find
+      if (self->shift)
+        easel_figure_constrain (EASEL_FIGURE_LINE, self->pend_pts[2 * o], self->pend_pts[2 * o + 1], &x, &y);
+--- replace
+      if (self->shift && self->moving >= 0)
+        easel_figure_constrain (EASEL_FIGURE_LINE, self->pend_pts[2 * o], self->pend_pts[2 * o + 1], &x, &y);
+
+=== REQ-0012-03 the gradient's end stops at the picture's edges
+file: src/ui/canvas.c
+test: ui-0012
+--- find
+      self->pend_pts[2 * k] = x;
+      self->pend_pts[2 * k + 1] = y;
+--- replace
+      self->pend_pts[2 * k] = CLAMP (x, 0, self->img->width - 1);
+      self->pend_pts[2 * k + 1] = CLAMP (y, 0, self->img->height - 1);
+
+=== REQ-0012-07 the waiting gradient is not shown: the picture's own tiles are drawn
+file: src/ui/canvas.c
+test: ui-0012
+--- find
+        if (preview != NULL && preview[ty * self->tile_cols + tx] != NULL)
+          tile = preview[ty * self->tile_cols + tx];
+--- replace
+        if (preview != NULL && preview[ty * self->tile_cols + tx] != NULL)
+          (void) tile;
+
+=== REQ-0012-07 the preview is laid one pixel off its tile
+file: src/ui/canvas.c
+test: ui-0012
+--- find
+      easel_gradient_lay (&g, self->img, x0, y0, w, h, px, (size_t) w);
+--- replace
+      easel_gradient_lay (&g, self->img, x0, y0, w - 1, h, px + 1, (size_t) w);
+
+=== REQ-0012-09 the preview ignores its memory limit
+file: src/ui/canvas.c
+test: ui-0012
+--- find
+      if (total <= self->preview_max_bytes)
+--- replace
+      if (total <= SIZE_MAX)
+
+=== REQ-0012-09 a gradient that could not be shown waits instead of being dropped
+file: src/ui/canvas.c
+test: ui-0012
+--- find
+      if (self->pend_unshown)
+        {
+--- replace
+      if (FALSE)
+        {
+
+=== REQ-0012-07 the gradient laid over a rectangle ignores the rectangle's left edge
+file: src/core/gradient.c
+test: core-gradient
+--- find
+      const uint32_t *src = img->px + (size_t) (y0 + j) * img->width + (x0 + i0);    /* the first pixel inside */
+--- replace
+      const uint32_t *src = img->px + (size_t) (y0 + j) * img->width + i0;    /* the first pixel inside */
+
+=== REQ-0012-09 a waiting gradient that cannot be shown is dropped at once, with the dialog
+file: src/ui/canvas.c
+test: ui-0012
+--- find
+  self->pend_unshown = textures == NULL;
+--- replace
+  self->pend_unshown = textures == NULL;
+  if (textures == NULL && !self->pend_held)
+    {
+      self->pending = FALSE;
+      g_signal_emit (self, signals[SIGNAL_GRADIENT_FAILED], 0);
+    }
+
+=== REQ-0012-09 Enter does not apply a waiting gradient that cannot be shown
+file: src/ui/canvas.c
+test: ui-0012
+--- find
+  if (!self->pend_held)
+    put_down_pending (self);
+  return TRUE;
+--- replace
+  if (!self->pend_held && !(self->pend_gradient && self->pend_unshown))
+    put_down_pending (self);
+  return TRUE;
+
+=== REQ-0012-12 a secondary press on a resize handle drops a waiting gradient
+file: src/ui/canvas.c
+test: ui-0012
+--- find
+      if (button != GDK_BUTTON_PRIMARY)
+        return;
+      put_down_pending (self);
+--- replace
+      if (button != GDK_BUTTON_PRIMARY)
+        {
+          if (self->pend_gradient)
+            easel_canvas_drop (self);
+          return;
+        }
+      put_down_pending (self);
+
+=== REQ-0012-12 a primary press on a resize handle drops a gradient the secondary button started
+file: src/ui/canvas.c
+test: ui-0012
+--- find
+      if (button != GDK_BUTTON_PRIMARY)
+        return;
+      put_down_pending (self);
+--- replace
+      if (button != GDK_BUTTON_PRIMARY)
+        return;
+      if (self->pend_gradient && self->pend_button != button)
+        easel_canvas_drop (self);
+      else
+        put_down_pending (self);
+
+=== REQ-0012-11 Enter applies a gradient while its button is held
+file: src/ui/canvas.c
+test: ui-0012
+--- find
+  if (!self->pend_held)
+    put_down_pending (self);
+  return TRUE;
+--- replace
+  put_down_pending (self);
+  return TRUE;
+
+=== REQ-0012-07 a lost release drops the gradient instead of ending its drag as shown
+file: src/ui/canvas.c
+test: ui-0012
+--- find
+  self->action_button = 0;
+  if (self->stroke != NULL || self->picking || self->shaping || self->pend_held)
+--- replace
+  self->action_button = 0;
+  if (self->pend_held && self->pend_gradient)
+    easel_canvas_drop (self);
+  if (self->stroke != NULL || self->picking || self->shaping || self->pend_held)
+
+=== REQ-0012-07 another tool, Save, New, Quit or an Image action drops a waiting gradient instead of applying it
+file: src/ui/canvas.c
+test: ui-0012
+--- find
+  if (self->pending)
+    put_down_pending (self);
+}
+--- replace
+  if (self->pending && self->pend_gradient)
+    easel_canvas_drop (self);
+  else if (self->pending)
+    put_down_pending (self);
+}
+
+=== REQ-0012-09 a gradient that cannot get its memory shows the shape's dialog
+file: src/ui/canvas.c
+test: ui-0012
+--- find
+    g_signal_emit (self, signals[gradient ? SIGNAL_GRADIENT_FAILED : SIGNAL_SHAPE_FAILED], 0);
+--- replace
+    g_signal_emit (self, signals[SIGNAL_SHAPE_FAILED], 0);
+
+=== REQ-0012-09 the window shows no dialog when a gradient cannot get its memory
+file: src/ui/window.c
+test: ui-0012
+--- find
+  g_signal_connect_object (self->canvas, "gradient-failed", G_CALLBACK (on_gradient_failed), self, G_CONNECT_SWAPPED);
+--- replace
+  (void) on_gradient_failed;
+
+=== REQ-0012-09 a gradient that changes no pixel reports a change (in the window it is equivalent: the history adds no step for an empty log)
+file: src/core/gradient.c
+test: core-gradient
+--- find
+  if (l.n == 0)
+    {
+      easel_change_log_free (&l);
+      return EASEL_GRADIENT_NOTHING;
+    }
+--- replace
+
+=== REQ-0012-10 Gradient is not blocked with a dialog, the color chooser or the quit prompt open
+file: src/ui/canvas.c
+test: ui-0012
+--- find
+  if (self->input_blocked || (button != GDK_BUTTON_PRIMARY && button != GDK_BUTTON_SECONDARY))
+--- replace
+  if ((self->input_blocked && self->tool != EASEL_TOOL_GRADIENT) || (button != GDK_BUTTON_PRIMARY && button != GDK_BUTTON_SECONDARY))
+
+=== REQ-0012-02 with Gradient the crosshair wins over a resize handle
+file: src/ui/canvas.c
+test: ui-0012
+--- find
+  else if (handle != EASEL_HANDLE_NONE)
+    cursor = gdk_cursor_new_from_name (handle == EASEL_HANDLE_RIGHT ? "ew-resize"
+--- replace
+  else if (self->tool == EASEL_TOOL_GRADIENT)
+    cursor = gdk_cursor_new_from_name ("crosshair", NULL);
+  else if (handle != EASEL_HANDLE_NONE)
+    cursor = gdk_cursor_new_from_name (handle == EASEL_HANDLE_RIGHT ? "ew-resize"
+
+=== REQ-0012-07 the gradient laid over a rectangle is not clipped at the picture's left and top edges
+file: src/core/gradient.c
+test: core-gradient
+--- find
+  int i0 = x0 < 0 ? -x0 : 0, j0 = y0 < 0 ? -y0 : 0;
+--- replace
+  int i0 = 0, j0 = 0;
+
+=== REQ-0012-07 the gradient laid over a rectangle is not clipped at the picture's right and bottom edges
+file: src/core/gradient.c
+test: core-gradient
+--- find
+  int i1 = w < img->width - x0 ? w : img->width - x0, j1 = h < img->height - y0 ? h : img->height - y0;
+--- replace
+  int i1 = w, j1 = h;
+
+=== REQ-0012-02 Gradient keeps the hint of before 2026-10-20
+file: src/ui/window.c
+test: ui-0012
+--- find
+      return "Fades the drawing color to transparent along a drag. A click or Enter applies it, Esc cancels it.";
+--- replace
+      return "Fades the drawing color to transparent along a drag. Enter applies it, Esc cancels it.";
+
+=== REQ-0012-04 the colors are fixed while a gradient is pending (a waiting gradient keeps the color of its press)
+file: src/ui/canvas.c
+test: ui-0012
+--- find
+  self->foreground = foreground;
+  self->background = background;
+  if (self->pending && self->pend_gradient)
+--- replace
+  if (self->pending && self->pend_gradient)
+    return;
+  self->foreground = foreground;
+  self->background = background;
+  if (self->pending && self->pend_gradient)
+
+=== REQ-0012-04 every gradient follows the background color, also one the primary button started
+file: src/ui/canvas.c
+test: ui-0012
+--- find
+                           self->grad_button == GDK_BUTTON_PRIMARY ? self->foreground : self->background };
+--- replace
+                           self->background };
+
+=== REQ-0012-04 a color change does not redraw a pending gradient
+file: src/ui/canvas.c
+test: ui-0012
+--- find
+    gtk_widget_queue_draw (GTK_WIDGET (self));         /* a gradient follows the colors at once (REQ-0012-04) */
+--- replace
+    (void) 0;
+
+=== REQ-0012-09 the gradient's drawing color is made opaque, so a foreground of alpha 0 changes the picture
+file: src/ui/canvas.c
+test: ui-0012
+--- find
+                           self->grad_button == GDK_BUTTON_PRIMARY ? self->foreground : self->background };
+--- replace
+                           (self->grad_button == GDK_BUTTON_PRIMARY ? self->foreground : self->background) | 0xFF000000u };
+
+=== REQ-0012-08 a click or a press leaves a waiting gradient waiting instead of applying it
+file: src/ui/canvas.c
+test: ui-0012
+--- find
+      if (put_down_pending (self) == EASEL_FIGURE_NO_MEMORY)
+        return;
+--- replace
+      if (FALSE && put_down_pending (self) == EASEL_FIGURE_NO_MEMORY)
+        return;
+
+=== REQ-0012-08 the other button's press drops a waiting gradient instead of applying it
+file: src/ui/canvas.c
+test: ui-0012
+--- find
+  if (self->pending && self->pend_gradient && !self->pend_held)
+--- replace
+  if (self->pending && self->pend_gradient && !self->pend_held && button == self->pend_button)
+
+=== REQ-0012-08 a press whose apply fails still starts a drag
+file: src/ui/canvas.c
+test: ui-0012
+--- find
+      if (put_down_pending (self) == EASEL_FIGURE_NO_MEMORY)
+        return;
+--- replace
+      (void) put_down_pending (self);
+
+=== REQ-0012-08 Esc, the other button or Undo during the new drag also undoes the gradient the press applied
+file: src/ui/canvas.c
+test: ui-0012
+--- find
+  /* Nothing is drawn and no step is added; a held button is waited for until its release (REQ-0011-11). */
+  self->pend_held = FALSE;
+--- replace
+  if (was_held && self->pend_gradient && easel_history_undo (self->history, self->img))
+    easel_canvas_update (self);
+  self->pend_held = FALSE;
+
+=== REQ-0012-13 a marker is drawn into the applied pixels
+file: src/ui/canvas.c
+test: ui-0012
+--- find
+      EaselGradientResult gr = easel_gradient_apply_capped (self->img, self->history, &g, NULL, self->shape_max_bytes);
+--- replace
+      EaselGradientResult gr = easel_gradient_apply_capped (self->img, self->history, &g, NULL, self->shape_max_bytes);
+      easel_image_set (self->img, g.x0, g.y0, 0xFFFFFFFFu);
+
+=== REQ-0012-13 both markers are drawn at the start
+file: src/ui/canvas.c
+test: ui-0012
+--- find
+  cx = (self->pend_pts[2 * end] + 0.5) * l;
+  cy = (self->pend_pts[2 * end + 1] + 0.5) * l;
+--- replace
+  cx = (self->pend_pts[0] + 0.5) * l;
+  cy = (self->pend_pts[1] + 0.5) * l;
+
+=== REQ-0012-13 a marker is drawn one device pixel off its end
+file: src/ui/canvas.c
+test: ui-0012
+--- find
+  *rect = GRAPHENE_RECT_INIT ((float) (round ((cx - MARKER_SIZE / 2.0) * scale) / scale),
+--- replace
+  *rect = GRAPHENE_RECT_INIT ((float) ((round ((cx - MARKER_SIZE / 2.0) * scale) + 1) / scale),
+
+=== REQ-0012-13 the cursor over a marker is not the move cursor
+file: src/ui/canvas.c
+test: ui-0012
+--- find
+  else if (self->hover_marker)
+--- replace
+  else if (FALSE)
+
+=== REQ-0012-13 the markers are shown during a drag that makes a new gradient
+file: src/ui/canvas.c
+test: ui-0012
+--- find
+  if (!self->pending || !self->pend_gradient || (self->pend_held && self->moving < 0) || end < 0 || end > 1)
+--- replace
+  if (!self->pending || !self->pend_gradient || end < 0 || end > 1)
+
+=== REQ-0012-13 Shift does not constrain an end moved by its marker
+file: src/ui/canvas.c
+test: ui-0012
+--- find
+      if (self->shift)
+        easel_figure_constrain (EASEL_FIGURE_LINE, self->pend_pts[2 * o], self->pend_pts[2 * o + 1], &x, &y);
+--- replace
+      if (self->shift && self->moving < 0)
+        easel_figure_constrain (EASEL_FIGURE_LINE, self->pend_pts[2 * o], self->pend_pts[2 * o + 1], &x, &y);
+
+=== REQ-0012-13 an end moved onto the other end is not put back
+file: src/ui/canvas.c
+test: ui-0012
+--- find
+      if (self->pend_pts[0] == self->pend_pts[2] && self->pend_pts[1] == self->pend_pts[3])
+        memcpy (self->pend_pts, self->move_old, sizeof self->move_old);
+      self->moving = -1;
+--- replace
+      self->moving = -1;
+
+=== REQ-0012-13 Esc, Undo or the other button during a move drops the gradient instead of cancelling the move
+file: src/ui/canvas.c
+test: ui-0012
+--- find
+  if (was_held && self->pend_gradient && self->moving >= 0)
+--- replace
+  if (FALSE && was_held && self->pend_gradient && self->moving >= 0)
+
+=== REQ-0012-13 a press on a marker applies the gradient instead of moving the end
+file: src/ui/canvas.c
+test: ui-0012
+--- find
+  if (self->pending && self->pend_gradient && !self->pend_held && marker_at (self, x, y) >= 0)
+--- replace
+  if (FALSE)
+
+=== REQ-0012-13 within both hit areas the end's marker is taken, not the nearest
+file: src/ui/canvas.c
+test: ui-0012
+--- find
+      if (fabs (dx) <= MARKER_HIT / 2.0 && fabs (dy) <= MARKER_HIT / 2.0 && (best < 0 || d < best_d))
+--- replace
+      if (fabs (dx) <= MARKER_HIT / 2.0 && fabs (dy) <= MARKER_HIT / 2.0 && best < 0)
+
+=== REQ-0012-13 the start's marker wins a tie
+file: src/ui/canvas.c
+test: ui-0012
+--- find
+      if (fabs (dx) <= MARKER_HIT / 2.0 && fabs (dy) <= MARKER_HIT / 2.0 && (best < 0 || d < best_d))
+--- replace
+      if (fabs (dx) <= MARKER_HIT / 2.0 && fabs (dy) <= MARKER_HIT / 2.0 && (best < 0 || d <= best_d))
+
+=== REQ-0012-13 a marker wins over a resize handle
+file: src/ui/canvas.c
+test: ui-0012
+--- find
+  if (self->pending && !self->pend_held && handles_shown (self) && easel_canvas_handle_at (self, x, y) != EASEL_HANDLE_NONE)
+--- replace
+  if (self->pending && !self->pend_held && handles_shown (self) && easel_canvas_handle_at (self, x, y) != EASEL_HANDLE_NONE
+      && !(self->pend_gradient && marker_at (self, x, y) >= 0))
+
+=== REQ-0012-13 no guide line between the markers
+file: src/ui/canvas.c
+test: ui-0012
+--- find
+  gtk_snapshot_append_stroke (snapshot, path, stroke, &white);
+  gsk_stroke_set_dash (stroke, dash, G_N_ELEMENTS (dash));
+  gtk_snapshot_append_stroke (snapshot, path, stroke, &black);
+--- replace
+  (void) dash;
+
+=== REQ-0012-13 the guide line does not follow an end being moved
+file: src/ui/canvas.c
+test: ui-0012
+--- find
+  gsk_path_builder_line_to (builder, m[1].origin.x + MARKER_SIZE / 2, m[1].origin.y + MARKER_SIZE / 2);
+--- replace
+  gsk_path_builder_line_to (builder, self->moving >= 0 ? (self->move_old[2] + 0.5) * logical_per_pixel (self) : m[1].origin.x + MARKER_SIZE / 2,
+                            self->moving >= 0 ? (self->move_old[3] + 0.5) * logical_per_pixel (self) : m[1].origin.y + MARKER_SIZE / 2);
+
+=== REQ-0012-13 the guide line is drawn into the applied pixels
+file: src/ui/canvas.c
+test: ui-0012
+--- find
+      EaselGradientResult gr = easel_gradient_apply_capped (self->img, self->history, &g, NULL, self->shape_max_bytes);
+--- replace
+      EaselGradientResult gr = easel_gradient_apply_capped (self->img, self->history, &g, NULL, self->shape_max_bytes);
+      easel_image_set (self->img, (g.x0 + g.x1) / 2, (g.y0 + g.y1) / 2, 0xFFFFFFFFu);
+
+=== REQ-0012-13 the guide line is of one color only (no white under the dashes)
+file: src/ui/canvas.c
+test: ui-0012
+--- find
+  gtk_snapshot_append_stroke (snapshot, path, stroke, &white);
+  gsk_stroke_set_dash
+--- replace
+  gsk_stroke_set_dash
+
+=== REQ-0012-09 the markers and the guide line of a waiting gradient are hidden while it cannot be shown
+file: src/ui/canvas.c
+test: ui-0012
+--- find
+  if (!self->pending || !self->pend_gradient || (self->pend_held && self->moving < 0) || end < 0 || end > 1)
+--- replace
+  if (!self->pending || !self->pend_gradient || (self->pend_held && self->moving < 0) || self->pend_unshown || end < 0 || end > 1)
 
 === REQ-0010-13 the fill-only style paints the inside in the other color
 file: src/core/figure.c
@@ -2405,7 +2985,7 @@ test: core-figure-apply
 --- find
   if (!ok)
     {
-      log_restore (&l, img);
+      easel_change_log_restore (&l, img);
 --- replace
   if (!ok)
     {
@@ -2426,13 +3006,13 @@ test: core-figure-apply
 --- find
   if (l.n == 0)
     {
-      free (l.log);
+      easel_change_log_free (&l);
       return EASEL_FIGURE_NOTHING;
     }
 --- replace
   if (l.n == 0 && history == NULL)
     {
-      free (l.log);
+      easel_change_log_free (&l);
       return EASEL_FIGURE_NOTHING;
     }
 

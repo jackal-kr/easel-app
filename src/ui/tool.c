@@ -17,6 +17,7 @@ static const char *const names[] = {
   [EASEL_TOOL_ELLIPSE] = "ellipse",
   [EASEL_TOOL_CURVE] = "curve",
   [EASEL_TOOL_POLYGON] = "polygon",
+  [EASEL_TOOL_GRADIENT] = "gradient",
 };
 
 gboolean
@@ -29,7 +30,13 @@ easel_tool_draws_shape (EaselTool tool)
 gboolean
 easel_tool_draws_pending (EaselTool tool)
 {
-  return tool == EASEL_TOOL_CURVE || tool == EASEL_TOOL_POLYGON;
+  return tool == EASEL_TOOL_CURVE || tool == EASEL_TOOL_POLYGON || tool == EASEL_TOOL_GRADIENT;
+}
+
+gboolean
+easel_tool_uses_line_width (EaselTool tool)
+{
+  return easel_tool_draws_shape (tool) || tool == EASEL_TOOL_CURVE || tool == EASEL_TOOL_POLYGON;
 }
 
 const char *

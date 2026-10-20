@@ -172,13 +172,28 @@
                     </child>
                     <child>
                       <object class="GtkToggleButton">
+                        <property name="icon-name">easel-tool-gradient-symbolic</property>
+                        <property name="tooltip-text" translatable="yes">Gradient</property>
+                        <property name="action-name">win.tool</property>
+                        <property name="action-target">'gradient'</property>
+                        <layout>
+                          <property name="column">1</property>
+                          <property name="row">2</property>
+                        </layout>
+                        <style>
+                          <class name="flat"/>
+                        </style>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkToggleButton">
                         <property name="icon-name">easel-tool-pencil-symbolic</property>
                         <property name="tooltip-text" translatable="yes">Pencil</property>
                         <property name="action-name">win.tool</property>
                         <property name="action-target">'pencil'</property>
                         <layout>
-                          <property name="column">1</property>
-                          <property name="row">2</property>
+                          <property name="column">0</property>
+                          <property name="row">3</property>
                         </layout>
                         <style>
                           <class name="flat"/>
@@ -192,7 +207,7 @@
                         <property name="action-name">win.tool</property>
                         <property name="action-target">'brush'</property>
                         <layout>
-                          <property name="column">0</property>
+                          <property name="column">1</property>
                           <property name="row">3</property>
                         </layout>
                         <style>
@@ -207,8 +222,8 @@
                         <property name="action-name">win.tool</property>
                         <property name="action-target">'airbrush'</property>
                         <layout>
-                          <property name="column">1</property>
-                          <property name="row">3</property>
+                          <property name="column">0</property>
+                          <property name="row">4</property>
                         </layout>
                         <style>
                           <class name="flat"/>
@@ -222,7 +237,7 @@
                         <property name="action-name">win.tool</property>
                         <property name="action-target">'line'</property>
                         <layout>
-                          <property name="column">0</property>
+                          <property name="column">1</property>
                           <property name="row">4</property>
                         </layout>
                         <style>
@@ -237,8 +252,8 @@
                         <property name="action-name">win.tool</property>
                         <property name="action-target">'curve'</property>
                         <layout>
-                          <property name="column">1</property>
-                          <property name="row">4</property>
+                          <property name="column">0</property>
+                          <property name="row">5</property>
                         </layout>
                         <style>
                           <class name="flat"/>
@@ -252,7 +267,7 @@
                         <property name="action-name">win.tool</property>
                         <property name="action-target">'rectangle'</property>
                         <layout>
-                          <property name="column">0</property>
+                          <property name="column">1</property>
                           <property name="row">5</property>
                         </layout>
                         <style>
@@ -267,8 +282,8 @@
                         <property name="action-name">win.tool</property>
                         <property name="action-target">'rounded-rectangle'</property>
                         <layout>
-                          <property name="column">1</property>
-                          <property name="row">5</property>
+                          <property name="column">0</property>
+                          <property name="row">6</property>
                         </layout>
                         <style>
                           <class name="flat"/>
@@ -282,7 +297,7 @@
                         <property name="action-name">win.tool</property>
                         <property name="action-target">'ellipse'</property>
                         <layout>
-                          <property name="column">0</property>
+                          <property name="column">1</property>
                           <property name="row">6</property>
                         </layout>
                         <style>
@@ -297,8 +312,8 @@
                         <property name="action-name">win.tool</property>
                         <property name="action-target">'polygon'</property>
                         <layout>
-                          <property name="column">1</property>
-                          <property name="row">6</property>
+                          <property name="column">0</property>
+                          <property name="row">7</property>
                         </layout>
                         <style>
                           <class name="flat"/>

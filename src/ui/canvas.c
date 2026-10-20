@@ -7,6 +7,7 @@
 #include "cursor-shape.h"
 #include "fill.h"
 #include "figure.h"
+#include "gradient.h"
 #include "grid.h"
 #include "magnifier.h"
 #include "stroke.h"
@@ -58,6 +59,7 @@ struct _EaselCanvas
   int box_px, box_py;     /* the pixel the preview box was last drawn for, to redraw only when it changes */
   size_t fill_max_bytes;  /* test hook: what a Fill may use for its work buffers */
   size_t shape_max_bytes; /* test hook: what a shape's undo log may use */
+  size_t preview_max_bytes; /* test hook: what a frame's gradient preview may use */
   gboolean shaping;       /* a shape drag is held: a pending gesture of Line, Rectangle, Rounded Rectangle or Ellipse (0010) */
   guint shape_button;
   int shape_x0, shape_y0, shape_x1, shape_y1;   /* the start pixel and the end pixel (the pointer's, or Shift's constraint of it) */
@@ -75,6 +77,12 @@ struct _EaselCanvas
   int pend_px, pend_py;                         /* the pixel under the pointer now */
   uint32_t pend_draw, pend_other;               /* the colors of the first press */
   gboolean pend_polygon;                        /* the pending shape is a polygon, not a curve */
+  gboolean pend_gradient;                       /* the pending shape is a gradient (0012): its start in pend_pts[0, 1], its end in [2, 3] */
+  gboolean pend_unshown;                        /* the last frame could not get the memory to show the gradient (REQ-0012-09) */
+  guint grad_button;                            /* the button that started the gradient: its color is the current foreground or background (REQ-0012-04) */
+  gboolean guides_hidden;                       /* test hook: the markers and the guide line not drawn */
+  int moving;                                   /* an end being moved by its marker: 0 the start, 1 the end, -1 none (REQ-0012-13) */
+  int move_old[4];                              /* the line before that move, put back if it is cancelled */
   guint click_button;                           /* the last press: its button, time (ms), place and the count of clicks in a row (REQ-0011-07) */
   guint32 click_time;
   double click_x, click_y;
@@ -93,6 +101,7 @@ struct _EaselCanvas
   GtkWidget *area;        /* ancestor that feeds input; not owned */
 
   EaselHandle hover;      /* the handle under the pointer, for the cursor */
+  gboolean hover_marker;  /* a marker of a waiting gradient is under the pointer (REQ-0012-13): the move cursor */
   EaselHandle resizing;   /* the handle being dragged, or NONE */
   guint resize_button;
   double resize_x, resize_y;  /* canvas point where the drag began */
@@ -118,6 +127,7 @@ enum
   SIGNAL_STROKING_CHANGED,
   SIGNAL_FILL_FAILED,
   SIGNAL_SHAPE_FAILED,
+  SIGNAL_GRADIENT_FAILED,
   SIGNAL_PENDING_CHANGED,
   SIGNAL_COLOR_PICKED,
   SIGNAL_PICK_ENDED,
@@ -145,6 +155,8 @@ static gboolean on_spray_tick (gpointer data);
    reach 5 + 2 pixels past the picture, inside the margin of EASEL_VIEW_MARGIN around it (REQ-0009-01). */
 #define HANDLE_SIZE 5.0
 #define HANDLE_HIT 9.0
+#define MARKER_SIZE 5.0          /* a gradient's marker: the size of a handle (REQ-0012-13) ... */
+#define MARKER_HIT 9.0           /* ... and its hit area */
 
 static gboolean
 handles_shown (EaselCanvas *self)
@@ -302,6 +314,109 @@ easel_canvas_handle_at (EaselCanvas *self, double x, double y)
         return order[i];
     }
   return EASEL_HANDLE_NONE;
+}
+
+/* The markers of a waiting gradient (REQ-0012-13): 5 x 5 logical pixels, centered on the end's pixel, placed on whole device
+   pixels so that their edges are sharp. FALSE when no marker is shown. */
+gboolean
+easel_canvas_get_marker_rect (EaselCanvas *self, int end, graphene_rect_t *rect)
+{
+  double l, scale, cx, cy;
+
+  if (!self->pending || !self->pend_gradient || (self->pend_held && self->moving < 0) || end < 0 || end > 1)
+    return FALSE;
+  l = logical_per_pixel (self);
+  scale = easel_canvas_get_scale (self);
+  cx = (self->pend_pts[2 * end] + 0.5) * l;
+  cy = (self->pend_pts[2 * end + 1] + 0.5) * l;
+  *rect = GRAPHENE_RECT_INIT ((float) (round ((cx - MARKER_SIZE / 2.0) * scale) / scale),
+                              (float) (round ((cy - MARKER_SIZE / 2.0) * scale) / scale), MARKER_SIZE, MARKER_SIZE);
+  return TRUE;
+}
+
+void
+easel_canvas_set_guides_hidden (EaselCanvas *self, gboolean hidden)
+{
+  self->guides_hidden = hidden;
+}
+
+gboolean
+easel_canvas_get_guides_hidden (EaselCanvas *self)
+{
+  return self->guides_hidden;
+}
+
+/* Is (x), a canvas point, within the hit area of a marker? */
+static gboolean
+marker_hit (EaselCanvas *self, double x, double y)
+{
+  for (int end = 0; end <= 1; end++)
+    {
+      graphene_rect_t r;
+
+      if (easel_canvas_get_marker_rect (self, end, &r)
+          && fabs (x - (r.origin.x + MARKER_SIZE / 2.0)) <= MARKER_HIT / 2.0
+          && fabs (y - (r.origin.y + MARKER_SIZE / 2.0)) <= MARKER_HIT / 2.0)
+        return TRUE;
+    }
+  return FALSE;
+}
+
+/* The marker under (x, y), a canvas point: 0 the start's, 1 the end's, -1 none. Within both hit areas, the one whose center is
+   nearest, the end's on a tie (REQ-0012-13). */
+static int
+marker_at (EaselCanvas *self, double x, double y)
+{
+  int best = -1;
+  double best_d = 0;
+
+  for (int end = 1; end >= 0; end--)
+    {
+      graphene_rect_t r;
+      double dx, dy, d;
+
+      if (!easel_canvas_get_marker_rect (self, end, &r))
+        return -1;
+      dx = x - (r.origin.x + MARKER_SIZE / 2.0);
+      dy = y - (r.origin.y + MARKER_SIZE / 2.0);
+      d = dx * dx + dy * dy;
+      if (fabs (dx) <= MARKER_HIT / 2.0 && fabs (dy) <= MARKER_HIT / 2.0 && (best < 0 || d < best_d))
+        {
+          best = end;
+          best_d = d;
+        }
+    }
+  return best;
+}
+
+/* The guides of a waiting gradient (REQ-0012-13): the line between the markers' centers, 1 logical pixel wide, white under
+   black dashes of 4 logical pixels, then the two markers over it, white with a black border one logical pixel wide. */
+static void
+append_gradient_markers (EaselCanvas *self, GtkSnapshot *snapshot)
+{
+  static const GdkRGBA black = { 0, 0, 0, 1 }, white = { 1, 1, 1, 1 };
+  static const float dash[] = { 4, 4 };
+  graphene_rect_t m[2];
+  g_autoptr (GskPathBuilder) builder = NULL;
+  g_autoptr (GskPath) path = NULL;
+  g_autoptr (GskStroke) stroke = NULL;
+
+  if (self->guides_hidden || !easel_canvas_get_marker_rect (self, 0, &m[0]) || !easel_canvas_get_marker_rect (self, 1, &m[1]))
+    return;
+  builder = gsk_path_builder_new ();
+  gsk_path_builder_move_to (builder, m[0].origin.x + MARKER_SIZE / 2, m[0].origin.y + MARKER_SIZE / 2);
+  gsk_path_builder_line_to (builder, m[1].origin.x + MARKER_SIZE / 2, m[1].origin.y + MARKER_SIZE / 2);
+  path = gsk_path_builder_to_path (builder);
+  stroke = gsk_stroke_new (1.0f);
+  gtk_snapshot_append_stroke (snapshot, path, stroke, &white);
+  gsk_stroke_set_dash (stroke, dash, G_N_ELEMENTS (dash));
+  gtk_snapshot_append_stroke (snapshot, path, stroke, &black);
+  for (int end = 0; end <= 1; end++)
+    {
+      gtk_snapshot_append_color (snapshot, &black, &m[end]);
+      gtk_snapshot_append_color (snapshot, &white, &GRAPHENE_RECT_INIT (m[end].origin.x + 1, m[end].origin.y + 1,
+                                                                        m[end].size.width - 2, m[end].size.height - 2));
+    }
 }
 
 gboolean
@@ -609,6 +724,8 @@ append_shape_preview (EaselCanvas *self, GtkSnapshot *snapshot)
 
   uint32_t draw, other;
 
+  if (self->pending && self->pend_gradient)
+    return;                                     /* the gradient replaces the tiles instead (gradient_preview) */
   if (self->pending)
     {
       f = pending_figure (self);
@@ -669,16 +786,82 @@ append_shape_preview (EaselCanvas *self, GtkSnapshot *snapshot)
   free (runs);
 }
 
+/* The pending gradient as it is shown and would be applied now, in the color of its button now (REQ-0012-04). */
+static EaselGradient
+shown_gradient (EaselCanvas *self)
+{
+  const int *p = self->pend_pts;
+
+  return (EaselGradient) { p[0], p[1], p[2], p[3],
+                           self->grad_button == GDK_BUTTON_PRIMARY ? self->foreground : self->background };
+}
+
+/* A pending gradient as it will be applied (REQ-0012-07): each tile the view shows, laid over by the core function the apply
+   uses, as a texture of the tile's size and format, drawn in its place with the same rectangle and filter; so the same picture
+   pixel lands on each device pixel before and after Enter, at every zoom. Holds, until the next frame, 4 bytes per pixel of
+   the tiles in view. NULL if not a gradient, or if the memory cannot be had: then pend_unshown is set and the picture is drawn
+   as it is. */
+static GdkTexture **
+gradient_preview (EaselCanvas *self, double l)
+{
+  EaselGradient g = shown_gradient (self);
+  int n = self->tile_cols * self->tile_rows;
+  GdkTexture **textures;
+  graphene_rect_t seen;
+  size_t total = 0;
+
+  if (!self->pending || !self->pend_gradient)
+    return NULL;
+  if (!gtk_widget_compute_bounds (gtk_widget_get_parent (GTK_WIDGET (self)), GTK_WIDGET (self), &seen))
+    return NULL;
+  textures = g_try_new0 (GdkTexture *, n);
+  for (int i = 0; textures != NULL && i < n; i++)
+    {
+      int tx = i % self->tile_cols, ty = i / self->tile_cols;
+      int x0 = tx * EASEL_CANVAS_TILE, y0 = ty * EASEL_CANVAS_TILE;
+      int w = MIN (EASEL_CANVAS_TILE, self->img->width - x0), h = MIN (EASEL_CANVAS_TILE, self->img->height - y0);
+      graphene_rect_t r = GRAPHENE_RECT_INIT ((float) (x0 * l), (float) (y0 * l), (float) (w * l), (float) (h * l));
+      size_t bytes = (size_t) w * (size_t) h * sizeof (uint32_t);
+      uint32_t *px = NULL;
+      g_autoptr (GBytes) data = NULL;
+
+      if (!graphene_rect_intersection (&r, &seen, NULL))
+        continue;
+      total += bytes;
+      if (total <= self->preview_max_bytes)
+        px = g_try_malloc (bytes);
+      if (px == NULL)
+        {
+          for (int k = 0; k < n; k++)
+            g_clear_object (&textures[k]);
+          g_clear_pointer (&textures, g_free);
+          break;
+        }
+      easel_gradient_lay (&g, self->img, x0, y0, w, h, px, (size_t) w);
+      data = g_bytes_new_take (px, bytes);
+      gdk_memory_texture_builder_set_bytes (self->builder, data);
+      gdk_memory_texture_builder_set_width (self->builder, w);
+      gdk_memory_texture_builder_set_height (self->builder, h);
+      gdk_memory_texture_builder_set_stride (self->builder, (gsize) w * sizeof (uint32_t));
+      gdk_memory_texture_builder_set_format (self->builder, PICTURE_FORMAT);
+      textures[i] = gdk_memory_texture_builder_build (self->builder);
+    }
+  self->pend_unshown = textures == NULL;
+  return textures;
+}
+
 static void
 easel_canvas_snapshot (GtkWidget *widget, GtkSnapshot *snapshot)
 {
   EaselCanvas *self = EASEL_CANVAS (widget);
   double l;
   graphene_rect_t bounds;
+  GdkTexture **preview;
 
   if (self->tiles == NULL)
     return;
   l = self->zoom / (100.0 * easel_canvas_get_scale (self));
+  preview = gradient_preview (self, l);
   bounds = GRAPHENE_RECT_INIT (0, 0, (float) (self->img->width * l), (float) (self->img->height * l));
 
   /* Transparent pixels show the checkerboard (REQ-0001-11); nearest filtering keeps pixels hard-edged
@@ -688,15 +871,26 @@ easel_canvas_snapshot (GtkWidget *widget, GtkSnapshot *snapshot)
     for (int tx = 0; tx < self->tile_cols; tx++)
       {
         GdkTexture *tile = self->tiles[ty * self->tile_cols + tx];
-        graphene_rect_t r = GRAPHENE_RECT_INIT ((float) (tx * EASEL_CANVAS_TILE * l), (float) (ty * EASEL_CANVAS_TILE * l),
+        graphene_rect_t r;
+
+        if (preview != NULL && preview[ty * self->tile_cols + tx] != NULL)
+          tile = preview[ty * self->tile_cols + tx];
+        r = GRAPHENE_RECT_INIT ((float) (tx * EASEL_CANVAS_TILE * l), (float) (ty * EASEL_CANVAS_TILE * l),
                                                 (float) (gdk_texture_get_width (tile) * l),
                                                 (float) (gdk_texture_get_height (tile) * l));
 
         gtk_snapshot_append_scaled_texture (snapshot, tile, GSK_SCALING_FILTER_NEAREST, &r);
       }
+  if (preview != NULL)
+    {
+      for (int i = 0; i < self->tile_cols * self->tile_rows; i++)
+        g_clear_object (&preview[i]);                /* the render node keeps its own references */
+      g_free (preview);
+    }
   append_shape_preview (self, snapshot);
   if (easel_canvas_grid_is_drawn (self))
     append_grid (self, snapshot);
+  append_gradient_markers (self, snapshot);
   append_handles (self, snapshot);
   append_magnifier_box (self, snapshot);
 }
@@ -790,6 +984,8 @@ update_cursor (EaselCanvas *self)
   else if (handle != EASEL_HANDLE_NONE)
     cursor = gdk_cursor_new_from_name (handle == EASEL_HANDLE_RIGHT ? "ew-resize"
                                        : handle == EASEL_HANDLE_BOTTOM ? "ns-resize" : "nwse-resize", NULL);
+  else if (self->hover_marker)
+    cursor = gdk_cursor_new_from_name ("move", NULL);                 /* over a gradient's marker (REQ-0012-13) */
   else if (self->tool == EASEL_TOOL_PENCIL)
     cursor = g_object_ref (pencil_cursor ());
   else if (self->tool == EASEL_TOOL_BRUSH || self->tool == EASEL_TOOL_ERASER)
@@ -885,6 +1081,12 @@ easel_canvas_set_shape_memory_limit (EaselCanvas *self, size_t max_bytes)
 }
 
 void
+easel_canvas_set_preview_memory_limit (EaselCanvas *self, size_t max_bytes)
+{
+  self->preview_max_bytes = max_bytes;
+}
+
+void
 easel_canvas_set_fill_memory_limit (EaselCanvas *self, size_t max_bytes)
 {
   self->fill_max_bytes = max_bytes;
@@ -901,6 +1103,8 @@ easel_canvas_set_colors (EaselCanvas *self, uint32_t foreground, uint32_t backgr
 {
   self->foreground = foreground;
   self->background = background;
+  if (self->pending && self->pend_gradient)
+    gtk_widget_queue_draw (GTK_WIDGET (self));         /* a gradient follows the colors at once (REQ-0012-04) */
 }
 
 gboolean
@@ -947,7 +1151,18 @@ pend_follow (EaselCanvas *self)
 {
   int x = self->pend_px, y = self->pend_py;
 
-  if (self->pend_polygon)
+  if (self->pend_gradient)
+    {
+      /* The end is the pointer's pixel, Shift constraining it as for Line from the start (REQ-0012-03); an end moved by its
+         marker likewise, from the other end (REQ-0012-13). */
+      int k = self->moving >= 0 ? self->moving : 1, o = 1 - k;
+
+      if (self->shift)
+        easel_figure_constrain (EASEL_FIGURE_LINE, self->pend_pts[2 * o], self->pend_pts[2 * o + 1], &x, &y);
+      self->pend_pts[2 * k] = x;
+      self->pend_pts[2 * k + 1] = y;
+    }
+  else if (self->pend_polygon)
     {
       /* The last corner is the end of the side being dragged: the pointer's pixel, Shift constraining it as for Line from the
          corner before (REQ-0011-06). */
@@ -985,6 +1200,11 @@ set_pending (EaselCanvas *self, gboolean pending)
   if (self->pending == pending)
     return;
   self->pending = pending;
+  if (self->hover_marker)
+    {
+      self->hover_marker = FALSE;                     /* the markers go with the gradient */
+      update_cursor (self);
+    }
   g_signal_emit (self, signals[SIGNAL_PENDING_CHANGED], 0);
 }
 
@@ -1023,7 +1243,7 @@ poly_add (EaselCanvas *self, int x, int y)
 
 /* The pending curve is drawn into the picture as one undo step, or not at all if it changes no pixel (REQ-0011-14); a
    failed allocation shows the dialog and changes nothing (REQ-0011-15). */
-static void
+static EaselFigureResult
 put_down_pending (EaselCanvas *self)
 {
   EaselFigure f = pending_figure (self);
@@ -1032,9 +1252,22 @@ put_down_pending (EaselCanvas *self)
 
   f.closed = self->pend_polygon;                 /* a polygon is closed when put down (REQ-0011-07) */
 
+  gboolean gradient = self->pend_gradient;
+
   self->pend_held = FALSE;
-  r = easel_figure_apply_capped (self->img, self->history, &f, self->pend_draw, self->pend_other, NULL,
-                                 self->shape_max_bytes);
+  if (gradient)
+    {
+      /* The gradient is laid over the picture as one undo step, or not at all if it changes no pixel; without the memory,
+         its own dialog (REQ-0012-09). */
+      EaselGradient g = shown_gradient (self);
+      EaselGradientResult gr = easel_gradient_apply_capped (self->img, self->history, &g, NULL, self->shape_max_bytes);
+
+      r = gr == EASEL_GRADIENT_DONE ? EASEL_FIGURE_DONE
+          : gr == EASEL_GRADIENT_NOTHING ? EASEL_FIGURE_NOTHING : EASEL_FIGURE_NO_MEMORY;
+    }
+  else
+    r = easel_figure_apply_capped (self->img, self->history, &f, self->pend_draw, self->pend_other, NULL,
+                                   self->shape_max_bytes);
   if (was_held)
     g_signal_emit (self, signals[SIGNAL_STROKING_CHANGED], 0, FALSE);
   /* No "stroke-finished" here: "pending-changed", emitted just after the apply, makes the window sync the history, the title
@@ -1043,8 +1276,9 @@ put_down_pending (EaselCanvas *self)
   if (r == EASEL_FIGURE_DONE)
     easel_canvas_update (self);
   else if (r == EASEL_FIGURE_NO_MEMORY)
-    g_signal_emit (self, signals[SIGNAL_SHAPE_FAILED], 0);
+    g_signal_emit (self, signals[gradient ? SIGNAL_GRADIENT_FAILED : SIGNAL_SHAPE_FAILED], 0);
   gtk_widget_queue_draw (GTK_WIDGET (self));
+  return r;
 }
 
 /* A stage's button goes up, or the stage is ended as last shown (a lost release, a lost focus, Save, Quit): the curve waits
@@ -1054,6 +1288,29 @@ end_pending_stage (EaselCanvas *self)
 {
   self->pend_held = FALSE;
   g_signal_emit (self, signals[SIGNAL_STROKING_CHANGED], 0, FALSE);
+  if (self->pend_gradient && self->moving >= 0)
+    {
+      /* A moved end ends as last shown; on the other end's pixel the line is put back (REQ-0012-13). */
+      if (self->pend_pts[0] == self->pend_pts[2] && self->pend_pts[1] == self->pend_pts[3])
+        memcpy (self->pend_pts, self->move_old, sizeof self->move_old);
+      self->moving = -1;
+      gtk_widget_queue_draw (GTK_WIDGET (self));
+      return;
+    }
+  if (self->pend_gradient)
+    {
+      /* A drag that ends on its start pixel makes no gradient (REQ-0012-06); any other waits (REQ-0012-07), unless it could
+         not be shown: then it is dropped with the dialog (REQ-0012-09). */
+      if (self->pend_unshown)
+        {
+          set_pending (self, FALSE);
+          g_signal_emit (self, signals[SIGNAL_GRADIENT_FAILED], 0);
+        }
+      else if (self->pend_pts[2] == self->pend_pts[0] && self->pend_pts[3] == self->pend_pts[1])
+        set_pending (self, FALSE);
+      gtk_widget_queue_draw (GTK_WIDGET (self));
+      return;
+    }
   if (self->pend_polygon && self->poly_n >= 3)
     {
       /* From the second side on, a polygon closes when the side ends near the first corner, or when its press was the second
@@ -1100,6 +1357,18 @@ easel_canvas_drop (EaselCanvas *self)
 
   if (!self->pending)
     return;
+  if (was_held && self->pend_gradient && self->moving >= 0)
+    {
+      /* Esc, Undo and the other button cancel the move of an end: the line is put back and the gradient keeps waiting
+         (REQ-0012-13). */
+      memcpy (self->pend_pts, self->move_old, sizeof self->move_old);
+      self->moving = -1;
+      self->pend_held = FALSE;
+      self->cancelled_button = self->pend_button;
+      g_signal_emit (self, signals[SIGNAL_STROKING_CHANGED], 0, FALSE);
+      gtk_widget_queue_draw (GTK_WIDGET (self));
+      return;
+    }
   /* Nothing is drawn and no step is added; a held button is waited for until its release (REQ-0011-11). */
   self->pend_held = FALSE;
   if (was_held)
@@ -1378,12 +1647,33 @@ easel_canvas_press_timed (EaselCanvas *self, guint button, double x, double y, g
         return;
       put_down_pending (self);
     }
+  if (self->pending && self->pend_gradient && !self->pend_held && marker_at (self, x, y) >= 0)
+    {
+      /* A press on a marker moves that end; it applies nothing (REQ-0012-13; a handle was dealt with above, it wins). */
+      self->moving = marker_at (self, x, y);
+      memcpy (self->move_old, self->pend_pts, sizeof self->move_old);
+      self->pend_held = TRUE;
+      self->pend_button = button;
+      to_pixel (self, x, y, &self->pend_px, &self->pend_py);
+      g_signal_emit (self, signals[SIGNAL_STROKING_CHANGED], 0, TRUE);
+      gtk_widget_queue_draw (GTK_WIDGET (self));
+      return;
+    }
+  if (self->pending && self->pend_gradient && !self->pend_held)
+    {
+      /* A press of either button on a waiting gradient applies it as shown, then goes on as a first press of Gradient, a new
+         drag with this button; if the apply fails (the dialog) the press starts nothing (REQ-0012-08). */
+      if (put_down_pending (self) == EASEL_FIGURE_NO_MEMORY)
+        return;
+    }
   if (self->pending)
     {
       /* A curve waits or has a stage held: the other button drops it, the same button goes on to the next stage
-         (REQ-0011-04, -11). */
+         (REQ-0011-04, -11). A gradient's drag held: the other button drops it (REQ-0012-08). */
       if (button != self->pend_button)
         easel_canvas_drop (self);
+      else if (self->pend_gradient)
+        return;
       else if (!self->pend_held)
         {
           to_pixel (self, x, y, &px, &py);
@@ -1494,6 +1784,7 @@ easel_canvas_press_timed (EaselCanvas *self, guint button, double x, double y, g
          -10). */
       set_pending (self, TRUE);
       self->pend_polygon = FALSE;
+      self->pend_gradient = FALSE;
       self->pend_held = TRUE;
       self->pend_step = 0;
       self->pend_button = button;
@@ -1503,6 +1794,24 @@ easel_canvas_press_timed (EaselCanvas *self, guint button, double x, double y, g
       self->pend_pts[3] = self->pend_pts[5] = py;
       self->pend_draw = button == GDK_BUTTON_PRIMARY ? self->foreground : self->background;
       self->pend_other = button == GDK_BUTTON_PRIMARY ? self->background : self->foreground;
+      g_signal_emit (self, signals[SIGNAL_STROKING_CHANGED], 0, TRUE);
+      gtk_widget_queue_draw (GTK_WIDGET (self));
+      return;
+    }
+  if (self->tool == EASEL_TOOL_GRADIENT)
+    {
+      /* The drag of a gradient: the start is the pixel under the press, also outside the picture; the color is that of the
+         press (REQ-0012-03, -04). */
+      set_pending (self, TRUE);
+      self->pend_polygon = FALSE;
+      self->pend_gradient = TRUE;
+      self->pend_unshown = FALSE;
+      self->moving = -1;
+      self->pend_held = TRUE;
+      self->pend_step = 0;
+      self->pend_button = self->grad_button = button;
+      self->pend_pts[0] = self->pend_pts[2] = self->pend_px = px;
+      self->pend_pts[1] = self->pend_pts[3] = self->pend_py = py;
       g_signal_emit (self, signals[SIGNAL_STROKING_CHANGED], 0, TRUE);
       gtk_widget_queue_draw (GTK_WIDGET (self));
       return;
@@ -1518,6 +1827,7 @@ easel_canvas_press_timed (EaselCanvas *self, guint button, double x, double y, g
         }
       set_pending (self, TRUE);
       self->pend_polygon = TRUE;
+      self->pend_gradient = FALSE;
       self->pend_held = TRUE;
       self->pend_step = 0;
       self->pend_button = button;
@@ -1838,9 +2148,10 @@ easel_canvas_pointer_at (EaselCanvas *self, double x, double y)
   if (self->img == NULL)
     return;
   hover = easel_canvas_handle_at (self, x, y);
-  if (hover != self->hover)
+  if (hover != self->hover || marker_hit (self, x, y) != self->hover_marker)
     {
       self->hover = hover;
+      self->hover_marker = marker_hit (self, x, y);
       update_cursor (self);
     }
   to_pixel (self, x, y, &px, &py);
@@ -2163,6 +2474,8 @@ easel_canvas_class_init (EaselCanvasClass *klass)
                                               G_TYPE_NONE, 0);
   signals[SIGNAL_SHAPE_FAILED] = g_signal_new ("shape-failed", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST, 0, NULL, NULL, NULL,
                                               G_TYPE_NONE, 0);
+  signals[SIGNAL_GRADIENT_FAILED] = g_signal_new ("gradient-failed", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST, 0, NULL, NULL,
+                                                 NULL, G_TYPE_NONE, 0);
   signals[SIGNAL_PENDING_CHANGED] = g_signal_new ("pending-changed", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST, 0, NULL, NULL, NULL,
                                               G_TYPE_NONE, 0);
   signals[SIGNAL_STROKING_CHANGED] = g_signal_new ("stroking-changed", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST, 0, NULL,
@@ -2177,6 +2490,8 @@ easel_canvas_init (EaselCanvas *self)
   self->zoom = 100;
   self->fill_max_bytes = SIZE_MAX;
   self->shape_max_bytes = SIZE_MAX;
+  self->preview_max_bytes = SIZE_MAX;
+  self->moving = -1;
   self->shape_width = 1;
   self->magnifier_level = easel_magnifier_levels[EASEL_MAGNIFIER_DEFAULT];
   self->grid_cell = 1;

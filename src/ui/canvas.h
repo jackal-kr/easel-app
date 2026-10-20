@@ -82,8 +82,19 @@ void easel_canvas_buttons_released (EaselCanvas *self);
 
 /* Test hook: what a Fill may use for its work buffers before it fails with the memory dialog (default: no limit). */
 void easel_canvas_set_fill_memory_limit (EaselCanvas *self, size_t max_bytes);
-/* Test hook: the most a shape's undo log may use, to make a release fail (REQ-0010-20). */
+/* Test hook: the most a shape's or a gradient's undo log may use, to make a release or an apply fail (REQ-0010-20,
+   REQ-0012-09; a gradient that fails emits "gradient-failed"). */
 void easel_canvas_set_shape_memory_limit (EaselCanvas *self, size_t max_bytes);
+/* Test hook: the most a frame's gradient preview may use for its blended pixels; a drag whose preview cannot get them is
+   dropped at its release with "gradient-failed" (REQ-0012-09; default: no limit). */
+void easel_canvas_set_preview_memory_limit (EaselCanvas *self, size_t max_bytes);
+/* The marker of a waiting gradient's start (end 0) or end (end 1), in canvas coordinates (REQ-0012-13): FALSE when no marker
+   is shown. */
+gboolean easel_canvas_get_marker_rect (EaselCanvas *self, int end, graphene_rect_t *rect);
+/* Test hook: hides the markers and the guide line of a waiting gradient (they still take presses), so that a rendered window
+   is the picture and the preview alone. */
+void easel_canvas_set_guides_hidden (EaselCanvas *self, gboolean hidden);
+gboolean easel_canvas_get_guides_hidden (EaselCanvas *self);
 void easel_canvas_set_eraser_transparent (EaselCanvas *self, gboolean transparent);
 
 /* Test hook: how many sprays the current or the last Airbrush stroke has made. */
