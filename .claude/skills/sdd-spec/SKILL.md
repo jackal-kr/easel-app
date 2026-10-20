@@ -18,6 +18,8 @@ Input: feature number or name from `docs/specs/INDEX.md`.
    A requirement about how something looks names the reference it follows.
    For any tool or control that holds state between two events (a press and its release, a drag and its end, a dialog and
    its answer), the spec needs a scenario for the second event never arriving.
+   A rule for a failure (memory, I/O) that names one event says what happens to the thing in every other state it can be in (held, waiting, unshown).
+   A new region of the canvas that takes presses (a marker, a handle) is checked, with its hit area computed, against the press coordinates of every scenario of the feature.
    A reference to a spec that is not built yet uses the feature name, not its number, because roadmap numbers move.
    If this feature changes a requirement of an implemented spec, add a pointer note to that requirement.
 4. Take behavior from XP Paint knowledge, jspaint (behavior, not code), JOD's descriptions and `docs/reference`; never from the

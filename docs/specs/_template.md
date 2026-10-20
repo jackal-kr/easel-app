@@ -34,6 +34,7 @@ Boundaries, empty states, failures, cancellation, very large input.
 - Text the user types (names, values): empty, leading or trailing dots, case, spaces.
 - A rule that changes the user's input after they confirmed it (e.g. adding an extension): re-confirm what changed.
 - The same action again while its dialog or prompt is already open.
+- For a state that waits: how the mouse alone finishes it, and what color, view and tool changes do to it.
 
 ## Out of scope
 

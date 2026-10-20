@@ -12,6 +12,7 @@ Precondition: `Status: accepted` in the spec. Otherwise stop and say so.
    A failure-path scenario (write fails, file unreadable) always gets an automated test, never a manual check only.
    A test that a write is never half-written starts from an existing file, since only then do atomic and in-place writes differ.
    A statement in the Plan about how a library behaves (including what happens when an allocation fails) goes in the risks with the test or probe that checks it, run before the code relies on it.
+   A preview that must equal the drawn result below 100 % is drawn through the same texture path and filter as the picture, and any plan to sample outside the renderer goes in the risks with a rendering probe run first.
    A probe that measures a widget measures it after it has been shown in a real frame; a number from a hidden widget is not used.
    A change to the layout lists every reader of it, sizes as well as offsets, in code and in tests.
    A style rule that must follow the theme lives in `style.css` or is reloaded on `notify::dark`; a media query in the app's own provider is probed where it is used.
@@ -43,6 +44,9 @@ Precondition: `Status: accepted` in the spec. Otherwise stop and say so.
      and for the end of a group, and how to run the suites is in that section too (the ui tests and the mutation tool run through
      `tools/isolated.sh`, the benchmarks in the real session). A test that fails once and then passes is logged with its values and how it was hunted,
      never just re-run until green;
+   - a ui mutant killed in under 5 s is run again alone through `tools/isolated.sh` before its kill counts;
+   - a mutant is run against the test that can observe its change; one with no visible effect in the window is pointed at the core test and noted as equivalent for the ui;
+   - a surviving mutant is applied by hand and its test run before the survivor is believed, and a mutant's replace text never holds a blank line (it ends the entry in `tests/mutants.txt`);
    - tick the task and report in one line, and fill its `Result:` line in the spec: the test that failed first and its
      message, or `characterization: <why there was no red run>` (a test that passes on its first run is reported as that),
      and for a manual step one line of what JOD saw;
