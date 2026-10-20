@@ -16,16 +16,33 @@ Vertical slices first (a thin end-to-end feature), breadth later.
 | 0009 | view-polish | A 12 px margin and a soft shadow around the picture, a workspace color setting | Implemented 2026-10-18, from JOD's reference measurements; touches every rule that maps the pointer to a picture pixel After it, the picture-color key `background` was renamed `canvas-color` (still read as `background`; a new settings file writes the new name; a valid `canvas-color` wins): REQ-0001-03, done 2026-10-18 |
 | 0010 | lines-and-shapes | Line, rectangle, rounded rectangle, ellipse, the line width and the fill style | Implemented 2026-10-19; split from "lines, curves and shapes" by JOD; widths 1-5 shared, a square pen. After it, a small change to the freehand tools: the stroke history's log is shrunk to its length before it is pushed, as the shapes' log now is, and a test checks the memory held against the memory counted for a long stroke (REQ-0002-16) |
 | 0011 | curve-and-polygon | Curve and polygon: the multi-click tools, with their pending state | Implemented 2026-10-19; split from "lines, curves and shapes"; uses the line width of lines and shapes; the first pending shape (put down by what changes the picture or its file, dropped by Esc and Undo). After it, a small change, done 2026-10-19: `tools/isolated.sh` runs the ui tests, the mutation tool and `/sdd-check` in a private session (a headless GNOME Shell with its own display; the spike found no `Xvfb` or Weston here, and `GDK_BACKEND=x11` would test another backend), so a real pointer and JOD's own work cannot affect them; the benchmarks stay in the real session |
-| 0012 | gradient | The Gradient tool (`docs/reference/new-behaviors.md`) | Split from "lines, curves and shapes" |
+| 0012 | gradient | The Gradient tool (`docs/reference/new-behaviors.md`) | Implemented 2026-10-20; split from "lines, curves and shapes"; a pending tool by the rules of curve-and-polygon; a click, a new drag or Enter applies it, its colors follow the palette, its ends have markers joined by a guide line |
 | 0013 | selection | Rect and free-form select, floating selection, move, smear, stamp, transparent mode | |
 | 0014 | clipboard | Cut, copy, paste, oversize paste, paste from / copy to file | |
 | 0015 | text | Text box, fonts, styles, per-selection fonts | |
 | 0016 | image-transforms | Flip, rotate, stretch, skew, invert, clear, black and white | |
-| 0017 | preferences | Appearance, new-picture and drawing defaults, palette persistence, undo budget | Dialog edits the same configuration file the app already reads. Open question from 0005: ask before Save overwrites an opened file (today silent, as in XP)? Candidates: a setting, once per opened file, or only for lossy formats; also `[save] jpeg-quality` |
+| 0017 | preferences | Appearance, new-picture and drawing defaults, palette persistence, undo budget | Dialog edits the same configuration file the app already reads. Two smoothing defaults (Smooth text; Smooth shapes and brushes) arrive with Phase 2. Open question from 0005: ask before Save overwrites an opened file (today silent, as in XP)? Candidates: a setting, once per opened file, or only for lossy formats; also `[save] jpeg-quality` |
 | 0018 | window-extras | Shortcuts window, thumbnail, frame time, print, context menus, About with acknowledgements (XP Paint, JS Paint) | Adds the View menu's Show Thumbnail item (not in 0004); Frame Time has no View item, only a Preferences setting (0013) |
 | 0019 | accessibility | Names/roles, keyboard-only drawing and palette | |
 | 0020 | i18n | UI languages (pl, uk, ru, de, cs, it, es, pt + English) | Mark the 0001 strings (title, quit and save prompts, errors) translatable; deferred from the 0001 check |
 | 0021 | packaging-release | Flatpak, deb, AppImage, metadata | |
+
+### Phase 2: Modern extras (optional, starts only after the core XP scope is delivered)
+| Feature | One line |
+|---|---|
+| Crop to selection | Crops the picture to the current selection in one command |
+| Zoom slider and wheel zoom in every tool | A zoom slider in the status bar, and Ctrl+wheel zooms with any tool, not only in Pan mode |
+| Invert selection | Selects everything outside the current selection |
+| Smooth text option | An opt-in switch that draws text with antialiasing; off by default |
+| Smooth shapes and brushes option | One opt-in switch that draws lines, curves, shapes and brush strokes with antialiasing; off by default |
+| Extra shapes | Triangles, diamond, pentagon, hexagon, arrows, stars, callouts, heart, lightning bolt |
+
+## Roadmap notes
+- Gradient modes (a follow-up to Gradient, no number yet): more than the one fade of Gradient, in a later spec of its own.
+- The Phase 2 block is a plan, not a commitment of numbers: a row gets its number when its spec is written.
+- After Gradient: a later change draws the picture and the gradient preview through one path below 100 %, so that the preview
+  is exact and its memory bounded (today a gradient dragged at the fit zoom of an 8000 x 8000 picture takes about 390 ms a frame
+  and holds the picture's size in memory). It needs its own spec and Plan.
 
 ## Known flakes
 - `/0006/as6_airbrush_sprays` and `/0006/as6_airbrush_follows_the_pointer` (found in 0006, failed again in 0007 and 0008). Cause

@@ -21,9 +21,11 @@ text boxes, Image-menu transforms (flip, rotate, stretch, skew, invert, attribut
 open/save png, jpeg, bmp, tiff, webp (gif open only), print, Preferences, shortcuts window, thumbnail, i18n, accessibility,
 Flatpak / deb / AppImage packaging.
 Additions beyond classic XP Paint: `docs/reference/new-behaviors.md`.
+XP-faithful by default; a later optional phase adds a few selected modern extras, and smoothing (antialiasing) is an option, off by default.
 
 ## Non-goals
-XP visual styling; the third (Ctrl) color slot; layers; non-destructive editing; plugins; cloud features; Windows/macOS ports.
+XP visual styling; the third (Ctrl) color slot; layers; non-destructive editing; plugins; cloud features; Windows/macOS ports;
+ribbon interface, editable shapes after commit, brush gallery and rulers (not planned for Phase 2).
 
 ## Success criteria
 - Every behavior written in a spec is implemented and verified, and the app feels like XP Paint in a native GNOME shell.

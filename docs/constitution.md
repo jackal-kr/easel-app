@@ -7,7 +7,7 @@ the plan against it). Changing a principle needs an ADR in `docs/decisions/`. JO
 - **P1** XP Paint's functionality and workflow, GNOME-native look (GTK 4 + libadwaita). No XP visuals.
 - **P2** XP's hidden behaviors are features (`docs/reference/xp-behaviors.md`).
 - **P3** No XP-era limits (e.g. undo depth is bounded by a memory budget only).
-- **P4** Hard-edged pixels by default (no antialiasing); at 100% zoom 1 image pixel = 1 device pixel.
+- **P4** Hard-edged pixels by default (no antialiasing); at 100% zoom 1 image pixel = 1 device pixel. Smoothing is an opt-in option for text, lines, curves, shapes and brushes; the Pencil, the Eraser and Fill are always exact.
 - **P5** Keep it simple: no threads, caches or fancy rendering until a measurement justifies them.
 - **P6** Every user-adjustable default is a setting in a configuration file, not a constant in code; the Preferences dialog edits the same settings.
 

@@ -36,6 +36,19 @@ belongs to (see `docs/specs/INDEX.md`). Behavior only.
 - Pictures can be opened from the command line.
 - About with acknowledgements (XP Paint, JS Paint). Nine UI languages, screen-reader labels and announcements, and keyboard-only drawing: covered by features Window Extras, Accessibility and i18n.
 
+## Phase 2 (after the core scope)
+Optional; it starts only after the core XP scope is delivered.
+- Crop to selection: the picture is cropped to the current selection in one command.
+- Zoom: a zoom slider in the status bar; Ctrl+wheel zooms with every tool, not only in Pan mode.
+- Invert selection: selects everything outside the current selection.
+- Smooth text: a switch in the Text tool's options draws text with antialiasing; its default is set in Preferences and is off
+  out of the box.
+- Smooth shapes and brushes: one shared switch in the options of the Line, Curve, shape and Brush tools draws them with
+  antialiasing; its default is set in Preferences and is off out of the box.
+- Either switch changes only the current session; it does not rewrite the saved default. The Pencil, the Eraser and Fill stay
+  exact and show no switch.
+- Extra shapes: triangles, diamond, pentagon, hexagon, arrows, stars, callouts, heart, lightning bolt.
+
 ## Decisions
 - Panning happens only in Pan mode; so Ctrl+drag on a selection keeps classic XP behavior: it moves a copy.
 - Pan mode's right-click menu keeps Paste, Paste From, Select All, zoom and Clear Image; a paste from it switches to the Select tool.
