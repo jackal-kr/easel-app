@@ -35,7 +35,7 @@ How input maps to actions across all tools. Seed from XP Paint behavior; verify 
 - Primary button: foreground color. Secondary button: background color.
 - Pressing the other button during a stroke cancels it (nothing is added to undo).
 - Shift constrains (straight lines at 45-degree steps, squares and circles for shapes); with a selection,
-  Shift-drag smears, Shift-click stamps.
+  Shift-drag smears, Shift-click stamps (Free-form Selection; with Select alone Shift does not change a move).
 - Right-click on a selection or text box opens a context menu instead of drawing.
 
 ### Pending state
@@ -44,7 +44,7 @@ They enter undo history only when committed; save, close, New and tool change mu
 One user-visible edit = exactly one undo step.
 
 ### Keyboard
-- Numpad +/- changes brush size (Ctrl+numpad +/- zooms). Ctrl+G toggles the grid, which shows while a cell is at least 4 device pixels wide (the 1-pixel grid from 400 %, as in XP). Esc cancels pending state.
+- Numpad +/- changes brush size (Ctrl+numpad +/- zooms). Ctrl+G toggles the grid, which shows while a cell is at least 4 device pixels wide (the 1-pixel grid from 400 %, as in XP). Esc drops a pending curve, polygon or gradient, and puts a floating selection down (Selection).
 - Canvas takes keyboard focus; the view must not jump when focus changes.
 - Every pointer operation has a keyboard path (see accessibility feature).
 

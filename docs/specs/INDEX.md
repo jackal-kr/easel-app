@@ -17,15 +17,16 @@ Vertical slices first (a thin end-to-end feature), breadth later.
 | 0010 | lines-and-shapes | Line, rectangle, rounded rectangle, ellipse, the line width and the fill style | Implemented 2026-10-19; split from "lines, curves and shapes" by JOD; widths 1-5 shared, a square pen. After it, a small change to the freehand tools: the stroke history's log is shrunk to its length before it is pushed, as the shapes' log now is, and a test checks the memory held against the memory counted for a long stroke (REQ-0002-16) |
 | 0011 | curve-and-polygon | Curve and polygon: the multi-click tools, with their pending state | Implemented 2026-10-19; split from "lines, curves and shapes"; uses the line width of lines and shapes; the first pending shape (put down by what changes the picture or its file, dropped by Esc and Undo). After it, a small change, done 2026-10-19: `tools/isolated.sh` runs the ui tests, the mutation tool and `/sdd-check` in a private session (a headless GNOME Shell with its own display; the spike found no `Xvfb` or Weston here, and `GDK_BACKEND=x11` would test another backend), so a real pointer and JOD's own work cannot affect them; the benchmarks stay in the real session |
 | 0012 | gradient | The Gradient tool (`docs/reference/new-behaviors.md`) | Implemented 2026-10-20; split from "lines, curves and shapes"; a pending tool by the rules of curve-and-polygon; a click, a new drag or Enter applies it, its colors follow the palette, its ends have markers joined by a guide line |
-| 0013 | selection | Rect and free-form select, floating selection, move, smear, stamp, transparent mode | |
-| 0014 | clipboard | Cut, copy, paste, oversize paste, paste from / copy to file | |
-| 0015 | text | Text box, fonts, styles, per-selection fonts | |
-| 0016 | image-transforms | Flip, rotate, stretch, skew, invert, clear, black and white | |
-| 0017 | preferences | Appearance, new-picture and drawing defaults, palette persistence, undo budget | Dialog edits the same configuration file the app already reads. Two smoothing defaults (Smooth text; Smooth shapes and brushes) arrive with Phase 2. Open question from 0005: ask before Save overwrites an opened file (today silent, as in XP)? Candidates: a setting, once per opened file, or only for lossy formats; also `[save] jpeg-quality` |
-| 0018 | window-extras | Shortcuts window, thumbnail, frame time, print, context menus, About with acknowledgements (XP Paint, JS Paint) | Adds the View menu's Show Thumbnail item (not in 0004); Frame Time has no View item, only a Preferences setting (0013) |
-| 0019 | accessibility | Names/roles, keyboard-only drawing and palette | |
-| 0020 | i18n | UI languages (pl, uk, ru, de, cs, it, es, pt + English) | Mark the 0001 strings (title, quit and save prompts, errors) translatable; deferred from the 0001 check |
-| 0021 | packaging-release | Flatpak, deb, AppImage, metadata | |
+| 0013 | selection | Select (rectangle), the floating selection, move, Ctrl copy-move, arrow keys, put down, Clear Selection, Select All, Opaque / Transparent, the selection menu, the Edit submenu | Accepted 2026-10-20; split from "rect and free-form select, ..." (JOD): free-form, smear, stamp and stretching by handles are Free-form Selection |
+| 0014 | free-form-selection | Free-Form Select, Shift smear and stamp, stretching a selection by its handles | Split from Selection (2026-10-20) |
+| 0015 | clipboard | Cut, copy, paste, oversize paste, paste from / copy to file | |
+| 0016 | text | Text box, fonts, styles, per-selection fonts | |
+| 0017 | image-transforms | Flip, rotate, stretch, skew, invert, clear, black and white | |
+| 0018 | preferences | Appearance, new-picture and drawing defaults, palette persistence, undo budget | Dialog edits the same configuration file the app already reads. Two smoothing defaults (Smooth text; Smooth shapes and brushes) arrive with Phase 2. Open question from 0005: ask before Save overwrites an opened file (today silent, as in XP)? Candidates: a setting, once per opened file, or only for lossy formats; also `[save] jpeg-quality` |
+| 0019 | window-extras | Shortcuts window, thumbnail, frame time, print, context menus, About with acknowledgements (XP Paint, JS Paint) | Adds the View menu's Show Thumbnail item (not in 0004); Frame Time has no View item, only a Preferences setting (Preferences) |
+| 0020 | accessibility | Names/roles, keyboard-only drawing and palette | |
+| 0021 | i18n | UI languages (pl, uk, ru, de, cs, it, es, pt + English) | Mark the 0001 strings (title, quit and save prompts, errors) translatable; deferred from the 0001 check |
+| 0022 | packaging-release | Flatpak, deb, AppImage, metadata | |
 
 ### Phase 2: Modern extras (optional, starts only after the core XP scope is delivered)
 | Feature | One line |
@@ -68,6 +69,6 @@ Vertical slices first (a thin end-to-end feature), breadth later.
 |---|---|---|
 | M0 Pilot | 0001 | Whole loop felt once; templates and skills tuned |
 | M1 Core drawing | 0002-0009 | Usable paint program: draw, fill, pick, zoom, undo, open/save |
-| M2 Shapes and selection | 0010-0016 | XP feature parity for editing |
-| M3 Polish | 0017-0020 | Preferences, accessibility, languages |
-| M4 Release | 0021 | Flatpak, deb, AppImage |
+| M2 Shapes and selection | 0010-0017 | XP feature parity for editing |
+| M3 Polish | 0018-0021 | Preferences, accessibility, languages |
+| M4 Release | 0022 | Flatpak, deb, AppImage |
