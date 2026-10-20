@@ -33,6 +33,8 @@ struct _EaselWindow
   gboolean pick_running;        /* a pick is in progress; the two colors below are those before its press (REQ-0007-10) */
   uint32_t pick_old_foreground, pick_old_background;
   GtkMenuButton *main_menu_button;
+  GMenuModel *selection_menu_model;   /* the template's selection_menu (REQ-0013-17) */
+  GtkWidget *selection_menu;          /* its popover, parented to the canvas */
   GtkMenuButton *image_button;
   GtkMenuButton *view_button;
   GtkLabel *zoom_label;       /* the View menu's zoom row, created in code */
@@ -509,7 +511,8 @@ easel_window_close_request (GtkWindow *window)
   /* A stroke in progress is ended first (REQ-0001-33), a pending curve or polygon put down (REQ-0011-12); an open color
      chooser closes as Cancel (REQ-0003-14). */
   easel_canvas_end_stroke (self->canvas);
-  easel_canvas_put_down (self->canvas);
+  if (!easel_canvas_put_down (self->canvas))
+    return TRUE;                                /* a selection could not be put down: the quit stops, the dialog tells why (REQ-0013-19) */
   easel_canvas_cancel_resize (self->canvas);
   easel_window_finish_color_choice (self, NULL);
 
@@ -582,14 +585,24 @@ new_picture (EaselWindow *self)
 /* New, Open, Save and Save As: nothing before the start-up picture exists or while a dialog or prompt is open; a stroke
    in progress ends first and a resize drag is cancelled (REQ-0005-02). */
 static gboolean
-file_action_allowed (EaselWindow *self)
+file_action_allowed_keeping (EaselWindow *self, gboolean keep_marked)
 {
   if (self->picture == NULL || dialog_is_open (self))
     return FALSE;
   easel_canvas_end_stroke (self->canvas);
-  easel_canvas_put_down (self->canvas);                    /* a pending curve or polygon too (REQ-0011-12) */
+  /* A pending curve or polygon too (REQ-0011-12); Save and Save As keep a marked selection (REQ-0013-12). */
+  if (keep_marked)
+    easel_canvas_put_down_keeping_marked (self->canvas);
+  else
+    easel_canvas_put_down (self->canvas);
   easel_canvas_cancel_resize (self->canvas);
   return TRUE;
+}
+
+static gboolean
+file_action_allowed (EaselWindow *self)
+{
+  return file_action_allowed_keeping (self, FALSE);
 }
 
 static void
@@ -828,7 +841,7 @@ save_activated (GSimpleAction *action, GVariant *parameter, gpointer user_data)
 {
   EaselWindow *self = user_data;
 
-  if (file_action_allowed (self))
+  if (file_action_allowed_keeping (self, TRUE))
     save (self, NULL, FALSE);
 }
 
@@ -837,7 +850,7 @@ save_as_activated (GSimpleAction *action, GVariant *parameter, gpointer user_dat
 {
   EaselWindow *self = user_data;
 
-  if (file_action_allowed (self))
+  if (file_action_allowed_keeping (self, TRUE))
     save (self, NULL, TRUE);
 }
 
@@ -1026,6 +1039,8 @@ tool_hint (EaselTool tool, gboolean transparent)
       return "Draws a curved line with the selected line width.";
     case EASEL_TOOL_POLYGON:
       return "Draws a polygon with the selected fill style.";
+    case EASEL_TOOL_SELECT:
+      return "Selects a rectangular part of the picture to move, copy, or edit.";
     case EASEL_TOOL_GRADIENT:
       return "Fades the drawing color to transparent along a drag. A click or Enter applies it, Esc cancels it.";
     case EASEL_TOOL_PICK:
@@ -1159,6 +1174,35 @@ const char *
 easel_window_get_zoom_text (EaselWindow *self)
 {
   return gtk_label_get_text (self->zoom_label);
+}
+
+GtkPopoverMenu *
+easel_window_get_selection_menu (EaselWindow *self)
+{
+  return GTK_POPOVER_MENU (self->selection_menu);
+}
+
+/* A secondary press on the selection: its context menu at the pointer (REQ-0013-17). */
+static void
+on_context_menu (EaselWindow *self, double x, double y)
+{
+  gtk_popover_set_pointing_to (GTK_POPOVER (self->selection_menu), &(GdkRectangle) { (int) x, (int) y, 1, 1 });
+  gtk_popover_popup (GTK_POPOVER (self->selection_menu));
+}
+
+/* A menu or popover is open: its keys are its own (REQ-0013-17). */
+static gboolean
+menu_is_open (EaselWindow *self)
+{
+  GtkMenuButton *buttons[] = { self->main_menu_button, self->image_button, self->view_button };
+
+  if (self->selection_menu != NULL && gtk_widget_get_visible (self->selection_menu))
+    return TRUE;
+  for (guint i = 0; i < G_N_ELEMENTS (buttons); i++)
+    if (buttons[i] != NULL && gtk_menu_button_get_popover (buttons[i]) != NULL
+        && gtk_widget_get_visible (GTK_WIDGET (gtk_menu_button_get_popover (buttons[i]))))
+      return TRUE;
+  return FALSE;
 }
 
 GtkMenuButton *
@@ -1474,6 +1518,7 @@ step_history (EaselWindow *self, gboolean undo)
         show_resize_error (self, w, h);
       return;
     }
+  easel_canvas_deselect (self->canvas);           /* Undo or Redo removes a marked selection (REQ-0013-12) */
   if (self->picture->width != old_w || self->picture->height != old_h)
     picture_size_changed (self);
   else
@@ -1504,6 +1549,31 @@ on_resize_requested (EaselWindow *self, int width, int height)
 static gboolean
 on_key_pressed (EaselWindow *self, guint keyval, guint keycode, GdkModifierType state, GtkEventControllerKey *controller)
 {
+  if (menu_is_open (self))
+    return GDK_EVENT_PROPAGATE;                 /* a menu's keys are its own (REQ-0013-17) */
+  if ((keyval == GDK_KEY_Delete || keyval == GDK_KEY_KP_Delete) && !dialog_is_open (self)
+      && easel_canvas_clear_selection (self->canvas))
+    return GDK_EVENT_STOP;                      /* Delete clears a selection wherever the focus is (REQ-0013-14) */
+  if ((keyval == GDK_KEY_Left || keyval == GDK_KEY_Right || keyval == GDK_KEY_Up || keyval == GDK_KEY_Down)
+      && (state & (GDK_CONTROL_MASK | GDK_ALT_MASK)) == 0 && !dialog_is_open (self))
+    {
+      /* The arrows move the selection wherever the focus is, Shift by 10 (REQ-0013-10); without one, or while a button is
+         held, they are not taken. */
+      int step = (state & GDK_SHIFT_MASK) ? 10 : 1;
+      int dx = keyval == GDK_KEY_Left ? -step : keyval == GDK_KEY_Right ? step : 0;
+      int dy = keyval == GDK_KEY_Up ? -step : keyval == GDK_KEY_Down ? step : 0;
+
+      if (easel_canvas_move_selection (self->canvas, dx, dy))
+        return GDK_EVENT_STOP;
+    }
+  if (keyval == GDK_KEY_Escape && !dialog_is_open (self) && easel_canvas_finish_selection (self->canvas))
+    return GDK_EVENT_STOP;                      /* Esc puts a selection down, or removes a marked one (REQ-0013-11) */
+  if (keyval == GDK_KEY_Escape && !dialog_is_open (self) && self->tool == EASEL_TOOL_SELECT
+      && easel_canvas_is_stroking (self->canvas))
+    {
+      easel_canvas_cancel_stroke (self->canvas);   /* Esc during a drag of Select cancels it (REQ-0013-18) */
+      return GDK_EVENT_STOP;
+    }
   if (keyval == GDK_KEY_Escape && easel_canvas_is_pending (self->canvas) && !dialog_is_open (self))
     {
       /* Esc drops a pending curve or polygon (REQ-0011-11); with a dialog, the quit prompt or the color chooser open it acts on
@@ -1530,6 +1600,7 @@ static gboolean
 on_modifiers_changed (EaselWindow *self, GdkModifierType state, GtkEventControllerKey *controller)
 {
   easel_canvas_set_shift (self->canvas, (state & GDK_SHIFT_MASK) != 0);
+  easel_canvas_set_ctrl (self->canvas, (state & GDK_CONTROL_MASK) != 0);
   return GDK_EVENT_PROPAGATE;
 }
 
@@ -1549,6 +1620,7 @@ sync_canvas_options (EaselWindow *self)
   if (self->tool == EASEL_TOOL_BRUSH || self->tool == EASEL_TOOL_AIRBRUSH || self->tool == EASEL_TOOL_ERASER)
     easel_canvas_set_footprint (self->canvas, easel_tool_options_get_footprint (self->tool_options, self->tool));
   easel_canvas_set_eraser_transparent (self->canvas, easel_tool_options_get_transparent (self->tool_options));
+  easel_canvas_set_selection_transparent (self->canvas, easel_tool_options_get_select_transparent (self->tool_options));
   easel_status_bar_set_hint (self->status_bar, tool_hint (self->tool, easel_tool_options_get_transparent (self->tool_options)));
 }
 
@@ -1630,6 +1702,68 @@ static void
 on_gradient_failed (EaselWindow *self)
 {
   g_idle_add (show_gradient_error, g_object_ref (self));
+}
+
+/* REQ-0013-19: the memory dialogs of the selection, from an idle callback so that the action that put the selection down (Save,
+   New, Open, a tool change) goes on first. */
+static gboolean
+show_selection_error (gpointer data)
+{
+  EaselWindow *self = data;
+  gboolean clear = GPOINTER_TO_INT (g_object_get_data (G_OBJECT (self), "selection-error-clear"));
+
+  if (clear)
+    show_save_error (self, "Could Not Clear the Selection", "There is not enough memory to clear this selection.");
+  else
+    show_save_error (self, "Could Not Move the Selection", "There is not enough memory to move this selection.");
+  g_object_unref (self);
+  return G_SOURCE_REMOVE;
+}
+
+static void
+on_selection_failed (EaselWindow *self, int kind)
+{
+  g_object_set_data (G_OBJECT (self), "selection-error-clear", GINT_TO_POINTER (kind == 1));
+  g_idle_add (show_selection_error, g_object_ref (self));
+}
+
+/* The status bar's selection size follows the selection and the rectangle being dragged out (REQ-0013-06); Clear Selection
+   is there only while a selection exists (REQ-0013-14). */
+static void
+on_selection_changed (EaselWindow *self)
+{
+  int w = 0, h = 0, x, y;
+  gboolean exists = easel_canvas_get_selection_size (self->canvas, &w, &h), floating;
+  GAction *clear = g_action_map_lookup_action (G_ACTION_MAP (self), "clear-selection");
+
+  easel_status_bar_set_selection (self->status_bar, exists, w, h);
+  if (clear != NULL)
+    g_simple_action_set_enabled (G_SIMPLE_ACTION (clear),
+                                 easel_canvas_get_selection (self->canvas, &x, &y, &w, &h, &floating));
+}
+
+/* Select All (REQ-0013-15): ignored when a tool change is (before the picture exists, with a dialog open, during a stroke or
+   a resize drag); otherwise Select becomes the tool (another tool's pending shape put down as a tool change does) and the
+   whole picture is marked, a floating selection put down first. */
+static void
+select_all_activated (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+  EaselWindow *self = user_data;
+
+  if (self->picture == NULL || dialog_is_open (self) || easel_canvas_is_stroking (self->canvas)
+      || easel_canvas_is_resizing (self->canvas))
+    return;
+  g_action_group_change_action_state (G_ACTION_GROUP (self), "tool", g_variant_new_string ("select"));
+  easel_canvas_select_all (self->canvas);
+}
+
+static void
+clear_selection_activated (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+  EaselWindow *self = user_data;
+
+  if (!dialog_is_open (self))
+    easel_canvas_clear_selection (self->canvas);
 }
 
 /* Choosing a preset is not possible while a stroke is in progress (REQ-0006-03). */
@@ -1721,6 +1855,8 @@ static const GActionEntry win_actions[] = {
   { .name = "show-colorbox", .state = "true", .change_state = show_panel_state_changed },
   { .name = "show-statusbar", .state = "true", .change_state = show_panel_state_changed },
   { .name = "close", .activate = close_activated },
+  { .name = "clear-selection", .activate = clear_selection_activated },
+  { .name = "select-all", .activate = select_all_activated },
 };
 
 EaselToolOptions *
@@ -1788,6 +1924,11 @@ easel_window_dispose (GObject *object)
 {
   EaselWindow *self = EASEL_WINDOW (object);
 
+  if (self->selection_menu != NULL)
+    {
+      gtk_widget_unparent (self->selection_menu);
+      self->selection_menu = NULL;
+    }
   if (self->chooser_cancel != NULL)
     g_cancellable_cancel (self->chooser_cancel);
   g_clear_object (&self->chooser_cancel);
@@ -1888,6 +2029,8 @@ easel_window_class_init (EaselWindowClass *klass)
   gtk_widget_class_bind_template_child (widget_class, EaselWindow, tools_column);
   gtk_widget_class_bind_template_child (widget_class, EaselWindow, image_button);
   gtk_widget_class_bind_template_child (widget_class, EaselWindow, main_menu_button);
+  gtk_widget_class_bind_template_child_full (widget_class, "selection_menu", FALSE,
+                                            G_STRUCT_OFFSET (EaselWindow, selection_menu_model));
   gtk_widget_class_bind_template_child (widget_class, EaselWindow, view_button);
 }
 
@@ -1908,6 +2051,7 @@ easel_window_init (EaselWindow *self)
     g_error ("Out of memory creating the undo history");
 
   g_action_map_add_action_entries (G_ACTION_MAP (self), win_actions, G_N_ELEMENTS (win_actions), self);
+  g_simple_action_set_enabled (G_SIMPLE_ACTION (g_action_map_lookup_action (G_ACTION_MAP (self), "clear-selection")), FALSE);
   add_zoom_submenu (self);
   g_action_group_change_action_state (G_ACTION_GROUP (self), "magnifier-level",
                                       g_variant_new_int32 (easel_magnifier_levels[EASEL_MAGNIFIER_DEFAULT]));
@@ -1962,6 +2106,13 @@ easel_window_init (EaselWindow *self)
   g_signal_connect_object (self->canvas, "fill-failed", G_CALLBACK (on_fill_failed), self, G_CONNECT_SWAPPED);
   g_signal_connect_object (self->canvas, "shape-failed", G_CALLBACK (on_shape_failed), self, G_CONNECT_SWAPPED);
   g_signal_connect_object (self->canvas, "gradient-failed", G_CALLBACK (on_gradient_failed), self, G_CONNECT_SWAPPED);
+  g_signal_connect_object (self->canvas, "selection-changed", G_CALLBACK (on_selection_changed), self, G_CONNECT_SWAPPED);
+  g_signal_connect_object (self->canvas, "context-menu", G_CALLBACK (on_context_menu), self, G_CONNECT_SWAPPED);
+  g_signal_connect_object (self->canvas, "selection-failed", G_CALLBACK (on_selection_failed), self, G_CONNECT_SWAPPED);
+  self->selection_menu = gtk_popover_menu_new_from_model (self->selection_menu_model);
+  gtk_popover_set_has_arrow (GTK_POPOVER (self->selection_menu), FALSE);
+  gtk_widget_set_halign (self->selection_menu, GTK_ALIGN_START);
+  gtk_widget_set_parent (self->selection_menu, GTK_WIDGET (self->canvas));
   g_signal_connect_object (self->canvas, "pending-changed", G_CALLBACK (sync_history_ui), self, G_CONNECT_SWAPPED);
   g_signal_connect_object (self->canvas, "stroke-finished", G_CALLBACK (on_stroke_finished), self, G_CONNECT_SWAPPED);
   g_signal_connect (self, "notify::is-active", G_CALLBACK (on_active_changed), NULL);

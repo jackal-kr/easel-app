@@ -329,18 +329,20 @@ test: ui-0005
 file: src/ui/window.c
 test: ui-0005
 --- find
-  easel_canvas_put_down (self->canvas);                    /* a pending curve or polygon too (REQ-0011-12) */
+  else
+    easel_canvas_put_down (self->canvas);
   easel_canvas_cancel_resize (self->canvas);
   return TRUE;
 --- replace
-  easel_canvas_put_down (self->canvas);                    /* a pending curve or polygon too (REQ-0011-12) */
+  else
+    easel_canvas_put_down (self->canvas);
   return TRUE;
 
 === REQ-0005-02 Save is not held back while a dialog is open
 file: src/ui/window.c
 test: ui-0005
 --- find
-  if (file_action_allowed (self))
+  if (file_action_allowed_keeping (self, TRUE))
     save (self, NULL, FALSE);
 --- replace
   save (self, NULL, FALSE);
@@ -1183,9 +1185,9 @@ test: ui-0007
 file: src/ui/canvas.c
 test: ui-0007
 --- find
-  return self->stroke != NULL || self->picking || self->shaping || self->pend_held;
+  return self->stroke != NULL || self->picking || self->shaping || self->pend_held || self->selecting || self->sel_moving;
 --- replace
-  return self->stroke != NULL || self->shaping || self->pend_held;
+  return self->stroke != NULL || self->shaping || self->pend_held || self->selecting || self->sel_moving;
 
 === REQ-0007-03 the selected Magnifier level never reaches the canvas
 file: src/ui/window.c
@@ -1248,7 +1250,7 @@ test: ui-0007
 file: src/ui/canvas.c
 test: ui-0007
 --- find
-  if (self->stroke != NULL || self->picking || self->shaping || self->pend_held)
+  if (self->stroke != NULL || self->picking || self->shaping || self->pend_held || self->selecting || self->sel_moving)
     easel_canvas_end_stroke (self);
   if (self->resizing != EASEL_HANDLE_NONE)
     easel_canvas_release (self, self->resize_button);
@@ -1671,9 +1673,6 @@ test: core-figure
         }
     }
 }
-
-bool
-easel_figure_prepare
 --- replace
       else if (e2 <= dx)
         {
@@ -1682,9 +1681,6 @@ easel_figure_prepare
         }
     }
 }
-
-bool
-easel_figure_prepare
 
 === REQ-0010-10 the pen covers one pixel too few on the right
 file: src/core/figure.c
@@ -1724,11 +1720,13 @@ test: core-figure
 file: src/ui/canvas.c
 test: ui-0010
 --- find
-  self->shift = down;
   if (self->shaping)
     update_shape_end (self);
+  if (self->pend_held)
+    pend_follow (self);
 --- replace
-  self->shift = down;
+  if (self->pend_held)
+    pend_follow (self);
 
 === REQ-0010-17 a press reaching the canvas while a dialog is open draws
 file: src/ui/window.c
@@ -1809,18 +1807,18 @@ file: src/ui/tool-options.c
 test: ui-0011
 --- find
 tool == EASEL_TOOL_LINE || tool == EASEL_TOOL_CURVE ? 4
-              : easel_tool_draws_shape (tool) || tool == EASEL_TOOL_POLYGON ? 5 : -1;
+              : easel_tool_draws_shape (tool) || tool == EASEL_TOOL_POLYGON ? 5 : tool == EASEL_TOOL_SELECT ? 6 : -1;
 --- replace
 tool == EASEL_TOOL_LINE ? 4
-              : easel_tool_draws_shape (tool) || tool == EASEL_TOOL_POLYGON || tool == EASEL_TOOL_CURVE ? 5 : -1;
+              : easel_tool_draws_shape (tool) || tool == EASEL_TOOL_POLYGON || tool == EASEL_TOOL_CURVE ? 5 : tool == EASEL_TOOL_SELECT ? 6 : -1;
 
 === REQ-0011-02 Polygon shows no options
 file: src/ui/tool-options.c
 test: ui-0011
 --- find
-              : easel_tool_draws_shape (tool) || tool == EASEL_TOOL_POLYGON ? 5 : -1;
+              : easel_tool_draws_shape (tool) || tool == EASEL_TOOL_POLYGON ? 5 : tool == EASEL_TOOL_SELECT ? 6 : -1;
 --- replace
-              : easel_tool_draws_shape (tool) ? 5 : -1;
+              : easel_tool_draws_shape (tool) ? 5 : tool == EASEL_TOOL_SELECT ? 6 : -1;
 
 === REQ-0011-03 Curve has Polygon's hint
 file: src/ui/window.c
@@ -1834,9 +1832,9 @@ test: ui-0011
 file: src/ui/canvas.c
 test: ui-0011
 --- find
-  else if (easel_tool_draws_shape (self->tool) || easel_tool_draws_pending (self->tool))
+  else if (easel_tool_draws_shape (self->tool) || easel_tool_draws_pending (self->tool) || self->tool == EASEL_TOOL_SELECT)
 --- replace
-  else if (easel_tool_draws_shape (self->tool))
+  else if (easel_tool_draws_shape (self->tool) || self->tool == EASEL_TOOL_SELECT)
 
 === REQ-0011-02 Numpad does not step the width with Curve and Polygon
 file: src/ui/tool.c
@@ -2205,9 +2203,12 @@ test: ui-0011
 file: src/ui/window.c
 test: ui-0011
 --- find
-  easel_canvas_put_down (self->canvas);                    /* a pending curve or polygon too (REQ-0011-12) */
+  if (keep_marked)
+    easel_canvas_put_down_keeping_marked (self->canvas);
+  else
+    easel_canvas_put_down (self->canvas);
 --- replace
-  (void) 0;
+  (void) keep_marked;
 
 === REQ-0011-12 Quit does not put a pending polygon down
 file: src/ui/window.c
@@ -2215,10 +2216,11 @@ test: ui-0011
 --- find
      chooser closes as Cancel (REQ-0003-14). */
   easel_canvas_end_stroke (self->canvas);
-  easel_canvas_put_down (self->canvas);
+  if (!easel_canvas_put_down (self->canvas))
 --- replace
      chooser closes as Cancel (REQ-0003-14). */
   easel_canvas_end_stroke (self->canvas);
+  if (FALSE)
 
 === REQ-0011-12 another tool drops a pending polygon instead of putting it down
 file: src/ui/window.c
@@ -2301,12 +2303,12 @@ test: ui-0011
 file: src/ui/canvas.c
 test: ui-0011
 --- find
-  if (self->stroke != NULL || self->picking || self->shaping || self->pend_held)
+  if (self->stroke != NULL || self->picking || self->shaping || self->pend_held || self->selecting || self->sel_moving)
     easel_canvas_end_stroke (self);
   if (self->resizing != EASEL_HANDLE_NONE)
     easel_canvas_release (self, self->resize_button);
 --- replace
-  if (self->stroke != NULL || self->picking || self->shaping)
+  if (self->stroke != NULL || self->picking || self->shaping || self->selecting)
     easel_canvas_end_stroke (self);
   if (self->resizing != EASEL_HANDLE_NONE)
     easel_canvas_release (self, self->resize_button);
@@ -2405,9 +2407,9 @@ test: ui-0012
 file: src/ui/canvas.c
 test: ui-0012
 --- find
-  else if (easel_tool_draws_shape (self->tool) || easel_tool_draws_pending (self->tool))
+  else if (easel_tool_draws_shape (self->tool) || easel_tool_draws_pending (self->tool) || self->tool == EASEL_TOOL_SELECT)
 --- replace
-  else if (easel_tool_draws_shape (self->tool) || self->tool == EASEL_TOOL_CURVE || self->tool == EASEL_TOOL_POLYGON)
+  else if (easel_tool_draws_shape (self->tool) || self->tool == EASEL_TOOL_CURVE || self->tool == EASEL_TOOL_POLYGON || self->tool == EASEL_TOOL_SELECT)
 
 === REQ-0012-02 Gradient has another tool's hint
 file: src/ui/window.c
@@ -2652,26 +2654,29 @@ file: src/ui/canvas.c
 test: ui-0012
 --- find
   self->action_button = 0;
-  if (self->stroke != NULL || self->picking || self->shaping || self->pend_held)
+  if (self->stroke != NULL || self->picking || self->shaping || self->pend_held || self->selecting || self->sel_moving)
 --- replace
   self->action_button = 0;
   if (self->pend_held && self->pend_gradient)
     easel_canvas_drop (self);
-  if (self->stroke != NULL || self->picking || self->shaping || self->pend_held)
+  if (self->stroke != NULL || self->picking || self->shaping || self->pend_held || self->selecting || self->sel_moving)
 
 === REQ-0012-07 another tool, Save, New, Quit or an Image action drops a waiting gradient instead of applying it
 file: src/ui/canvas.c
 test: ui-0012
 --- find
-  if (self->pending)
-    put_down_pending (self);
-}
+easel_canvas_put_down (EaselCanvas *self)
+{
+  gboolean ok = finish_selection (self, FALSE);
 --- replace
+easel_canvas_put_down (EaselCanvas *self)
+{
+  gboolean ok = finish_selection (self, FALSE);
   if (self->pending && self->pend_gradient)
-    easel_canvas_drop (self);
-  else if (self->pending)
-    put_down_pending (self);
-}
+    {
+      easel_canvas_drop (self);
+      return ok;
+    }
 
 === REQ-0012-09 a gradient that cannot get its memory shows the shape's dialog
 file: src/ui/canvas.c
@@ -2851,9 +2856,9 @@ test: ui-0012
 file: src/ui/canvas.c
 test: ui-0012
 --- find
-  else if (self->hover_marker)
+  else if (self->hover_marker || self->hover_sel)
 --- replace
-  else if (FALSE)
+  else if (self->hover_sel)
 
 === REQ-0012-13 the markers are shown during a drag that makes a new gradient
 file: src/ui/canvas.c
@@ -2968,6 +2973,831 @@ test: ui-0012
   if (!self->pending || !self->pend_gradient || (self->pend_held && self->moving < 0) || end < 0 || end > 1)
 --- replace
   if (!self->pending || !self->pend_gradient || (self->pend_held && self->moving < 0) || self->pend_unshown || end < 0 || end > 1)
+
+=== REQ-0013-01 Select comes after the Eraser
+file: src/ui/window.ui
+test: ui-0013
+--- find
+                        <property name="action-target">'select'</property>
+                        <layout>
+                          <property name="column">0</property>
+                          <property name="row">1</property>
+--- replace
+                        <property name="action-target">'select'</property>
+                        <layout>
+                          <property name="column">0</property>
+                          <property name="row">2</property>
+
+=== REQ-0013-02 the selection's mode buttons are one group with the Eraser's
+file: src/ui/tool-options.c
+test: ui-0013
+--- find
+                                        preset_data ((EaselFootprint) { EASEL_SHAPE_SQUARE, 1 }, 1), self->select_modes[0]);
+--- replace
+                                        preset_data ((EaselFootprint) { EASEL_SHAPE_SQUARE, 1 }, 1), self->modes[0]);
+
+=== REQ-0013-01 Numpad steps the line width with Select
+file: src/ui/tool.c
+test: ui-0013
+--- find
+  return easel_tool_draws_shape (tool) || tool == EASEL_TOOL_CURVE || tool == EASEL_TOOL_POLYGON;
+--- replace
+  return easel_tool_draws_shape (tool) || tool == EASEL_TOOL_CURVE || tool == EASEL_TOOL_POLYGON || tool == EASEL_TOOL_SELECT;
+
+=== REQ-0013-03 Select has another tool's hint
+file: src/ui/window.c
+test: ui-0013
+--- find
+      return "Selects a rectangular part of the picture to move, copy, or edit.";
+--- replace
+      return "Draws a polygon with the selected fill style.";
+
+=== REQ-0013-03 Select has no crosshair
+file: src/ui/canvas.c
+test: ui-0013
+--- find
+  else if (easel_tool_draws_shape (self->tool) || easel_tool_draws_pending (self->tool) || self->tool == EASEL_TOOL_SELECT)
+--- replace
+  else if (easel_tool_draws_shape (self->tool) || easel_tool_draws_pending (self->tool))
+
+=== REQ-0013-08 a lift leaves no hole
+file: src/core/selection.c
+test: core-selection
+--- find
+  f->hole = !copy;
+--- replace
+  f->hole = false;
+
+=== REQ-0013-08 the hole is always fully transparent, whatever color the lift was given
+file: src/core/selection.c
+test: core-selection
+--- find
+            v = f->hole_color;
+--- replace
+            v = 0x00000000u;
+
+=== REQ-0013-11 a float pixel is laid only where it is opaque, as a blend would leave the picture under the others
+file: src/core/selection.c
+test: core-selection
+--- find
+  *v = f->px[(size_t) (y - py) * f->w + (x - px)];
+  return true;
+--- replace
+  if (f->px[(size_t) (y - py) * f->w + (x - px)] >> 24 != 0xFF)
+    return false;
+  *v = f->px[(size_t) (y - py) * f->w + (x - px)];
+  return true;
+
+=== REQ-0013-11 the lay writes the places of pixels outside the picture
+file: src/core/selection.c
+test: core-selection
+--- find
+      if (y < 0 || y >= img->height)
+        continue;
+--- replace
+      if (y < 0 || y >= img->height)
+        {
+          for (int i = 0; i < w; i++)
+            dst[(size_t) j * dst_stride + i] = 0;
+          continue;
+        }
+
+=== REQ-0013-11 the put-down's log is pushed without being shrunk to its length
+file: src/core/selection.c
+test: core-selection
+--- find
+  if (!easel_change_log_push (&l, history))
+    {
+      easel_change_log_restore (&l, img);
+      easel_change_log_free (&l);
+      return EASEL_SELECTION_NO_MEMORY;
+--- replace
+  if (!easel_history_push (history, l.log, l.n) || (l.log = NULL, l.n = l.cap = 0, false))
+    {
+      easel_change_log_restore (&l, img);
+      easel_change_log_free (&l);
+      return EASEL_SELECTION_NO_MEMORY;
+
+=== REQ-0013-11 the float is put down at the place of its lift, not where it was moved
+file: src/core/selection.c
+test: core-selection
+--- find
+            float_pixel (f, f->x, f->y, x, y, &v);
+--- replace
+            float_pixel (f, f->hx, f->hy, x, y, &v);
+
+=== REQ-0013-09 a lift with Ctrl leaves a hole
+file: src/core/selection.c
+test: core-selection
+--- find
+  f->hole = !copy;
+--- replace
+  f->hole = true;
+
+=== REQ-0013-09 the stamps are left out of the put-down's area
+file: src/core/selection.c
+test: core-selection
+--- find
+      if (k == f->n_stamps && !with_float)
+        break;
+--- replace
+      if (k < f->n_stamps || !with_float)
+        continue;
+
+=== REQ-0013-19 a put-down that runs out of memory leaves the pixels it wrote
+file: src/core/selection.c
+test: core-selection
+--- find
+  free (row);
+  if (!ok)
+    {
+      easel_change_log_restore (&l, img);
+--- replace
+  free (row);
+  if (!ok)
+    {
+
+=== REQ-0013-19 a clear that runs out of memory leaves the pixels it wrote
+file: src/core/selection.c
+test: core-selection
+--- find
+      ok = easel_change_log_set (&l, img, i, j, color);
+  if (!ok)
+    {
+      easel_change_log_restore (&l, img);
+--- replace
+      ok = easel_change_log_set (&l, img, i, j, color);
+  if (!ok)
+    {
+
+=== REQ-0013-19 a refused lift leaves a half-made float
+file: src/core/selection.c
+test: core-selection
+--- find
+  *f = (EaselFloat) { 0 };
+  if (w <= 0
+--- replace
+  *f = (EaselFloat) { .w = w, .h = h };
+  if (w <= 0
+
+=== REQ-0013-14 a clear that changes nothing still adds a step
+file: src/core/selection.c
+test: core-selection
+--- find
+  if (l.n == 0)
+    {
+      easel_change_log_free (&l);
+      return EASEL_SELECTION_NOTHING;
+    }
+  if (history != NULL && !easel_change_log_push (&l, history))
+--- replace
+  if (history != NULL && !easel_change_log_push (&l, history))
+
+=== REQ-0013-04 Shift's square is made after the rectangle is limited to the picture
+file: src/ui/canvas.c
+test: ui-0013
+--- find
+    easel_figure_constrain (EASEL_FIGURE_RECTANGLE, x0, y0, &x1, &y1);
+  lx = MAX (MIN (x0, x1), 0);
+--- replace
+    {
+      x0 = MAX (x0, 0);
+      y0 = MAX (y0, 0);
+      easel_figure_constrain (EASEL_FIGURE_RECTANGLE, x0, y0, &x1, &y1);
+    }
+  lx = MAX (MIN (x0, x1), 0);
+
+=== REQ-0013-06 the size field shows the whole rectangle being dragged, not its part inside the picture
+file: src/ui/canvas.c
+test: ui-0013
+--- find
+  if (self->selecting)
+    return drag_rect (self, &x, &y, w, h);
+--- replace
+  if (self->selecting)
+    {
+      *w = ABS (self->sel_px1 - self->sel_px0) + 1;
+      *h = ABS (self->sel_py1 - self->sel_py0) + 1;
+      return TRUE;
+    }
+
+=== REQ-0013-04 a click marks a one-pixel selection
+file: src/ui/canvas.c
+test: ui-0013
+--- find
+  gboolean click = self->sel_px1 == self->sel_px0 && self->sel_py1 == self->sel_py0;
+--- replace
+  gboolean click = FALSE;
+
+=== REQ-0013-05 the outline is drawn over the selection's own pixels
+file: src/ui/canvas.c
+test: ui-0013
+--- find
+  X = x * l - 1;                                  /* the ring's outer rectangle, in canvas logical pixels */
+  Y = y * l - 1;
+  W = w * l + 2;
+  H = h * l + 2;
+--- replace
+  X = x * l;
+  Y = y * l;
+  W = w * l;
+  H = h * l;
+
+=== REQ-0013-06 the size field stays when the selection is removed
+file: src/ui/window.c
+test: ui-0013
+--- find
+  easel_status_bar_set_selection (self->status_bar, exists, w, h);
+--- replace
+  if (exists)
+    easel_status_bar_set_selection (self->status_bar, exists, w, h);
+
+=== REQ-0013-07 a press on the selection without a movement lifts it
+file: src/ui/canvas.c
+test: ui-0013
+--- find
+  if (self->sel_moving && button == self->sel_button)
+    {
+      self->sel_moving = FALSE;
+--- replace
+  if (self->sel_moving && button == self->sel_button)
+    {
+      if (self->sel_state == 1
+          && easel_selection_lift (&self->sel_float, self->img, self->sel_x, self->sel_y, self->sel_w, self->sel_h, FALSE,
+                                   self->background, SIZE_MAX) == EASEL_SELECTION_DONE)
+        self->sel_state = 2;
+      self->sel_moving = FALSE;
+
+=== REQ-0013-07 the selection takes presses one pixel around it, on its outline
+file: src/ui/canvas.c
+test: ui-0013
+--- find
+  return px >= self->sel_x && py >= self->sel_y && px - self->sel_x < self->sel_w && py - self->sel_y < self->sel_h;
+--- replace
+  return px >= self->sel_x - 1 && py >= self->sel_y - 1 && px - self->sel_x < self->sel_w + 1 && py - self->sel_y < self->sel_h + 1;
+
+=== REQ-0013-08 the hole takes the foreground color
+file: src/ui/canvas.c
+test: ui-0013
+--- find
+                                    self->sel_copy, hole_color (self), self->sel_lift_max) != EASEL_SELECTION_DONE)
+--- replace
+                                    self->sel_copy, self->foreground, self->sel_lift_max) != EASEL_SELECTION_DONE)
+
+=== REQ-0013-07 a floating selection is not shown where it will be put down
+file: src/ui/canvas.c
+test: ui-0013
+--- find
+  if (!gradient && self->sel_state != 2)
+    return NULL;
+--- replace
+  if (!gradient)
+    return NULL;
+
+=== REQ-0013-07 the floating selection's preview is laid one pixel off its tile
+file: src/ui/canvas.c
+test: ui-0013
+--- find
+        easel_selection_lay (&self->sel_float, TRUE, self->img, x0, y0, w, h, px, (size_t) w);
+--- replace
+        easel_selection_lay (&self->sel_float, TRUE, self->img, x0 + 1, y0, w, h, px, (size_t) w);
+
+=== REQ-0013-08 the preview of a floating selection does not show its hole
+file: src/ui/canvas.c
+test: ui-0013
+--- find
+        easel_selection_lay (&self->sel_float, TRUE, self->img, x0, y0, w, h, px, (size_t) w);
+--- replace
+        easel_selection_lay (&(EaselFloat) { .x = self->sel_float.x, .y = self->sel_float.y, .w = self->sel_float.w,
+                                             .h = self->sel_float.h, .px = self->sel_float.px },
+                             TRUE, self->img, x0, y0, w, h, px, (size_t) w);
+
+=== REQ-0013-09 Ctrl is ignored at the press of a move
+file: src/ui/canvas.c
+test: ui-0013
+--- find
+          self->sel_copy = self->ctrl;
+--- replace
+          self->sel_copy = FALSE;
+
+=== REQ-0013-09 Ctrl is read at the move's first movement instead of at its press
+file: src/ui/canvas.c
+test: ui-0013
+--- find
+      if (self->sel_state == 1)
+        {
+          /* The first movement lifts it
+--- replace
+      self->sel_copy = self->ctrl;
+      if (self->sel_state == 1)
+        {
+          /* The first movement lifts it
+
+=== REQ-0013-09 a floating selection moved with Ctrl leaves no copy
+file: src/ui/canvas.c
+test: ui-0013
+--- find
+          if (self->sel_copy && !easel_selection_stamp
+--- replace
+          if (FALSE && !easel_selection_stamp
+
+=== REQ-0013-10 the arrow keys are taken without a selection
+file: src/ui/window.c
+test: ui-0013
+--- find
+      if (easel_canvas_move_selection (self->canvas, dx, dy))
+        return GDK_EVENT_STOP;
+--- replace
+      easel_canvas_move_selection (self->canvas, dx, dy);
+      return GDK_EVENT_STOP;
+
+=== REQ-0013-10 Shift with an arrow moves by 1
+file: src/ui/window.c
+test: ui-0013
+--- find
+      int step = (state & GDK_SHIFT_MASK) ? 10 : 1;
+--- replace
+      int step = 1;
+
+=== REQ-0013-10 the arrow keys move the selection while a button is held
+file: src/ui/canvas.c
+test: ui-0013
+--- find
+  if (self->sel_state == 0 || easel_canvas_is_stroking (self))
+    return FALSE;
+  if (self->sel_state == 1)
+    {
+      /* The first key lifts it
+--- replace
+  if (self->sel_state == 0)
+    return FALSE;
+  if (self->sel_state == 1)
+    {
+      /* The first key lifts it
+
+=== REQ-0013-10 Ctrl with an arrow moves the selection
+file: src/ui/window.c
+test: ui-0013
+--- find
+      && (state & (GDK_CONTROL_MASK | GDK_ALT_MASK)) == 0 && !dialog_is_open (self))
+--- replace
+      && (state & GDK_ALT_MASK) == 0 && !dialog_is_open (self))
+
+=== REQ-0013-11 Esc and Enter cancel a floating selection instead of putting it down
+file: src/ui/canvas.c
+test: ui-0013
+--- find
+  if (self->sel_state == 0 || easel_canvas_is_stroking (self))
+    return FALSE;
+  finish_selection (self, FALSE);
+  return TRUE;
+--- replace
+  if (self->sel_state == 0 || easel_canvas_is_stroking (self))
+    return FALSE;
+  cancel_float (self);
+  finish_selection (self, FALSE);
+  return TRUE;
+
+=== REQ-0013-12 Undo puts a floating selection down instead of cancelling the lift
+file: src/ui/canvas.c
+test: ui-0013
+--- find
+  cancel_float (self);
+  if (!self->pending)
+    return;
+--- replace
+  finish_selection (self, FALSE);
+  if (!self->pending)
+    return;
+
+=== REQ-0013-12 a floating selection is not pending: Undo not there for it, Redo there
+file: src/ui/canvas.c
+test: ui-0013
+--- find
+  return self->pending || self->sel_state == 2;
+--- replace
+  return self->pending;
+
+=== REQ-0013-12 Undo keeps a marked selection
+file: src/ui/window.c
+test: ui-0013
+--- find
+  easel_canvas_deselect (self->canvas);           /* Undo or Redo removes a marked selection (REQ-0013-12) */
+--- replace
+
+=== REQ-0013-12 Save removes a marked selection
+file: src/ui/window.c
+test: ui-0013
+--- find
+  if (file_action_allowed_keeping (self, TRUE))
+    save (self, NULL, FALSE);
+--- replace
+  if (file_action_allowed_keeping (self, FALSE))
+    save (self, NULL, FALSE);
+
+=== REQ-0013-12 another tool keeps a marked selection
+file: src/ui/canvas.c
+test: ui-0013
+--- find
+  else if (self->sel_state == 1 && !keep_marked)
+    self->sel_state = 0;
+--- replace
+  else if (FALSE && !keep_marked)
+    self->sel_state = 0;
+
+=== REQ-0013-07 the part of a floating selection outside the picture is not drawn
+file: src/ui/canvas.c
+test: ui-0013
+--- find
+  if (self->sel_state != 2 || f->px == NULL)
+    return;
+  if (!gtk_widget_compute_bounds
+--- replace
+  if (TRUE)
+    return;
+  if (!gtk_widget_compute_bounds
+
+=== REQ-0013-07 a press on the part of a floating selection outside the picture starts a rectangle
+file: src/ui/canvas.c
+test: ui-0013
+--- find
+  return px >= self->sel_x && py >= self->sel_y && px - self->sel_x < self->sel_w && py - self->sel_y < self->sel_h;
+--- replace
+  return px >= 0 && py >= 0 && px >= self->sel_x && py >= self->sel_y && px - self->sel_x < self->sel_w && py - self->sel_y < self->sel_h;
+
+=== REQ-0013-11 a primary press on a resize handle does not put a floating selection down
+file: src/ui/canvas.c
+test: ui-0013
+--- find
+          if (button == GDK_BUTTON_PRIMARY)
+            {
+              finish_selection (self, FALSE);
+--- replace
+          if (button == GDK_BUTTON_PRIMARY)
+            {
+
+=== REQ-0013-02 the selection's mode read for the canvas is the Eraser's
+file: src/ui/tool-options.c
+test: ui-0013
+--- find
+  return self->select_transparent;
+--- replace
+  return self->transparent;
+
+=== REQ-0013-14 Clear Selection keeps the selection
+file: src/ui/canvas.c
+test: ui-0013
+--- find
+  easel_float_free (&self->sel_float);
+  self->sel_state = 0;
+  self->hover_sel = FALSE;
+  update_cursor (self);
+  if (r == EASEL_SELECTION_DONE)
+    easel_canvas_update (self);
+  g_signal_emit (self, signals[SIGNAL_PENDING_CHANGED], 0);
+  g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);
+  gtk_widget_queue_draw (GTK_WIDGET (self));
+  return TRUE;
+--- replace
+  if (r == EASEL_SELECTION_DONE)
+    easel_canvas_update (self);
+  g_signal_emit (self, signals[SIGNAL_PENDING_CHANGED], 0);
+  g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);
+  gtk_widget_queue_draw (GTK_WIDGET (self));
+  return TRUE;
+
+=== REQ-0013-14 Clear Selection on a floating selection drops its hole too
+file: src/ui/canvas.c
+test: ui-0013
+--- find
+    r = easel_selection_put_down (&self->sel_float, FALSE, self->img, self->history, self->sel_step_max);
+--- replace
+    r = EASEL_SELECTION_NOTHING;
+
+=== REQ-0013-14 Clear Selection is there without a selection
+file: src/ui/window.c
+test: ui-0013
+--- find
+    g_simple_action_set_enabled (G_SIMPLE_ACTION (clear),
+                                 easel_canvas_get_selection (self->canvas, &x, &y, &w, &h, &floating));
+--- replace
+    g_simple_action_set_enabled (G_SIMPLE_ACTION (clear), TRUE);
+
+=== REQ-0013-14 Delete is taken without a selection
+file: src/ui/window.c
+test: ui-0013
+--- find
+  if ((keyval == GDK_KEY_Delete || keyval == GDK_KEY_KP_Delete) && !dialog_is_open (self)
+      && easel_canvas_clear_selection (self->canvas))
+    return GDK_EVENT_STOP;
+--- replace
+  if ((keyval == GDK_KEY_Delete || keyval == GDK_KEY_KP_Delete) && !dialog_is_open (self))
+    {
+      easel_canvas_clear_selection (self->canvas);
+      return GDK_EVENT_STOP;
+    }
+
+=== REQ-0013-15 Select All does not make Select the tool
+file: src/ui/window.c
+test: ui-0013
+--- find
+  g_action_group_change_action_state (G_ACTION_GROUP (self), "tool", g_variant_new_string ("select"));
+  easel_canvas_select_all (self->canvas);
+--- replace
+  easel_canvas_select_all (self->canvas);
+
+=== REQ-0013-15 Select All acts during a stroke
+file: src/ui/window.c
+test: ui-0013
+--- find
+  if (self->picture == NULL || dialog_is_open (self) || easel_canvas_is_stroking (self->canvas)
+      || easel_canvas_is_resizing (self->canvas))
+    return;
+  g_action_group_change_action_state
+--- replace
+  if (self->picture == NULL || dialog_is_open (self) || easel_canvas_is_resizing (self->canvas))
+    return;
+  g_action_group_change_action_state
+
+=== REQ-0013-15 Select All does not put a floating selection down first
+file: src/ui/canvas.c
+test: ui-0013
+--- find
+  finish_selection (self, FALSE);
+  self->sel_state = 1;
+  self->sel_x = self->sel_y = 0;
+--- replace
+  easel_float_free (&self->sel_float);
+  self->sel_state = 1;
+  self->sel_x = self->sel_y = 0;
+
+=== REQ-0013-16 the Edit submenu loses its label's mnemonic
+file: src/ui/window.ui
+test: ui-0013
+--- find
+        <attribute name="label" translatable="yes">_Edit</attribute>
+--- replace
+        <attribute name="label" translatable="yes">Edit</attribute>
+
+=== REQ-0013-17 the context menu opens on a secondary press outside the selection
+file: src/ui/canvas.c
+test: ui-0013
+--- find
+          if (on_selection (self, x, y))
+            g_signal_emit (self, signals[SIGNAL_CONTEXT_MENU], 0, x, y);
+--- replace
+          g_signal_emit (self, signals[SIGNAL_CONTEXT_MENU], 0, x, y);
+
+=== REQ-0013-17 the window takes Esc, Enter, Delete and the arrows while a menu is open
+file: src/ui/window.c
+test: ui-0013
+--- find
+  if (menu_is_open (self))
+    return GDK_EVENT_PROPAGATE;                 /* a menu's keys are its own (REQ-0013-17) */
+--- replace
+  if (FALSE)
+    return GDK_EVENT_PROPAGATE;
+
+=== REQ-0013-17 a secondary press on the selection opens no menu
+file: src/ui/window.c
+test: ui-0013
+--- find
+  gtk_popover_popup (GTK_POPOVER (self->selection_menu));
+--- replace
+  (void) self;
+
+=== REQ-0013-08 the hole is the background color in Transparent mode too
+file: src/ui/canvas.c
+test: ui-0013
+--- find
+  return self->sel_transparent ? 0x00000000u : self->background;
+--- replace
+  return self->background;
+
+=== REQ-0013-14 Delete on a marked selection ignores the mode
+file: src/ui/canvas.c
+test: ui-0013
+--- find
+    r = easel_selection_clear (self->img, self->history, self->sel_x, self->sel_y, self->sel_w, self->sel_h, hole_color (self),
+--- replace
+    r = easel_selection_clear (self->img, self->history, self->sel_x, self->sel_y, self->sel_w, self->sel_h, self->background,
+
+=== REQ-0013-08 an arrow key lifts with the background color in Transparent mode
+file: src/ui/canvas.c
+test: ui-0013
+--- find
+                                hole_color (self), self->sel_lift_max) != EASEL_SELECTION_DONE)
+--- replace
+                                self->background, self->sel_lift_max) != EASEL_SELECTION_DONE)
+
+=== REQ-0013-18 the other button cancels the whole floating selection, not only the drag
+file: src/ui/canvas.c
+test: ui-0013
+--- find
+      else if (self->sel_stamped_here && self->sel_float.n_stamps > 0)
+        self->sel_float.n_stamps--;
+--- replace
+      else
+        easel_float_free (&self->sel_float);
+
+=== REQ-0013-18 a cancelled move does not undo the lift it made
+file: src/ui/canvas.c
+test: ui-0013
+--- find
+      if (self->sel_lifted_here)
+        {
+          easel_float_free (&self->sel_float);
+--- replace
+      if (FALSE)
+        {
+          easel_float_free (&self->sel_float);
+
+=== REQ-0013-18 a cancelled move leaves the copy Ctrl left at its press
+file: src/ui/canvas.c
+test: ui-0013
+--- find
+      else if (self->sel_stamped_here && self->sel_float.n_stamps > 0)
+        self->sel_float.n_stamps--;
+--- replace
+      else if (self->sel_stamped_here && self->sel_float.n_stamps > 0)
+        (void) 0;
+
+=== REQ-0013-18 a lost release or focus cancels the move instead of ending it as last shown
+file: src/ui/canvas.c
+test: ui-0013
+--- find
+  if (self->sel_moving)
+    {
+      self->sel_moving = FALSE;                /* ... and the move as last shown */
+      g_signal_emit (self, signals[SIGNAL_STROKING_CHANGED], 0, FALSE);
+      return;
+    }
+--- replace
+  if (self->sel_moving)
+    {
+      cancel_selection_drag (self);
+      return;
+    }
+
+=== REQ-0013-18 Enter puts a selection down during a move
+file: src/ui/canvas.c
+test: ui-0013
+--- find
+  if (self->sel_state == 0 || easel_canvas_is_stroking (self))
+    return FALSE;
+  finish_selection (self, FALSE);
+  return TRUE;
+--- replace
+  if (self->sel_state == 0)
+    return FALSE;
+  self->sel_moving = FALSE;
+  finish_selection (self, FALSE);
+  return TRUE;
+
+=== REQ-0013-18 Esc during a rectangle drag is not taken
+file: src/ui/window.c
+test: ui-0013
+--- find
+  if (keyval == GDK_KEY_Escape && !dialog_is_open (self) && self->tool == EASEL_TOOL_SELECT
+      && easel_canvas_is_stroking (self->canvas))
+--- replace
+  if (FALSE && keyval == GDK_KEY_Escape && !dialog_is_open (self) && self->tool == EASEL_TOOL_SELECT
+      && easel_canvas_is_stroking (self->canvas))
+
+=== REQ-0013-18 the other button's press during a drag starts a drag of its own
+file: src/ui/canvas.c
+test: ui-0013
+--- find
+      if (button != self->sel_button)
+        cancel_selection_drag (self);
+      return;
+--- replace
+      if (button != self->sel_button)
+        cancel_selection_drag (self);
+
+=== REQ-0013-13 the dragged pixels equal to the hole color are hidden (a see-through color)
+file: src/core/selection.c
+test: core-selection
+--- find
+  *v = f->px[(size_t) (y - py) * f->w + (x - px)];
+  return true;
+--- replace
+  if (f->hole && f->px[(size_t) (y - py) * f->w + (x - px)] == f->hole_color)
+    return false;
+  *v = f->px[(size_t) (y - py) * f->w + (x - px)];
+  return true;
+
+=== REQ-0013-19 a failed put-down shows no dialog
+file: src/ui/canvas.c
+test: ui-0013
+--- find
+      if (!ok)
+        g_signal_emit (self, signals[SIGNAL_SELECTION_FAILED], 0, 0);     /* the dialog comes after the action goes on */
+--- replace
+      (void) ok;
+
+=== REQ-0013-19 the quit goes on after a selection could not be put down
+file: src/ui/window.c
+test: ui-0013
+--- find
+  if (!easel_canvas_put_down (self->canvas))
+    return TRUE;                                /* a selection could not be put down: the quit stops, the dialog tells why (REQ-0013-19) */
+--- replace
+  easel_canvas_put_down (self->canvas);
+
+=== REQ-0013-19 a press outside a selection that could not be put down still starts a rectangle
+file: src/ui/canvas.c
+test: ui-0013
+--- find
+      if (!finish_selection (self, FALSE))
+        return;                                   /* the put-down failed: the press starts no rectangle (REQ-0013-04) */
+--- replace
+      finish_selection (self, FALSE);
+
+=== REQ-0013-19 a drag whose lift failed goes on
+file: src/ui/canvas.c
+test: ui-0013
+--- find
+  g_signal_emit (self, signals[SIGNAL_SELECTION_FAILED], 0, 0);
+  self->sel_moving = FALSE;
+  self->cancelled_button = self->sel_button;
+--- replace
+  g_signal_emit (self, signals[SIGNAL_SELECTION_FAILED], 0, 0);
+
+=== REQ-0013-19 Clear Selection without the memory shows no dialog
+file: src/ui/canvas.c
+test: ui-0013
+--- find
+      g_signal_emit (self, signals[SIGNAL_SELECTION_FAILED], 0, 1);          /* nothing changed, the selection stays */
+--- replace
+      (void) 0;
+
+=== REQ-0013-19 Clear Selection without the memory shows the move dialog
+file: src/ui/window.c
+test: ui-0013
+--- find
+  g_object_set_data (G_OBJECT (self), "selection-error-clear", GINT_TO_POINTER (kind == 1));
+--- replace
+  g_object_set_data (G_OBJECT (self), "selection-error-clear", GINT_TO_POINTER (FALSE));
+
+=== REQ-0013-19 an arrow key's failed lift shows no dialog
+file: src/ui/canvas.c
+test: ui-0013
+--- find
+        {
+          g_signal_emit (self, signals[SIGNAL_SELECTION_FAILED], 0, 0);
+          return TRUE;
+        }
+--- replace
+        return TRUE;
+
+=== REQ-0013-19 a Ctrl copy that cannot be made does not end the drag
+file: src/ui/canvas.c
+test: ui-0013
+--- find
+          if (self->sel_copy && !easel_selection_stamp (&self->sel_float, self->sel_lift_max))
+            {
+              end_failed_move (self);
+              return;
+            }
+--- replace
+          if (self->sel_copy && !easel_selection_stamp (&self->sel_float, self->sel_lift_max))
+            {
+            }
+
+=== REQ-0013-20 Select starts a rectangle with a dialog, the chooser or the quit prompt open
+file: src/ui/canvas.c
+test: ui-0013
+--- find
+  if (self->input_blocked || (button != GDK_BUTTON_PRIMARY && button != GDK_BUTTON_SECONDARY))
+--- replace
+  if ((self->input_blocked && self->tool != EASEL_TOOL_SELECT) || (button != GDK_BUTTON_PRIMARY && button != GDK_BUTTON_SECONDARY))
+
+=== REQ-0013-20 Delete is taken while a dialog is open
+file: src/ui/window.c
+test: ui-0013
+--- find
+  if ((keyval == GDK_KEY_Delete || keyval == GDK_KEY_KP_Delete) && !dialog_is_open (self)
+      && easel_canvas_clear_selection (self->canvas))
+--- replace
+  if ((keyval == GDK_KEY_Delete || keyval == GDK_KEY_KP_Delete)
+      && easel_canvas_clear_selection (self->canvas))
+
+=== REQ-0013-20 the arrows move the selection while a dialog is open
+file: src/ui/window.c
+test: ui-0013
+--- find
+      && (state & (GDK_CONTROL_MASK | GDK_ALT_MASK)) == 0 && !dialog_is_open (self))
+--- replace
+      && (state & (GDK_CONTROL_MASK | GDK_ALT_MASK)) == 0)
+
+=== REQ-0013-20 Esc puts a selection down while a dialog is open
+file: src/ui/window.c
+test: ui-0013
+--- find
+  if (keyval == GDK_KEY_Escape && !dialog_is_open (self) && easel_canvas_finish_selection (self->canvas))
+--- replace
+  if (keyval == GDK_KEY_Escape && easel_canvas_finish_selection (self->canvas))
 
 === REQ-0010-13 the fill-only style paints the inside in the other color
 file: src/core/figure.c
@@ -3121,3 +3951,11 @@ test: ui-0010
       self->cancelled_button = self->shape_button;
 --- replace
       self->shaping = FALSE;
+
+=== REQ-0013-14 the clear's log is pushed without being shrunk to its length
+file: src/core/selection.c
+test: core-selection
+--- find
+  if (history != NULL && !easel_change_log_push (&l, history))
+--- replace
+  if (history != NULL && (!easel_history_push (history, l.log, l.n) || (l.log = NULL, l.n = l.cap = 0, false)))

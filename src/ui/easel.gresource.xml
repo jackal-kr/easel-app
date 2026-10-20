@@ -18,6 +18,7 @@
     <file preprocess="xml-stripblanks">icons/scalable/actions/easel-tool-curve-symbolic.svg</file>
     <file preprocess="xml-stripblanks">icons/scalable/actions/easel-tool-polygon-symbolic.svg</file>
     <file preprocess="xml-stripblanks">icons/scalable/actions/easel-tool-gradient-symbolic.svg</file>
+    <file preprocess="xml-stripblanks">icons/scalable/actions/easel-tool-select-symbolic.svg</file>
     <file preprocess="xml-stripblanks">cursors/pencil.svg</file>
     <file preprocess="xml-stripblanks">cursors/airbrush.svg</file>
     <file preprocess="xml-stripblanks">cursors/magnifier.svg</file>

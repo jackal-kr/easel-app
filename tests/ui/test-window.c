@@ -13,6 +13,7 @@
 #include "application.h"
 #include "canvas.h"
 #include "gradient.h"
+#include "selection.h"
 #include "magnifier.h"
 #include "palette-bar.h"
 #include "picture-file.h"
@@ -3306,9 +3307,9 @@ static void
 as1_toolbox_and_options (void)
 {
   static const struct { const char *name, *tip; int col, row; EaselTool tool; } tools[] = {
-    { "pan", "Pan", 0, 0, EASEL_TOOL_PAN }, { "eraser", "Eraser", 0, 1, EASEL_TOOL_ERASER },
-    { "pencil", "Pencil", 0, 3, EASEL_TOOL_PENCIL }, { "brush", "Brush", 1, 3, EASEL_TOOL_BRUSH },
-    { "airbrush", "Airbrush", 0, 4, EASEL_TOOL_AIRBRUSH },
+    { "pan", "Pan", 0, 0, EASEL_TOOL_PAN }, { "eraser", "Eraser", 1, 1, EASEL_TOOL_ERASER },
+    { "pencil", "Pencil", 1, 3, EASEL_TOOL_PENCIL }, { "brush", "Brush", 0, 4, EASEL_TOOL_BRUSH },
+    { "airbrush", "Airbrush", 1, 4, EASEL_TOOL_AIRBRUSH },
   };
   EaselWindow *win = start_window ();
   GtkToggleButton *buttons[5];
@@ -4027,11 +4028,11 @@ as1_file_menu (void)
     g_assert_cmpfloat (rs.origin.x + rs.size.width, <=, ru.origin.x);
   }
 
-  /* New, Open…, Save and Save As… in one section, Quit apart from them in the next. */
+  /* New, Open…, Save and Save As… in one section, then Edit (0013, REQ-0013-16), Quit apart from them in the last. */
   g_assert_true (gtk_menu_button_get_primary (main));
-  g_assert_cmpint (g_menu_model_get_n_items (menu), ==, 2);
+  g_assert_cmpint (g_menu_model_get_n_items (menu), ==, 3);
   s0 = describe_section (menu, 0);
-  s1 = describe_section (menu, 1);
+  s1 = describe_section (menu, 2);
   g_assert_cmpstr (s0, ==, "_New|win.new; _Open…|win.open; _Save|win.save; Save _As…|win.save-as");
   g_assert_cmpstr (s1, ==, "_Quit|app.quit");
 
@@ -5482,9 +5483,9 @@ as1_new_tools_toolbox_hints (void)
 {
   static const struct { const char *name, *tip; int col, row; EaselTool tool; } tools[] = {
     { "pan", "Pan", 0, 0, EASEL_TOOL_PAN }, { "magnifier", "Magnifier", 1, 0, EASEL_TOOL_MAGNIFIER },
-    { "eraser", "Eraser", 0, 1, EASEL_TOOL_ERASER }, { "pick", "Pick Color", 1, 1, EASEL_TOOL_PICK },
-    { "fill", "Fill", 0, 2, EASEL_TOOL_FILL }, { "pencil", "Pencil", 0, 3, EASEL_TOOL_PENCIL },
-    { "brush", "Brush", 1, 3, EASEL_TOOL_BRUSH }, { "airbrush", "Airbrush", 0, 4, EASEL_TOOL_AIRBRUSH },
+    { "eraser", "Eraser", 1, 1, EASEL_TOOL_ERASER }, { "pick", "Pick Color", 0, 2, EASEL_TOOL_PICK },
+    { "fill", "Fill", 1, 2, EASEL_TOOL_FILL }, { "pencil", "Pencil", 1, 3, EASEL_TOOL_PENCIL },
+    { "brush", "Brush", 0, 4, EASEL_TOOL_BRUSH }, { "airbrush", "Airbrush", 1, 4, EASEL_TOOL_AIRBRUSH },
   };
   EaselWindow *win = start_window ();
   EaselStatusBar *bar = easel_window_get_status_bar (win);
@@ -6890,7 +6891,7 @@ assert_lens_like_tool_buttons (EaselWindow *win)
 static void
 as6_toolbox_width_is_the_same_for_every_tool (void)
 {
-  static const char *const tools[] = { "pan", "pencil", "brush", "airbrush", "eraser", "magnifier", "pick", "fill", "gradient",
+  static const char *const tools[] = { "pan", "pencil", "brush", "airbrush", "eraser", "magnifier", "select", "pick", "fill", "gradient",
                                        "line", "curve", "rectangle", "rounded-rectangle", "ellipse", "polygon" };
   static const char *const lens[] = { "100 %", "200 %", "400 %", "600 %", "800 %" };
   GtkSettings *st = gtk_settings_get_default ();
@@ -7582,14 +7583,14 @@ as1_shape_tools_toolbox_hints (void)
 {
   static const struct { const char *name, *tip, *hint; int col, row; EaselTool tool; } tools[] = {
     { "pan", "Pan", NULL, 0, 0, EASEL_TOOL_PAN }, { "magnifier", "Magnifier", NULL, 1, 0, EASEL_TOOL_MAGNIFIER },
-    { "eraser", "Eraser", NULL, 0, 1, EASEL_TOOL_ERASER }, { "pick", "Pick Color", NULL, 1, 1, EASEL_TOOL_PICK },
-    { "fill", "Fill", NULL, 0, 2, EASEL_TOOL_FILL }, { "pencil", "Pencil", NULL, 0, 3, EASEL_TOOL_PENCIL },
-    { "brush", "Brush", NULL, 1, 3, EASEL_TOOL_BRUSH }, { "airbrush", "Airbrush", NULL, 0, 4, EASEL_TOOL_AIRBRUSH },
-    { "line", "Line", "Draws a straight line with the selected line width.", 1, 4, EASEL_TOOL_LINE },
-    { "rectangle", "Rectangle", "Draws a rectangle with the selected fill style.", 1, 5, EASEL_TOOL_RECTANGLE },
-    { "rounded-rectangle", "Rounded Rectangle", "Draws a rounded rectangle with the selected fill style.", 0, 6,
+    { "eraser", "Eraser", NULL, 1, 1, EASEL_TOOL_ERASER }, { "pick", "Pick Color", NULL, 0, 2, EASEL_TOOL_PICK },
+    { "fill", "Fill", NULL, 1, 2, EASEL_TOOL_FILL }, { "pencil", "Pencil", NULL, 1, 3, EASEL_TOOL_PENCIL },
+    { "brush", "Brush", NULL, 0, 4, EASEL_TOOL_BRUSH }, { "airbrush", "Airbrush", NULL, 1, 4, EASEL_TOOL_AIRBRUSH },
+    { "line", "Line", "Draws a straight line with the selected line width.", 0, 5, EASEL_TOOL_LINE },
+    { "rectangle", "Rectangle", "Draws a rectangle with the selected fill style.", 0, 6, EASEL_TOOL_RECTANGLE },
+    { "rounded-rectangle", "Rounded Rectangle", "Draws a rounded rectangle with the selected fill style.", 1, 6,
       EASEL_TOOL_ROUNDED_RECTANGLE },
-    { "ellipse", "Ellipse", "Draws an ellipse with the selected fill style.", 1, 6, EASEL_TOOL_ELLIPSE },
+    { "ellipse", "Ellipse", "Draws an ellipse with the selected fill style.", 0, 7, EASEL_TOOL_ELLIPSE },
   };
   EaselWindow *win = start_window ();
   EaselStatusBar *bar = easel_window_get_status_bar (win);
@@ -8345,15 +8346,15 @@ as1_curve_polygon_toolbox_hints (void)
 {
   static const struct { const char *name, *tip, *hint; int col, row; EaselTool tool; } tools[] = {
     { "pan", "Pan", NULL, 0, 0, EASEL_TOOL_PAN }, { "magnifier", "Magnifier", NULL, 1, 0, EASEL_TOOL_MAGNIFIER },
-    { "eraser", "Eraser", NULL, 0, 1, EASEL_TOOL_ERASER }, { "pick", "Pick Color", NULL, 1, 1, EASEL_TOOL_PICK },
-    { "fill", "Fill", NULL, 0, 2, EASEL_TOOL_FILL }, { "pencil", "Pencil", NULL, 0, 3, EASEL_TOOL_PENCIL },
-    { "brush", "Brush", NULL, 1, 3, EASEL_TOOL_BRUSH }, { "airbrush", "Airbrush", NULL, 0, 4, EASEL_TOOL_AIRBRUSH },
-    { "line", "Line", NULL, 1, 4, EASEL_TOOL_LINE },
-    { "curve", "Curve", "Draws a curved line with the selected line width.", 0, 5, EASEL_TOOL_CURVE },
-    { "rectangle", "Rectangle", NULL, 1, 5, EASEL_TOOL_RECTANGLE },
-    { "rounded-rectangle", "Rounded Rectangle", NULL, 0, 6, EASEL_TOOL_ROUNDED_RECTANGLE },
-    { "ellipse", "Ellipse", NULL, 1, 6, EASEL_TOOL_ELLIPSE },
-    { "polygon", "Polygon", "Draws a polygon with the selected fill style.", 0, 7, EASEL_TOOL_POLYGON },
+    { "eraser", "Eraser", NULL, 1, 1, EASEL_TOOL_ERASER }, { "pick", "Pick Color", NULL, 0, 2, EASEL_TOOL_PICK },
+    { "fill", "Fill", NULL, 1, 2, EASEL_TOOL_FILL }, { "pencil", "Pencil", NULL, 1, 3, EASEL_TOOL_PENCIL },
+    { "brush", "Brush", NULL, 0, 4, EASEL_TOOL_BRUSH }, { "airbrush", "Airbrush", NULL, 1, 4, EASEL_TOOL_AIRBRUSH },
+    { "line", "Line", NULL, 0, 5, EASEL_TOOL_LINE },
+    { "curve", "Curve", "Draws a curved line with the selected line width.", 1, 5, EASEL_TOOL_CURVE },
+    { "rectangle", "Rectangle", NULL, 0, 6, EASEL_TOOL_RECTANGLE },
+    { "rounded-rectangle", "Rounded Rectangle", NULL, 1, 6, EASEL_TOOL_ROUNDED_RECTANGLE },
+    { "ellipse", "Ellipse", NULL, 0, 7, EASEL_TOOL_ELLIPSE },
+    { "polygon", "Polygon", "Draws a polygon with the selected fill style.", 1, 7, EASEL_TOOL_POLYGON },
   };
   EaselWindow *win = start_window ();
   EaselStatusBar *bar = easel_window_get_status_bar (win);
@@ -9429,14 +9430,14 @@ as1_gradient_toolbox_hints (void)
 {
   static const struct { const char *name, *tip; int col, row; EaselTool tool; } tools[] = {
     { "pan", "Pan", 0, 0, EASEL_TOOL_PAN }, { "magnifier", "Magnifier", 1, 0, EASEL_TOOL_MAGNIFIER },
-    { "eraser", "Eraser", 0, 1, EASEL_TOOL_ERASER }, { "pick", "Pick Color", 1, 1, EASEL_TOOL_PICK },
-    { "fill", "Fill", 0, 2, EASEL_TOOL_FILL }, { "gradient", "Gradient", 1, 2, EASEL_TOOL_GRADIENT },
-    { "pencil", "Pencil", 0, 3, EASEL_TOOL_PENCIL }, { "brush", "Brush", 1, 3, EASEL_TOOL_BRUSH },
-    { "airbrush", "Airbrush", 0, 4, EASEL_TOOL_AIRBRUSH }, { "line", "Line", 1, 4, EASEL_TOOL_LINE },
-    { "curve", "Curve", 0, 5, EASEL_TOOL_CURVE }, { "rectangle", "Rectangle", 1, 5, EASEL_TOOL_RECTANGLE },
-    { "rounded-rectangle", "Rounded Rectangle", 0, 6, EASEL_TOOL_ROUNDED_RECTANGLE },
-    { "ellipse", "Ellipse", 1, 6, EASEL_TOOL_ELLIPSE },
-    { "polygon", "Polygon", 0, 7, EASEL_TOOL_POLYGON },
+    { "eraser", "Eraser", 1, 1, EASEL_TOOL_ERASER }, { "pick", "Pick Color", 0, 2, EASEL_TOOL_PICK },
+    { "fill", "Fill", 1, 2, EASEL_TOOL_FILL }, { "gradient", "Gradient", 0, 3, EASEL_TOOL_GRADIENT },
+    { "pencil", "Pencil", 1, 3, EASEL_TOOL_PENCIL }, { "brush", "Brush", 0, 4, EASEL_TOOL_BRUSH },
+    { "airbrush", "Airbrush", 1, 4, EASEL_TOOL_AIRBRUSH }, { "line", "Line", 0, 5, EASEL_TOOL_LINE },
+    { "curve", "Curve", 1, 5, EASEL_TOOL_CURVE }, { "rectangle", "Rectangle", 0, 6, EASEL_TOOL_RECTANGLE },
+    { "rounded-rectangle", "Rounded Rectangle", 1, 6, EASEL_TOOL_ROUNDED_RECTANGLE },
+    { "ellipse", "Ellipse", 0, 7, EASEL_TOOL_ELLIPSE },
+    { "polygon", "Polygon", 1, 7, EASEL_TOOL_POLYGON },
   };
   EaselWindow *win = start_window ();
   EaselStatusBar *bar = easel_window_get_status_bar (win);
@@ -9531,6 +9532,17 @@ gradient_over (const EaselImage *base, int x0, int y0, int x1, int y1, uint32_t 
   memcpy (want->px, base->px, (size_t) base->width * base->height * sizeof base->px[0]);
   g_assert_cmpint (easel_gradient_apply (want, NULL, &g, NULL), !=, EASEL_GRADIENT_NO_MEMORY);
   return want;
+}
+
+static int
+differing_pixels (const EaselImage *a, const EaselImage *b)
+{
+  int n = 0;
+
+  g_assert_cmpint (a->width * a->height, ==, b->width * b->height);
+  for (int i = 0; i < a->width * a->height; i++)
+    n += a->px[i] != b->px[i];
+  return n;
 }
 
 static void
@@ -10054,7 +10066,14 @@ assert_region_is (EaselWindow *win, const uint32_t *px, int w, int cx, int cy, c
   g_assert_true (easel_canvas_get_guides_hidden (canvas) || !easel_canvas_get_marker_rect (canvas, 0, &m));
   for (int y = 0; y < 20 * scale; y++)
     for (int x = 0; x < 40 * scale; x++)
-      g_assert_cmphex (px[(gsize) (cy + y) * w + cx + x], ==, easel_image_get (want, x / scale, y / scale));
+      {
+        uint32_t c = px[(gsize) (cy + y) * w + cx + x], v = easel_image_get (want, x / scale, y / scale);
+
+        if (v >> 24 == 0)
+          g_assert_true (c == 0xFF999999u || c == 0xFFCCCCCCu);        /* a transparent pixel shows the checkerboard */
+        else
+          g_assert_cmphex (c, ==, v);
+      }
 }
 
 static void
@@ -11119,6 +11138,1677 @@ as25_guide_line (void)
   close_windows ();
 }
 
+/* ---- 0013: Selection ---- */
+
+/* AS-1 (REQ-0013-01, -02, -03): Select after the Magnifier in the rows of REQ-0013-01, its tooltip, the two mode buttons with
+   their tooltips (Opaque at start, a mode of its own, not the Eraser's), the hint, the crosshair and the resize cursor over a
+   handle; Numpad does nothing with it and Ctrl+Numpad + still zooms. */
+static void
+as1_select_toolbox_options (void)
+{
+  static const struct { const char *name, *tip; int col, row; EaselTool tool; } tools[] = {
+    { "pan", "Pan", 0, 0, EASEL_TOOL_PAN }, { "magnifier", "Magnifier", 1, 0, EASEL_TOOL_MAGNIFIER },
+    { "select", "Select", 0, 1, EASEL_TOOL_SELECT }, { "eraser", "Eraser", 1, 1, EASEL_TOOL_ERASER },
+    { "pick", "Pick Color", 0, 2, EASEL_TOOL_PICK }, { "fill", "Fill", 1, 2, EASEL_TOOL_FILL },
+    { "gradient", "Gradient", 0, 3, EASEL_TOOL_GRADIENT }, { "pencil", "Pencil", 1, 3, EASEL_TOOL_PENCIL },
+    { "brush", "Brush", 0, 4, EASEL_TOOL_BRUSH }, { "airbrush", "Airbrush", 1, 4, EASEL_TOOL_AIRBRUSH },
+    { "line", "Line", 0, 5, EASEL_TOOL_LINE }, { "curve", "Curve", 1, 5, EASEL_TOOL_CURVE },
+    { "rectangle", "Rectangle", 0, 6, EASEL_TOOL_RECTANGLE },
+    { "rounded-rectangle", "Rounded Rectangle", 1, 6, EASEL_TOOL_ROUNDED_RECTANGLE },
+    { "ellipse", "Ellipse", 0, 7, EASEL_TOOL_ELLIPSE }, { "polygon", "Polygon", 1, 7, EASEL_TOOL_POLYGON },
+  };
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  EaselStatusBar *bar = easel_window_get_status_bar (win);
+  GtkToggleButton *buttons[16];
+  GtkWidget *opaque, *transparent, *eraser_opaque;
+  graphene_rect_t first, r, hr;
+  int width, zoom;
+
+  wait_for_layout (win);
+  for (guint i = 0; i < G_N_ELEMENTS (tools); i++)
+    {
+      buttons[i] = find_tool_button (GTK_WIDGET (win), tools[i].name);
+      g_assert_nonnull (buttons[i]);
+      g_assert_cmpstr (gtk_widget_get_tooltip_text (GTK_WIDGET (buttons[i])), ==, tools[i].tip);
+      g_assert_cmpstr (gtk_button_get_icon_name (GTK_BUTTON (buttons[i])), !=, NULL);
+    }
+  first = bounds_in (GTK_WIDGET (buttons[0]), GTK_WIDGET (win));
+  for (guint i = 1; i < G_N_ELEMENTS (tools); i++)
+    {
+      graphene_rect_t before = bounds_in (GTK_WIDGET (buttons[i - 1]), GTK_WIDGET (win));
+
+      r = bounds_in (GTK_WIDGET (buttons[i]), GTK_WIDGET (win));
+      if (tools[i].col == 0)
+        g_assert_cmpfloat_with_epsilon (r.origin.x, first.origin.x, 1.0);
+      else
+        g_assert_cmpfloat (r.origin.x, >, first.origin.x + first.size.width - 1);
+      if (tools[i].row > tools[i - 1].row)
+        g_assert_cmpfloat (r.origin.y, >, before.origin.y + 1);
+      else
+        g_assert_cmpfloat_with_epsilon (r.origin.y, before.origin.y, 1.0);
+    }
+  /* Select: chosen alone, the hint, the crosshair, over a handle the resize cursor. */
+  g_signal_emit_by_name (buttons[2], "clicked");
+  wait_for_layout (win);
+  g_assert_cmpint (easel_window_get_tool (win), ==, EASEL_TOOL_SELECT);
+  for (guint j = 0; j < G_N_ELEMENTS (tools); j++)
+    g_assert_true (gtk_toggle_button_get_active (buttons[j]) == (j == 2));
+  g_assert_cmpstr (easel_status_bar_get_text (bar, EASEL_STATUS_HINT), ==,
+                   "Selects a rectangular part of the picture to move, copy, or edit.");
+  easel_canvas_pointer_at (canvas, 10.5, 10.5);
+  g_assert_cmpstr (gdk_cursor_get_name (gtk_widget_get_cursor (GTK_WIDGET (canvas))), ==, "crosshair");
+  g_assert_true (easel_canvas_get_handle_rect (canvas, EASEL_HANDLE_CORNER, &hr));
+  easel_canvas_pointer_at (canvas, hr.origin.x + hr.size.width / 2, hr.origin.y + hr.size.height / 2);
+  g_assert_cmpstr (gdk_cursor_get_name (gtk_widget_get_cursor (GTK_WIDGET (canvas))), ==, "nwse-resize");
+  easel_canvas_pointer_at (canvas, 10.5, 10.5);
+  /* The two mode buttons, Opaque chosen at start, one above the other. */
+  opaque = find_mapped_by_tooltip (GTK_WIDGET (win), "Opaque: keep background color");
+  transparent = find_mapped_by_tooltip (GTK_WIDGET (win), "Transparent: moving or clearing leaves a transparent hole");
+  g_assert_nonnull (opaque);
+  g_assert_nonnull (transparent);
+  g_assert_true (gtk_toggle_button_get_active (GTK_TOGGLE_BUTTON (opaque)));
+  g_assert_false (gtk_toggle_button_get_active (GTK_TOGGLE_BUTTON (transparent)));
+  g_assert_cmpfloat (bounds_in (transparent, GTK_WIDGET (win)).origin.y, >, bounds_in (opaque, GTK_WIDGET (win)).origin.y + 1);
+  /* The mode is the selection's own: Transparent here leaves the Eraser Opaque, and is kept when Select comes back. */
+  g_signal_emit_by_name (transparent, "clicked");
+  g_assert_true (gtk_toggle_button_get_active (GTK_TOGGLE_BUTTON (transparent)));
+  use_tool (win, "eraser");
+  wait_for_layout (win);
+  eraser_opaque = find_mapped_by_tooltip (GTK_WIDGET (win), "Opaque: erase to the background color");
+  g_assert_nonnull (eraser_opaque);
+  g_assert_true (gtk_toggle_button_get_active (GTK_TOGGLE_BUTTON (eraser_opaque)));
+  use_tool (win, "select");
+  wait_for_layout (win);
+  g_assert_true (gtk_toggle_button_get_active (GTK_TOGGLE_BUTTON (find_mapped_by_tooltip (GTK_WIDGET (win),
+                                                                  "Transparent: moving or clearing leaves a transparent hole"))));
+  /* Numpad + and - do nothing with Select; Ctrl+Numpad + still zooms. */
+  width = int_state (win, "line-width");
+  zoom = easel_window_get_zoom (win);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "preset-larger", NULL);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "preset-smaller", NULL);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "preset-larger", NULL);
+  g_assert_cmpint (int_state (win, "line-width"), ==, width);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, zoom);
+  g_assert_true (has_accel ("win.zoom-in", GDK_KEY_KP_Add, GDK_CONTROL_MASK));
+  g_assert_false (easel_window_get_modified (win));
+  close_windows ();
+}
+
+/* Select active, and the state asserted. */
+static void
+use_select (EaselWindow *win)
+{
+  wait_for_layout (win);
+  use_tool (win, "select");
+  wait_for_layout (win);
+  g_assert_cmpint (easel_window_get_tool (win), ==, EASEL_TOOL_SELECT);
+}
+
+/* The selection now: TRUE and its rectangle if one is marked or floating. */
+static gboolean
+selection_is (EaselWindow *win, int x, int y, int w, int h)
+{
+  int sx, sy, sw, sh;
+  gboolean floating;
+
+  if (!easel_canvas_get_selection (easel_window_get_canvas (win), &sx, &sy, &sw, &sh, &floating))
+    return FALSE;
+  return sx == x && sy == y && sw == w && sh == h;
+}
+
+/* The outline of REQ-0013-05 around the picture rectangle (x, y, w, h) in the rendered window px at the zoom z (percent):
+   the ring of device pixels one logical pixel outside it holds only black and white, both, and the pixels just inside are
+   the picture's (yellow here). */
+static void
+assert_outline (EaselWindow *win, const uint32_t *px, int w_px, int cx, int cy, int x, int y, int w, int h)
+{
+  int scale = (int) easel_canvas_get_scale (easel_window_get_canvas (win)), z = easel_window_get_zoom (win);
+  int X0 = x * z * scale / 100, Y0 = y * z * scale / 100, X1 = (x + w) * z * scale / 100, Y1 = (y + h) * z * scale / 100;
+  int black = 0, white = 0;
+
+  for (int X = X0 - scale; X < X1 + scale; X++)
+    for (int Y = Y0 - scale; Y < Y1 + scale; Y++)
+      {
+        uint32_t c = px[(gsize) (cy + Y) * w_px + cx + X];
+        gboolean ring = X < X0 || Y < Y0 || X >= X1 || Y >= Y1;
+
+        if (ring)
+          {
+            g_assert_true (c == 0xFF000000u || c == 0xFFFFFFFFu);
+            black += c == 0xFF000000u;
+            white += c == 0xFFFFFFFFu;
+          }
+        else
+          g_assert_cmphex (c, ==, YELLOW);
+      }
+  g_assert_cmpint (black, >, 0);
+  g_assert_cmpint (white, >, 0);
+}
+
+/* AS-2 (REQ-0013-04, -05, -06): a drag marks a rectangle, limited to the picture, Shift a square made first and then limited;
+   the outline just outside its pixels while dragging and after, at 100 % and 400 %; the size field while dragging (the part
+   inside the picture) and after; a click or a rectangle wholly outside leaves none; the picture is unchanged, no step. */
+static void
+as2_mark_selection (void)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  EaselStatusBar *bar = easel_window_get_status_bar (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  View view = view_of (win);
+  g_autofree uint32_t *px = NULL;
+  int w, h, cx, cy, x0, y0, sw, sh;
+  gboolean floating;
+
+  use_select (win);
+  g_assert_cmpstr (easel_status_bar_get_text (bar, EASEL_STATUS_SELECTION), ==, "");
+  shape_press_move (win, 1, 1, 1, 5, 4);
+  g_assert_true (easel_canvas_is_stroking (canvas));
+  g_assert_cmpstr (easel_status_bar_get_text (bar, EASEL_STATUS_SELECTION), ==, "5 × 4");
+  wait_for_next_frame (win);
+  px = render_pixels (win, &w, &h, &cx, &cy);
+  assert_outline (win, px, w, cx, cy, 1, 1, 5, 4);
+  g_clear_pointer (&px, g_free);
+  shape_release (win, 1);
+  g_assert_false (easel_canvas_is_stroking (canvas));
+  g_assert_true (easel_canvas_get_selection (canvas, &x0, &y0, &sw, &sh, &floating));
+  g_assert_true (selection_is (win, 1, 1, 5, 4));
+  g_assert_false (floating);
+  g_assert_cmpstr (easel_status_bar_get_text (bar, EASEL_STATUS_SELECTION), ==, "5 × 4");
+  wait_for_next_frame (win);
+  px = render_pixels (win, &w, &h, &cx, &cy);
+  assert_outline (win, px, w, cx, cy, 1, 1, 5, 4);
+  g_clear_pointer (&px, g_free);
+  g_assert_cmpint (count_color (img, YELLOW), ==, 300 * 200);
+  g_assert_false (action_enabled (win, "undo"));
+  g_assert_false (easel_window_get_modified (win));
+
+  /* Shift: a square of the smaller side, at once when pressed and released during the drag (first a click away from the
+     selection, so that the drag's press is not on it and does not move it, REQ-0013-07). */
+  shape_press_move (win, 1, 20, 20, 20, 20);
+  shape_release (win, 1);
+  shape_press_move (win, 1, 1, 1, 5, 4);
+  shift_key (win, TRUE);
+  g_assert_cmpstr (easel_status_bar_get_text (bar, EASEL_STATUS_SELECTION), ==, "4 × 4");
+  shift_key (win, FALSE);
+  g_assert_cmpstr (easel_status_bar_get_text (bar, EASEL_STATUS_SELECTION), ==, "5 × 4");
+  shift_key (win, TRUE);
+  shape_release (win, 1);
+  shift_key (win, FALSE);
+  g_assert_true (selection_is (win, 1, 1, 4, 4));
+  /* Limited to the picture; with Shift the square is made first, then limited. */
+  shape_press_move (win, 1, -3, -2, 2, 2);
+  shape_release (win, 1);
+  g_assert_true (selection_is (win, 0, 0, 3, 3));
+  g_assert_cmpstr (easel_status_bar_get_text (bar, EASEL_STATUS_SELECTION), ==, "3 × 3");
+  shift_key (win, TRUE);
+  shape_press_move (win, 1, -3, -2, 2, 2);
+  shape_release (win, 1);
+  shift_key (win, FALSE);
+  g_assert_true (selection_is (win, 0, 0, 2, 3));
+  g_assert_cmpstr (easel_status_bar_get_text (bar, EASEL_STATUS_SELECTION), ==, "2 × 3");
+  /* Wholly outside: no size while dragging, none after; a click leaves none. */
+  shape_press_move (win, 1, -5, -5, -1, -1);
+  g_assert_cmpstr (easel_status_bar_get_text (bar, EASEL_STATUS_SELECTION), ==, "");
+  shape_release (win, 1);
+  g_assert_false (easel_canvas_get_selection (canvas, &x0, &y0, &sw, &sh, &floating));
+  g_assert_cmpstr (easel_status_bar_get_text (bar, EASEL_STATUS_SELECTION), ==, "");
+  shape_press_move (win, 1, 1, 1, 5, 4);
+  shape_release (win, 1);
+  g_assert_true (selection_is (win, 1, 1, 5, 4));
+  shape_press_move (win, 1, 20, 20, 20, 20);
+  shape_release (win, 1);
+  g_assert_false (easel_canvas_get_selection (canvas, &x0, &y0, &sw, &sh, &floating));
+  g_assert_cmpstr (easel_status_bar_get_text (bar, EASEL_STATUS_SELECTION), ==, "");
+  /* At 400 %, scrolled to the top-left corner: the outline is still 1 logical pixel just outside the same pixels. */
+  shape_press_move (win, 1, 1, 1, 5, 4);
+  shape_release (win, 1);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-large", NULL);
+  wait_for_layout (win);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 400);
+  gtk_adjustment_set_value (view.h, 0);
+  gtk_adjustment_set_value (view.v, 0);
+  wait_for_layout (win);
+  wait_for_next_frame (win);
+  px = render_pixels (win, &w, &h, &cx, &cy);
+  assert_outline (win, px, w, cx, cy, 1, 1, 5, 4);
+  g_assert_cmpint (count_color (img, YELLOW), ==, 300 * 200);
+  g_assert_false (action_enabled (win, "undo"));
+  close_windows ();
+}
+
+#define CYAN 0xFF00FFFFu
+
+/* The start-up picture (300 x 200 yellow) with the red block of the 0013 scenarios at the columns 2 to 4 of the rows 2 and 3,
+   in the window's picture (redrawn) and as a copy to compare with. */
+static EaselImage *
+paint_red_block (EaselWindow *win)
+{
+  EaselImage *img = (EaselImage *) easel_window_get_picture (win), *copy = easel_image_new (300, 200, YELLOW);
+
+  g_assert_nonnull (copy);
+  for (int y = 2; y <= 3; y++)
+    for (int x = 2; x <= 4; x++)
+      {
+        easel_image_set (img, x, y, 0xFFFF0000u);
+        easel_image_set (copy, x, y, 0xFFFF0000u);
+      }
+  easel_canvas_update (easel_window_get_canvas (win));
+  g_assert_cmphex (easel_image_get (img, 3, 2), ==, 0xFFFF0000u);
+  return copy;
+}
+
+/* The picture as a put-down of (1, 1) to (5, 4) moved by (dx, dy) leaves it, from the core: the hole in hole, the pixels at
+   their new place. */
+static EaselImage *
+moved_selection (const EaselImage *base, int dx, int dy, uint32_t hole)
+{
+  EaselImage *want = easel_image_new (base->width, base->height, 0);
+  EaselFloat f = { 0 };
+
+  g_assert_nonnull (want);
+  memcpy (want->px, base->px, (size_t) base->width * base->height * sizeof base->px[0]);
+  g_assert_cmpint (easel_selection_lift (&f, want, 1, 1, 5, 4, FALSE, hole, SIZE_MAX), ==, EASEL_SELECTION_DONE);
+  f.x += dx;
+  f.y += dy;
+  g_assert_cmpint (easel_selection_put_down (&f, TRUE, want, NULL, SIZE_MAX), !=, EASEL_SELECTION_NO_MEMORY);
+  easel_float_free (&f);
+  return want;
+}
+
+static const char *
+cursor_at (EaselCanvas *canvas, double x, double y)
+{
+  easel_canvas_pointer_at (canvas, x, y);
+  return gdk_cursor_get_name (gtk_widget_get_cursor (GTK_WIDGET (canvas)));
+}
+
+/* AS-3 (REQ-0013-03, -07, -08, -11), the ui part: the move cursor on the selection's pixels, the crosshair on its outline; a
+   press without a movement changes nothing; a drag lifts it at the first movement, the hole in the background color, and the
+   window shows it where it will be put down while the picture is untouched; a click outside puts it down: 26 pixels, one
+   step, the title marked; Undo restores every pixel; a press on the outline starts a new rectangle. */
+static void
+as3_move_selection (void)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  g_autoptr (EaselImage) start = NULL, moved = NULL;
+  gboolean floating;
+  int x, y, w, h;
+
+  use_select (win);
+  start = paint_red_block (win);
+  easel_canvas_set_colors (canvas, 0xFF000000u, CYAN);
+  moved = moved_selection (start, 10, 3, CYAN);
+  g_assert_cmpint (differing_pixels (start, moved), ==, 26);
+  easel_canvas_set_guides_hidden (canvas, TRUE);                 /* the outline left out of the rendered pictures */
+  g_assert_true (easel_canvas_get_guides_hidden (canvas));
+  shape_press_move (win, 1, 1, 1, 5, 4);
+  shape_release (win, 1);
+  g_assert_true (selection_is (win, 1, 1, 5, 4));
+  /* The cursors: on its pixel (3, 2) the move cursor, on its outline (the pixel (0, 2) beside it) the crosshair. */
+  g_assert_cmpstr (cursor_at (canvas, 3.5, 2.5), ==, "move");
+  g_assert_cmpstr (cursor_at (canvas, 0.5, 2.5), ==, "crosshair");
+  /* A press and release without a movement changes nothing. */
+  shape_press_move (win, 1, 3, 2, 3, 2);
+  shape_release (win, 1);
+  g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  g_assert_false (floating);
+  assert_same_picture (img, start);
+  /* The drag from (3, 2) to (13, 5): lifted, floating at (11, 4); shown as it will be put down; the picture untouched. */
+  shape_press_move (win, 1, 3, 2, 13, 5);
+  g_assert_true (easel_canvas_is_stroking (canvas));
+  g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  g_assert_true (floating);
+  g_assert_true (selection_is (win, 11, 4, 5, 4));
+  assert_same_picture (img, start);
+  shape_release (win, 1);
+  g_assert_false (easel_canvas_is_stroking (canvas));
+  assert_shown (win, moved);
+  assert_same_picture (img, start);
+  g_assert_false (easel_window_get_modified (win));
+  /* A click outside it, clear of every handle: put down there, one step, no new selection. */
+  shape_press_move (win, 1, 17, 2, 17, 2);
+  shape_release (win, 1);
+  g_assert_false (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  assert_same_picture (img, moved);
+  g_assert_true (easel_window_get_modified (win));
+  assert_shown (win, moved);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  assert_same_picture (img, start);
+  g_assert_false (action_enabled (win, "undo"));
+  /* A press on the outline is not on the selection: it starts a new rectangle (here a click: none remains). */
+  shape_press_move (win, 1, 1, 1, 5, 4);
+  shape_release (win, 1);
+  shape_press_move (win, 1, 0, 2, 0, 2);
+  shape_release (win, 1);
+  g_assert_false (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  assert_same_picture (img, start);
+  close_windows ();
+}
+
+/* One case of AS-15: a 3000 x 2000 yellow picture with red diagonals, made partly transparent if asked (every third column transparent, the next
+   half-transparent white), the mode, the zoom of zoom_action; a selection dragged out from the view's center to 100 view
+   pixels right and 60 down, then moved from 20 view pixels inside it by 130 right and 90 down; the canvas area rendered while
+   it floats (the outline hidden) equals the one rendered after it is put down (by choosing the Pencil), and differs from the
+   one before the move. */
+static void
+float_case (gboolean transparent, gboolean partly_transparent, const char *zoom_action)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  EaselImage *img = (EaselImage *) easel_window_get_picture (win);
+  View view = view_of (win);
+  g_autofree uint32_t *before = NULL, *floating_px = NULL, *after = NULL;
+  graphene_rect_t area;
+  int w, h, cx, cy, scale, differ = 0;
+  double x, y;
+  gboolean floating;
+  int sx, sy, sw, sh;
+
+  wait_for_layout (win);
+  g_assert_cmpint (img->width, ==, 3000);
+  g_action_group_activate_action (G_ACTION_GROUP (win), zoom_action, NULL);
+  wait_for_layout (win);
+  if (strcmp (zoom_action, "zoom-large") == 0)
+    {
+      g_assert_cmpint (easel_window_get_zoom (win), ==, 400);
+      g_assert_cmpfloat (gtk_adjustment_get_value (view.h), >, gtk_adjustment_get_page_size (view.h));
+    }
+  else if (strcmp (zoom_action, "zoom-normal") == 0)
+    g_assert_cmpint (easel_window_get_zoom (win), ==, 100);
+  else
+    g_assert_cmpint (easel_window_get_zoom (win), <, 100);
+  /* Red diagonals, so that a moved selection shows (the picture and the hole are both yellow otherwise). */
+  for (int py = 0; py < img->height; py++)
+    for (int px = py % 7; px < img->width; px += 7)
+      easel_image_set (img, px, py, 0xFFFF0000u);
+  if (partly_transparent)
+    for (int py = 0; py < img->height; py++)
+      for (int px = 0; px < img->width; px += 3)
+        {
+          easel_image_set (img, px, py, 0x00000000u);
+          easel_image_set (img, px + 1, py, 0x80FFFFFFu);
+        }
+  easel_canvas_update (canvas);
+  use_select (win);
+  g_signal_emit_by_name (find_mapped_by_tooltip (GTK_WIDGET (win), transparent ? "Transparent: moving or clearing leaves a transparent hole"
+                                                                               : "Opaque: keep background color"), "clicked");
+  easel_canvas_set_colors (canvas, 0xFF000000u, YELLOW);        /* the see-through color is the picture's own yellow */
+  easel_canvas_set_guides_hidden (canvas, TRUE);
+  g_assert_true (easel_canvas_get_guides_hidden (canvas));
+  x = view_to_canvas (view.h, gtk_adjustment_get_page_size (view.h) / 2);
+  y = view_to_canvas (view.v, gtk_adjustment_get_page_size (view.v) / 2);
+  easel_canvas_press (canvas, 1, x, y);
+  easel_canvas_motion (canvas, x + 100, y + 60);
+  easel_canvas_release (canvas, 1);
+  g_assert_true (easel_canvas_get_selection (canvas, &sx, &sy, &sw, &sh, &floating));
+  wait_for_next_frame (win);
+  before = render_pixels (win, &w, &h, &cx, &cy);
+  easel_canvas_press (canvas, 1, x + 20, y + 20);
+  easel_canvas_motion (canvas, x + 150, y + 110);
+  easel_canvas_release (canvas, 1);
+  g_assert_true (easel_canvas_get_selection (canvas, &sx, &sy, &sw, &sh, &floating));
+  g_assert_true (floating);
+  wait_for_next_frame (win);
+  floating_px = render_pixels (win, &w, &h, &cx, &cy);
+  use_tool (win, "pencil");
+  g_assert_false (easel_canvas_get_selection (canvas, &sx, &sy, &sw, &sh, &floating));
+  wait_for_next_frame (win);
+  after = render_pixels (win, &w, &h, &cx, &cy);
+  area = bounds_in (view.scroller, GTK_WIDGET (win));
+  scale = (int) easel_canvas_get_scale (canvas);
+  for (int py = (int) (area.origin.y * scale) + 40; py < (int) ((area.origin.y + area.size.height) * scale) - 40; py++)
+    for (int px = (int) (area.origin.x * scale) + 40; px < (int) ((area.origin.x + area.size.width) * scale) - 40; px++)
+      {
+        gsize i = (gsize) py * w + px;
+
+        g_assert_cmphex (floating_px[i], ==, after[i]);
+        differ += before[i] != after[i];
+      }
+  g_assert_cmpint (differ, >, 100);
+  close_windows ();
+}
+
+/* AS-15 (REQ-0013-05, -07, -08, -13): what the window shows while a selection floats is what is put down: Opaque and
+   Transparent, an opaque and a partly transparent picture, 100 %, a scrolled 400 % and the fit zoom. */
+static void
+as15_float_equals_put_down (void)
+{
+  static const char *const zooms[] = { "zoom-normal", "zoom-large", "zoom-fit" };
+
+  write_settings ("[new-picture]\nwidth=3000\nheight=2000\nbackground=#FFFF00\n");
+  for (guint z = 0; z < G_N_ELEMENTS (zooms); z++)
+    for (int t = 0; t < 2; t++)
+      for (int p = 0; p < 2; p++)
+        float_case (t, p, zooms[z]);
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* The modifier keys now, as the window's key controller reports them (the modifiers signal, with the new state). */
+static void
+modifier_keys (EaselWindow *win, GdkModifierType state)
+{
+  g_autoptr (GListModel) controllers = gtk_widget_observe_controllers (GTK_WIDGET (win));
+
+  for (guint i = 0; i < g_list_model_get_n_items (controllers); i++)
+    {
+      g_autoptr (GtkEventController) c = g_list_model_get_item (controllers, i);
+      gboolean handled = FALSE;
+
+      if (GTK_IS_EVENT_CONTROLLER_KEY (c))
+        g_signal_emit_by_name (c, "modifiers", state, &handled);
+    }
+}
+
+/* The start picture with (1, 1) to (5, 4) copied to each place of places (n of them, in order, as Ctrl leaves copies), then
+   put down at the last, from the core: no hole. */
+static EaselImage *
+copied_selection (const EaselImage *base, const int (*places)[2], int n)
+{
+  EaselImage *want = easel_image_new (base->width, base->height, 0);
+  EaselFloat f = { 0 };
+
+  g_assert_nonnull (want);
+  memcpy (want->px, base->px, (size_t) base->width * base->height * sizeof base->px[0]);
+  g_assert_cmpint (easel_selection_lift (&f, want, 1, 1, 5, 4, TRUE, 0, SIZE_MAX), ==, EASEL_SELECTION_DONE);
+  for (int k = 0; k < n - 1; k++)
+    {
+      f.x = places[k][0];
+      f.y = places[k][1];
+      g_assert_true (easel_selection_stamp (&f, SIZE_MAX));
+    }
+  f.x = places[n - 1][0];
+  f.y = places[n - 1][1];
+  g_assert_cmpint (easel_selection_put_down (&f, TRUE, want, NULL, SIZE_MAX), !=, EASEL_SELECTION_NO_MEMORY);
+  easel_float_free (&f);
+  return want;
+}
+
+/* AS-4 (REQ-0013-09), the ui part: Ctrl held at the press of a move drags a copy: a marked selection leaves no hole; a floating
+   one leaves a copy where it is; all in one step. Ctrl counts at the press: pressed after it, it does not copy; released
+   during the drag, the copy stays. */
+static void
+as4_ctrl_copies (void)
+{
+  static const int one[][2] = { { 11, 4 } }, two[][2] = { { 11, 4 }, { 11, 7 } };
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  g_autoptr (EaselImage) start = NULL, copy1 = NULL, copy2 = NULL, moved = NULL;
+  int x, y, w, h;
+  gboolean floating;
+
+  use_select (win);
+  start = paint_red_block (win);
+  easel_canvas_set_colors (canvas, 0xFF000000u, CYAN);
+  easel_canvas_set_guides_hidden (canvas, TRUE);
+  g_assert_true (easel_canvas_get_guides_hidden (canvas));
+  copy1 = copied_selection (start, one, 1);
+  copy2 = copied_selection (start, two, 2);
+  moved = moved_selection (start, 10, 3, CYAN);
+  g_assert_cmpint (differing_pixels (start, copy1), ==, 6);
+  /* A marked selection dragged with Ctrl held at the press, released during the drag: a copy, no hole. */
+  shape_press_move (win, 1, 1, 1, 5, 4);
+  shape_release (win, 1);
+  modifier_keys (win, GDK_CONTROL_MASK);
+  {
+    double cx, cy;
+
+    canvas_point (win, 3.5, 2.5, &cx, &cy);
+    easel_canvas_press (canvas, 1, cx, cy);                  /* Ctrl at the press, released before any movement */
+    modifier_keys (win, 0);
+    canvas_point (win, 13.5, 5.5, &cx, &cy);
+    easel_canvas_motion (canvas, cx, cy);
+  }
+  shape_release (win, 1);
+  g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  g_assert_true (floating);
+  g_assert_true (selection_is (win, 11, 4, 5, 4));
+  assert_shown (win, copy1);
+  shape_press_move (win, 1, 17, 2, 17, 2);                     /* put down by a click outside it */
+  shape_release (win, 1);
+  assert_same_picture (img, copy1);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_false (action_enabled (win, "undo"));
+  assert_same_picture (img, start);
+  /* A floating selection dragged with Ctrl: a copy stays at (11, 4), the selection floats on to (11, 7); one step. */
+  shape_press_move (win, 1, 1, 1, 5, 4);
+  shape_release (win, 1);
+  modifier_keys (win, GDK_CONTROL_MASK);
+  shape_press_move (win, 1, 3, 2, 13, 5);
+  shape_release (win, 1);
+  shape_press_move (win, 1, 13, 5, 13, 8);
+  shape_release (win, 1);
+  modifier_keys (win, 0);
+  g_assert_true (selection_is (win, 11, 7, 5, 4));
+  assert_shown (win, copy2);
+  shape_press_move (win, 1, 17, 2, 17, 2);
+  shape_release (win, 1);
+  assert_same_picture (img, copy2);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_false (action_enabled (win, "undo"));
+  assert_same_picture (img, start);
+  /* Ctrl pressed only after the press: a plain move, with its hole. */
+  shape_press_move (win, 1, 1, 1, 5, 4);
+  shape_release (win, 1);
+  shape_press_move (win, 1, 3, 2, 8, 3);
+  modifier_keys (win, GDK_CONTROL_MASK);
+  {
+    double cx, cy;
+
+    canvas_point (win, 13.5, 5.5, &cx, &cy);
+    easel_canvas_motion (canvas, cx, cy);
+  }
+  shape_release (win, 1);
+  modifier_keys (win, 0);
+  assert_shown (win, moved);
+  close_windows ();
+}
+
+/* A key as the window's key controllers get it, with the modifier state; true if one took it (so GTK does not hand it on to
+   the focused widget). */
+static gboolean
+key_taken (EaselWindow *win, guint keyval, GdkModifierType state)
+{
+  g_autoptr (GListModel) controllers = gtk_widget_observe_controllers (GTK_WIDGET (win));
+  gboolean taken = FALSE;
+
+  for (guint i = 0; i < g_list_model_get_n_items (controllers); i++)
+    {
+      g_autoptr (GtkEventController) c = g_list_model_get_item (controllers, i);
+      gboolean handled = FALSE;
+
+      if (GTK_IS_EVENT_CONTROLLER_KEY (c))
+        {
+          g_signal_emit_by_name (c, "key-pressed", keyval, 0, state, &handled);
+          taken |= handled;
+        }
+    }
+  return taken;
+}
+
+/* AS-5 (REQ-0013-10): with a toolbox button focused, the arrow keys move the selection by 1 pixel, Shift with them by 10; the
+   first key lifts a marked selection; each key (a repeat too) moves again, all in the one step of the put-down; Ctrl or Alt
+   with an arrow is not taken; during a drag the arrows do not move it; without a selection they are not taken. */
+static void
+as5_arrow_keys (void)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  g_autoptr (EaselImage) start = NULL, right1 = NULL, moved = NULL;
+  GtkWidget *pencil;
+  int x, y, w, h;
+  gboolean floating;
+
+  use_select (win);
+  start = paint_red_block (win);
+  easel_canvas_set_colors (canvas, 0xFF000000u, CYAN);
+  easel_canvas_set_guides_hidden (canvas, TRUE);
+  g_assert_true (easel_canvas_get_guides_hidden (canvas));
+  right1 = moved_selection (start, 1, 0, CYAN);
+  moved = moved_selection (start, 1, 5, CYAN);
+  g_assert_cmpint (differing_pixels (start, moved), ==, 26);
+  pencil = GTK_WIDGET (find_tool_button (GTK_WIDGET (win), "pencil"));
+  shape_press_move (win, 1, 1, 1, 5, 4);
+  shape_release (win, 1);
+  gtk_widget_grab_focus (pencil);
+  g_assert_true (gtk_window_get_focus (GTK_WINDOW (win)) == pencil);
+  /* Ctrl or Alt with an arrow: not taken. */
+  g_assert_false (key_taken (win, GDK_KEY_Right, GDK_CONTROL_MASK));
+  g_assert_false (key_taken (win, GDK_KEY_Right, GDK_ALT_MASK));
+  g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  g_assert_false (floating);
+  /* Right: lifted, at (2, 1); the uncovered part of the hole, the column 1, shows cyan. */
+  g_assert_true (key_taken (win, GDK_KEY_Right, 0));
+  g_assert_true (selection_is (win, 2, 1, 5, 4));
+  g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  g_assert_true (floating);
+  assert_shown (win, right1);
+  g_assert_true (gtk_window_get_focus (GTK_WINDOW (win)) == pencil);
+  /* Shift+Down by 10, then Up five times (a repeat is a press again): at (2, 6). */
+  g_assert_true (key_taken (win, GDK_KEY_Down, GDK_SHIFT_MASK));
+  g_assert_true (selection_is (win, 2, 11, 5, 4));
+  for (int k = 0; k < 5; k++)
+    g_assert_true (key_taken (win, GDK_KEY_Up, 0));
+  g_assert_true (selection_is (win, 2, 6, 5, 4));
+  /* During a drag of it the arrows do nothing to it. */
+  shape_press_move (win, 1, 3, 7, 3, 7);
+  g_assert_true (easel_canvas_is_stroking (canvas));
+  key_taken (win, GDK_KEY_Left, 0);
+  g_assert_true (selection_is (win, 2, 6, 5, 4));
+  shape_release (win, 1);
+  /* Put down (a click outside it): 26 pixels, one step. */
+  shape_press_move (win, 1, 17, 2, 17, 2);
+  shape_release (win, 1);
+  assert_same_picture (img, moved);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_false (action_enabled (win, "undo"));
+  assert_same_picture (img, start);
+  /* Without a selection the arrows are not taken. */
+  g_assert_false (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  g_assert_false (key_taken (win, GDK_KEY_Right, 0));
+  close_windows ();
+}
+
+/* AS-6 (REQ-0013-11, -12): Esc and Enter put a floating selection down (one step) and remove a marked one; Undo while it
+   floats cancels the lift (no step, the redo steps kept; Undo available, Redo not); Undo on a marked selection undoes the last
+   step and removes it; moved back onto its place it adds no step and keeps a redo step; without a selection Esc and Enter are
+   not taken by it. */
+static void
+as6_esc_enter_undo (void)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  g_autoptr (EaselImage) start = NULL, moved = NULL;
+  int x, y, w, h;
+  gboolean floating;
+
+  use_select (win);
+  start = paint_red_block (win);
+  easel_canvas_set_colors (canvas, 0xFF000000u, CYAN);
+  moved = moved_selection (start, 10, 3, CYAN);
+  /* Esc and Enter (main and keypad) put it down: one step each. */
+  for (int k = 0; k < 3; k++)
+    {
+      static const guint keys[] = { GDK_KEY_Escape, GDK_KEY_Return, GDK_KEY_KP_Enter };
+
+      shape_press_move (win, 1, 1, 1, 5, 4);
+      shape_release (win, 1);
+      shape_press_move (win, 1, 3, 2, 13, 5);
+      shape_release (win, 1);
+      g_assert_true (key_taken (win, keys[k], 0));
+      g_assert_false (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+      assert_same_picture (img, moved);
+      g_assert_true (easel_window_get_modified (win));
+      g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+      g_assert_false (action_enabled (win, "undo"));
+      assert_same_picture (img, start);
+    }
+  /* Esc and Enter remove a marked selection and change nothing. */
+  for (int k = 0; k < 2; k++)
+    {
+      shape_press_move (win, 1, 1, 1, 5, 4);
+      shape_release (win, 1);
+      g_assert_true (key_taken (win, k ? GDK_KEY_Return : GDK_KEY_Escape, 0));
+      g_assert_false (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+      assert_same_picture (img, start);
+    }
+  /* Without a selection neither is taken by it. */
+  g_assert_false (key_taken (win, GDK_KEY_Escape, 0));
+  g_assert_false (key_taken (win, GDK_KEY_Return, 0));
+  /* Undo while it floats: every pixel as before, no selection, no step; Undo was available, Redo not. */
+  shape_press_move (win, 1, 1, 1, 5, 4);
+  shape_release (win, 1);
+  shape_press_move (win, 1, 3, 2, 13, 5);
+  shape_release (win, 1);
+  g_assert_true (action_enabled (win, "undo"));
+  g_assert_false (action_enabled (win, "redo"));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_false (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  assert_same_picture (img, start);
+  g_assert_false (action_enabled (win, "undo"));
+  g_assert_false (easel_window_get_modified (win));
+  /* A step to undo, then a selection only marked: Undo undoes the step and removes it. */
+  shape_press_move (win, 1, 1, 1, 5, 4);
+  shape_release (win, 1);
+  shape_press_move (win, 1, 3, 2, 13, 5);
+  shape_release (win, 1);
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+  assert_same_picture (img, moved);
+  shape_press_move (win, 1, 20, 20, 25, 25);
+  shape_release (win, 1);
+  g_assert_true (selection_is (win, 20, 20, 6, 6));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  assert_same_picture (img, start);
+  g_assert_false (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  /* A redo step, then a selection lifted and moved back onto its place: Esc adds no step and the redo step stays. */
+  g_assert_true (action_enabled (win, "redo"));
+  shape_press_move (win, 1, 1, 1, 5, 4);
+  shape_release (win, 1);
+  g_assert_true (key_taken (win, GDK_KEY_Right, 0));
+  g_assert_true (key_taken (win, GDK_KEY_Left, 0));
+  g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  g_assert_true (floating);
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+  assert_same_picture (img, start);
+  g_assert_false (action_enabled (win, "undo"));
+  g_assert_true (action_enabled (win, "redo"));
+  close_windows ();
+}
+
+/* The selection of AS-3 floating at (11, 4): (1, 1) to (5, 4) marked and dragged from (3, 2) to (13, 5). */
+static void
+float_as3 (EaselWindow *win)
+{
+  int x, y, w, h;
+  gboolean floating;
+
+  shape_press_move (win, 1, 1, 1, 5, 4);
+  shape_release (win, 1);
+  shape_press_move (win, 1, 3, 2, 13, 5);
+  shape_release (win, 1);
+  g_assert_true (easel_canvas_get_selection (easel_window_get_canvas (win), &x, &y, &w, &h, &floating));
+  g_assert_true (floating);
+}
+
+/* AS-7 (REQ-0013-01, -07, -11, -12, -21): another tool, New (Cancel at the prompt), Attributes and a primary press on a resize
+   handle put a floating selection down first, one step, and go on; the same remove a marked one, Save keeps it; Select chosen
+   again, zooming, scrolling and a lost focus keep it; a floating selection outside the picture is drawn there and grabbed, and
+   only its part inside is put down. */
+static void
+as7_put_down_sites (void)
+{
+  g_autofree char *dir = g_dir_make_tmp ("easel-ui-XXXXXX", NULL);
+  g_autofree char *path = g_build_filename (dir, "a.png", NULL);
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  EaselStatusBar *bar = easel_window_get_status_bar (win);
+  g_autoptr (EaselImage) start = NULL, moved = NULL, left = NULL;
+  g_autofree uint32_t *px = NULL;
+  GtkAdjustment *v;
+  int x, y, w, h, rw, rh, cx, cy, zoom;
+  gboolean floating;
+  double hx, hy;
+
+  use_select (win);
+  start = paint_red_block (win);
+  easel_canvas_set_colors (canvas, 0xFF000000u, CYAN);
+  moved = moved_selection (start, 10, 3, CYAN);
+  left = moved_selection (start, -4, 0, CYAN);
+  g_assert_cmpint (differing_pixels (start, left), ==, 18);
+  g_assert_cmphex (easel_image_get (left, 0, 2), ==, 0xFFFF0000u);
+  /* Another tool. */
+  float_as3 (win);
+  use_tool (win, "pencil");
+  g_assert_false (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  assert_same_picture (img, moved);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_false (action_enabled (win, "undo"));
+  use_select (win);
+  /* Attributes: put down, then its dialog. */
+  float_as3 (win);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "attributes", NULL);
+  g_assert_false (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  assert_same_picture (img, moved);
+  wait_for_layout (win);
+  g_assert_nonnull (adw_application_window_get_visible_dialog (ADW_APPLICATION_WINDOW (win)));
+  adw_dialog_close (adw_application_window_get_visible_dialog (ADW_APPLICATION_WINDOW (win)));
+  wait_for_layout (win);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  /* A primary press on a resize handle: put down, and the resize starts. */
+  float_as3 (win);
+  handle_center (canvas, EASEL_HANDLE_CORNER, &hx, &hy);
+  easel_canvas_press (canvas, 1, hx, hy);
+  g_assert_true (easel_canvas_is_resizing (canvas));
+  g_assert_false (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  easel_canvas_release (canvas, 1);
+  assert_same_picture (img, moved);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  assert_same_picture (img, start);
+  /* Select chosen again, Zoom In, a scroll and a lost focus keep a floating selection. */
+  float_as3 (win);
+  use_tool (win, "select");
+  zoom = easel_window_get_zoom (win);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-in", NULL);
+  wait_for_layout (win);
+  g_assert_cmpint (easel_window_get_zoom (win), >, zoom);
+  v = gtk_scrollable_get_vadjustment (GTK_SCROLLABLE (gtk_widget_get_parent (GTK_WIDGET (canvas))));
+  gtk_adjustment_set_value (v, gtk_adjustment_get_value (v) + 10);
+  easel_canvas_reset_pointer (canvas);
+  g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  g_assert_true (floating);
+  g_assert_true (selection_is (win, 11, 4, 5, 4));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-normal", NULL);
+  wait_for_layout (win);
+  gtk_adjustment_set_value (v, 0);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);   /* cancels the lift */
+  assert_same_picture (img, start);
+  /* A marked selection: another tool removes it; Save keeps it; New (Cancel) removes it. */
+  shape_press_move (win, 1, 1, 1, 5, 4);
+  shape_release (win, 1);
+  use_tool (win, "pencil");
+  use_tool (win, "select");
+  g_assert_false (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  g_assert_true (easel_window_save_to (win, path));
+  shape_press_move (win, 1, 1, 1, 5, 4);
+  shape_release (win, 1);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "save", NULL);
+  g_assert_true (selection_is (win, 1, 1, 5, 4));
+  g_assert_false (easel_window_get_modified (win));
+  /* Floating partly outside the picture, left of it: drawn there, grabbed there, only the inside put down. */
+  shape_press_move (win, 1, 3, 2, -1, 2);
+  shape_release (win, 1);
+  g_assert_true (selection_is (win, -3, 1, 5, 4));
+  g_assert_cmpstr (easel_status_bar_get_text (bar, EASEL_STATUS_SELECTION), ==, "5 × 4");
+  wait_for_next_frame (win);
+  px = render_pixels (win, &rw, &rh, &cx, &cy);
+  g_assert_cmphex (px[(gsize) (cy + 2) * rw + cx - 2], ==, 0xFFFF0000u);      /* its red pixel (-2, 2), outside */
+  g_assert_cmphex (px[(gsize) (cy + 2) * rw + cx - 3], ==, YELLOW);           /* its yellow pixel (-3, 2) */
+  shape_press_move (win, 1, -2, 2, -2, 2);                                     /* a press there grabs it, no movement */
+  shape_release (win, 1);
+  g_assert_true (selection_is (win, -3, 1, 5, 4));
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+  assert_same_picture (img, left);
+  /* New on a marked selection: removed (the prompt's Cancel). */
+  shape_press_move (win, 1, 20, 20, 25, 25);
+  shape_release (win, 1);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "new", NULL);
+  wait_for_dialogs (win, 1);
+  respond (win, "cancel");
+  g_assert_false (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  close_windows ();
+}
+
+/* AS-8 (REQ-0013-02, -08, -11, -13), the ui part: the columns 11 to 15 of the rows 4 to 7 blue; in Transparent mode the hole a
+   lift leaves is fully transparent and the dragged pixels keep their colors, the picture's own yellow (the background) ones
+   too, covering the blue: no blue remains; in Opaque mode the hole is the background color; the mode and the background
+   changed while it floats (also by Ctrl+Shift+X) change nothing, and the hole stays as the lift made it; a half-transparent
+   pixel put down replaces what is under it. */
+static void
+as8_transparent_mode (void)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  EaselImage *img = (EaselImage *) easel_window_get_picture (win);
+  EaselPaletteBar *bar = easel_window_get_palette_bar (win);
+  g_autoptr (EaselImage) start = NULL, transparent_hole = NULL, yellow_hole = NULL, half = NULL;
+  GtkWidget *transparent_button, *opaque_button;
+  int x, y, w, h;
+  gboolean floating;
+
+  use_select (win);
+  start = paint_red_block (win);
+  for (int py = 4; py <= 7; py++)
+    for (int px = 11; px <= 15; px++)
+      {
+        easel_image_set (img, px, py, 0xFF0000FFu);
+        easel_image_set (start, px, py, 0xFF0000FFu);
+      }
+  easel_canvas_update (canvas);
+  easel_palette_bar_press (bar, 18, 3, 1);                              /* yellow, swatch 18, as the background */
+  g_assert_cmphex (easel_window_get_background (win), ==, YELLOW);
+  easel_palette_bar_press (bar, 1, 1, 1);                               /* black, swatch 1, as the foreground */
+  easel_canvas_set_guides_hidden (canvas, TRUE);
+  g_assert_true (easel_canvas_get_guides_hidden (canvas));
+  transparent_hole = moved_selection (start, 10, 3, 0x00000000u);
+  yellow_hole = moved_selection (start, 10, 3, YELLOW);
+  g_assert_cmpint (count_color (transparent_hole, 0xFF0000FFu), ==, 0);       /* the yellow pixels cover the blue */
+  g_assert_cmpint (count_color (yellow_hole, 0xFF0000FFu), ==, 0);
+  g_assert_cmphex (easel_image_get (transparent_hole, 1, 1), ==, 0x00000000u);
+  g_assert_cmphex (easel_image_get (yellow_hole, 1, 1), ==, YELLOW);
+  transparent_button = find_mapped_by_tooltip (GTK_WIDGET (win), "Transparent: moving or clearing leaves a transparent hole");
+  opaque_button = find_mapped_by_tooltip (GTK_WIDGET (win), "Opaque: keep background color");
+  g_signal_emit_by_name (transparent_button, "clicked");
+  g_assert_true (gtk_toggle_button_get_active (GTK_TOGGLE_BUTTON (transparent_button)));
+  /* Transparent: lifted with a transparent hole, shown and put down so, the yellow pixels moved with it. */
+  float_as3 (win);
+  assert_shown (win, transparent_hole);
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+  assert_same_picture (img, transparent_hole);
+  g_assert_cmphex (easel_image_get (img, 1, 1), ==, 0x00000000u);
+  g_assert_cmphex (easel_image_get (img, 13, 6), ==, 0xFFFF0000u);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  assert_same_picture (img, start);
+  /* Lifted in Opaque mode: the hole is the background color (yellow). */
+  g_signal_emit_by_name (opaque_button, "clicked");
+  float_as3 (win);
+  assert_shown (win, yellow_hole);
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+  assert_same_picture (img, yellow_hole);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_signal_emit_by_name (transparent_button, "clicked");
+  assert_same_picture (img, start);
+  /* An arrow key lifts in Transparent mode too, leaving the transparent hole (the column 1 is not covered by the float). */
+  shape_press_move (win, 1, 1, 1, 5, 4);
+  shape_release (win, 1);
+  g_assert_true (key_taken (win, GDK_KEY_Right, 0));
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+  g_assert_cmphex (easel_image_get (img, 1, 1), ==, 0x00000000u);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  assert_same_picture (img, start);
+  /* The mode, the background and Ctrl+Shift+X changed while it floats change nothing: shown as it was, put down as it was. */
+  float_as3 (win);
+  g_signal_emit_by_name (opaque_button, "clicked");
+  assert_shown_as_is (win, transparent_hole);
+  g_signal_emit_by_name (transparent_button, "clicked");
+  easel_palette_bar_press (bar, 17, 3, 1);
+  g_assert_cmphex (easel_window_get_background (win), ==, 0xFFFF0000u);
+  assert_shown_as_is (win, transparent_hole);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "swap-colors", NULL);
+  g_assert_cmphex (easel_window_get_background (win), ==, 0xFF000000u);
+  assert_shown_as_is (win, transparent_hole);
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+  assert_same_picture (img, transparent_hole);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  assert_same_picture (img, start);
+  /* A half-transparent pixel in it, Opaque mode: put down as it is, replacing what is under it. */
+  g_signal_emit_by_name (opaque_button, "clicked");
+  easel_image_set (img, 3, 3, 0x80FF0000u);
+  easel_image_set (start, 3, 3, 0x80FF0000u);
+  easel_canvas_update (canvas);
+  half = moved_selection (start, 10, 3, 0xFF000000u);
+  float_as3 (win);
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+  assert_same_picture (img, half);
+  g_assert_cmphex (easel_image_get (img, 13, 6), ==, 0x80FF0000u);
+  g_assert_false (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  close_windows ();
+}
+
+/* AS-9 (REQ-0013-14), the ui part: Delete on a marked selection fills its 20 pixels with the background color, one step, and
+   removes it; on a floating one the floating pixels go and the hole stays, one step; after a Ctrl lift alone it changes
+   nothing and adds no step; without a selection Clear Selection is insensitive and Delete is not taken. */
+static void
+as9_clear_selection (void)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  g_autoptr (EaselImage) start = NULL, filled = NULL;
+  int x, y, w, h;
+  gboolean floating;
+
+  use_select (win);
+  start = paint_red_block (win);
+  easel_canvas_set_colors (canvas, 0xFF000000u, CYAN);
+  filled = easel_image_new (300, 200, YELLOW);
+  memcpy (filled->px, start->px, (size_t) 300 * 200 * sizeof filled->px[0]);
+  for (int py = 1; py <= 4; py++)
+    for (int px = 1; px <= 5; px++)
+      filled->px[py * 300 + px] = CYAN;
+  g_assert_false (action_enabled (win, "clear-selection"));
+  g_assert_false (key_taken (win, GDK_KEY_Delete, 0));
+  /* Marked: the area filled, one step, no selection. */
+  shape_press_move (win, 1, 1, 1, 5, 4);
+  shape_release (win, 1);
+  g_assert_true (action_enabled (win, "clear-selection"));
+  g_assert_true (key_taken (win, GDK_KEY_Delete, 0));
+  g_assert_false (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  assert_same_picture (img, filled);
+  g_assert_cmpint (differing_pixels (start, filled), ==, 20);
+  g_assert_true (easel_window_get_modified (win));
+  g_assert_false (action_enabled (win, "clear-selection"));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_false (action_enabled (win, "undo"));
+  assert_same_picture (img, start);
+  /* Floating after a plain drag: the floating pixels go, the hole stays (the same 20 pixels), one step. */
+  float_as3 (win);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "clear-selection", NULL);
+  g_assert_false (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  assert_same_picture (img, filled);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_false (action_enabled (win, "undo"));
+  assert_same_picture (img, start);
+  /* After a Ctrl lift alone: nothing changes, no step. */
+  shape_press_move (win, 1, 1, 1, 5, 4);
+  shape_release (win, 1);
+  modifier_keys (win, GDK_CONTROL_MASK);
+  shape_press_move (win, 1, 3, 2, 13, 5);
+  shape_release (win, 1);
+  modifier_keys (win, 0);
+  g_assert_true (key_taken (win, GDK_KEY_Delete, 0));
+  assert_same_picture (img, start);
+  g_assert_false (action_enabled (win, "undo"));
+  g_assert_false (easel_window_get_modified (win));
+  /* Transparent mode (REQ-0013-14): Delete on a marked selection makes its 20 pixels fully transparent, and on a floating one
+     the hole stays as the lift made it, transparent. */
+  g_signal_emit_by_name (find_mapped_by_tooltip (GTK_WIDGET (win), "Transparent: moving or clearing leaves a transparent hole"), "clicked");
+  {
+    g_autoptr (EaselImage) clear = easel_image_new (300, 200, 0);
+
+    memcpy (clear->px, start->px, (size_t) 300 * 200 * sizeof clear->px[0]);
+    for (int py = 1; py <= 4; py++)
+      for (int px = 1; px <= 5; px++)
+        clear->px[py * 300 + px] = 0x00000000u;
+    shape_press_move (win, 1, 1, 1, 5, 4);
+    shape_release (win, 1);
+    g_assert_true (key_taken (win, GDK_KEY_Delete, 0));
+    assert_same_picture (img, clear);
+    g_assert_cmphex (easel_image_get (img, 3, 2), ==, 0x00000000u);
+    g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+    assert_same_picture (img, start);
+    float_as3 (win);
+    g_action_group_activate_action (G_ACTION_GROUP (win), "clear-selection", NULL);
+    assert_same_picture (img, clear);
+    g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+    g_assert_false (action_enabled (win, "undo"));
+  }
+  close_windows ();
+}
+
+/* AS-10 (REQ-0013-15, -16): Ctrl+A, with the Pencil active and the focus on a toolbox button, makes Select active and selects
+   the whole picture; with a selection floating, Select All in the Edit submenu puts it down first (one step); Select All is
+   ignored during a stroke, with a dialog open and before the picture exists; the primary menu has Edit between the file
+   items and Quit, with Select All and Clear Selection. */
+static void
+as10_select_all_edit_menu (void)
+{
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  const EaselImage *img;
+  EaselStatusBar *bar;
+  GMenuModel *menu;
+  g_autoptr (GMenuModel) edit_section = NULL, edit = NULL;
+  g_autoptr (EaselImage) start = NULL, moved = NULL;
+  g_autofree char *label = NULL, *items = NULL, *accel = NULL;
+  int x, y, w, h;
+  gboolean floating;
+
+  /* Before the picture exists: nothing. */
+  write_settings ("[new-picture]\nwidth=auto\nheight=auto\n");
+  win = easel_window_new (app);
+  g_assert_null (easel_window_get_picture (win));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "select-all", NULL);
+  g_assert_false (easel_canvas_get_selection (easel_window_get_canvas (win), &x, &y, &w, &h, &floating));
+  gtk_window_destroy (GTK_WINDOW (win));
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  img = easel_window_get_picture (win);
+  bar = easel_window_get_status_bar (win);
+  wait_for_layout (win);
+  /* The Edit submenu, between the file items and Quit. */
+  menu = menu_of (easel_window_get_main_menu_button (win));
+  g_assert_cmpint (g_menu_model_get_n_items (menu), ==, 3);
+  edit_section = g_menu_model_get_item_link (menu, 1, G_MENU_LINK_SECTION);
+  g_assert_nonnull (edit_section);
+  g_assert_cmpint (g_menu_model_get_n_items (edit_section), ==, 1);
+  g_menu_model_get_item_attribute (edit_section, 0, "label", "s", &label);
+  g_assert_cmpstr (label, ==, "_Edit");
+  edit = g_menu_model_get_item_link (edit_section, 0, G_MENU_LINK_SUBMENU);
+  g_assert_nonnull (edit);
+  {
+    g_autoptr (GMenu) wrap = g_menu_new ();
+
+    g_menu_append_section (wrap, NULL, edit);
+    items = describe_section (G_MENU_MODEL (wrap), 0);
+  }
+  g_assert_cmpstr (items, ==, "Select _All|win.select-all; _Clear Selection|win.clear-selection");
+  g_menu_model_get_item_attribute (edit, 1, "accel", "s", &accel);
+  g_assert_cmpstr (accel, ==, "Delete");
+  g_assert_true (has_accel ("win.select-all", GDK_KEY_a, GDK_CONTROL_MASK));
+  /* Ctrl+A with the Pencil: Select, the whole picture. */
+  use_tool (win, "pencil");
+  gtk_widget_grab_focus (GTK_WIDGET (find_tool_button (GTK_WIDGET (win), "brush")));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "select-all", NULL);
+  g_assert_cmpint (easel_window_get_tool (win), ==, EASEL_TOOL_SELECT);
+  g_assert_true (selection_is (win, 0, 0, 300, 200));
+  g_assert_cmpstr (easel_status_bar_get_text (bar, EASEL_STATUS_SELECTION), ==, "300 × 200");
+  g_assert_false (easel_window_get_modified (win));
+  /* A selection floating: put down first, one step, then all selected (Esc first removes the whole-picture selection, whose
+     pixels the next drag would otherwise grab). */
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+  start = paint_red_block (win);
+  easel_canvas_set_colors (canvas, 0xFF000000u, CYAN);
+  moved = moved_selection (start, 10, 3, CYAN);
+  float_as3 (win);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "select-all", NULL);
+  assert_same_picture (img, moved);
+  g_assert_true (selection_is (win, 0, 0, 300, 200));
+  g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  g_assert_false (floating);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_false (action_enabled (win, "undo"));
+  assert_same_picture (img, start);
+  /* During a Pencil stroke, and with a dialog open: ignored. */
+  use_tool (win, "pencil");
+  g_assert_false (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  shape_press_move (win, 1, 50, 50, 60, 60);
+  g_assert_true (easel_canvas_is_stroking (canvas));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "select-all", NULL);
+  g_assert_cmpint (easel_window_get_tool (win), ==, EASEL_TOOL_PENCIL);
+  g_assert_false (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  shape_release (win, 1);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "grid-dialog", NULL);
+  wait_for_layout (win);
+  g_assert_nonnull (adw_application_window_get_visible_dialog (ADW_APPLICATION_WINDOW (win)));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "select-all", NULL);
+  g_assert_cmpint (easel_window_get_tool (win), ==, EASEL_TOOL_PENCIL);
+  g_assert_false (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  adw_dialog_close (adw_application_window_get_visible_dialog (ADW_APPLICATION_WINDOW (win)));
+  close_windows ();
+}
+
+/* AS-11 (REQ-0013-17): a secondary press on the selection (marked, and floating) opens the context menu at the pointer with
+   Clear Selection and Select All, and changes nothing else; while it is open the arrows, Esc, Enter and Delete are not taken
+   by the window (they act on the menu); closing it keeps the selection; Clear Selection from it acts as AS-9; a secondary
+   press elsewhere, and the middle button, do nothing. */
+static void
+as11_context_menu (void)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  GtkPopoverMenu *menu = easel_window_get_selection_menu (win);
+  g_autoptr (EaselImage) start = NULL;
+  g_autofree char *items = NULL;
+  int x, y, w, h;
+  gboolean floating;
+  static const guint keys[] = { GDK_KEY_Right, GDK_KEY_Escape, GDK_KEY_Return, GDK_KEY_Delete };
+
+  use_select (win);
+  start = paint_red_block (win);
+  easel_canvas_set_colors (canvas, 0xFF000000u, CYAN);
+  g_assert_nonnull (menu);
+  {
+    GMenuModel *model = gtk_popover_menu_get_menu_model (menu);
+
+    g_assert_nonnull (model);
+    items = describe_section (model, 0);
+    g_assert_cmpstr (items, ==, "_Clear Selection|win.clear-selection; Select _All|win.select-all");
+  }
+  /* On a marked selection: the menu, nothing else. */
+  shape_press_move (win, 1, 1, 1, 5, 4);
+  shape_release (win, 1);
+  g_assert_false (gtk_widget_get_visible (GTK_WIDGET (menu)));
+  shape_press_move (win, 3, 3, 2, 3, 2);
+  shape_release (win, 3);
+  g_assert_true (gtk_widget_get_visible (GTK_WIDGET (menu)));
+  g_assert_true (selection_is (win, 1, 1, 5, 4));
+  assert_same_picture (img, start);
+  /* While it is open the window takes none of these keys, and the selection does not move. */
+  for (guint k = 0; k < G_N_ELEMENTS (keys); k++)
+    g_assert_false (key_taken (win, keys[k], 0));
+  g_assert_true (selection_is (win, 1, 1, 5, 4));
+  g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  g_assert_false (floating);
+  /* Closed (as Esc in it does): the selection stays. */
+  gtk_popover_popdown (GTK_POPOVER (menu));
+  wait_for_layout (win);
+  g_assert_false (gtk_widget_get_visible (GTK_WIDGET (menu)));
+  g_assert_true (selection_is (win, 1, 1, 5, 4));
+  /* On a floating selection too; Clear Selection from it acts as Delete. */
+  shape_press_move (win, 1, 3, 2, 13, 5);
+  shape_release (win, 1);
+  shape_press_move (win, 3, 13, 5, 13, 5);
+  shape_release (win, 3);
+  g_assert_true (gtk_widget_get_visible (GTK_WIDGET (menu)));
+  g_assert_true (selection_is (win, 11, 4, 5, 4));
+  gtk_popover_popdown (GTK_POPOVER (menu));
+  wait_for_layout (win);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "clear-selection", NULL);
+  g_assert_false (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  g_assert_cmpint (count_color (img, CYAN), ==, 20);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  assert_same_picture (img, start);
+  /* A secondary press elsewhere, and the middle button: nothing. */
+  shape_press_move (win, 1, 1, 1, 5, 4);
+  shape_release (win, 1);
+  shape_press_move (win, 3, 40, 40, 40, 40);
+  shape_release (win, 3);
+  g_assert_false (gtk_widget_get_visible (GTK_WIDGET (menu)));
+  shape_press_move (win, 2, 3, 2, 3, 2);
+  shape_release (win, 2);
+  g_assert_false (gtk_widget_get_visible (GTK_WIDGET (menu)));
+  g_assert_true (selection_is (win, 1, 1, 5, 4));
+  assert_same_picture (img, start);
+  close_windows ();
+}
+
+/* AS-12 (REQ-0013-04, -18): the other button, Esc and Undo during a drag of Select cancel that drag only: a rectangle leaves no
+   selection (a put-down its press made stays); a move puts the selection back where it was before this drag (a lift this drag
+   made is undone, a copy Ctrl left at its press goes); the release after does nothing. Enter, Delete, Select All and the
+   arrows do nothing during a drag. A lost release or focus ends it as last shown; Save puts it down and saves. */
+static void
+as12_drags_that_do_not_finish (void)
+{
+  g_autofree char *dir = g_dir_make_tmp ("easel-ui-XXXXXX", NULL);
+  g_autofree char *path = g_build_filename (dir, "a.png", NULL);
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  EaselStatusBar *bar = easel_window_get_status_bar (win);
+  g_autoptr (EaselImage) start = NULL, moved = NULL, moved_down = NULL;
+  int x, y, w, h;
+  gboolean floating;
+
+  use_select (win);
+  start = paint_red_block (win);
+  easel_canvas_set_colors (canvas, 0xFF000000u, CYAN);
+  easel_canvas_set_guides_hidden (canvas, TRUE);
+  g_assert_true (easel_canvas_get_guides_hidden (canvas));
+  moved = moved_selection (start, 10, 3, CYAN);
+  moved_down = moved_selection (start, 10, 6, CYAN);
+  /* A rectangle being dragged out: the other button and Esc make none; the releases after do nothing. */
+  for (int way = 0; way < 2; way++)
+    {
+      shape_press_move (win, 1, 1, 1, 5, 4);
+      g_assert_true (easel_canvas_is_stroking (canvas));
+      g_assert_cmpstr (easel_status_bar_get_text (bar, EASEL_STATUS_SELECTION), ==, "5 × 4");
+      if (way == 0)
+        shape_press_move (win, 3, 40, 40, 40, 40);
+      else
+        g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+      g_assert_false (easel_canvas_is_stroking (canvas));
+      g_assert_false (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+      g_assert_cmpstr (easel_status_bar_get_text (bar, EASEL_STATUS_SELECTION), ==, "");
+      shape_release (win, 3);
+      shape_release (win, 1);
+      g_assert_false (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+      assert_same_picture (img, start);
+    }
+  /* Undo during it (available with an earlier step, as in 0010): it cancels the drag and undoes nothing else. */
+  shape_press_move (win, 1, 20, 20, 25, 25);
+  shape_release (win, 1);
+  g_assert_true (key_taken (win, GDK_KEY_Delete, 0));                    /* a step: 36 cyan pixels */
+  g_assert_cmpint (count_color (img, CYAN), ==, 36);
+  g_assert_true (action_enabled (win, "undo"));
+  shape_press_move (win, 1, 1, 1, 5, 4);
+  g_assert_true (easel_canvas_is_stroking (canvas));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_false (easel_canvas_is_stroking (canvas));
+  g_assert_false (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  g_assert_cmpint (count_color (img, CYAN), ==, 36);                       /* the step is still there */
+  g_assert_true (action_enabled (win, "undo"));
+  shape_release (win, 1);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  assert_same_picture (img, start);
+  g_assert_false (action_enabled (win, "undo"));
+  /* A floating selection put down by the press that starts a rectangle: the other button cancels the rectangle, the put-down
+     stays, one step. */
+  float_as3 (win);
+  shape_press_move (win, 1, 17, 2, 19, 4);
+  g_assert_true (easel_canvas_is_stroking (canvas));
+  assert_same_picture (img, moved);
+  shape_press_move (win, 3, 40, 40, 40, 40);
+  g_assert_false (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  shape_release (win, 3);
+  shape_release (win, 1);
+  assert_same_picture (img, moved);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_false (action_enabled (win, "undo"));
+  assert_same_picture (img, start);
+  /* A move that lifted the selection: cancelled, it is marked again where it was and the picture is as before. */
+  for (int way = 0; way < 3; way++)
+    {
+      shape_press_move (win, 1, 1, 1, 5, 4);
+      shape_release (win, 1);
+      shape_press_move (win, 1, 3, 2, 13, 5);
+      g_assert_true (selection_is (win, 11, 4, 5, 4));
+      if (way == 0)
+        shape_press_move (win, 3, 3, 2, 3, 2);            /* where the selection returns to: it is only a cancel, no menu */
+      else if (way == 1)
+        g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+      else
+        g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+      g_assert_false (easel_canvas_is_stroking (canvas));
+      g_assert_false (gtk_widget_get_visible (GTK_WIDGET (easel_window_get_selection_menu (win))));
+      g_assert_true (selection_is (win, 1, 1, 5, 4));
+      g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+      g_assert_false (floating);
+      assert_same_picture (img, start);
+      g_assert_false (action_enabled (win, "undo"));
+      shape_release (win, 3);
+      shape_release (win, 1);
+      g_assert_true (selection_is (win, 1, 1, 5, 4));
+      g_assert_true (key_taken (win, GDK_KEY_Escape, 0));              /* removes the marked selection */
+    }
+  /* A second move of a floating selection: cancelled, it is back where it was, still floating. */
+  float_as3 (win);
+  shape_press_move (win, 1, 13, 5, 13, 8);
+  g_assert_true (selection_is (win, 11, 7, 5, 4));
+  shape_press_move (win, 3, 40, 40, 40, 40);
+  g_assert_true (selection_is (win, 11, 4, 5, 4));
+  g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  g_assert_true (floating);
+  shape_release (win, 3);
+  shape_release (win, 1);
+  /* Ctrl at the second move's press left a copy; cancelled, the copy goes: moved on by three rows and put down, only one copy
+     is in the picture. */
+  modifier_keys (win, GDK_CONTROL_MASK);
+  shape_press_move (win, 1, 13, 5, 13, 8);
+  modifier_keys (win, 0);
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+  g_assert_true (selection_is (win, 11, 4, 5, 4));
+  shape_release (win, 1);
+  for (int k = 0; k < 3; k++)
+    g_assert_true (key_taken (win, GDK_KEY_Down, 0));
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+  assert_same_picture (img, moved_down);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_false (action_enabled (win, "undo"));
+  assert_same_picture (img, start);
+  /* During a move: Enter, Delete, Select All and the arrows do nothing. */
+  shape_press_move (win, 1, 1, 1, 5, 4);
+  shape_release (win, 1);
+  shape_press_move (win, 1, 3, 2, 13, 5);
+  g_assert_false (key_taken (win, GDK_KEY_Return, 0));
+  g_assert_false (key_taken (win, GDK_KEY_Delete, 0));
+  key_taken (win, GDK_KEY_Left, 0);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "select-all", NULL);
+  g_assert_true (easel_canvas_is_stroking (canvas));
+  g_assert_true (selection_is (win, 11, 4, 5, 4));
+  shape_release (win, 1);
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+  assert_same_picture (img, moved);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  /* A lost release and a lost focus: the move ends as last shown. */
+  for (int way = 0; way < 2; way++)
+    {
+      shape_press_move (win, 1, 1, 1, 5, 4);
+      shape_release (win, 1);
+      shape_press_move (win, 1, 3, 2, 13, 5);
+      if (way == 0)
+        easel_canvas_buttons_released (canvas);
+      else
+        easel_canvas_reset_pointer (canvas);
+      g_assert_false (easel_canvas_is_stroking (canvas));
+      g_assert_true (selection_is (win, 11, 4, 5, 4));
+      g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+      g_assert_true (floating);
+      g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+      assert_same_picture (img, moved);
+      g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+    }
+  /* Save while a move is held: it is put down as last shown and saved. */
+  g_assert_true (easel_window_save_to (win, path));
+  shape_press_move (win, 1, 1, 1, 5, 4);
+  shape_release (win, 1);
+  shape_press_move (win, 1, 3, 2, 13, 5);
+  g_assert_true (easel_canvas_is_stroking (canvas));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "save", NULL);
+  g_assert_false (easel_canvas_is_stroking (canvas));
+  g_assert_false (easel_canvas_is_pending (canvas));
+  assert_same_picture (img, moved);
+  g_assert_false (easel_window_get_modified (win));
+  g_assert_cmphex (saved_rgb (path, 13, 5), ==, 0xFF0000u);
+  shape_release (win, 1);
+  g_assert_false (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  close_windows ();
+}
+
+/* The alert open now has this heading and body; it is closed. */
+static void
+assert_alert (EaselWindow *win, const char *heading, const char *body)
+{
+  AdwAlertDialog *dialog;
+
+  wait_for_dialogs (win, 1);
+  dialog = open_alert (win);
+  g_assert_nonnull (dialog);
+  g_assert_cmpstr (adw_alert_dialog_get_heading (dialog), ==, heading);
+  g_assert_cmpstr (adw_alert_dialog_get_body (dialog), ==, body);
+  adw_dialog_close (ADW_DIALOG (dialog));
+  wait_for_dialogs (win, 0);
+}
+
+#define MOVE_HEADING "Could Not Move the Selection"
+#define MOVE_BODY "There is not enough memory to move this selection."
+
+/* AS-13 (REQ-0013-04, -19), the ui part: without the memory to lift (by a drag, an arrow key or a Ctrl drag) the dialog shows,
+   nothing changes, the selection stays marked and the release does nothing; without the memory for a Ctrl copy of a floating
+   selection it stays floating where it was; without the memory for the step, a put-down by Esc, by a press outside (no
+   rectangle starts), by Save (the picture as before the lift is saved, then the dialog) and by Quit (the quit stops) leaves
+   the picture as before the lift and no selection; Clear Selection without the memory shows its own dialog and changes
+   nothing, a floating selection staying floating. */
+static void
+as13_selection_dialogs (void)
+{
+  g_autofree char *dir = g_dir_make_tmp ("easel-ui-XXXXXX", NULL);
+  g_autofree char *path = g_build_filename (dir, "a.png", NULL);
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  g_autoptr (EaselImage) start = NULL, moved = NULL;
+  EaselWindow *alive = NULL;
+  int x, y, w, h;
+  gboolean floating;
+
+  use_select (win);
+  start = paint_red_block (win);
+  easel_canvas_set_colors (canvas, 0xFF000000u, CYAN);
+  easel_canvas_set_guides_hidden (canvas, TRUE);
+  moved = moved_selection (start, 10, 3, CYAN);
+  /* No memory to lift: a drag, an arrow key, a Ctrl drag. */
+  easel_canvas_set_selection_lift_limit (canvas, 40);
+  shape_press_move (win, 1, 1, 1, 5, 4);
+  shape_release (win, 1);
+  shape_press_move (win, 1, 3, 2, 13, 5);
+  assert_alert (win, MOVE_HEADING, MOVE_BODY);
+  g_assert_true (selection_is (win, 1, 1, 5, 4));
+  g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  g_assert_false (floating);
+  g_assert_false (easel_canvas_is_stroking (canvas));
+  {
+    double cx, cy;
+
+    canvas_point (win, 14.5, 6.5, &cx, &cy);
+    easel_canvas_motion (canvas, cx, cy);                        /* further motion and the release do nothing */
+  }
+  shape_release (win, 1);
+  g_assert_true (selection_is (win, 1, 1, 5, 4));
+  assert_same_picture (img, start);
+  g_assert_true (key_taken (win, GDK_KEY_Right, 0));
+  assert_alert (win, MOVE_HEADING, MOVE_BODY);
+  g_assert_true (selection_is (win, 1, 1, 5, 4));
+  modifier_keys (win, GDK_CONTROL_MASK);
+  shape_press_move (win, 1, 3, 2, 13, 5);
+  modifier_keys (win, 0);
+  assert_alert (win, MOVE_HEADING, MOVE_BODY);
+  shape_release (win, 1);
+  g_assert_true (selection_is (win, 1, 1, 5, 4));
+  assert_same_picture (img, start);
+  g_assert_false (action_enabled (win, "undo"));
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+  easel_canvas_set_selection_lift_limit (canvas, SIZE_MAX);
+  /* No memory for a Ctrl copy of a floating selection: it stays floating where it was. */
+  float_as3 (win);
+  easel_canvas_set_selection_lift_limit (canvas, 40);
+  modifier_keys (win, GDK_CONTROL_MASK);
+  shape_press_move (win, 1, 13, 5, 13, 8);
+  modifier_keys (win, 0);
+  assert_alert (win, MOVE_HEADING, MOVE_BODY);
+  g_assert_true (selection_is (win, 11, 4, 5, 4));
+  g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  g_assert_true (floating);
+  shape_release (win, 1);
+  easel_canvas_set_selection_lift_limit (canvas, SIZE_MAX);
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+  assert_same_picture (img, moved);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  assert_same_picture (img, start);
+  /* No memory for the step: Esc, a press outside, Save and Quit. */
+  easel_canvas_set_selection_step_limit (canvas, 100);
+  float_as3 (win);
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+  assert_alert (win, MOVE_HEADING, MOVE_BODY);
+  g_assert_false (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  assert_same_picture (img, start);
+  g_assert_false (action_enabled (win, "undo"));
+  g_assert_false (easel_window_get_modified (win));
+  float_as3 (win);
+  shape_press_move (win, 1, 17, 2, 19, 4);                            /* the press outside: no rectangle starts */
+  assert_alert (win, MOVE_HEADING, MOVE_BODY);
+  g_assert_false (easel_canvas_is_stroking (canvas));
+  g_assert_false (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  shape_release (win, 1);
+  assert_same_picture (img, start);
+  g_assert_true (easel_window_save_to (win, path));
+  float_as3 (win);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "save", NULL);
+  assert_alert (win, MOVE_HEADING, MOVE_BODY);
+  g_assert_cmphex (saved_rgb (path, 13, 5), ==, 0xFFFF00u);          /* the picture as before the lift, without the move */
+  g_assert_false (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  assert_same_picture (img, start);
+  float_as3 (win);
+  alive = win;
+  g_object_add_weak_pointer (G_OBJECT (win), (gpointer *) &alive);
+  gtk_window_close (GTK_WINDOW (win));
+  g_assert_nonnull (alive);                                            /* the quit stopped: the window is still there */
+  g_assert_true (gtk_widget_get_visible (GTK_WIDGET (win)));
+  assert_alert (win, MOVE_HEADING, MOVE_BODY);
+  g_assert_false (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  assert_same_picture (img, start);
+  g_object_remove_weak_pointer (G_OBJECT (win), (gpointer *) &alive);
+  /* Clear Selection without the memory: its own dialog, nothing changes, a floating selection keeps floating. */
+  shape_press_move (win, 1, 1, 1, 5, 4);
+  shape_release (win, 1);
+  g_assert_true (key_taken (win, GDK_KEY_Delete, 0));
+  assert_alert (win, "Could Not Clear the Selection", "There is not enough memory to clear this selection.");
+  g_assert_true (selection_is (win, 1, 1, 5, 4));
+  assert_same_picture (img, start);
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+  easel_canvas_set_selection_step_limit (canvas, SIZE_MAX);
+  float_as3 (win);
+  easel_canvas_set_selection_step_limit (canvas, 100);
+  g_assert_true (key_taken (win, GDK_KEY_Delete, 0));
+  assert_alert (win, "Could Not Clear the Selection", "There is not enough memory to clear this selection.");
+  g_assert_true (selection_is (win, 11, 4, 5, 4));
+  g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  g_assert_true (floating);
+  easel_canvas_set_selection_step_limit (canvas, SIZE_MAX);
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+  assert_same_picture (img, moved);
+  close_windows ();
+}
+
+/* A drag with Select and each button; true if anything started or changed. */
+static gboolean
+select_changes_something (EaselWindow *win, int x0, int y0, int x1, int y1)
+{
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  gboolean changed = FALSE;
+  int x, y, w, h;
+  gboolean floating;
+
+  g_action_group_activate_action (G_ACTION_GROUP (win), "tool", g_variant_new_string ("select"));
+  g_assert_cmpint (easel_window_get_tool (win), ==, EASEL_TOOL_SELECT);
+  for (guint button = 1; button <= 3; button += 2)
+    {
+      shape_press_move (win, button, x0, y0, x1, y1);
+      changed |= easel_canvas_is_stroking (canvas) || easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating);
+      shape_release (win, button);
+      changed |= easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating) || easel_window_get_modified (win)
+                 || action_enabled (win, "undo");
+    }
+  return changed;
+}
+
+/* With a dialog or the chooser open the selection's keys act on it, not on the selection, which stays floating. */
+static void
+assert_keys_not_taken_by_selection (EaselWindow *win)
+{
+  static const guint keys[] = { GDK_KEY_Escape, GDK_KEY_Return, GDK_KEY_KP_Enter, GDK_KEY_Delete, GDK_KEY_Right, GDK_KEY_Down };
+
+  for (guint k = 0; k < G_N_ELEMENTS (keys); k++)
+    g_assert_false (key_taken (win, keys[k], 0));
+  g_assert_true (selection_is (win, 11, 4, 5, 4));
+}
+
+/* AS-14 (REQ-0013-20, -21): presses with Select start nothing before the picture exists, with the Grid dialog, the color
+   chooser or the quit prompt open, and during a resize drag; with a dialog or the chooser open, Esc, Enter, Delete and the
+   arrows act on it and a floating selection stays floating; another tool after a float puts it down first: Fill then covers
+   the area like any other. */
+static void
+as14_selection_blocked (void)
+{
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  const EaselImage *img;
+  EaselPaletteBar *bar;
+  g_autoptr (EaselImage) start = NULL, moved = NULL;
+  double hx, hy;
+  int x, y, w, h;
+  gboolean floating;
+
+  /* Before the picture exists. */
+  write_settings ("[new-picture]\nwidth=auto\nheight=auto\n");
+  win = easel_window_new (app);
+  g_assert_null (easel_window_get_picture (win));
+  g_assert_false (select_changes_something (win, 3, 3, 40, 30));
+  gtk_window_destroy (GTK_WINDOW (win));
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  img = easel_window_get_picture (win);
+  bar = easel_window_get_palette_bar (win);
+  use_select (win);
+  start = paint_red_block (win);
+  easel_canvas_set_colors (canvas, 0xFF000000u, CYAN);
+  easel_canvas_set_guides_hidden (canvas, TRUE);
+  moved = moved_selection (start, 10, 3, CYAN);
+  /* The Grid dialog, with a selection floating. */
+  float_as3 (win);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "grid-dialog", NULL);
+  wait_for_layout (win);
+  g_assert_nonnull (adw_application_window_get_visible_dialog (ADW_APPLICATION_WINDOW (win)));
+  shape_press_move (win, 1, 50, 50, 90, 80);
+  g_assert_false (easel_canvas_is_stroking (canvas));
+  shape_release (win, 1);
+  assert_keys_not_taken_by_selection (win);
+  assert_same_picture (img, start);
+  adw_dialog_close (adw_application_window_get_visible_dialog (ADW_APPLICATION_WINDOW (win)));
+  wait_for_layout (win);
+  /* The color chooser, the selection still floating. */
+  easel_palette_bar_press (bar, 17, 1, 1);
+  easel_palette_bar_press (bar, 17, 1, 2);
+  g_assert_true (easel_window_is_choosing_color (win));
+  shape_press_move (win, 3, 50, 50, 90, 80);
+  g_assert_false (easel_canvas_is_stroking (canvas));
+  shape_release (win, 3);
+  assert_keys_not_taken_by_selection (win);
+  choose (win, NULL);
+  g_assert_false (easel_window_is_choosing_color (win));
+  easel_canvas_set_colors (canvas, 0xFF000000u, CYAN);                  /* the swatch presses changed the window's colors */
+  g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  g_assert_true (floating);
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));                    /* put down now, as usual */
+  assert_same_picture (img, moved);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  /* A resize drag in progress: the other button cancels it and starts nothing. */
+  handle_center (canvas, EASEL_HANDLE_CORNER, &hx, &hy);
+  easel_canvas_press (canvas, 1, hx, hy);
+  g_assert_true (easel_canvas_is_resizing (canvas));
+  shape_press_move (win, 3, 50, 50, 90, 80);
+  g_assert_false (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  g_assert_false (easel_canvas_is_stroking (canvas));
+  shape_release (win, 3);
+  easel_canvas_release (canvas, 1);
+  g_assert_false (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  /* Another tool after a float puts it down first; Fill then covers its area: the hole (20 cyan pixels) goes black. */
+  use_select (win);
+  float_as3 (win);
+  use_tool (win, "fill");
+  g_assert_false (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  assert_same_picture (img, moved);
+  shape_press_move (win, 1, 3, 2, 3, 2);
+  shape_release (win, 1);
+  g_assert_cmphex (easel_image_get (img, 3, 2), ==, 0xFF000000u);
+  g_assert_cmphex (easel_image_get (img, 13, 6), ==, 0xFFFF0000u);
+  g_assert_cmpint (count_color (img, 0xFF000000u), ==, 20);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_false (action_enabled (win, "undo"));
+  assert_same_picture (img, start);
+  /* The quit prompt: the picture modified, then closed. */
+  use_select (win);
+  float_as3 (win);
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+  g_assert_true (easel_window_get_modified (win));
+  gtk_window_close (GTK_WINDOW (win));
+  wait_for_dialogs (win, 1);
+  g_assert_nonnull (open_alert (win));
+  /* The picture is modified now, so a press is checked by what it starts. */
+  for (guint button = 1; button <= 3; button += 2)
+    {
+      shape_press_move (win, button, 50, 50, 90, 80);
+      g_assert_false (easel_canvas_is_stroking (canvas));
+      shape_release (win, button);
+      g_assert_false (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+    }
+  respond (win, "cancel");
+  close_windows ();
+}
+
 int
 main (int argc, char **argv)
 {
@@ -11287,6 +12977,21 @@ main (int argc, char **argv)
   g_test_add_func ("/0010/as17_drag_outside_area", as17_drag_outside_area);
   g_test_add_func ("/0011/as1_curve_polygon_toolbox_hints", as1_curve_polygon_toolbox_hints);
   g_test_add_func ("/0012/as1_gradient_toolbox_hints", as1_gradient_toolbox_hints);
+  g_test_add_func ("/0013/as1_select_toolbox_options", as1_select_toolbox_options);
+  g_test_add_func ("/0013/as2_mark_selection", as2_mark_selection);
+  g_test_add_func ("/0013/as3_move_selection", as3_move_selection);
+  g_test_add_func ("/0013/as4_ctrl_copies", as4_ctrl_copies);
+  g_test_add_func ("/0013/as5_arrow_keys", as5_arrow_keys);
+  g_test_add_func ("/0013/as6_esc_enter_undo", as6_esc_enter_undo);
+  g_test_add_func ("/0013/as7_put_down_sites", as7_put_down_sites);
+  g_test_add_func ("/0013/as8_transparent_mode", as8_transparent_mode);
+  g_test_add_func ("/0013/as9_clear_selection", as9_clear_selection);
+  g_test_add_func ("/0013/as10_select_all_edit_menu", as10_select_all_edit_menu);
+  g_test_add_func ("/0013/as11_context_menu", as11_context_menu);
+  g_test_add_func ("/0013/as12_drags_that_do_not_finish", as12_drags_that_do_not_finish);
+  g_test_add_func ("/0013/as13_selection_dialogs", as13_selection_dialogs);
+  g_test_add_func ("/0013/as14_selection_blocked", as14_selection_blocked);
+  g_test_add_func ("/0013/as15_float_equals_put_down", as15_float_equals_put_down);
   g_test_add_func ("/0012/as2_gradient_stages", as2_gradient_stages);
   g_test_add_func ("/0012/as3_shift_during_gradient_drag", as3_shift_during_gradient_drag);
   g_test_add_func ("/0012/as7_two_gradients_two_steps", as7_two_gradients_two_steps);

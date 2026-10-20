@@ -54,6 +54,7 @@ easel_application_new (void)
   g_signal_connect (app, "activate", G_CALLBACK (on_activate), NULL);
   g_signal_connect (app, "open", G_CALLBACK (on_open), NULL);
   gtk_application_set_accels_for_action (GTK_APPLICATION (app), "win.new", (const char *[]) { "<Control>n", NULL });
+  gtk_application_set_accels_for_action (GTK_APPLICATION (app), "win.select-all", (const char *[]) { "<Control>a", NULL });
   gtk_application_set_accels_for_action (GTK_APPLICATION (app), "win.open", (const char *[]) { "<Control>o", NULL });
   gtk_application_set_accels_for_action (GTK_APPLICATION (app), "win.save", (const char *[]) { "<Control>s", NULL });
   gtk_application_set_accels_for_action (GTK_APPLICATION (app), "win.save-as",

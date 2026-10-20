@@ -57,6 +57,15 @@ easel_status_bar_set_zoom (EaselStatusBar *self, gboolean exists, int percent)
 }
 
 void
+easel_status_bar_set_selection (EaselStatusBar *self, gboolean exists, int width, int height)
+{
+  g_autofree char *text = exists ? g_strdup_printf ("%d × %d", width, height) : g_strdup ("");
+
+  set_field (self, EASEL_STATUS_SELECTION, text);
+  gtk_widget_set_visible (GTK_WIDGET (self->labels[EASEL_STATUS_SELECTION]), exists);
+}
+
+void
 easel_status_bar_set_hint (EaselStatusBar *self, const char *hint)
 {
   set_field (self, EASEL_STATUS_HINT, hint);
@@ -103,9 +112,9 @@ easel_status_bar_init (EaselStatusBar *self)
   /* The hint at the left, then at the right edge: position, zoom, size (REQ-0004-09). Wide enough for the usual
      value, so the fields do not jump about while the pointer moves. */
   static const EaselStatusField order[EASEL_STATUS_N_FIELDS] = {
-    EASEL_STATUS_HINT, EASEL_STATUS_POSITION, EASEL_STATUS_ZOOM, EASEL_STATUS_SIZE
+    EASEL_STATUS_HINT, EASEL_STATUS_POSITION, EASEL_STATUS_ZOOM, EASEL_STATUS_SELECTION, EASEL_STATUS_SIZE
   };
-  static const int chars[EASEL_STATUS_N_FIELDS] = { 11, 15, 5, 1 };   /* indexed by field */
+  static const int chars[EASEL_STATUS_N_FIELDS] = { 11, 15, 5, 1, 1 };   /* indexed by field */
 
   gtk_orientable_set_orientation (GTK_ORIENTABLE (self), GTK_ORIENTATION_VERTICAL);
   gtk_box_append (GTK_BOX (self), gtk_separator_new (GTK_ORIENTATION_HORIZONTAL));
@@ -131,5 +140,7 @@ easel_status_bar_init (EaselStatusBar *self)
   /* The hint takes the rest and is shortened with an ellipsis, so the bar never forces the window wider
      (REQ-0004-11). */
   gtk_widget_set_hexpand (GTK_WIDGET (self->labels[EASEL_STATUS_HINT]), TRUE);
+  /* The selection's size takes no room without a selection (REQ-0013-06), so the hint keeps its width. */
+  gtk_widget_set_visible (GTK_WIDGET (self->labels[EASEL_STATUS_SELECTION]), FALSE);
   gtk_label_set_ellipsize (self->labels[EASEL_STATUS_HINT], PANGO_ELLIPSIZE_END);
 }

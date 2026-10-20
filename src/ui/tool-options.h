@@ -23,6 +23,9 @@ EaselFootprint easel_tool_options_get_footprint (EaselToolOptions *self, EaselTo
 /* The Eraser's mode: TRUE for Transparent. */
 gboolean easel_tool_options_get_transparent (EaselToolOptions *self);
 
+/* The selection's Opaque / Transparent mode: TRUE for Transparent; its own, kept for the session (REQ-0013-02). */
+gboolean easel_tool_options_get_select_transparent (EaselToolOptions *self);
+
 /* Numpad + or - (direction 1 or -1): the next larger or smaller preset of the tool; the ends stay. Returns TRUE if the
    selection changed. */
 gboolean easel_tool_options_step (EaselToolOptions *self, EaselTool tool, int direction);

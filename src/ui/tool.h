@@ -23,6 +23,7 @@ typedef enum
   EASEL_TOOL_CURVE,
   EASEL_TOOL_POLYGON,
   EASEL_TOOL_GRADIENT,
+  EASEL_TOOL_SELECT,
 } EaselTool;
 
 /* Reads a win.tool action target ("pan", "pencil", "brush", "airbrush", "eraser", "magnifier", "pick", "fill", "line", "rectangle",

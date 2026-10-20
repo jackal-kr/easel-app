@@ -18,6 +18,7 @@ static const char *const names[] = {
   [EASEL_TOOL_CURVE] = "curve",
   [EASEL_TOOL_POLYGON] = "polygon",
   [EASEL_TOOL_GRADIENT] = "gradient",
+  [EASEL_TOOL_SELECT] = "select",
 };
 
 gboolean

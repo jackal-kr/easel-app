@@ -36,6 +36,8 @@ EaselStatusBar *easel_window_get_status_bar (EaselWindow *self);
 GtkMenuButton *easel_window_get_main_menu_button (EaselWindow *self);
 GtkMenuButton *easel_window_get_image_button (EaselWindow *self);
 GtkMenuButton *easel_window_get_view_button (EaselWindow *self);
+/* The selection's context menu (REQ-0013-17), for tests: shown while it is open. */
+GtkPopoverMenu *easel_window_get_selection_menu (EaselWindow *self);
 /* The zoom as the View menu's row shows it, for example "100%" (REQ-0004-01). */
 const char *easel_window_get_zoom_text (EaselWindow *self);
 

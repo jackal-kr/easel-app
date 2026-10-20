@@ -65,7 +65,10 @@ void easel_canvas_set_shift (EaselCanvas *self, gboolean down);
 /* A curve or polygon is pending (0011): shown over the picture, with a stage held or waiting for the next one. */
 gboolean easel_canvas_is_pending (EaselCanvas *self);
 /* The pending curve or polygon is drawn as shown (one undo step, none if it changes no pixel), or dropped with nothing drawn. */
-void easel_canvas_put_down (EaselCanvas *self);
+gboolean easel_canvas_put_down (EaselCanvas *self);
+/* The same for Save and Save As: a marked selection stays (REQ-0013-12). FALSE if a floating selection could not be put down
+   for lack of memory (REQ-0013-19). */
+gboolean easel_canvas_put_down_keeping_marked (EaselCanvas *self);
 /* Enter: puts a waiting curve or polygon down (a polygon closed); does nothing while a stage's button is held. TRUE if one is
    pending, so the key is taken. */
 gboolean easel_canvas_enter (EaselCanvas *self);
@@ -91,11 +94,38 @@ void easel_canvas_set_preview_memory_limit (EaselCanvas *self, size_t max_bytes)
 /* The marker of a waiting gradient's start (end 0) or end (end 1), in canvas coordinates (REQ-0012-13): FALSE when no marker
    is shown. */
 gboolean easel_canvas_get_marker_rect (EaselCanvas *self, int end, graphene_rect_t *rect);
+/* The selection (REQ-0013-04, 0013): TRUE and its rectangle in picture pixels if one is marked or floating, and whether it
+   floats. */
+gboolean easel_canvas_get_selection (EaselCanvas *self, int *x, int *y, int *w, int *h, gboolean *floating);
+/* The size the status bar shows (REQ-0013-06): the part inside the picture of a rectangle being dragged out, or the
+   selection's; FALSE for none. "selection-changed" (void) is emitted when it, or the selection, may have changed. */
+gboolean easel_canvas_get_selection_size (EaselCanvas *self, int *w, int *h);
 /* Test hook: hides the markers and the guide line of a waiting gradient (they still take presses), so that a rendered window
    is the picture and the preview alone. */
 void easel_canvas_set_guides_hidden (EaselCanvas *self, gboolean hidden);
 gboolean easel_canvas_get_guides_hidden (EaselCanvas *self);
 void easel_canvas_set_eraser_transparent (EaselCanvas *self, gboolean transparent);
+/* The selection's mode (REQ-0013-02): what the next lift and Clear Selection leave behind, transparent or the background
+   color (REQ-0013-08, -14); a floating selection is not changed by it (REQ-0013-13). */
+void easel_canvas_set_selection_transparent (EaselCanvas *self, gboolean transparent);
+/* Test hooks: the most a selection's float and copies may use (a lift, a Ctrl copy), and the most a put-down's or a Clear's
+   undo log may use, to make them fail (REQ-0013-19). "selection-failed" (int kind: 0 move, 1 clear) is emitted then. */
+void easel_canvas_set_selection_lift_limit (EaselCanvas *self, size_t max_bytes);
+void easel_canvas_set_selection_step_limit (EaselCanvas *self, size_t max_bytes);
+/* Ctrl held or not, from the window's key controller: a move of the selection pressed with it moves a copy (REQ-0013-09). */
+void easel_canvas_set_ctrl (EaselCanvas *self, gboolean down);
+/* An arrow key's move of the selection by (dx, dy) picture pixels (REQ-0013-10): the first lifts a marked one. FALSE, and
+   nothing done, without a selection or while a button is held. */
+gboolean easel_canvas_move_selection (EaselCanvas *self, int dx, int dy);
+/* Esc and Enter (REQ-0013-11, -12): puts a floating selection down and removes the selection; FALSE, nothing done, without
+   one or while a button is held. */
+gboolean easel_canvas_finish_selection (EaselCanvas *self);
+/* Clear Selection (REQ-0013-14): FALSE, nothing done, without a selection or while a button is held. */
+gboolean easel_canvas_clear_selection (EaselCanvas *self);
+/* Select All (REQ-0013-15): a floating selection put down, then the whole picture marked. */
+void easel_canvas_select_all (EaselCanvas *self);
+/* Removes a marked selection (after an Undo or Redo, REQ-0013-12); a floating one is left alone. */
+void easel_canvas_deselect (EaselCanvas *self);
 
 /* Test hook: how many sprays the current or the last Airbrush stroke has made. */
 int easel_canvas_get_spray_count (EaselCanvas *self);

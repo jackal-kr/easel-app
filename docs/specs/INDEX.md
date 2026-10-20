@@ -17,7 +17,7 @@ Vertical slices first (a thin end-to-end feature), breadth later.
 | 0010 | lines-and-shapes | Line, rectangle, rounded rectangle, ellipse, the line width and the fill style | Implemented 2026-10-19; split from "lines, curves and shapes" by JOD; widths 1-5 shared, a square pen. After it, a small change to the freehand tools: the stroke history's log is shrunk to its length before it is pushed, as the shapes' log now is, and a test checks the memory held against the memory counted for a long stroke (REQ-0002-16) |
 | 0011 | curve-and-polygon | Curve and polygon: the multi-click tools, with their pending state | Implemented 2026-10-19; split from "lines, curves and shapes"; uses the line width of lines and shapes; the first pending shape (put down by what changes the picture or its file, dropped by Esc and Undo). After it, a small change, done 2026-10-19: `tools/isolated.sh` runs the ui tests, the mutation tool and `/sdd-check` in a private session (a headless GNOME Shell with its own display; the spike found no `Xvfb` or Weston here, and `GDK_BACKEND=x11` would test another backend), so a real pointer and JOD's own work cannot affect them; the benchmarks stay in the real session |
 | 0012 | gradient | The Gradient tool (`docs/reference/new-behaviors.md`) | Implemented 2026-10-20; split from "lines, curves and shapes"; a pending tool by the rules of curve-and-polygon; a click, a new drag or Enter applies it, its colors follow the palette, its ends have markers joined by a guide line |
-| 0013 | selection | Select (rectangle), the floating selection, move, Ctrl copy-move, arrow keys, put down, Clear Selection, Select All, Opaque / Transparent, the selection menu, the Edit submenu | Accepted 2026-10-20; split from "rect and free-form select, ..." (JOD): free-form, smear, stamp and stretching by handles are Free-form Selection |
+| 0013 | selection | Select (rectangle), the floating selection, move, Ctrl copy-move, arrow keys, put down, Clear Selection, Select All, Opaque / Transparent, the selection menu, the Edit submenu | Implemented 2026-10-20; split from "rect and free-form select, ..." (JOD): free-form, smear, stamp and stretching by handles are Free-form Selection |
 | 0014 | free-form-selection | Free-Form Select, Shift smear and stamp, stretching a selection by its handles | Split from Selection (2026-10-20) |
 | 0015 | clipboard | Cut, copy, paste, oversize paste, paste from / copy to file | |
 | 0016 | text | Text box, fonts, styles, per-selection fonts | |
@@ -43,7 +43,7 @@ Vertical slices first (a thin end-to-end feature), breadth later.
 - The Phase 2 block is a plan, not a commitment of numbers: a row gets its number when its spec is written.
 - After Gradient: a later change draws the picture and the gradient preview through one path below 100 %, so that the preview
   is exact and its memory bounded (today a gradient dragged at the fit zoom of an 8000 x 8000 picture takes about 390 ms a frame
-  and holds the picture's size in memory). It needs its own spec and Plan.
+  and holds the picture's size in memory; the same for a selection dragged at that zoom, about 165 to 173 ms a move and 470 MB, and for the put-down of the whole 8000 x 8000 picture, about 380 ms and 1.8 GB, accepted with 0013). It needs its own spec and Plan.
 
 ## Known flakes
 - `/0006/as6_airbrush_sprays` and `/0006/as6_airbrush_follows_the_pointer` (found in 0006, failed again in 0007 and 0008). Cause

@@ -16,6 +16,7 @@ typedef enum
   EASEL_STATUS_SIZE,
   EASEL_STATUS_ZOOM,
   EASEL_STATUS_HINT,
+  EASEL_STATUS_SELECTION,
   EASEL_STATUS_N_FIELDS
 } EaselStatusField;
 
@@ -24,6 +25,8 @@ void easel_status_bar_set_position (EaselStatusBar *self, gboolean inside, int x
 void easel_status_bar_set_size (EaselStatusBar *self, gboolean exists, int width, int height);
 void easel_status_bar_set_zoom (EaselStatusBar *self, gboolean exists, int percent);
 void easel_status_bar_set_hint (EaselStatusBar *self, const char *hint);
+/* The selection's size "W × H" just before the picture size, or nothing (and no room taken) without one (REQ-0013-06). */
+void easel_status_bar_set_selection (EaselStatusBar *self, gboolean exists, int width, int height);
 
 /* Test hooks: a field's text, how many times its label has been written, and the label (for its ellipsis). */
 const char *easel_status_bar_get_text (EaselStatusBar *self, EaselStatusField field);
