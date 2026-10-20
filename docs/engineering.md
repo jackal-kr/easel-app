@@ -119,6 +119,7 @@ Defined by the packaging and release feature.
 - **Code that can abort the process** (a failed allocation in GLib, gdk-pixbuf or glycin) is tested in a subprocess
   (`g_test_trap_subprocess`, as `as19_save_without_memory` and `as8_open_without_memory` do), so that an abort is a failed
   assertion of the test and not a crash of the run.
+- **Timing:** assert the path that started the work, not a count of frames; an idle loses to a pending frame.
 - **Gates:** build warning-free, all tests green after each task; `tools/spec.sh lint` clean before a spec is accepted (`tools/spec.sh lint --names NNNN` additionally fails when a test named in that spec's scenario-to-test map is not registered in `tests/`; `/sdd-check` runs it, the plain lint does not, because a Plan names its tests before they are written).
 - **Later:** CI in a container or the Flatpak SDK (libadwaita >= 1.8 needed); screenshot checks only if they prove worth the upkeep.
 
