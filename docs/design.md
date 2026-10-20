@@ -35,7 +35,7 @@ How input maps to actions across all tools. Seed from XP Paint behavior; verify 
 - Primary button: foreground color. Secondary button: background color.
 - Pressing the other button during a stroke cancels it (nothing is added to undo).
 - Shift constrains (straight lines at 45-degree steps, squares and circles for shapes); with a selection,
-  Shift-drag smears, Shift-click stamps (Free-form Selection; with Select alone Shift does not change a move).
+  Shift-drag smears, Shift-click stamps (Free-form Selection: for Select and Free-Form Select alike).
 - Right-click on a selection or text box opens a context menu instead of drawing.
 
 ### Pending state
