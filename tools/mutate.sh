@@ -38,7 +38,11 @@ python3 - "$MUTANTS" "$SCRATCH" "${WANTED[@]}" <<'PY' || exit 2
 import re, sys
 path, scratch, wanted = sys.argv[1], sys.argv[2], set(sys.argv[3:])
 blocks, cur, mode = [], None, None
+cut = []                          # blocks with text after a blank line that ended their find or replace
 for raw in open(path, encoding="utf-8").read().split("\n"):
+    if mode is None and cur is not None and cur.get("ended") and raw != "" and not raw.startswith(("===", "--- ", "# ")) and raw != "#":
+        if cur not in cut:
+            cut.append(cur)
     if mode is None and raw.startswith("#"):
         continue
     m = re.match(r"=== (REQ-\d{4}-\d{2}) (.+)$", raw)
@@ -48,18 +52,23 @@ for raw in open(path, encoding="utf-8").read().split("\n"):
     if cur is None:
         continue
     if raw == "--- find":
-        mode = "find"; continue
+        mode = "find"; cur["ended"] = False; continue
     if raw == "--- replace":
-        mode = "replace"; continue
+        mode = "replace"; cur["ended"] = False; continue
     if mode == "head":
         k = re.match(r"(file|test): (.+)$", raw)
         if k:
             cur[k.group(1)] = k.group(2).strip()
     elif mode in ("find", "replace"):
         if raw == "":            # a blank line ends the block: the text of a mutant has none
+            cur["ended"] = True
             mode = None
         else:
             cur[mode].append(raw)
+if cut:
+    for b in cut:
+        print("blank line  %s  %s  (inside a find or replace text; it ends the entry and the rest is dropped)" % (b["req"], b["name"]))
+    sys.exit("%d mutants with a blank line inside" % len(cut))
 rows = []
 for n, b in enumerate(blocks, 1):
     for key in ("file", "test"):

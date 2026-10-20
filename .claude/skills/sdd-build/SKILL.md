@@ -14,7 +14,7 @@ Precondition: `Status: accepted` in the spec. Otherwise stop and say so.
    A statement in the Plan about how a library behaves (including what happens when an allocation fails) goes in the risks with the test or probe that checks it, run before the code relies on it.
    A preview that must equal the drawn result below 100 % is drawn through the same texture path and filter as the picture, and any plan to sample outside the renderer goes in the risks with a rendering probe run first.
    A probe that measures a widget measures it after it has been shown in a real frame; a number from a hidden widget is not used.
-   A change to the layout lists every reader of it, sizes as well as offsets, in code and in tests.
+   A change to the layout, or to a flag or state the feature extends, lists every reader of it (sizes as well as offsets), in code and in tests; a flag with a meaning is not reused for a new kind of thing.
    A style rule that must follow the theme lives in `style.css` or is reloaded on `notify::dark`; a media query in the app's own provider is probed where it is used.
    For a data structure that grows with use, say what it stores per item and what it copies.
    A buffer that grows by doubling and is handed to the history is shrunk to its length first.
@@ -46,7 +46,7 @@ Precondition: `Status: accepted` in the spec. Otherwise stop and say so.
      never just re-run until green;
    - a ui mutant killed in under 5 s is run again alone through `tools/isolated.sh` before its kill counts;
    - a mutant is run against the test that can observe its change; one with no visible effect in the window is pointed at the core test and noted as equivalent for the ui;
-   - a surviving mutant is applied by hand and its test run before the survivor is believed, and a mutant's replace text never holds a blank line (it ends the entry in `tests/mutants.txt`);
+   - a surviving mutant is applied by hand and its test run before the survivor is believed;
    - tick the task and report in one line, and fill its `Result:` line in the spec: the test that failed first and its
      message, or `characterization: <why there was no red run>` (a test that passes on its first run is reported as that),
      and for a manual step one line of what JOD saw;
@@ -57,4 +57,4 @@ Precondition: `Status: accepted` in the spec. Otherwise stop and say so.
 6. Never commit or push unless asked; no Co-Authored-By or AI trailers. No refactoring outside the task.
 
 A tiny change needs no Plan or Tasks: add or adjust scenarios in the existing spec, then code.
-When all tasks are ticked, suggest `/sdd-check`.
+When all tasks are ticked, bring the Plan's interfaces and the scenario-to-test map to the names as built, then suggest `/sdd-check`.

@@ -15,7 +15,8 @@ Input: feature number or name from `docs/specs/INDEX.md`.
 3. Fill Why, Requirements (`REQ-NNNN-xx`, "When/While/If ... the app shall ..."), Scenarios (`AS-n`, Given/When/Then, cite the
    REQ ids, end with `Verified by:`), Edge cases, Out of scope. **Behavior only**: no files, functions, libraries, data structures.
    A file the user edits by hand needs its syntax in the spec (comments, spaces, case, repeated keys, bad lines), not only its keys.
-   A requirement about how something looks names the reference it follows.
+   A requirement about how something looks names the reference it follows. A control that repeats an existing control's meaning reuses its look; say so, and ask only where a mock-up draws it otherwise.
+   A mode or option whose name or tooltip names an effect on the picture is checked against every place the picture changes (a hole, a clear, a put-down) before the spec is accepted.
    For any tool or control that holds state between two events (a press and its release, a drag and its end, a dialog and
    its answer), the spec needs a scenario for the second event never arriving.
    A rule for a failure (memory, I/O) that names one event says what happens to the thing in every other state it can be in (held, waiting, unshown).
@@ -25,7 +26,7 @@ Input: feature number or name from `docs/specs/INDEX.md`.
 4. Take behavior from XP Paint knowledge, jspaint (behavior, not code), JOD's descriptions and `docs/reference`; never from the
    source code of an existing implementation. If behavior is unknown or has several reasonable answers, do not decide:
    add `- [NEEDS CLARIFICATION: question and the options you see]`. A number in a requirement that comes from arithmetic is
-   computed with a script, not estimated. A direction on the pixel grid is said as larger or smaller x or y, never above or below, and a statement that two things are the same is checked with the script that makes the numbers, in both directions.
+   computed with a script, not estimated. A rule copied from the reference behavior is tried on the simplest picture a user makes (one color, one pixel) before it is accepted. A direction on the pixel grid is said as larger or smaller x or y, never above or below, and a statement that two things are the same is checked with the script that makes the numbers, in both directions.
 5. Run the `spec-reviewer` agent once and merge its findings.
 6. For a menu, dialog or bar, ask the user for a reference screenshot or mock-up before drafting, and when a widget choice
    changes a rule (a spin row clamps where a text row disables OK), say so in the same question.
