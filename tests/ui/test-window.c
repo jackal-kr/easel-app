@@ -4395,6 +4395,9 @@ busy_cursor_before_decoding (void)
   }
   g_assert_cmpstr (easel_window_get_cursor_at_decode (win), ==, "wait");
   g_assert_cmpint (easel_window_get_frames_before_decode (win), >=, 1);
+  /* Held until a frame was painted: the decode was started by that frame's after-paint, not by an idle (an idle loses to a
+     frame that is pending, so counting frames cannot tell the two apart). */
+  g_assert_true (easel_window_get_decode_after_paint (win));
   assert_fixture_picture (win);
   g_assert_null (gtk_widget_get_cursor (GTK_WIDGET (win)));
   close_windows ();

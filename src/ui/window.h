@@ -62,6 +62,8 @@ gboolean easel_window_is_loading (EaselWindow *self);
    frames were painted between the request and that moment (-1 until it starts). */
 const char *easel_window_get_cursor_at_decode (EaselWindow *self);
 int easel_window_get_frames_before_decode (EaselWindow *self);
+/* Test-only getter: whether the last picture decode was started by a frame's after-paint (not by an idle). */
+gboolean easel_window_get_decode_after_paint (EaselWindow *self);
 
 /* What happens when the user has typed or chosen path in the save dialog (REQ-0005-10, REQ-0005-12): a name without an
    extension gets .png, an extension that cannot be saved gives the error "Cannot Save This Kind of File", an existing

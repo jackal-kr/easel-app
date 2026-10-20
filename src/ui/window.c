@@ -58,6 +58,7 @@ struct _EaselWindow
   gint64 frame_at_request;
   char *cursor_at_decode;  /* test hook */
   int frames_before_decode;
+  gboolean decode_after_paint;   /* test hook: the last decode was started by a frame's after-paint */
   gboolean prompt_open;   /* a "Save Changes?" prompt, from showing it until its choice is carried out */
   void (*prompt_then) (EaselWindow *self);   /* what Discard, or a Save that worked, goes on to do */
 
@@ -689,6 +690,7 @@ static void
 on_loading_painted (GdkFrameClock *clock, EaselWindow *self)
 {
   g_clear_signal_handler (&self->paint_handler, clock);
+  self->decode_after_paint = TRUE;
   decode_now (self);
 }
 
@@ -712,6 +714,7 @@ begin_loading (EaselWindow *self, GFile *file)
   g_set_object (&self->loading_file, file);
   self->loading = TRUE;
   self->frames_before_decode = -1;
+  self->decode_after_paint = FALSE;
   gtk_widget_set_cursor_from_name (GTK_WIDGET (self), "wait");
   easel_canvas_set_busy (self->canvas, TRUE);
   easel_canvas_set_input_blocked (self->canvas, TRUE);
@@ -822,6 +825,13 @@ const char *
 easel_window_get_cursor_at_decode (EaselWindow *self)
 {
   return self->cursor_at_decode;
+}
+
+/* Test-only getter (see window.h). */
+gboolean
+easel_window_get_decode_after_paint (EaselWindow *self)
+{
+  return self->decode_after_paint;
 }
 
 int
