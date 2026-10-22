@@ -159,6 +159,12 @@ Each benchmark row comes from at least three runs, with the load average (`uptim
 run again five times in a row before a cause is looked for in the code (0014: 21 against 55 ms and 24 against 16.6 ms were the
 machine's state).
 
+A benchmark that drives the window by calls runs with the pointer outside its window: a real pointer motion with no button down is a
+lost release (REQ-0007-18) and ends the held gesture early (0015: a worst event of 150 to 195 ms and a release of 0 ms against 30 ms and
+133 to 136 ms). An event worse than three times the median is hunted, with a breakpoint on the slow path, before its row is written,
+not recorded as unexplained. A memory row says what its "before" is (the process's peak, a high-water mark shared by the cases of one
+run).
+
 The Fill and Magnifier budgets are benchmark budgets: `perf-0007` prints the numbers, `/sdd-check` reports them against the
 table, and no test fails on them (timing tests flake on a loaded machine). The worst-case fill (the comb) has no time budget;
 its cost is memory, 12 bytes per one-pixel span.

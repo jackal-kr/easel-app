@@ -35,7 +35,7 @@ Precondition: `Status: accepted` in the spec. Otherwise stop and say so.
    - write the test from the scenario text first, run it and see it fail before writing the code (and say so in the task
      report), then the smallest code that passes; a ui test of anything that
      moves the view also checks where the picture is drawn, by rendering the window; a new case also passes when run alone;
-   - a step or buffer kept under a memory budget has a test that compares the memory held (capacity) with the memory counted, not only the length;
+   - a step or buffer kept under a memory budget has a test that compares the memory held (capacity) with the memory counted, not only the length, and so does every allocation a task adds that the limit counts (a list that gains a column, a flag array);
    - a test of an input rule calls the function the signal callback calls, with the event's modifier state, never a function deeper down;
    - a modifier that decides an action (Ctrl, Shift) is read from the event of the press, and the manual check lists each such action
      to try with the real mouse, since no ui test sends real events;

@@ -18,7 +18,7 @@ description: Step 3 of the loop, also usable any time. Read-only check of a feat
 3. Drift: behavior in code that is not in the spec; Plan items not built; spec statements contradicted by tests.
 4. Constitution: layering, warnings, tests shipped with the change, no AI trailers in commits.
 5. Read `git diff` for correctness: pixel bounds and overflow, GTK object lifetime, one undo step per user-visible edit.
-   A step or buffer kept under a memory budget is checked for the memory held (capacity) against the memory counted, not only the length; every function that pushes a log to the history has its own such test.
+   A step or buffer kept under a memory budget is checked for the memory held (capacity) against the memory counted, not only the length; every function that pushes a log to the history, and every allocation the feature adds that the limit counts, has its own such test.
 6. Report findings ranked by severity with file and id references, then a one-line verdict. If clean and JOD agrees, propose
    `Status: implemented` and any lines worth adding to `docs/learning-log.md`.
 7. Last, write the `## Check` section of the spec (see `docs/specs/_template.md`): date, commit, tests, mutants, warnings, and

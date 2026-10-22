@@ -76,12 +76,15 @@ open_window (void)
 {
   EaselWindow *win;
   GdkFrameClock *clock;
-  static gboolean checked;
+  static gboolean checked, checked_pointer;
 
   if (!checked)
     refuse_if_other_easel ();
   checked = TRUE;
 
+  if (!checked_pointer)
+    g_printerr ("Keep the pointer outside the window while this runs: a real motion with no button down ends a held drag (REQ-0007-18).\n");
+  checked_pointer = TRUE;
   g_application_activate (G_APPLICATION (app));
   win = EASEL_WINDOW (gtk_application_get_active_window (app));
   while (!gtk_widget_get_realized (GTK_WIDGET (win)))

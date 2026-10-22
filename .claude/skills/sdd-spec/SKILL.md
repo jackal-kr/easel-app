@@ -18,9 +18,10 @@ Input: feature number or name from `docs/specs/INDEX.md`.
    A requirement about how something looks names the reference it follows. A control that repeats an existing control's meaning reuses its look; say so, and ask only where a mock-up draws it otherwise.
    A mode or option whose name or tooltip names an effect on the picture is checked against every place the picture changes (a hole, a clear, a put-down) before the spec is accepted.
    For any tool or control that holds state between two events (a press and its release, a drag and its end, a dialog and
-   its answer), the spec needs a scenario for the second event never arriving.
+   its answer), the spec needs a scenario for the second event never arriving, and one for the view (zoom, scroll, window size) changing while it is held.
    A rule for a failure (memory, I/O) that names one event says what happens to the thing in every other state it can be in (held, waiting, unshown).
-   A new region of the canvas that takes presses (a marker, a handle) is checked, with its hit area computed, against the press coordinates of every scenario of the feature.
+   A memory limit named in a rule says whether it counts each allocation or a total, and the Plan's "What grows" says the same.
+   A new region of the canvas that takes presses (a marker, a handle) is checked, with its hit area computed, against the press coordinates of every scenario of the feature; a rule that one hit area wins over another is tried at the edges of both areas, also where one reaches inside the picture.
    A reference to a spec that is not built yet uses the feature name, not its number, because roadmap numbers move.
    If this feature changes a requirement of an implemented spec, add a pointer note to that requirement.
 4. Take behavior from XP Paint knowledge, jspaint (behavior, not code), JOD's descriptions and `docs/reference`; never from the
