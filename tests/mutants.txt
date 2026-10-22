@@ -1186,10 +1186,10 @@ file: src/ui/canvas.c
 test: ui-0007
 --- find
   return self->stroke != NULL || self->picking || self->shaping || self->pend_held || self->selecting || self->sel_moving
-         || self->lassoing;
+         || self->lassoing || self->stretching;
 --- replace
   return self->stroke != NULL || self->shaping || self->pend_held || self->selecting || self->sel_moving
-         || self->lassoing;
+         || self->lassoing || self->stretching;
 
 === REQ-0007-03 the selected Magnifier level never reaches the canvas
 file: src/ui/window.c
@@ -1253,7 +1253,7 @@ file: src/ui/canvas.c
 test: ui-0007
 --- find
   if (self->stroke != NULL || self->picking || self->shaping || self->pend_held || self->selecting || self->sel_moving
-      || self->lassoing)
+      || self->lassoing || self->stretching)
     easel_canvas_end_stroke (self);
   if (self->resizing != EASEL_HANDLE_NONE)
     easel_canvas_release (self, self->resize_button);
@@ -2307,12 +2307,12 @@ file: src/ui/canvas.c
 test: ui-0011
 --- find
   if (self->stroke != NULL || self->picking || self->shaping || self->pend_held || self->selecting || self->sel_moving
-      || self->lassoing)
+      || self->lassoing || self->stretching)
     easel_canvas_end_stroke (self);
   if (self->resizing != EASEL_HANDLE_NONE)
     easel_canvas_release (self, self->resize_button);
 --- replace
-  if (self->stroke != NULL || self->picking || self->shaping || self->selecting || self->lassoing)
+  if (self->stroke != NULL || self->picking || self->shaping || self->selecting || self->lassoing || self->stretching)
     easel_canvas_end_stroke (self);
   if (self->resizing != EASEL_HANDLE_NONE)
     easel_canvas_release (self, self->resize_button);
@@ -2661,7 +2661,8 @@ test: ui-0012
 --- find
   self->action_button = 0;
   if (self->stroke != NULL || self->picking || self->shaping || self->pend_held || self->selecting || self->sel_moving
-      || self->lassoing)
+      || self->lassoing || self->stretching)
+    easel_canvas_end_stroke (self);
 --- replace
   self->action_button = 0;
   if (self->pend_held && self->pend_gradient)
@@ -3085,9 +3086,9 @@ test: core-selection
 file: src/core/selection.c
 test: core-selection
 --- find
-    lay_float_at (f, f->x, f->y, img, x0, y0, w, h, dst, dst_stride);
+    lay_float_at (&cur, f->x, f->y, img, x0, y0, w, h, dst, dst_stride);
 --- replace
-    lay_float_at (f, f->hx, f->hy, img, x0, y0, w, h, dst, dst_stride);
+    lay_float_at (&cur, f->hx, f->hy, img, x0, y0, w, h, dst, dst_stride);
 
 === REQ-0013-09 a lift with Ctrl leaves a hole
 file: src/core/selection.c
@@ -3269,8 +3270,10 @@ test: ui-0013
 file: src/ui/canvas.c
 test: ui-0013
 --- find
+  self->sel_move_y0 = self->sel_y;
   self->sel_copy = self->ctrl;
 --- replace
+  self->sel_move_y0 = self->sel_y;
   self->sel_copy = FALSE;
 
 === REQ-0013-09 Ctrl is read at the move's first movement instead of at its press
@@ -3451,6 +3454,7 @@ test: ui-0013
   shape_free (self);
   self->sel_state = 0;
   self->hover_sel = FALSE;
+  self->hover_sel_handle = -1;
   update_cursor (self);
   if (r == EASEL_SELECTION_DONE)
     easel_canvas_update (self);
@@ -3619,10 +3623,12 @@ test: ui-0013
       if (self->sel_lifted_here)
         {
           drop_float (self);
+          self->sel_state = 1;                    /* marked again; the picture was never touched */
 --- replace
       if (FALSE)
         {
           drop_float (self);
+          self->sel_state = 1;                    /* marked again; the picture was never touched */
 
 === REQ-0013-18 a cancelled move leaves the copy Ctrl left at its press
 file: src/ui/canvas.c
@@ -3691,9 +3697,21 @@ test: ui-0013
 file: src/core/selection.c
 test: core-selection
 --- find
-        if (f->mask == NULL || f->mask[at] != 0)
+  if (with_float)
+    lay_float_at (&cur, f->x, f->y, img, x0, y0, w, h, dst, dst_stride);
 --- replace
-        if ((f->mask == NULL || f->mask[at] != 0) && !(f->hole && f->px[at] == f->hole_color))
+  if (with_float)
+    {
+      lay_float_at (&cur, f->x, f->y, img, x0, y0, w, h, dst, dst_stride);
+      for (int j = 0; j < h; j++)
+        for (int i = 0; i < w; i++)
+          {
+            int x = x0 + i, y = y0 + j;
+            if (f->hole && x >= 0 && y >= 0 && x < img->width && y < img->height && x >= f->x && y >= f->y && x < f->x + cur.w
+                && y < f->y + cur.h && cur.px[(size_t) (y - f->y) * cur.w + (size_t) (x - f->x)] == f->hole_color)
+              dst[(size_t) j * dst_stride + i] = img->px[(size_t) y * img->width + x];
+          }
+    }
 
 === REQ-0013-19 a failed put-down shows no dialog
 file: src/ui/canvas.c
@@ -3972,9 +3990,9 @@ test: core-selection
 file: src/core/selection.c
 test: core-selection
 --- find
-          if (f->hole && in_shape (f, f->hx, f->hy, x, y))
+          if (f->hole && in_shape (&hole, f->hx, f->hy, x, y))
 --- replace
-          if (f->hole && inside (x, y, f->hx, f->hy, f->w, f->h))
+          if (f->hole && inside (x, y, f->hx, f->hy, hole.w, hole.h))
 
 === REQ-0014-08 the pixels of the float outside its shape are laid too
 file: src/core/selection.c
@@ -4117,7 +4135,7 @@ test: ui-0014
 file: src/ui/canvas.c
 test: ui-0014
 --- find
-  return self->sel_mask == NULL || self->sel_mask[(size_t) (py - self->sel_y) * self->sel_w + (px - self->sel_x)] != 0;
+  return selection_mask (self) == NULL || selection_mask (self)[(size_t) (py - self->sel_y) * self->sel_w + (px - self->sel_x)] != 0;
 --- replace
   return TRUE;
 
@@ -4361,7 +4379,7 @@ test: ui-0014
 file: src/ui/canvas.c
 test: ui-0014
 --- find
-  if (self->selecting || self->sel_mask == NULL)
+  if (self->selecting || mask == NULL)
     {
       gtk_snapshot_append_color (snapshot, &tint,
 --- replace
@@ -4477,8 +4495,10 @@ self->sel_w, self->sel_h, NULL,
 file: src/ui/canvas.c
 test: ui-0014
 --- find
+  self->sel_move_y0 = self->sel_y;
   self->sel_copy = self->ctrl;
 --- replace
+  self->sel_move_y0 = self->sel_y;
   self->sel_copy = FALSE;
 
 === REQ-0014-10 another tool does not remove a marked shape
@@ -4602,24 +4622,36 @@ file: src/core/selection.c
 test: core-selection
 --- find
   for (size_t k = first; k < last; k++)
-    lay_float_at (f, f->stamps[k].x, f->stamps[k].y, img, x0, y0, w, h, dst, dst_stride);
+    {
+      sv = stamp_view (f, k);
+      lay_float_at (&sv, f->stamps[k].x, f->stamps[k].y, img, x0, y0, w, h, dst, dst_stride);
+    }
 --- replace
-  for (size_t k = last; k > first; k--)
-    lay_float_at (f, f->stamps[k - 1].x, f->stamps[k - 1].y, img, x0, y0, w, h, dst, dst_stride);
+  for (size_t k = last; k-- > first;)
+    {
+      sv = stamp_view (f, k);
+      lay_float_at (&sv, f->stamps[k].x, f->stamps[k].y, img, x0, y0, w, h, dst, dst_stride);
+    }
 
 === REQ-0013-09 the copies are laid over the float
 file: src/core/selection.c
 test: core-selection
 --- find
   for (size_t k = first; k < last; k++)
-    lay_float_at (f, f->stamps[k].x, f->stamps[k].y, img, x0, y0, w, h, dst, dst_stride);
+    {
+      sv = stamp_view (f, k);
+      lay_float_at (&sv, f->stamps[k].x, f->stamps[k].y, img, x0, y0, w, h, dst, dst_stride);
+    }
   if (with_float)
-    lay_float_at (f, f->x, f->y, img, x0, y0, w, h, dst, dst_stride);
+    lay_float_at (&cur, f->x, f->y, img, x0, y0, w, h, dst, dst_stride);
 --- replace
   if (with_float)
-    lay_float_at (f, f->x, f->y, img, x0, y0, w, h, dst, dst_stride);
+    lay_float_at (&cur, f->x, f->y, img, x0, y0, w, h, dst, dst_stride);
   for (size_t k = first; k < last; k++)
-    lay_float_at (f, f->stamps[k].x, f->stamps[k].y, img, x0, y0, w, h, dst, dst_stride);
+    {
+      sv = stamp_view (f, k);
+      lay_float_at (&sv, f->stamps[k].x, f->stamps[k].y, img, x0, y0, w, h, dst, dst_stride);
+    }
 
 === REQ-0014-17 the preview is laid again at every redraw
 file: src/ui/canvas.c
@@ -4662,8 +4694,10 @@ file: src/ui/canvas.c
 test: ui-0014
 --- find
           memcpy (px, g_bytes_get_data (self->trail_data[i], NULL), bytes);
+          easel_selection_fill (&self->sel_float, x0 - f->x, y0 - f->y, x0 + w - f->x, y0 + h - f->y);     /* only the tiles in view are made */
           easel_selection_lay_range (f, copies, copies, TRUE, self->img, x0, y0, w, h, px, (size_t) w, FALSE);
 --- replace
+          easel_selection_fill (&self->sel_float, x0 - f->x, y0 - f->y, x0 + w - f->x, y0 + h - f->y);     /* only the tiles in view are made */
           easel_selection_lay_range (f, copies, copies, TRUE, self->img, x0, y0, w, h, (uint32_t *) g_bytes_get_data (self->trail_data[i], NULL), (size_t) w, FALSE);
           memcpy (px, g_bytes_get_data (self->trail_data[i], NULL), bytes);
 
@@ -4790,9 +4824,10 @@ file: src/ui/canvas.c
 test: ui-0014
 --- find
   return self->stroke != NULL || self->picking || self->shaping || self->pend_held || self->selecting || self->sel_moving
-         || self->lassoing;
+         || self->lassoing || self->stretching;
 --- replace
-  return self->stroke != NULL || self->picking || self->shaping || self->pend_held || self->selecting || self->sel_moving;
+  return self->stroke != NULL || self->picking || self->shaping || self->pend_held || self->selecting || self->sel_moving
+         || self->stretching;
 
 # ---- the shape's memory dialog, blocked presses, the whole-picture path (0014 T014) ----
 
@@ -4874,11 +4909,11 @@ test: ui-0014
 --- find
           for (int r = r0; r < r1; r++)
             for (int i = 0; i < w; i++)
-              band[i] |= self->sel_mask[(size_t) (r - y) * w + i];
+              band[i] |= mask[(size_t) (r - y) * w + i];
 --- replace
           for (int r = r0; r < r0 + 1; r++)
             for (int i = 0; i < w; i++)
-              band[i] |= self->sel_mask[(size_t) (r - y) * w + i];
+              band[i] |= mask[(size_t) (r - y) * w + i];
 
 === REQ-0014-17 a band of the tint is a picture pixel to the right
 file: src/ui/canvas.c
@@ -4963,3 +4998,871 @@ test: ui-0014
     self->ants_tick = g_timeout_add (1000 / 12, ants_tick_cb, self);   /* once a step: nothing runs between two (REQ-0014-16) */
 --- replace
     self->ants_tick = g_timeout_add (1000 / 60, ants_tick_cb, self);
+
+# ---- the scale of a selection's pixels and shape (0015 T001) ----
+
+=== REQ-0015-05 the new pixel takes the lifted pixel at its left edge, not at its center
+file: src/core/selection.c
+test: core-selection
+--- find
+          int si = (int) (((2LL * i + 1) * o->w) / (2LL * W));
+--- replace
+          int si = (int) (((long long) i * o->w) / W);
+
+=== REQ-0015-05 the rows are sampled at the top edge of the new pixel
+file: src/core/selection.c
+test: core-selection
+--- find
+      int sj = (int) (((2LL * j + 1) * o->h) / (2LL * H));
+--- replace
+      int sj = (int) (((long long) j * o->h) / H);
+
+=== REQ-0015-06 a shape stretched to nothing is empty
+file: src/core/selection.c
+test: core-selection
+--- find
+  if (scale_region (&o, W, H, op, om, 0, 0, W, H) == 0 && om != NULL)
+    keep_one_pixel (&o, W, H, op, om);
+--- replace
+  if (scale_region (&o, W, H, op, om, 0, 0, W, H) < 0 && om != NULL)
+    keep_one_pixel (&o, W, H, op, om);
+
+=== REQ-0015-06 the kept pixel is the last shape pixel of its footprint, not the first
+file: src/core/selection.c
+test: core-selection
+--- find
+      for (int y = y0; y <= y1 && !done; y++)
+        for (int x = x0; x <= x1 && !done; x++)
+--- replace
+      for (int y = y0; y <= y1; y++)
+        for (int x = x0; x <= x1; x++)
+
+=== REQ-0015-06 a scaled shape pixel is in the shape whatever the lifted pixel
+file: src/core/selection.c
+test: core-selection
+--- find
+              om[(size_t) j * (size_t) W + (size_t) i] = o->mask[from] != 0;
+--- replace
+              om[(size_t) j * (size_t) W + (size_t) i] = 1;
+
+=== REQ-0015-09 the mask is not counted against the memory limit
+file: src/core/selection.c
+test: core-selection
+--- find
+  bytes = n * sizeof **op + (with_mask ? n : 0);
+--- replace
+  bytes = n * sizeof **op;
+
+# ---- the rectangle of a handle drag (0015 T002) ----
+
+=== REQ-0015-03 a handle dragged past the opposite edge mirrors the selection
+file: src/core/selection.c
+test: core-selection
+--- find
+      if (b - a < 1)
+        a = b - 1;                                /* past the opposite edge: one pixel beside it */
+--- replace
+      if (b - a < 1)
+        a = b + (b - a);
+
+=== REQ-0015-03 the size is not limited to 10000 for the right and bottom handles
+file: src/core/selection.c
+test: core-selection
+--- find
+      if (b - a > STRETCH_MAX)
+        b = a + STRETCH_MAX;
+--- replace
+      if (0)
+        b = a + STRETCH_MAX;
+
+=== REQ-0015-03 the size is not limited to 10000 for the left and top handles
+file: src/core/selection.c
+test: core-selection
+--- find
+      if (b - a > STRETCH_MAX)
+        a = b - STRETCH_MAX;
+--- replace
+      if (0)
+        a = b - STRETCH_MAX;
+
+=== REQ-0015-07 the height leads on a tie
+file: src/core/selection.c
+test: core-selection
+--- find
+      bool width_leads = fabs (fw - 1) >= fabs (fh - 1);
+--- replace
+      bool width_leads = fabs (fw - 1) > fabs (fh - 1);
+
+=== REQ-0015-07 the side that differs less from 1 leads
+file: src/core/selection.c
+test: core-selection
+--- find
+      bool width_leads = fabs (fw - 1) >= fabs (fh - 1);
+--- replace
+      bool width_leads = fabs (fw - 1) <= fabs (fh - 1);
+
+=== REQ-0015-07 halves round down
+file: src/core/selection.c
+test: core-selection
+--- find
+      long long other = (long long) floor (old_other * f + 0.5);
+--- replace
+      long long other = (long long) ceil (old_other * f - 0.5);
+
+=== REQ-0015-07 an edge handle keeps the ratio too
+file: src/core/selection.c
+test: core-selection
+--- find
+  if (keep_ratio && corner)
+--- replace
+  if (keep_ratio && (corner || left || right))
+
+=== REQ-0015-07 at the limit the ratio is broken
+file: src/core/selection.c
+test: core-selection
+--- find
+          lead = (int) floor ((double) (width_leads ? w : h) * STRETCH_MAX / old_other + 0.5);
+--- replace
+          lead = (int) (width_leads ? w : h);
+
+=== REQ-0015-07 the top-left corner keeps its own place, not the opposite corner's
+file: src/core/selection.c
+test: core-selection
+--- find
+      if (left)
+        *nx = x + w - *nw;
+--- replace
+      if (0)
+        *nx = x + w - *nw;
+
+# ---- the float stretched from its original, the copies' images (0015 T003) ----
+
+=== REQ-0015-05 a stretch is made from the current image, not the pixels as lifted
+file: src/core/selection.c
+test: core-selection
+--- find
+  ImageView orig = original_view (f);
+  uint32_t *npx = NULL;
+--- replace
+  ImageView orig = current_view (f);
+  uint32_t *npx = NULL;
+
+=== REQ-0015-05 copies made before a stretch take the new image
+file: src/core/selection.c
+test: core-selection
+--- find
+      for (size_t k = 0; k < f->n_stamps; k++)
+        if (f->stamp_img[k] == EASEL_IMAGE_CURRENT)
+          f->stamp_img[k] = id;
+--- replace
+      for (size_t k = 0; k < f->n_stamps; k++)
+        if (f->stamp_img[k] == EASEL_IMAGE_CURRENT)
+          f->stamp_img[k] = EASEL_IMAGE_CURRENT;
+
+=== REQ-0015-05 a copy made after the first stretch is taken for the original
+file: src/core/selection.c
+test: core-selection
+--- find
+      if (f->orig_px != NULL)
+        {
+          move_to_kept = true;
+--- replace
+      if (0)
+        {
+          move_to_kept = true;
+
+=== REQ-0015-05 the hole takes the stretched size
+file: src/core/selection.c
+test: core-selection
+--- find
+      ImageView hv = original_view (f);
+--- replace
+      ImageView hv = current_view (f);
+
+=== REQ-0015-05 the hole takes the stretched shape
+file: src/core/selection.c
+test: core-selection
+--- find
+  ImageView hole = original_view (f), cur = current_view (f), sv;
+--- replace
+  ImageView hole = current_view (f), cur = current_view (f), sv;
+
+=== REQ-0015-09 a refused stretch ignores the memory limit
+file: src/core/selection.c
+test: core-selection
+--- find
+  r = easel_selection_scale (orig.px, orig.mask, orig.w, orig.h, W, H, &npx, orig.mask != NULL ? &nmask : NULL, max_bytes);
+--- replace
+  r = easel_selection_scale (orig.px, orig.mask, orig.w, orig.h, W, H, &npx, orig.mask != NULL ? &nmask : NULL, SIZE_MAX);
+
+=== REQ-0015-09 a refused stretch moves the float anyway
+file: src/core/selection.c
+test: core-selection
+--- find
+  if (r != EASEL_SELECTION_DONE)
+    return r;
+  for (size_t k = 0; k < f->n_stamps && !uses_current; k++)
+--- replace
+  if (r != EASEL_SELECTION_DONE)
+    {
+      f->x = x;
+      f->y = y;
+      return r;
+    }
+  for (size_t k = 0; k < f->n_stamps && !uses_current; k++)
+
+# ---- the handles of a selection, drawn (0015 T004) ----
+
+=== REQ-0015-01 the handles are drawn while the guides are hidden
+file: src/ui/canvas.c
+test: ui-0015
+--- find
+  if (self->guides_hidden || self->no_sel_handles || !easel_tool_selects (self->tool))
+    return;
+--- replace
+  if (self->no_sel_handles || !easel_tool_selects (self->tool))
+    return;
+
+=== REQ-0015-01 an edge handle is not centered on its edge
+file: src/ui/canvas.c
+test: ui-0015
+--- find
+      x = floor (rx + rw / 2 - HANDLE_SIZE / 2);
+--- replace
+      x = floor (rx + rw / 2);
+
+=== REQ-0015-01 an edge handle's position is rounded up
+file: src/ui/canvas.c
+test: ui-0015
+--- find
+      y = floor (ry + rh / 2 - HANDLE_SIZE / 2);
+--- replace
+      y = ceil (ry + rh / 2 - HANDLE_SIZE / 2);
+
+=== REQ-0015-01 a corner handle lies inside the rectangle
+file: src/ui/canvas.c
+test: ui-0015
+--- find
+    case EASEL_SEL_HANDLE_TR: case EASEL_SEL_HANDLE_R: case EASEL_SEL_HANDLE_BR:
+      x = rx + rw;
+--- replace
+    case EASEL_SEL_HANDLE_TR: case EASEL_SEL_HANDLE_R: case EASEL_SEL_HANDLE_BR:
+      x = rx + rw - HANDLE_SIZE;
+
+=== REQ-0015-01 the handles are 4 logical pixels wide
+file: src/ui/canvas.c
+test: ui-0015
+--- find
+      y = floor (ry + rh / 2 - HANDLE_SIZE / 2);
+    }
+  *rect = GRAPHENE_RECT_INIT ((float) x, (float) y, HANDLE_SIZE, HANDLE_SIZE);
+--- replace
+      y = floor (ry + rh / 2 - HANDLE_SIZE / 2);
+    }
+  *rect = GRAPHENE_RECT_INIT ((float) x, (float) y, HANDLE_SIZE - 1, HANDLE_SIZE);
+
+=== REQ-0015-01 the handles are not drawn
+file: src/ui/canvas.c
+test: ui-0015
+--- find
+  append_selection_handles (self, snapshot);
+  append_magnifier_box (self, snapshot);
+--- replace
+  append_magnifier_box (self, snapshot);
+
+=== REQ-0015-01 the handles do not follow a moved selection
+file: src/ui/canvas.c
+test: ui-0015
+--- find
+  rx = sx * l;
+  ry = sy * l;
+--- replace
+  rx = self->sel_move_x0 * l;
+  ry = self->sel_move_y0 * l;
+
+# ---- the handles' hit areas, cursors and priority (0015 T005) ----
+
+=== REQ-0015-02 a handle's own square does not come before the 9 x 9 areas
+file: src/ui/canvas.c
+test: ui-0015
+--- find
+  for (guint i = 0; i < G_N_ELEMENTS (order); i++)
+    if (easel_canvas_get_selection_handle_rect (self, order[i], &r) && x >= r.origin.x && x < r.origin.x + r.size.width
+        && y >= r.origin.y && y < r.origin.y + r.size.height)
+      return order[i];
+--- replace
+  for (guint i = 0; i < 0; i++)
+    if (easel_canvas_get_selection_handle_rect (self, order[i], &r) && x >= r.origin.x && x < r.origin.x + r.size.width
+        && y >= r.origin.y && y < r.origin.y + r.size.height)
+      return order[i];
+
+=== REQ-0015-02 the 9 x 9 areas reach into the selection's rectangle
+file: src/ui/canvas.c
+test: ui-0015
+--- find
+  if (x >= sx * l && x < (sx + sw) * l && y >= sy * l && y < (sy + sh) * l)
+    return -1;                                    /* inside the rectangle a press is the selection's or the tool's */
+--- replace
+  if (0)
+    return -1;
+
+=== REQ-0015-02 an edge handle wins over a corner handle where their areas overlap
+file: src/ui/canvas.c
+test: ui-0015
+--- find
+  static const EaselSelHandle order[] = { EASEL_SEL_HANDLE_TL, EASEL_SEL_HANDLE_TR, EASEL_SEL_HANDLE_BL, EASEL_SEL_HANDLE_BR,
+                                          EASEL_SEL_HANDLE_T, EASEL_SEL_HANDLE_L, EASEL_SEL_HANDLE_R, EASEL_SEL_HANDLE_B };
+  graphene_rect_t r;
+  double l = logical_per_pixel (self);
+--- replace
+  static const EaselSelHandle order[] = { EASEL_SEL_HANDLE_T, EASEL_SEL_HANDLE_L, EASEL_SEL_HANDLE_R, EASEL_SEL_HANDLE_B,
+                                          EASEL_SEL_HANDLE_TL, EASEL_SEL_HANDLE_TR, EASEL_SEL_HANDLE_BL, EASEL_SEL_HANDLE_BR };
+  graphene_rect_t r;
+  double l = logical_per_pixel (self);
+
+=== REQ-0015-02 a press on a handle of the selection is not taken by it
+file: src/ui/canvas.c
+test: ui-0015
+--- find
+    if (handle >= 0)
+      {
+        /* A press on a handle of the selection (REQ-0015-02, -03): it wins over the picture's handles and neither puts the selection
+--- replace
+    if (0)
+      {
+        /* A press on a handle of the selection (REQ-0015-02, -03): it wins over the picture's handles and neither puts the selection
+
+=== REQ-0015-02 the top-right and bottom-left handles take the other diagonal cursor
+file: src/ui/canvas.c
+test: ui-0015
+--- find
+    case EASEL_SEL_HANDLE_TR: case EASEL_SEL_HANDLE_BL:
+      return "nesw-resize";
+--- replace
+    case EASEL_SEL_HANDLE_TR: case EASEL_SEL_HANDLE_BL:
+      return "nwse-resize";
+
+=== REQ-0015-02 the left and right handles take the vertical cursor
+file: src/ui/canvas.c
+test: ui-0015
+--- find
+    case EASEL_SEL_HANDLE_L: case EASEL_SEL_HANDLE_R:
+      return "ew-resize";
+--- replace
+    case EASEL_SEL_HANDLE_L: case EASEL_SEL_HANDLE_R:
+      return "ns-resize";
+
+=== REQ-0015-02 the cursor does not change when the pointer comes to a handle
+file: src/ui/canvas.c
+test: ui-0015
+--- find
+  if (hover != self->hover || marker_hit (self, x, y) != self->hover_marker || on_selection (self, x, y) != self->hover_sel
+      || easel_canvas_selection_handle_at (self, x, y) != self->hover_sel_handle)
+--- replace
+  if (hover != self->hover || marker_hit (self, x, y) != self->hover_marker || on_selection (self, x, y) != self->hover_sel)
+
+# ---- stretching a marked or floating selection in the window (0015 T006) ----
+
+=== REQ-0015-03 a press on a handle of the selection starts no stretch
+file: src/ui/canvas.c
+test: ui-0015
+--- find
+        if (button == GDK_BUTTON_PRIMARY)
+          begin_stretch (self, handle, x, y);
+--- replace
+        if (0)
+          begin_stretch (self, handle, x, y);
+
+=== REQ-0015-03 the pointer's movement is truncated, not rounded to the nearest pixel
+file: src/ui/canvas.c
+test: ui-0015
+--- find
+  int dx = (int) lround (self->stretch_lx - self->stretch_x0), dy = (int) lround (self->stretch_ly - self->stretch_y0);
+--- replace
+  int dx = (int) (self->stretch_lx - self->stretch_x0), dy = (int) (self->stretch_ly - self->stretch_y0);
+
+=== REQ-0015-03 each motion is measured from the last size, not from the press
+file: src/ui/canvas.c
+test: ui-0015
+--- find
+  easel_stretch_rect ((EaselSelHandle) self->stretch_handle, self->stretch_sx, self->stretch_sy, self->stretch_sw, self->stretch_sh, dx, dy,
+                      self->shift, &nx, &ny, &nw, &nh);
+--- replace
+  easel_stretch_rect ((EaselSelHandle) self->stretch_handle, self->sel_x, self->sel_y, self->sel_w, self->sel_h, dx, dy,
+                      self->shift, &nx, &ny, &nw, &nh);
+
+=== REQ-0015-04 a marked selection is not lifted by a stretch
+file: src/ui/canvas.c
+test: ui-0015
+--- find
+  if (self->sel_state == 1)
+    {
+      if (easel_selection_lift (&self->sel_float, self->img, self->sel_x, self->sel_y, self->sel_w, self->sel_h, self->sel_mask,
+                                self->sel_copy, hole_color (self), self->sel_lift_max) != EASEL_SELECTION_DONE)
+--- replace
+  if (self->sel_state == 1 && self->sel_float.px == NULL && 0)
+    {
+      if (easel_selection_lift (&self->sel_float, self->img, self->sel_x, self->sel_y, self->sel_w, self->sel_h, self->sel_mask,
+                                self->sel_copy, hole_color (self), self->sel_lift_max) != EASEL_SELECTION_DONE)
+
+=== REQ-0015-04 a movement to no other size lifts the selection
+file: src/ui/canvas.c
+test: ui-0015
+--- find
+  if (nx == self->sel_x && ny == self->sel_y && nw == self->sel_w && nh == self->sel_h)
+    return;                                       /* no movement to another size */
+--- replace
+  if (0)
+    return;
+
+=== REQ-0015-03 the stretch's size is not shown after the stretch
+file: src/ui/canvas.c
+test: ui-0015
+--- find
+  self->sel_w = nw;
+  self->sel_h = nh;
+  g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);
+--- replace
+  self->sel_w = nw;
+  self->sel_h = nh;
+  self->sel_h = self->stretch_sh;
+  g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);
+
+=== REQ-0015-08 the release does not end the stretch drag
+file: src/ui/canvas.c
+test: ui-0015
+--- find
+      self->stretching = FALSE;                     /* the selection floats at the size it has (REQ-0015-08) */
+--- replace
+      self->stretching = TRUE;                      /* the selection floats at the size it has (REQ-0015-08) */
+
+=== REQ-0015-01 the picture's handles are drawn over the selection's pixels and tint
+file: src/ui/canvas.c
+test: ui-0015
+--- find
+  append_handles (self, snapshot);                /* the picture's handles lie under the selection's pixels and tint (REQ-0015-01) */
+  append_float_outside (self, snapshot, l);
+--- replace
+  append_float_outside (self, snapshot, l);
+  append_handles (self, snapshot);
+
+# ---- the lazy stretch: only the part in view while held (0015 T006) ----
+
+=== REQ-0015-05 a block of the lazy image is not made when the asked rectangle ends in it
+file: src/core/selection.c
+test: core-selection
+--- find
+  for (int by = y0 / FILL_BLOCK; by <= (y1 - 1) / FILL_BLOCK; by++)
+    for (int bx = x0 / FILL_BLOCK; bx <= (x1 - 1) / FILL_BLOCK; bx++)
+--- replace
+  for (int by = y0 / FILL_BLOCK; by < (y1 - 1) / FILL_BLOCK; by++)
+    for (int bx = x0 / FILL_BLOCK; bx <= (x1 - 1) / FILL_BLOCK; bx++)
+
+=== REQ-0015-05 a block of the lazy image is made at the wrong place
+file: src/core/selection.c
+test: core-selection
+--- find
+        int ax = bx * FILL_BLOCK, ay = by * FILL_BLOCK, bx1 = MIN (ax + FILL_BLOCK, f->w), by1 = MIN (ay + FILL_BLOCK, f->h);
+--- replace
+        int ax = bx * FILL_BLOCK + 1, ay = by * FILL_BLOCK, bx1 = MIN (ax + FILL_BLOCK, f->w), by1 = MIN (ay + FILL_BLOCK, f->h);
+
+=== REQ-0015-05 the completion leaves the last column of the lazy image unmade
+file: src/core/selection.c
+test: core-selection
+--- find
+  easel_selection_fill (f, 0, 0, f->w, f->h);
+  orig = original_view (f);
+--- replace
+  easel_selection_fill (f, 0, 0, f->w - 1, f->h);
+  orig = original_view (f);
+
+=== REQ-0015-06 the completion does not keep the one pixel of a lost shape
+file: src/core/selection.c
+test: core-selection
+--- find
+  if (f->mask != NULL && f->kept_px == 0)
+--- replace
+  if (0)
+
+=== REQ-0015-05 a block made twice is counted twice
+file: src/core/selection.c
+test: core-selection
+--- find
+        if (f->fill[by * f->fill_cols + bx])
+          continue;
+--- replace
+        if (0)
+          continue;
+
+=== REQ-0015-09 the lazy stretch ignores the memory limit
+file: src/core/selection.c
+test: core-selection
+--- find
+      r = image_alloc (orig.mask != NULL, W, H, max_bytes, true, &npx, &nmask);
+--- replace
+      r = image_alloc (orig.mask != NULL, W, H, SIZE_MAX, true, &npx, &nmask);
+
+=== REQ-0015-05 the lazy stretch is used below 100 %, and not at 100 %
+file: src/ui/canvas.c
+test: ui-0015
+--- find
+  if ((self->zoom >= 100 ? easel_selection_stretch_lazy (&self->sel_float, nx, ny, nw, nh, self->sel_lift_max)
+--- replace
+  if ((self->zoom >= 1000 ? easel_selection_stretch_lazy (&self->sel_float, nx, ny, nw, nh, self->sel_lift_max)
+
+=== REQ-0015-05 the tiles in view are laid without making their part of the image
+file: src/ui/canvas.c
+test: ui-0015
+--- find
+          easel_selection_fill (&self->sel_float, x0 - f->x, y0 - f->y, x0 + w - f->x, y0 + h - f->y);     /* only the tiles in view are made */
+--- replace
+          (void) 0;
+
+=== REQ-0015-05 the part made for a tile forgets the float's place
+file: src/ui/canvas.c
+test: ui-0015
+--- find
+          easel_selection_fill (&self->sel_float, x0 - f->x, y0 - f->y, x0 + w - f->x, y0 + h - f->y);     /* only the tiles in view are made */
+--- replace
+          easel_selection_fill (&self->sel_float, x0, y0, x0 + w, y0 + h);
+
+=== REQ-0015-05 the part made for a tile ends one pixel short
+file: src/ui/canvas.c
+test: ui-0015
+--- find
+          easel_selection_fill (&self->sel_float, x0 - f->x, y0 - f->y, x0 + w - f->x, y0 + h - f->y);     /* only the tiles in view are made */
+--- replace
+          easel_selection_fill (&self->sel_float, x0 - f->x, y0 - f->y, x0 + w - f->x - 1, y0 + h - f->y - 1);
+
+=== REQ-0015-05 the part of the float outside the picture is drawn without being made
+file: src/ui/canvas.c
+test: ui-0015
+--- find
+  easel_selection_fill (&self->sel_float, x0 - f->x, y0 - f->y, x1 - f->x, y1 - f->y);     /* a lazily stretched image: the part read */
+--- replace
+  (void) 0;
+
+=== REQ-0015-08 the release does not make the whole image
+file: src/ui/canvas.c
+test: ui-0015
+--- find
+      self->stretching = FALSE;                     /* the selection floats at the size it has (REQ-0015-08) */
+      easel_selection_complete (&self->sel_float);  /* the whole image is made at the release */
+--- replace
+      self->stretching = FALSE;                     /* the selection floats at the size it has (REQ-0015-08) */
+
+=== REQ-0015-08 a put-down while the stretch is held lays an unfinished image
+file: src/ui/canvas.c
+test: ui-0015
+--- find
+      easel_selection_complete (&self->sel_float);   /* a stretch still held: the whole image is made before it is laid */
+--- replace
+      (void) 0;
+
+# ---- Ctrl at the press of a stretch (0015 T008) ----
+
+=== REQ-0015-04 Ctrl is ignored at the press of a stretch
+file: src/ui/canvas.c
+test: ui-0015
+--- find
+  self->stretch_sh = self->sel_h;
+  self->sel_copy = self->ctrl;
+--- replace
+  self->stretch_sh = self->sel_h;
+  self->sel_copy = FALSE;
+
+=== REQ-0015-04 a Ctrl stretch of a floating selection leaves no copy
+file: src/ui/canvas.c
+test: ui-0015
+--- find
+  else if (self->sel_copy && !self->stretch_copied)
+--- replace
+  else if (0 && self->sel_copy && !self->stretch_copied)
+
+=== REQ-0015-04 a Ctrl stretch leaves a copy at every motion
+file: src/ui/canvas.c
+test: ui-0015
+--- find
+      self->stretch_copied = TRUE;
+--- replace
+      self->stretch_copied = FALSE;
+
+=== REQ-0015-04 a Ctrl stretch that lifted a marked selection leaves a copy too
+file: src/ui/canvas.c
+test: ui-0015
+--- find
+  else if (self->sel_copy && !self->stretch_copied)
+--- replace
+  if (self->sel_copy && !self->stretch_copied)
+
+# ---- copies and a stretch in the window (0015 T009) ----
+
+=== REQ-0015-05 a copy is laid with the float's current image, not the one it was made with
+file: src/core/selection.c
+test: ui-0015
+--- find
+  if (id == EASEL_IMAGE_CURRENT)
+    return current_view (f);
+  if (id == EASEL_IMAGE_ORIGINAL)
+--- replace
+  if (1)
+    return current_view (f);
+  if (id == EASEL_IMAGE_ORIGINAL)
+
+# ---- the free-form line scaled (0015 T010) ----
+
+=== REQ-0015-06 the line is not scaled with the shape
+file: src/ui/canvas.c
+test: ui-0015
+--- find
+      self->sel_path = scaled;
+--- replace
+      easel_path_free (&scaled);
+
+=== REQ-0015-06 the line is scaled from a box one narrower than the path traced
+file: src/ui/canvas.c
+test: ui-0015
+--- find
+      if (!easel_lasso_scale_path (&self->sel_path0, self->sel_p0_x, self->sel_p0_y, self->sel_p0_w, self->sel_p0_h, nx, ny, nw, nh,
+--- replace
+      if (!easel_lasso_scale_path (&self->sel_path0, self->sel_p0_x, self->sel_p0_y, self->sel_p0_w - 1, self->sel_p0_h, nx, ny, nw, nh,
+
+=== REQ-0015-06 the scaled line is not placed at the selection
+file: src/ui/canvas.c
+test: ui-0015
+--- find
+      self->sel_path_x = nx;
+      self->sel_path_y = ny;
+--- replace
+      self->sel_path_x = self->sel_path_x;
+      self->sel_path_y = self->sel_path_y;
+
+=== REQ-0015-06 a corner outside the box is scaled with it, not kept at its distance
+file: src/core/lasso.c
+test: core-lasso
+--- find
+    return (int) (o + n + (u - s));
+--- replace
+    return (int) (o + (2 * u * n + s) / (2 * (long long) s));
+
+=== REQ-0015-06 a corner halfway goes to the smaller place
+file: src/core/lasso.c
+test: core-lasso
+--- find
+  return (int) (o + (2 * u * n + s) / (2 * (long long) s));
+--- replace
+  return (int) (o + (2 * u * n) / (2 * (long long) s));
+
+=== REQ-0015-06 a corner before the box is scaled, not kept at its distance
+file: src/core/lasso.c
+test: core-lasso
+--- find
+    return (int) (o + u);
+--- replace
+    return (int) (o + u * n / s);
+
+# ---- Shift on a corner (0015 T011) ----
+
+=== REQ-0015-07 Shift is ignored by a stretch
+file: src/ui/canvas.c
+test: ui-0015
+--- find
+                      self->shift, &nx, &ny, &nw, &nh);
+--- replace
+                      FALSE, &nx, &ny, &nw, &nh);
+
+=== REQ-0015-07 the ratio does not follow Shift released or pressed during the drag
+file: src/ui/canvas.c
+test: ui-0015
+--- find
+  if (self->stretching)
+    stretch_apply (self);                       /* the ratio follows Shift at once (REQ-0015-07) */
+--- replace
+  if (FALSE)
+    stretch_apply (self);                       /* the ratio follows Shift at once (REQ-0015-07) */
+
+# ---- stretches that do not finish (0015 T012) ----
+
+=== REQ-0015-08 a cancelled stretch keeps its new size
+file: src/ui/canvas.c
+test: ui-0015
+--- find
+  self->sel_w = self->stretch_sw;
+  self->sel_h = self->stretch_sh;
+  stretch_restore_path (self);
+--- replace
+  stretch_restore_path (self);
+
+=== REQ-0015-08 a cancelled stretch leaves the pixels at the new size
+file: src/ui/canvas.c
+test: ui-0015
+--- find
+      if ((self->sel_float.w != self->stretch_sw || self->sel_float.h != self->stretch_sh)
+          && easel_selection_stretch (&self->sel_float, self->stretch_sx, self->stretch_sy, self->stretch_sw, self->stretch_sh,
+                                      self->sel_lift_max) != EASEL_SELECTION_DONE)
+--- replace
+      if (FALSE)
+
+=== REQ-0015-08 a cancelled stretch keeps the copy it left
+file: src/ui/canvas.c
+test: ui-0015
+--- find
+      cut_copies (self, self->stretch_stamps0);
+--- replace
+      (void) 0;
+
+=== REQ-0015-08 a cancelled stretch that lifted the selection leaves it floating
+file: src/ui/canvas.c
+test: ui-0015
+--- find
+      drop_float (self);
+      self->sel_state = 1;                        /* marked again at the size it had; the picture was never touched */
+--- replace
+      self->sel_state = 2;                        /* marked again at the size it had; the picture was never touched */
+
+=== REQ-0015-08 a cancelled stretch does not wait for the held button
+file: src/ui/canvas.c
+test: ui-0015
+--- find
+  stretch_restore_path (self);
+  self->stretching = FALSE;
+  self->cancelled_button = self->sel_button;
+--- replace
+  stretch_restore_path (self);
+  self->stretching = FALSE;
+
+=== REQ-0015-08 a lost release leaves the stretch unfinished
+file: src/ui/canvas.c
+test: ui-0015
+--- find
+      self->stretching = FALSE;                /* ... and the stretch as last shown (REQ-0015-08) */
+      easel_selection_complete (&self->sel_float);
+--- replace
+      self->stretching = FALSE;                /* ... and the stretch as last shown (REQ-0015-08) */
+
+# ---- the memory dialogs of a stretch (0015 T013) ----
+
+=== REQ-0015-09 a refused stretch shows the dialog of a move
+file: src/ui/window.c
+test: ui-0015
+--- find
+  else if (kind == 3)
+    show_save_error (self, "Could Not Stretch the Selection"
+--- replace
+  else if (kind == 7)
+    show_save_error (self, "Could Not Stretch the Selection"
+
+=== REQ-0015-09 a refused stretch leaves the selection at the size it reached
+file: src/ui/canvas.c
+test: ui-0015
+--- find
+  g_signal_emit (self, signals[SIGNAL_SELECTION_FAILED], 0, kind);
+  restore_stretch (self);
+--- replace
+  g_signal_emit (self, signals[SIGNAL_SELECTION_FAILED], 0, kind);
+  self->stretching = FALSE;
+  self->cancelled_button = self->sel_button;
+
+=== REQ-0015-09 a stretch refused before any change is made afresh at the cancel
+file: src/ui/canvas.c
+test: ui-0015
+--- find
+      if ((self->sel_float.w != self->stretch_sw || self->sel_float.h != self->stretch_sh)
+          && easel_selection_stretch
+--- replace
+      if (TRUE
+          && easel_selection_stretch
+
+# ---- selection handles over the picture's handle areas (0015, JOD 2026-10-22) ----
+
+=== REQ-0015-02 a selection handle on a picture's handle does not own its whole hit area
+file: src/ui/canvas.c
+test: ui-0015
+--- find
+  for (guint k = 0; k < 3; k++)
+    {
+      static const EaselHandle pic[]
+--- replace
+  for (guint k = 0; k < 0; k++)
+    {
+      static const EaselHandle pic[]
+
+=== REQ-0015-02 a selection handle away from a picture's handle owns that handle's hit area
+file: src/ui/canvas.c
+test: ui-0015
+--- find
+          && fabs (r.origin.x - pr.origin.x) <= 1 && fabs (r.origin.y - pr.origin.y) <= 1)
+--- replace
+          && fabs (r.origin.x - pr.origin.x) <= 1000 && fabs (r.origin.y - pr.origin.y) <= 1000)
+
+# ---- the copies' list counted at a stretch (0015 T016, Check F2, F4, F5) ----
+
+=== REQ-0015-09 the copies' list made at the first stretch is not counted against the limit
+file: src/core/selection.c
+test: core-selection
+--- find
+          if (f->cap > SIZE_MAX / (sizeof *f->stamps + sizeof *img) || f->cap * (sizeof *f->stamps + sizeof *img) > max_bytes)
+--- replace
+          if (0)
+
+=== REQ-0015-09 the copies' list counted at a stretch leaves out the places of the copies
+file: src/core/selection.c
+test: core-selection
+--- find
+          if (f->cap > SIZE_MAX / (sizeof *f->stamps + sizeof *img) || f->cap * (sizeof *f->stamps + sizeof *img) > max_bytes)
+--- replace
+          if (f->cap * sizeof *img > max_bytes)
+
+=== REQ-0015-09 the copies' list that exactly fits the limit is refused at a stretch
+file: src/core/selection.c
+test: core-selection
+--- find
+f->cap * (sizeof *f->stamps + sizeof *img) > max_bytes)
+--- replace
+f->cap * (sizeof *f->stamps + sizeof *img) >= max_bytes)
+
+=== REQ-0015-09 the copies' list made at the first stretch is not counted against the limit (in the window)
+file: src/core/selection.c
+test: ui-0015
+--- find
+          if (f->cap > SIZE_MAX / (sizeof *f->stamps + sizeof *img) || f->cap * (sizeof *f->stamps + sizeof *img) > max_bytes)
+--- replace
+          if (0)
+
+=== REQ-0015-06 a stretched free-form shape is the whole rectangle
+file: src/core/selection.c
+test: ui-0015
+--- find
+          om[(size_t) j * (size_t) W + (size_t) i] = o->mask[from] != 0;
+--- replace
+          om[(size_t) j * (size_t) W + (size_t) i] = 1;
+
+=== REQ-0015-05 the tiles in view of a lazily stretched image are not made
+file: src/ui/canvas.c
+test: ui-0015
+--- find
+          easel_selection_fill (&self->sel_float, x0 - f->x, y0 - f->y, x0 + w - f->x, y0 + h - f->y);     /* only the tiles in view are made */
+--- replace
+          (void) 0;
+
+=== REQ-0015-05 the tint of a free-form selection is the box while a stretch is held
+file: src/ui/canvas.c
+test: ui-0015
+--- find
+  if (self->selecting || mask == NULL)
+    {
+      gtk_snapshot_append_color (snapshot, &tint, &GRAPHENE_RECT_INIT ((float) (x * l), (float) (y * l), (float) (w * l), (float) (h * l)));
+--- replace
+  if (self->selecting || mask == NULL || self->stretching)
+    {
+      gtk_snapshot_append_color (snapshot, &tint, &GRAPHENE_RECT_INIT ((float) (x * l), (float) (y * l), (float) (w * l), (float) (h * l)));
+
+=== REQ-0015-05 no tint is drawn while a stretch is held
+file: src/ui/canvas.c
+test: ui-0015
+--- find
+  if (self->guides_hidden)
+    return;                                       /* (a path being traced is no selection yet: nothing is tinted) */
+--- replace
+  if (self->guides_hidden || self->stretching)
+    return;                                       /* (a path being traced is no selection yet: nothing is tinted) */

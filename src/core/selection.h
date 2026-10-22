@@ -17,10 +17,25 @@ typedef struct
   int x, y;
 } EaselStamp;
 
-/* The lifted pixels (w x h, 0xAARRGGBB straight alpha) at the place (x, y) of the picture, which may be partly or wholly
-   outside it; the hole at (hx, hy), w x h, in hole_color (none after a lift with Ctrl); the stamps, in their order. mask is
-   NULL for a rectangle, else w x h bytes, 1 for a pixel of the shape (0014): only those pixels are lifted, leave the hole,
-   are laid and put down. */
+/* An image a copy was made with, kept after the float's own image changed by a stretch (0015). */
+typedef struct
+{
+  int w, h;
+  uint32_t *px;
+  uint8_t *mask;
+} EaselKept;
+
+/* The image a copy was made with: the float's current one, the one as lifted, or a kept one by its number. */
+#define EASEL_IMAGE_CURRENT (-1)
+#define EASEL_IMAGE_ORIGINAL (-2)
+
+/* The pixels (w x h, 0xAARRGGBB straight alpha) as they are now at the place (x, y) of the picture, which may be partly or wholly
+   outside it; the hole at (hx, hy), ow x oh (the size as lifted), in hole_color (none after a lift with Ctrl); the stamps, in their
+   order. mask is NULL for a rectangle, else w x h bytes, 1 for a pixel of the shape (0014): only those pixels are lifted, leave the
+   hole, are laid and put down. After a stretch (0015) px, mask, w and h are the stretched image, always made from the pixels as
+   lifted, which orig_px and orig_mask then hold (NULL until the first stretch: px and mask are then the original); the hole keeps
+   the original's size and shape; stamp_img says what image each copy was made with (NULL: all the current one) and kept holds the
+   images of copies made before a later stretch. */
 typedef struct
 {
   int x, y, w, h;
@@ -31,6 +46,15 @@ typedef struct
   uint32_t hole_color;
   EaselStamp *stamps;
   size_t n_stamps, cap;
+  int ow, oh;
+  uint32_t *orig_px;
+  uint8_t *orig_mask;
+  int *stamp_img;
+  EaselKept *kept;
+  size_t n_kept;
+  uint8_t *fill;                   /* a lazily stretched image: per 256 x 256 block of it, 1 once made; NULL when whole */
+  int fill_cols, fill_rows;
+  size_t made_px, kept_px;         /* the pixels of the current image made so far, and those of them in the shape */
 } EaselFloat;
 
 typedef enum
@@ -53,6 +77,50 @@ bool easel_selection_stamp (EaselFloat *f, size_t max_bytes);
 /* The rectangle of the picture, corners included, in which the lay can differ from the picture: the hole, the copies and, with
    with_float, the float, clipped to the picture. FALSE if there is none. */
 bool easel_selection_bounds (const EaselFloat *f, bool with_float, const EaselImage *img, int *x0, int *y0, int *x1, int *y1);
+
+/* The float stretched to W x H at (x, y) (REQ-0015-05): its image is made afresh from the pixels as lifted, by easel_selection_scale,
+   and copies left so far keep the image they were made with. NO_MEMORY, with the float, its copies and its place as they were, if the
+   new image (4 bytes a pixel and a byte for a mask) exceeds max_bytes or the memory for it, or for the record of the copies' images,
+   cannot be had. */
+EaselSelectionResult easel_selection_stretch (EaselFloat *f, int x, int y, int W, int H, size_t max_bytes);
+
+/* The same stretch with the pixels not made yet (the speed of a drag over a big selection): the memory of the whole image is had now
+   and refused as the full stretch's is, but only the 256 x 256 blocks asked for by easel_selection_fill are made, with the pixels the
+   full stretch makes, the rest being zero until easel_selection_complete makes them (a shape the nearest pixel lost keeps its one pixel
+   then). What lays, puts down or copies the float reads an image that is whole or filled where it reads: the caller fills or completes
+   first (easel_selection_stamp completes by itself). The next stretch replaces the image; a copy never uses an unfinished image. */
+EaselSelectionResult easel_selection_stretch_lazy (EaselFloat *f, int x, int y, int W, int H, size_t max_bytes);
+
+/* Makes the blocks of a lazily stretched image that meet the rectangle [x0, x1) x [y0, y1) of its pixels (clipped), if not made. */
+void easel_selection_fill (EaselFloat *f, int x0, int y0, int x1, int y1);
+
+/* Makes the whole image of a lazily stretched float; nothing to do for a float whose image is whole. */
+void easel_selection_complete (EaselFloat *f);
+
+/* The eight handles of a selection, by the edges they stand for. */
+typedef enum
+{
+  EASEL_SEL_HANDLE_TL, EASEL_SEL_HANDLE_T, EASEL_SEL_HANDLE_TR,
+  EASEL_SEL_HANDLE_L,                       EASEL_SEL_HANDLE_R,
+  EASEL_SEL_HANDLE_BL, EASEL_SEL_HANDLE_B, EASEL_SEL_HANDLE_BR
+} EaselSelHandle;
+
+/* The rectangle (x, y, w, h) of a selection dragged by a handle through (dx, dy) picture pixels (REQ-0015-03, -07): the edges the
+   handle stands for move, the opposite ones stay; each side is 1 to 10000, a side dragged past the opposite edge being 1 pixel
+   beside it. With keep_ratio and a corner handle the ratio of the size at the press is kept: after the limit the side whose size
+   differs more from its size at the press, as a factor, leads (the width on a tie), the other is its size times the factor, halves
+   up, at least 1, and if that passes 10000 the leading side is reduced so that both fit; an edge handle ignores keep_ratio. */
+void easel_stretch_rect (EaselSelHandle handle, int x, int y, int w, int h, int dx, int dy, bool keep_ratio, int *nx, int *ny, int *nw,
+                         int *nh);
+
+/* The pixels (and shape) of a w x h selection scaled to W x H by the nearest pixel (REQ-0015-05, -06): the new pixel (i, j) is the
+   lifted pixel (floor ((i + 1/2) w / W), floor ((j + 1/2) h / H)); with a mask it is in the shape when that pixel is. If that leaves
+   no pixel in the shape, the one new pixel nearest the center of the new box among those whose footprint (the lifted pixels it
+   covers) holds a shape pixel stays, with the color of the first such shape pixel in reading order. out_px (and out_mask, if mask is
+   given) are new buffers of W x H items; mask NULL means a rectangle and out_mask may be NULL. NO_MEMORY, with both outputs NULL, if
+   the bytes (4 per pixel and 1 per mask byte) exceed max_bytes or cannot be had or overflow. */
+EaselSelectionResult easel_selection_scale (const uint32_t *px, const uint8_t *mask, int w, int h, int W, int H, uint32_t **out_px,
+                                            uint8_t **out_mask, size_t max_bytes);
 
 /* The smear (REQ-0014-11): moves the float from its place to (x, y), leaving a copy at every place on the 8-connected line between
    them (as the Pencil draws it), the place it leaves included and the place it moves to excluded, so that a drag leaves a trail

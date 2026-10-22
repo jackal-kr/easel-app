@@ -261,6 +261,87 @@ lasso_matches_the_flood (void)
     }
 }
 
+/* 0015 T010 (REQ-0015-06): the traced path scaled with its shape. */
+
+/* The path through the n corners pts (x, y pairs). */
+static EaselPath
+path_of (const int *pts, int n)
+{
+  EaselPath p = { 0 };
+
+  for (int i = 0; i < n; i++)
+    CHECK (easel_path_add (&p, pts[2 * i], pts[2 * i + 1], SIZE_MAX));
+  return p;
+}
+
+/* AS-7: the triangle (corners (1, 1), (7, 1), (1, 7), its shape box (1, 1, 5, 5), the path's box one grid line larger to the right and
+   below) made 10 x 5 at (1, 1): the box of the path becomes the new shape box widened by the same one grid line, each corner keeps its
+   place in it: (1, 1), (12, 1), (1, 7); and the line, the walk of the closed path, is AS-7's, run by run. */
+static void
+as7_scaled_path_line (void)
+{
+  static const int tri[] = { 1, 1, 7, 1, 1, 7 };
+  static const int runs_want[][4] = { { 1, 1, 12, 1 }, { 12, 1, 11, 1 }, { 11, 1, 11, 2 }, { 11, 2, 9, 2 }, { 9, 2, 9, 3 },
+                                      { 9, 3, 7, 3 }, { 7, 3, 7, 4 }, { 7, 4, 5, 4 }, { 5, 4, 5, 5 }, { 5, 5, 3, 5 },
+                                      { 3, 5, 3, 6 }, { 3, 6, 1, 6 }, { 1, 6, 1, 7 }, { 1, 7, 1, 1 } };
+  EaselPath orig = path_of (tri, 3), out = { 0 };
+  EaselDash runs[40];
+  size_t n;
+
+  CHECK (easel_lasso_scale_path (&orig, 1, 1, 5, 5, 1, 1, 10, 5, &out, SIZE_MAX));
+  CHECK (out.n == 3);
+  CHECK (out.xy[0] == 1 && out.xy[1] == 1 && out.xy[2] == 12 && out.xy[3] == 1 && out.xy[4] == 1 && out.xy[5] == 7);
+  n = easel_lattice_runs (out.xy, out.n, true, runs, 40);
+  CHECK (n == 14);
+  for (size_t i = 0; i < n; i++)
+    CHECK ((int) runs[i].x0 == runs_want[i][0] && (int) runs[i].y0 == runs_want[i][1] && (int) runs[i].x1 == runs_want[i][2]
+           && (int) runs[i].y1 == runs_want[i][3]);
+  easel_path_free (&out);
+  /* The same size at the same place gives the same path; moved by (3, 2) the corners move by it. */
+  CHECK (easel_lasso_scale_path (&orig, 1, 1, 5, 5, 1, 1, 5, 5, &out, SIZE_MAX));
+  CHECK (memcmp (out.xy, tri, sizeof tri) == 0);
+  easel_path_free (&out);
+  CHECK (easel_lasso_scale_path (&orig, 1, 1, 5, 5, 4, 3, 5, 5, &out, SIZE_MAX));
+  CHECK (out.xy[0] == 4 && out.xy[1] == 3 && out.xy[2] == 10 && out.xy[3] == 3 && out.xy[4] == 4 && out.xy[5] == 9);
+  easel_path_free (&out);
+  easel_path_free (&orig);
+}
+
+/* A corner halfway between two grid lines goes to the larger one (halves toward larger x and y); the margins are kept, not scaled; a
+   path whose corners lie in one column has no width to scale; a refusal makes nothing. */
+static void
+as7_scaled_path_rounding_and_margins (void)
+{
+  static const int row[] = { 0, 0, 1, 0, 2, 0, 2, 2, 0, 2 };         /* the shape box (0, 0, 2, 2), the corner box [0, 2] x [0, 2] */
+  static const int margin[] = { 2, 2, 4, 2, 4, 5, 2, 5 };            /* the shape box (3, 3, 1, 2): a margin of 1 left and above */
+  static const int line[] = { 5, 1, 5, 4 };                          /* one column: no width */
+  EaselPath orig = path_of (row, 5), out = { 0 };
+
+  CHECK (easel_lasso_scale_path (&orig, 0, 0, 2, 2, 0, 0, 3, 2, &out, SIZE_MAX));
+  CHECK (out.xy[0] == 0 && out.xy[2] == 2 && out.xy[4] == 3);          /* 0, 1.5 -> 2, 3 */
+  easel_path_free (&out);
+  easel_path_free (&orig);
+  orig = path_of (margin, 4);
+  CHECK (easel_lasso_scale_path (&orig, 3, 3, 1, 2, 3, 3, 5, 2, &out, SIZE_MAX));
+  /* the corner at x = 2 lies one left of the shape box and stays one left of it; the corner at 4 is its far edge and goes to the new one */
+  CHECK (out.xy[0] == 2 && out.xy[2] == 8 && out.xy[4] == 8 && out.xy[6] == 2);
+  CHECK (out.xy[1] == 2 && out.xy[3] == 2 && out.xy[5] == 5 && out.xy[7] == 5);
+  easel_path_free (&out);
+  easel_path_free (&orig);
+  orig = path_of (line, 2);
+  CHECK (easel_lasso_scale_path (&orig, 5, 1, 1, 3, 5, 1, 4, 6, &out, SIZE_MAX));
+  CHECK (out.n == 2 && out.xy[0] == out.xy[2]);
+  easel_path_free (&out);
+  /* Memory: the copy of 3 corners is 24 bytes; one byte less is refused, with nothing made. */
+  easel_path_free (&orig);
+  orig = path_of (row, 5);
+  CHECK (!easel_lasso_scale_path (&orig, 0, 0, 2, 2, 0, 0, 3, 2, &out, 5 * 2 * sizeof (int) - 1));
+  CHECK (out.n == 0 && out.xy == NULL);
+  CHECK (easel_lasso_scale_path (&orig, 0, 0, 2, 2, 0, 0, 3, 2, &out, 16 * 2 * sizeof (int)));
+  easel_path_free (&out);
+  easel_path_free (&orig);
+}
+
 int
 main (void)
 {
@@ -269,5 +350,7 @@ main (void)
   RUN (as20_diamond_and_whole_picture);
   RUN (lasso_matches_the_flood);
   RUN (as12_shape_memory);
+  RUN (as7_scaled_path_line);
+  RUN (as7_scaled_path_rounding_and_margins);
   return 0;
 }

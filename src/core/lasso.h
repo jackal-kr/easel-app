@@ -22,6 +22,12 @@ bool easel_path_add (EaselPath *p, int x, int y, size_t max_bytes);
 
 void easel_path_free (EaselPath *p);
 
+/* The path of a shape stretched (feature 0015, REQ-0015-06): the corners of src, which traced the shape box (sx, sy, sw, sh), as they lie
+   when the shape is the box (nx, ny, nw, nh). A corner inside the box [sx, sx + sw] keeps its relative place (halves go to the larger
+   x or y), one outside keeps its distance from the nearest edge. FALSE, with out untouched, if the copy would need more than max_bytes. */
+bool easel_lasso_scale_path (const EaselPath *src, int sx, int sy, int sw, int sh, int nx, int ny, int nw, int nh, EaselPath *out,
+                             size_t max_bytes);
+
 /* Makes the shape of the closed path over a picture of img_w x img_h: the bounding rectangle (x, y, w, h) of the pixels of the
    shape that are inside the picture, and their mask (w x h bytes, 1 inside the shape; the caller frees it with free ()). NOTHING,
    with no mask, for a path of one corner (a click), a path that encloses no pixel (a straight drag, an out and back) or a shape with

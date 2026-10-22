@@ -49,6 +49,7 @@ struct _EaselCanvas
   guint64 trail_key;      /* what the trail was laid from, see trail_key_of (); 0: none */
   guint sel_epoch;        /* counts every cut-back of the copies: the trail laid before it is stale */
   gboolean probe_no_line, probe_no_tint;   /* benchmark hook, see easel_canvas_set_overlay_probe () */
+  gboolean no_sel_handles;                 /* test hook, see easel_canvas_set_selection_handles_shown () */
   gboolean line_unmerged;                  /* test hook, see easel_canvas_set_line_merge () */
   gsize line_strips;                       /* test hook: the white strips of the last line drawn */
   gboolean tint_rows;                      /* test hook, see easel_canvas_set_tint_bands () */
@@ -123,6 +124,14 @@ struct _EaselCanvas
   int sel_move_x0, sel_move_y0;                 /* the selection's place at the move's press */
   gboolean sel_transparent;                     /* Transparent mode (REQ-0013-13) */
   gboolean hover_sel;                           /* the pointer is on the selection with Select: the move cursor */
+  int hover_sel_handle;                         /* the selection's handle under the pointer (an EaselSelHandle), or -1 */
+  size_t stretch_stamps0;                       /* the copies the float had at the press of a stretch */
+  gboolean stretching;                          /* a handle of the selection is dragged (REQ-0015-03) */
+  int stretch_handle;                           /* the handle held (an EaselSelHandle) */
+  double stretch_x0, stretch_y0;                /* where the pointer was at the press, in picture pixels: the zoom may change while it is held */
+  double stretch_lx, stretch_ly;                /* where the pointer is now, in picture pixels */
+  int stretch_sx, stretch_sy, stretch_sw, stretch_sh;   /* the selection's rectangle at the press */
+  gboolean stretch_copied;                      /* the copy of a Ctrl stretch of a floating selection was left (REQ-0015-04) */
   guint ants_tick;                              /* the timer of the moving dashes, 12 a second; 0 when there is none */
   gsize ants_redraws;                           /* test hook: the redraws the moving dashes asked for */
   gsize ants_calls;                             /* test hook: the times their callback ran */
@@ -138,6 +147,8 @@ struct _EaselCanvas
   uint8_t *sel_mask;                            /* the shape, sel_w x sel_h, NULL for a rectangle */
   EaselPath sel_path;                           /* the corners of the path it was made by: its line, closed (REQ-0014-05) */
   int sel_path_x, sel_path_y;                   /* the place of the selection when the path was made: the line moves with it */
+  EaselPath sel_path0;                          /* once stretched: the path as made, kept to scale afresh from (REQ-0015-06) */
+  int sel_p0_x, sel_p0_y, sel_p0_w, sel_p0_h;   /* the shape box that path0 traced */
   size_t sel_lift_max, sel_step_max;            /* test hooks: what a lift and a put-down's step may use */
   int moving;                                   /* an end being moved by its marker: 0 the start, 1 the end, -1 none (REQ-0012-13) */
   int move_old[4];                              /* the line before that move, put back if it is cancelled */
@@ -304,6 +315,7 @@ easel_canvas_set_image (EaselCanvas *self, EaselImage *img)
   self->img = img;
   self->resizing = EASEL_HANDLE_NONE;
   self->hover = EASEL_HANDLE_NONE;
+  self->hover_sel_handle = -1;
   self->tiles_rebuilt = 0;
   if (img != NULL)
     {
@@ -596,6 +608,7 @@ append_float_outside (EaselCanvas *self, GtkSnapshot *snapshot, double l)
     return;                                     /* wholly over the picture: the tiles show it */
   rw = x1 - x0;
   rh = y1 - y0;
+  easel_selection_fill (&self->sel_float, x0 - f->x, y0 - f->y, x1 - f->x, y1 - f->y);     /* a lazily stretched image: the part read */
   px = g_try_malloc ((gsize) rw * rh * sizeof *px);
   if (px == NULL)
     return;
@@ -855,12 +868,21 @@ ring_dashes (const RingStrip *s, double d, double phase, GtkSnapshot *snapshot)
 /* The tint over the pixels of a selection (REQ-0014-17 b): the accent color of the system's settings at 28 %, over the picture and the grid and under the line, for
    the rectangle (marked, floating or being dragged out) and, for a free-form selection, the pixels of its shape; not for a path that
    is being traced; where the guides are hidden, not at all. */
+/* The shape of the selection now: the float's (it changes by a stretch) while it floats, else the canvas's own copy of what was marked;
+   NULL for a rectangle (REQ-0015-06). */
+static const uint8_t *
+selection_mask (EaselCanvas *self)
+{
+  return self->sel_state == 2 ? self->sel_float.mask : self->sel_mask;
+}
+
 static void
 append_selection_tint (EaselCanvas *self, GtkSnapshot *snapshot)
 {
   g_autoptr (GdkRGBA) accent = adw_style_manager_get_accent_color_rgba (adw_style_manager_get_default ());
   GdkRGBA tint = { accent->red, accent->green, accent->blue, 0.28f };      /* the system's accent at 28 % */
   double l = logical_per_pixel (self);
+  const uint8_t *mask = selection_mask (self);
   int x, y, w, h;
   gboolean floating;
 
@@ -869,7 +891,7 @@ append_selection_tint (EaselCanvas *self, GtkSnapshot *snapshot)
   if (self->selecting ? !drag_rect (self, &x, &y, &w, &h) : !easel_canvas_get_selection (self, &x, &y, &w, &h, &floating))
     return;
   self->tint_rects = 0;
-  if (self->selecting || self->sel_mask == NULL)
+  if (self->selecting || mask == NULL)
     {
       gtk_snapshot_append_color (snapshot, &tint, &GRAPHENE_RECT_INIT ((float) (x * l), (float) (y * l), (float) (w * l), (float) (h * l)));
       self->tint_rects = 1;
@@ -895,7 +917,7 @@ append_selection_tint (EaselCanvas *self, GtkSnapshot *snapshot)
           memset (band, 0, (size_t) w);
           for (int r = r0; r < r1; r++)
             for (int i = 0; i < w; i++)
-              band[i] |= self->sel_mask[(size_t) (r - y) * w + i];
+              band[i] |= mask[(size_t) (r - y) * w + i];
           for (int i = 0; i < w;)
             {
               int i0 = i;
@@ -919,12 +941,12 @@ append_selection_tint (EaselCanvas *self, GtkSnapshot *snapshot)
       {
         int i0 = i;
 
-        if (!self->sel_mask[(size_t) j * w + i])
+        if (!mask[(size_t) j * w + i])
           {
             i++;
             continue;
           }
-        while (i < w && self->sel_mask[(size_t) j * w + i])
+        while (i < w && mask[(size_t) j * w + i])
           i++;
         gtk_snapshot_append_color (snapshot, &tint,
                                    &GRAPHENE_RECT_INIT ((float) ((x + i0) * l), (float) ((y + j) * l), (float) ((i - i0) * l), (float) l));
@@ -949,7 +971,7 @@ append_selection_outline (EaselCanvas *self, GtkSnapshot *snapshot)
       append_path_line (self, snapshot, self->lasso_path.xy, self->lasso_path.n, 0, 0, FALSE, 0);
       return;
     }
-  if (self->sel_state != 0 && self->sel_mask != NULL)
+  if (self->sel_state != 0 && selection_mask (self) != NULL)
     {
       append_path_line (self, snapshot, self->sel_path.xy, self->sel_path.n, self->sel_x - self->sel_path_x,
                         self->sel_y - self->sel_path_y, TRUE, ants_phase (self, 8 * line_thickness (self)));
@@ -992,6 +1014,7 @@ shape_free (EaselCanvas *self)
 {
   g_clear_pointer (&self->sel_mask, free);
   easel_path_free (&self->sel_path);
+  easel_path_free (&self->sel_path0);
 }
 
 /* The path being traced is gone. */
@@ -1085,14 +1108,25 @@ end_lasso (EaselCanvas *self)
   gtk_widget_queue_draw (GTK_WIDGET (self));
 }
 
+const int *
+easel_canvas_get_selection_path (EaselCanvas *self, size_t *n, int *dx, int *dy)
+{
+  if (self->sel_state == 0 || self->sel_path.n == 0)
+    return NULL;
+  *n = self->sel_path.n;
+  *dx = self->sel_x - self->sel_path_x;
+  *dy = self->sel_y - self->sel_path_y;
+  return self->sel_path.xy;
+}
+
 const uint8_t *
 easel_canvas_get_selection_mask (EaselCanvas *self, int *w, int *h)
 {
-  if (self->sel_state == 0 || self->sel_mask == NULL)
+  if (self->sel_state == 0 || selection_mask (self) == NULL)
     return NULL;
   *w = self->sel_w;
   *h = self->sel_h;
-  return self->sel_mask;
+  return selection_mask (self);
 }
 
 /* Is (x, y), a canvas point, on the selection's pixels, with Select or Free-Form Select active (REQ-0013-03, -07, REQ-0014-07):
@@ -1107,7 +1141,7 @@ on_selection (EaselCanvas *self, double x, double y)
   to_pixel (self, x, y, &px, &py);
   if (px < self->sel_x || py < self->sel_y || px - self->sel_x >= self->sel_w || py - self->sel_y >= self->sel_h)
     return FALSE;
-  return self->sel_mask == NULL || self->sel_mask[(size_t) (py - self->sel_y) * self->sel_w + (px - self->sel_x)] != 0;
+  return selection_mask (self) == NULL || selection_mask (self)[(size_t) (py - self->sel_y) * self->sel_w + (px - self->sel_x)] != 0;
 }
 
 /* The one function that puts a floating selection down and removes the selection (REQ-0013-11, -12); keep_marked keeps a
@@ -1120,8 +1154,10 @@ finish_selection (EaselCanvas *self, gboolean keep_marked)
 
   if (self->sel_state == 2)
     {
-      EaselSelectionResult r = easel_selection_put_down (&self->sel_float, TRUE, self->img, self->history,
-                                                         self->sel_step_max);
+      EaselSelectionResult r;
+
+      easel_selection_complete (&self->sel_float);   /* a stretch still held: the whole image is made before it is laid */
+      r = easel_selection_put_down (&self->sel_float, TRUE, self->img, self->history, self->sel_step_max);
 
       ok = r != EASEL_SELECTION_NO_MEMORY;
       if (!ok)
@@ -1141,6 +1177,7 @@ finish_selection (EaselCanvas *self, gboolean keep_marked)
   if (self->hover_sel && self->sel_state == 0)
     {
       self->hover_sel = FALSE;
+      self->hover_sel_handle = -1;
       update_cursor (self);
     }
   g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);
@@ -1185,6 +1222,52 @@ end_failed_smear (EaselCanvas *self)
   gtk_widget_queue_draw (GTK_WIDGET (self));
 }
 
+/* The line of a free-form selection as it was at the press of a stretch that is cancelled: the traced path scaled to that rectangle. */
+static void
+stretch_restore_path (EaselCanvas *self)
+{
+  EaselPath scaled = { 0 };
+
+  if (self->sel_path0.n == 0 || !easel_lasso_scale_path (&self->sel_path0, self->sel_p0_x, self->sel_p0_y, self->sel_p0_w, self->sel_p0_h,
+                                                       self->stretch_sx, self->stretch_sy, self->stretch_sw, self->stretch_sh, &scaled,
+                                                       self->sel_lift_max))
+    return;
+  easel_path_free (&self->sel_path);
+  self->sel_path = scaled;
+  self->sel_path_x = self->stretch_sx;
+  self->sel_path_y = self->stretch_sy;
+}
+
+/* A stretch drag that is cancelled or fails ends with the selection as at its press (REQ-0015-08, REQ-0015-09): marked again if the drag
+   lifted it, else floating with the copy of this drag gone and its pixels made afresh at the size of the press; the rectangle and the
+   free-form line are those of the press; the held button is waited for. */
+static void
+restore_stretch (EaselCanvas *self)
+{
+  if (self->sel_state == 2 && self->sel_lifted_here)
+    {
+      drop_float (self);
+      self->sel_state = 1;                        /* marked again at the size it had; the picture was never touched */
+      g_signal_emit (self, signals[SIGNAL_PENDING_CHANGED], 0);
+    }
+  else if (self->sel_state == 2)
+    {
+      cut_copies (self, self->stretch_stamps0);
+      /* Pixels already at the size of the press (the copy failed before any change) are as they were: nothing to make. */
+      if ((self->sel_float.w != self->stretch_sw || self->sel_float.h != self->stretch_sh)
+          && easel_selection_stretch (&self->sel_float, self->stretch_sx, self->stretch_sy, self->stretch_sw, self->stretch_sh,
+                                      self->sel_lift_max) != EASEL_SELECTION_DONE)
+        g_signal_emit (self, signals[SIGNAL_SELECTION_FAILED], 0, 3);
+    }
+  self->sel_x = self->stretch_sx;
+  self->sel_y = self->stretch_sy;
+  self->sel_w = self->stretch_sw;
+  self->sel_h = self->stretch_sh;
+  stretch_restore_path (self);
+  self->stretching = FALSE;
+  self->cancelled_button = self->sel_button;
+}
+
 /* The other button, Esc and Undo during a drag of Select cancel that drag only (REQ-0013-18): a rectangle leaves no
    selection; a move puts the selection back where it was before the drag, undoing a lift the drag made and taking away a
    copy it left. The held button is waited for until its release. FALSE if no such drag is held. */
@@ -1203,6 +1286,8 @@ cancel_selection_drag (EaselCanvas *self)
       lasso_free (self);
       self->cancelled_button = self->sel_button;
     }
+  else if (self->stretching)
+    restore_stretch (self);
   else if (self->sel_moving)
     {
       if (self->sel_lifted_here)
@@ -1244,6 +1329,7 @@ cancel_float (EaselCanvas *self)
   shape_free (self);
   self->sel_state = 0;
   self->hover_sel = FALSE;
+  self->hover_sel_handle = -1;
   update_cursor (self);
   g_signal_emit (self, signals[SIGNAL_PENDING_CHANGED], 0);
   g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);
@@ -1288,6 +1374,7 @@ easel_canvas_clear_selection (EaselCanvas *self)
   shape_free (self);
   self->sel_state = 0;
   self->hover_sel = FALSE;
+  self->hover_sel_handle = -1;
   update_cursor (self);
   if (r == EASEL_SELECTION_DONE)
     easel_canvas_update (self);
@@ -1332,6 +1419,113 @@ begin_move (EaselCanvas *self, guint button, int px, int py)
   self->sel_smear = self->shift && !self->ctrl;
   self->sel_stamps0 = self->sel_state == 2 ? self->sel_float.n_stamps : 0;
   g_signal_emit (self, signals[SIGNAL_STROKING_CHANGED], 0, TRUE);
+}
+
+/* A primary press on a handle of the selection: a stretch drag (REQ-0015-03); nothing changes until the pointer reaches another size. */
+static void
+begin_stretch (EaselCanvas *self, int handle, double x, double y)
+{
+  self->stretching = TRUE;
+  self->sel_button = GDK_BUTTON_PRIMARY;
+  self->stretch_handle = handle;
+  self->stretch_x0 = self->stretch_lx = x / logical_per_pixel (self);
+  self->stretch_y0 = self->stretch_ly = y / logical_per_pixel (self);
+  self->stretch_sx = self->sel_x;
+  self->stretch_sy = self->sel_y;
+  self->stretch_sw = self->sel_w;
+  self->stretch_sh = self->sel_h;
+  self->sel_copy = self->ctrl;
+  self->sel_lifted_here = FALSE;
+  self->stretch_copied = FALSE;
+  self->stretch_stamps0 = self->sel_state == 2 ? self->sel_float.n_stamps : 0;
+  g_signal_emit (self, signals[SIGNAL_STROKING_CHANGED], 0, TRUE);
+}
+
+/* The stretch drag ends because the memory failed (REQ-0015-09): the dialog, the selection as at the press, the release does nothing. */
+static void
+end_failed_stretch (EaselCanvas *self, int kind)
+{
+  g_signal_emit (self, signals[SIGNAL_SELECTION_FAILED], 0, kind);
+  restore_stretch (self);
+  g_signal_emit (self, signals[SIGNAL_STROKING_CHANGED], 0, FALSE);
+  g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);
+  gtk_widget_queue_draw (GTK_WIDGET (self));
+}
+
+/* The selection as the pointer now has it dragged by the handle held (REQ-0015-03): the rectangle from the pointer's movement since the
+   press, rounded to whole picture pixels, a marked selection lifted at the first movement to another size (REQ-0015-04), the float made
+   afresh from the pixels as lifted (REQ-0015-05). */
+static void
+stretch_apply (EaselCanvas *self)
+{
+  int dx = (int) lround (self->stretch_lx - self->stretch_x0), dy = (int) lround (self->stretch_ly - self->stretch_y0);
+  int nx, ny, nw, nh;
+
+  easel_stretch_rect ((EaselSelHandle) self->stretch_handle, self->stretch_sx, self->stretch_sy, self->stretch_sw, self->stretch_sh, dx, dy,
+                      self->shift, &nx, &ny, &nw, &nh);
+  if (nx == self->sel_x && ny == self->sel_y && nw == self->sel_w && nh == self->sel_h)
+    return;                                       /* no movement to another size */
+  if (self->sel_state == 1)
+    {
+      if (easel_selection_lift (&self->sel_float, self->img, self->sel_x, self->sel_y, self->sel_w, self->sel_h, self->sel_mask,
+                                self->sel_copy, hole_color (self), self->sel_lift_max) != EASEL_SELECTION_DONE)
+        {
+          end_failed_stretch (self, 0);
+          return;
+        }
+      self->sel_state = 2;
+      self->sel_lifted_here = TRUE;
+      g_signal_emit (self, signals[SIGNAL_PENDING_CHANGED], 0);
+    }
+  else if (self->sel_copy && !self->stretch_copied)
+    {
+      /* Ctrl at the press of a floating selection: a copy stays where it is, with the size and pixels it has (REQ-0015-04). */
+      if (!easel_selection_stamp (&self->sel_float, self->sel_lift_max))
+        {
+          end_failed_stretch (self, 3);
+          return;
+        }
+      self->stretch_copied = TRUE;
+    }
+  /* At 100 % and above only the part in view is made while the button is held (the memory of the whole image is had now, so a failure
+     shows at the first movement, REQ-0015-09); the whole is made at the release. Below 100 % the whole view is the picture: all is made. */
+  if ((self->zoom >= 100 ? easel_selection_stretch_lazy (&self->sel_float, nx, ny, nw, nh, self->sel_lift_max)
+                         : easel_selection_stretch (&self->sel_float, nx, ny, nw, nh, self->sel_lift_max)) != EASEL_SELECTION_DONE)
+    {
+      end_failed_stretch (self, 3);
+      return;
+    }
+  if (self->sel_path.n > 0 || self->sel_path0.n > 0)
+    {
+      /* A free-form selection: its line is the original path scaled with the shape, the corners keeping their place (REQ-0015-06). */
+      EaselPath scaled = { 0 };
+
+      if (self->sel_path0.n == 0)
+        {
+          self->sel_path0 = self->sel_path;
+          self->sel_path = (EaselPath) { 0 };
+          self->sel_p0_x = self->sel_path_x;
+          self->sel_p0_y = self->sel_path_y;
+          self->sel_p0_w = self->sel_w;
+          self->sel_p0_h = self->sel_h;
+        }
+      if (!easel_lasso_scale_path (&self->sel_path0, self->sel_p0_x, self->sel_p0_y, self->sel_p0_w, self->sel_p0_h, nx, ny, nw, nh,
+                                   &scaled, self->sel_lift_max))
+        {
+          end_failed_stretch (self, 3);
+          return;
+        }
+      easel_path_free (&self->sel_path);
+      self->sel_path = scaled;
+      self->sel_path_x = nx;
+      self->sel_path_y = ny;
+    }
+  self->sel_x = nx;
+  self->sel_y = ny;
+  self->sel_w = nw;
+  self->sel_h = nh;
+  g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);
+  gtk_widget_queue_draw (GTK_WIDGET (self));
 }
 
 static void
@@ -1496,6 +1690,124 @@ append_grid (EaselCanvas *self, GtkSnapshot *snapshot)
 
 /* The handles as small dark blue squares and, during a drag, the new picture's outline as a thin line (REQ-0004-16,
    REQ-0004-18). */
+/* The handle h of the selection's bounding rectangle in canvas logical pixels (REQ-0015-01): a corner handle has its inner corner at
+   the rectangle's corner, outside it; an edge handle touches the middle of its edge from outside, centered, its position rounded
+   down to a whole logical pixel. FALSE if there is no selection. Not limited by the guides: a press hits them hidden or not. */
+gboolean
+easel_canvas_get_selection_handle_rect (EaselCanvas *self, EaselSelHandle handle, graphene_rect_t *rect)
+{
+  double l = logical_per_pixel (self), rx, ry, rw, rh, x, y;
+  int sx, sy, sw, sh;
+  gboolean floating;
+
+  if (self->img == NULL || !easel_canvas_get_selection (self, &sx, &sy, &sw, &sh, &floating))
+    return FALSE;
+  rx = sx * l;
+  ry = sy * l;
+  rw = sw * l;
+  rh = sh * l;
+  switch (handle)
+    {
+    case EASEL_SEL_HANDLE_TL: case EASEL_SEL_HANDLE_L: case EASEL_SEL_HANDLE_BL:
+      x = rx - HANDLE_SIZE;
+      break;
+    case EASEL_SEL_HANDLE_TR: case EASEL_SEL_HANDLE_R: case EASEL_SEL_HANDLE_BR:
+      x = rx + rw;
+      break;
+    default:
+      x = floor (rx + rw / 2 - HANDLE_SIZE / 2);
+    }
+  switch (handle)
+    {
+    case EASEL_SEL_HANDLE_TL: case EASEL_SEL_HANDLE_T: case EASEL_SEL_HANDLE_TR:
+      y = ry - HANDLE_SIZE;
+      break;
+    case EASEL_SEL_HANDLE_BL: case EASEL_SEL_HANDLE_B: case EASEL_SEL_HANDLE_BR:
+      y = ry + rh;
+      break;
+    default:
+      y = floor (ry + rh / 2 - HANDLE_SIZE / 2);
+    }
+  *rect = GRAPHENE_RECT_INIT ((float) x, (float) y, HANDLE_SIZE, HANDLE_SIZE);
+  return TRUE;
+}
+
+/* The handle of the selection under the canvas point (x, y), as an EaselSelHandle, or -1 (REQ-0015-02): first the handle whose own 5 x 5
+   square holds the point, then the handle whose 9 x 9 area round its center does, the area less the selection's bounding rectangle;
+   in each, a corner handle before an edge handle. */
+int
+easel_canvas_selection_handle_at (EaselCanvas *self, double x, double y)
+{
+  static const EaselSelHandle order[] = { EASEL_SEL_HANDLE_TL, EASEL_SEL_HANDLE_TR, EASEL_SEL_HANDLE_BL, EASEL_SEL_HANDLE_BR,
+                                          EASEL_SEL_HANDLE_T, EASEL_SEL_HANDLE_L, EASEL_SEL_HANDLE_R, EASEL_SEL_HANDLE_B };
+  graphene_rect_t r;
+  double l = logical_per_pixel (self);
+  int sx, sy, sw, sh;
+  gboolean floating;
+
+  if (self->img == NULL || !easel_tool_selects (self->tool) || !easel_canvas_get_selection (self, &sx, &sy, &sw, &sh, &floating))
+    return -1;
+  for (guint i = 0; i < G_N_ELEMENTS (order); i++)
+    if (easel_canvas_get_selection_handle_rect (self, order[i], &r) && x >= r.origin.x && x < r.origin.x + r.size.width
+        && y >= r.origin.y && y < r.origin.y + r.size.height)
+      return order[i];
+  /* A selection handle that lies on a picture's handle (the selection reaches the picture's edge there) owns that handle's whole hit
+     area, also the part inside the picture and the sliver its whole-pixel place leaves out: the picture is resized once there is no
+     selection (REQ-0015-02). */
+  for (guint k = 0; k < 3; k++)
+    {
+      static const EaselHandle pic[] = { EASEL_HANDLE_CORNER, EASEL_HANDLE_RIGHT, EASEL_HANDLE_BOTTOM };
+      static const EaselSelHandle sel[] = { EASEL_SEL_HANDLE_BR, EASEL_SEL_HANDLE_R, EASEL_SEL_HANDLE_B };
+      graphene_rect_t pr;
+
+      if (easel_canvas_get_handle_rect (self, pic[k], &pr) && easel_canvas_get_selection_handle_rect (self, sel[k], &r)
+          && fabs (x - (pr.origin.x + pr.size.width / 2)) <= HANDLE_HIT / 2 && fabs (y - (pr.origin.y + pr.size.height / 2)) <= HANDLE_HIT / 2
+          && fabs (r.origin.x - pr.origin.x) <= 1 && fabs (r.origin.y - pr.origin.y) <= 1)
+        return sel[k];
+    }
+  if (x >= sx * l && x < (sx + sw) * l && y >= sy * l && y < (sy + sh) * l)
+    return -1;                                    /* inside the rectangle a press is the selection's or the tool's */
+  for (guint i = 0; i < G_N_ELEMENTS (order); i++)
+    if (easel_canvas_get_selection_handle_rect (self, order[i], &r)
+        && fabs (x - (r.origin.x + r.size.width / 2)) <= HANDLE_HIT / 2 && fabs (y - (r.origin.y + r.size.height / 2)) <= HANDLE_HIT / 2)
+      return order[i];
+  return -1;
+}
+
+/* The cursor of a selection handle's direction. */
+static const char *
+selection_handle_cursor (int handle)
+{
+  switch (handle)
+    {
+    case EASEL_SEL_HANDLE_L: case EASEL_SEL_HANDLE_R:
+      return "ew-resize";
+    case EASEL_SEL_HANDLE_T: case EASEL_SEL_HANDLE_B:
+      return "ns-resize";
+    case EASEL_SEL_HANDLE_TR: case EASEL_SEL_HANDLE_BL:
+      return "nesw-resize";
+    default:
+      return "nwse-resize";
+    }
+}
+
+/* The eight handles of the selection (REQ-0015-01), over its line, the edge ones first so that the corner ones lie over them; none
+   while the guides are hidden. */
+static void
+append_selection_handles (EaselCanvas *self, GtkSnapshot *snapshot)
+{
+  static const EaselSelHandle order[] = { EASEL_SEL_HANDLE_T, EASEL_SEL_HANDLE_L, EASEL_SEL_HANDLE_R, EASEL_SEL_HANDLE_B,
+                                          EASEL_SEL_HANDLE_TL, EASEL_SEL_HANDLE_TR, EASEL_SEL_HANDLE_BL, EASEL_SEL_HANDLE_BR };
+  static const GdkRGBA navy = { 0.0f, 0.0f, 0.5f, 1.0f };
+  graphene_rect_t r;
+
+  if (self->guides_hidden || self->no_sel_handles || !easel_tool_selects (self->tool))
+    return;
+  for (guint i = 0; i < G_N_ELEMENTS (order); i++)
+    if (easel_canvas_get_selection_handle_rect (self, order[i], &r))
+      gtk_snapshot_append_color (snapshot, &navy, &r);
+}
+
 static void
 append_handles (EaselCanvas *self, GtkSnapshot *snapshot)
 {
@@ -1637,6 +1949,8 @@ void
 easel_canvas_set_shift (EaselCanvas *self, gboolean down)
 {
   self->shift = down;
+  if (self->stretching)
+    stretch_apply (self);                       /* the ratio follows Shift at once (REQ-0015-07) */
   if (self->selecting)
     {
       g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);
@@ -1975,6 +2289,7 @@ selection_preview (EaselCanvas *self)
               return NULL;
             }
           memcpy (px, g_bytes_get_data (self->trail_data[i], NULL), bytes);
+          easel_selection_fill (&self->sel_float, x0 - f->x, y0 - f->y, x0 + w - f->x, y0 + h - f->y);     /* only the tiles in view are made */
           easel_selection_lay_range (f, copies, copies, TRUE, self->img, x0, y0, w, h, px, (size_t) w, FALSE);
           data = g_bytes_new_take (px, bytes);
           self->comp_tex[i] = texture_of (self, data, w, h);
@@ -2038,6 +2353,13 @@ easel_canvas_get_tint_rects (EaselCanvas *self)
 }
 
 void
+easel_canvas_set_selection_handles_shown (EaselCanvas *self, gboolean shown)
+{
+  self->no_sel_handles = !shown;
+  gtk_widget_queue_draw (GTK_WIDGET (self));
+}
+
+void
 easel_canvas_set_line_merge (EaselCanvas *self, gboolean merge)
 {
   self->line_unmerged = !merge;
@@ -2055,6 +2377,13 @@ easel_canvas_drop_preview (EaselCanvas *self)
 {
   free_trail (self);
   gtk_widget_queue_draw (GTK_WIDGET (self));
+}
+
+void
+easel_canvas_get_stretch_made (EaselCanvas *self, gsize *made, gsize *total)
+{
+  *made = self->sel_state == 2 ? self->sel_float.made_px : 0;
+  *total = self->sel_state == 2 ? (gsize) self->sel_float.w * (gsize) self->sel_float.h : 0;
 }
 
 gsize
@@ -2156,12 +2485,13 @@ easel_canvas_snapshot (GtkWidget *widget, GtkSnapshot *snapshot)
   if (easel_canvas_grid_is_drawn (self))
     append_grid (self, snapshot);
   append_gradient_markers (self, snapshot);
+  append_handles (self, snapshot);                /* the picture's handles lie under the selection's pixels and tint (REQ-0015-01) */
   append_float_outside (self, snapshot, l);
   if (!self->probe_no_tint)
     append_selection_tint (self, snapshot);
   if (!self->probe_no_line)
     append_selection_outline (self, snapshot);
-  append_handles (self, snapshot);
+  append_selection_handles (self, snapshot);
   append_magnifier_box (self, snapshot);
 }
 
@@ -2251,6 +2581,8 @@ update_cursor (EaselCanvas *self)
 
   if (self->busy)
     cursor = gdk_cursor_new_from_name ("wait", NULL);
+  else if (self->hover_sel_handle >= 0)
+    cursor = gdk_cursor_new_from_name (selection_handle_cursor (self->hover_sel_handle), NULL);    /* REQ-0015-02: before the picture's */
   else if (handle != EASEL_HANDLE_NONE)
     cursor = gdk_cursor_new_from_name (handle == EASEL_HANDLE_RIGHT ? "ew-resize"
                                        : handle == EASEL_HANDLE_BOTTOM ? "ns-resize" : "nwse-resize", NULL);
@@ -2317,6 +2649,7 @@ easel_canvas_set_tool (EaselCanvas *self, EaselTool tool)
 {
   self->tool = tool;
   self->hover = EASEL_HANDLE_NONE;
+  self->hover_sel_handle = -1;
   update_cursor (self);
   gtk_widget_queue_draw (GTK_WIDGET (self));     /* the preview box comes and goes with the Magnifier */
   gtk_widget_queue_resize (GTK_WIDGET (self));   /* the handles come and go with the room they need */
@@ -2388,7 +2721,7 @@ gboolean
 easel_canvas_is_stroking (EaselCanvas *self)
 {
   return self->stroke != NULL || self->picking || self->shaping || self->pend_held || self->selecting || self->sel_moving
-         || self->lassoing;
+         || self->lassoing || self->stretching;
 }
 
 static GtkAdjustment *
@@ -2712,7 +3045,7 @@ easel_canvas_buttons_released (EaselCanvas *self)
   /* What a release would have done, for each press the canvas still holds (REQ-0007-18). */
   self->action_button = 0;
   if (self->stroke != NULL || self->picking || self->shaping || self->pend_held || self->selecting || self->sel_moving
-      || self->lassoing)
+      || self->lassoing || self->stretching)
     easel_canvas_end_stroke (self);
   if (self->resizing != EASEL_HANDLE_NONE)
     easel_canvas_release (self, self->resize_button);
@@ -2798,6 +3131,13 @@ easel_canvas_end_stroke (EaselCanvas *self)
   if (self->lassoing)
     {
       end_lasso (self);                        /* the path closed and made as last shown (REQ-0014-14) */
+      return;
+    }
+  if (self->stretching)
+    {
+      self->stretching = FALSE;                /* ... and the stretch as last shown (REQ-0015-08) */
+      easel_selection_complete (&self->sel_float);
+      g_signal_emit (self, signals[SIGNAL_STROKING_CHANGED], 0, FALSE);
       return;
     }
   if (self->sel_moving)
@@ -2934,7 +3274,7 @@ easel_canvas_press_timed (EaselCanvas *self, guint button, double x, double y, g
   if (self->dbl_closed && self->click_count >= 3 && self->tool == EASEL_TOOL_POLYGON && !self->pending)
     return;                                 /* the third click of a multi-click that closed a polygon starts nothing (REQ-0011-07) */
 
-  if (self->selecting || self->sel_moving || self->lassoing)
+  if (self->selecting || self->sel_moving || self->lassoing || self->stretching)
     {
       /* The other button cancels the drag of Select, and only it (REQ-0013-18). */
       if (button != self->sel_button)
@@ -2955,6 +3295,18 @@ easel_canvas_press_timed (EaselCanvas *self, guint button, double x, double y, g
         easel_canvas_cancel_stroke (self);
       return;
     }
+  {
+    int handle = easel_canvas_selection_handle_at (self, x, y);
+
+    if (handle >= 0)
+      {
+        /* A press on a handle of the selection (REQ-0015-02, -03): it wins over the picture's handles and neither puts the selection
+           down nor removes it; the primary button starts a stretch, the secondary one does nothing. */
+        if (button == GDK_BUTTON_PRIMARY)
+          begin_stretch (self, handle, x, y);
+        return;
+      }
+  }
   if (self->pending && !self->pend_held && handles_shown (self) && easel_canvas_handle_at (self, x, y) != EASEL_HANDLE_NONE)
     {
       /* A press on a resize handle: a secondary one does nothing and keeps the shape (REQ-0004-16); a primary one puts it down
@@ -3284,6 +3636,13 @@ easel_canvas_motion (EaselCanvas *self, double x, double y)
       resize_to (self, x, y);
       return;
     }
+  if (self->stretching)
+    {
+      self->stretch_lx = x / logical_per_pixel (self);
+      self->stretch_ly = y / logical_per_pixel (self);
+      stretch_apply (self);
+      return;
+    }
   if (self->panning)
     {
       /* Keep the canvas point grabbed at the press under the pointer; the adjustments stop at the
@@ -3457,6 +3816,13 @@ easel_canvas_release (EaselCanvas *self, guint button)
     end_select (self);
   if (self->lassoing && button == self->sel_button)
     end_lasso (self);
+  if (self->stretching && button == self->sel_button)
+    {
+      self->stretching = FALSE;                     /* the selection floats at the size it has (REQ-0015-08) */
+      easel_selection_complete (&self->sel_float);  /* the whole image is made at the release */
+      g_signal_emit (self, signals[SIGNAL_STROKING_CHANGED], 0, FALSE);
+      gtk_widget_queue_draw (GTK_WIDGET (self));
+    }
   if (self->sel_moving && button == self->sel_button)
     {
       self->sel_moving = FALSE;
@@ -3607,11 +3973,13 @@ easel_canvas_pointer_at (EaselCanvas *self, double x, double y)
   if (self->img == NULL)
     return;
   hover = easel_canvas_handle_at (self, x, y);
-  if (hover != self->hover || marker_hit (self, x, y) != self->hover_marker || on_selection (self, x, y) != self->hover_sel)
+  if (hover != self->hover || marker_hit (self, x, y) != self->hover_marker || on_selection (self, x, y) != self->hover_sel
+      || easel_canvas_selection_handle_at (self, x, y) != self->hover_sel_handle)
     {
       self->hover = hover;
       self->hover_marker = marker_hit (self, x, y);
       self->hover_sel = on_selection (self, x, y);
+      self->hover_sel_handle = easel_canvas_selection_handle_at (self, x, y);
       update_cursor (self);
     }
   to_pixel (self, x, y, &px, &py);
@@ -3984,6 +4352,7 @@ easel_canvas_init (EaselCanvas *self)
   self->fill_max_bytes = SIZE_MAX;
   self->shape_max_bytes = SIZE_MAX;
   self->preview_max_bytes = SIZE_MAX;
+  self->hover_sel_handle = -1;
   self->sel_lift_max = SIZE_MAX;
   self->sel_step_max = SIZE_MAX;
   self->moving = -1;

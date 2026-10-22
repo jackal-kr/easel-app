@@ -5,6 +5,7 @@
 
 #include "history.h"
 #include "image.h"
+#include "selection.h"
 #include "footprint.h"
 #include "tool.h"
 #include "view.h"
@@ -33,6 +34,9 @@ int easel_canvas_get_zoom (EaselCanvas *self);
    read the picture's own memory). */
 GdkTexture *easel_canvas_get_tile_texture (EaselCanvas *self, int tx, int ty);
 gsize easel_canvas_get_tiles_rebuilt (EaselCanvas *self);
+/* Test hook (0015): the pixels of the floating selection's image made so far, and its whole size (a lazily stretched image is made in parts
+   while the button is held, whole at the release). */
+void easel_canvas_get_stretch_made (EaselCanvas *self, gsize *made, gsize *total);
 gsize easel_canvas_get_selection_copies (EaselCanvas *self);      /* test hook: the copies a smear or a stamp left on the floating selection */
 /* Test hooks of the preview of a floating selection (0014 T023): the tiles laid whole (the picture, the hole and every copy), the copies
    laid one by one into a tile, the tiles where the float was laid over the trail, and the textures made of the trail (a texture is made
@@ -46,6 +50,9 @@ void easel_canvas_drop_preview (EaselCanvas *self);
 void easel_canvas_set_overlay_probe (EaselCanvas *self, gboolean line, gboolean tint);
 /* Test hooks of the free-form line (0014 T015): its white line drawn as one strip per straight run (the default) or one per grid step,
    and how many white strips the last frame drew for it. */
+/* Test hook (0015): draw the eight handles of a selection or not (they are drawn by default); the cases whose subject is the line and
+   the tint of the selection do not, so that the handles do not cover the pixels they check. The handles' geometry is unchanged. */
+void easel_canvas_set_selection_handles_shown (EaselCanvas *self, gboolean shown);
 void easel_canvas_set_line_merge (EaselCanvas *self, gboolean merge);
 gsize easel_canvas_get_line_strips (EaselCanvas *self);
 /* Test hooks of the tint of a free-form selection (0014 T015): below 100 % drawn one band per device row (the default) or one rectangle per
@@ -122,6 +129,9 @@ gboolean easel_canvas_get_selection_size (EaselCanvas *self, int *w, int *h);
 /* The shape of a marked or floating free-form selection (0014): w x h bytes, 1 for a pixel of its shape, over the rectangle that
    easel_canvas_get_selection gives; NULL for none and for a rectangle. */
 const uint8_t *easel_canvas_get_selection_mask (EaselCanvas *self, int *w, int *h);
+/* The corners of the line of a free-form selection as drawn, closed (x, y pairs), and how far the selection has moved from them (feature
+   0015, REQ-0015-06); NULL for a selection with no line. */
+const int *easel_canvas_get_selection_path (EaselCanvas *self, size_t *n, int *dx, int *dy);
 /* Test hook: whether the canvas now asks for a frame every frame for the moving dashes of a selection's line (REQ-0014-17 c). */
 gboolean easel_canvas_get_ants_running (EaselCanvas *self);
 /* Test hooks of the moving dashes (0014 T015): the redraws they asked for so far and their step now (the whole logical pixels they have
@@ -173,6 +183,11 @@ gboolean easel_canvas_is_waiting_for_release (EaselCanvas *self);
    outside its right edge, bottom edge and bottom-right corner (5 x 5 logical pixels, touching the picture), and the
    canvas reserves room for them. Rectangles are in the canvas's own logical coordinates. */
 gboolean easel_canvas_get_handle_rect (EaselCanvas *self, EaselHandle handle, graphene_rect_t *rect);
+/* A handle of the selection (0015), by the core's enum, as a 5 x 5 rectangle in canvas logical pixels; FALSE if there is no selection. */
+gboolean easel_canvas_get_selection_handle_rect (EaselCanvas *self, EaselSelHandle handle, graphene_rect_t *rect);
+/* The handle of the selection under a canvas point (an EaselSelHandle), or -1: the handle's own square first, then the 9 x 9 areas less the
+   selection's rectangle, a corner before an edge handle (REQ-0015-02). */
+int easel_canvas_selection_handle_at (EaselCanvas *self, double x, double y);
 
 /* The handle whose 9 x 9 hit area holds the point (the corner wins an overlap), or EASEL_HANDLE_NONE; always NONE while
    the handles are hidden. */

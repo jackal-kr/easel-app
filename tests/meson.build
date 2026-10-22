@@ -27,7 +27,7 @@ test_window = executable('test-window', 'ui/test-window.c',
 # registered as /0001/..., /0002/..., so every case is in exactly one of them); see docs/engineering.md, Testing.
 # Not parallel: run in parallel, the ui windows failed as5_zoom_keeps_center with a stale layout (598.25 against 1196.5)
 # in 2 of 3 runs. Earlier one-off failures of the ui tests, run as a single executable, are unexplained.
-foreach feature : ['0001', '0002', '0003', '0004', '0005', '0006', '0007', '0008', '0009', '0010', '0011', '0012', '0013', '0014']
+foreach feature : ['0001', '0002', '0003', '0004', '0005', '0006', '0007', '0008', '0009', '0010', '0011', '0012', '0013', '0014', '0015']
   test('ui-' + feature, test_window, args: ['-p', '/' + feature], env: ui_env, suite: 'ui', timeout: 180,
        is_parallel: false)
 endforeach
@@ -59,5 +59,7 @@ benchmark('perf-0012', executable('perf-0012', 'perf/perf-0012.c', dependencies:
 benchmark('perf-0013', executable('perf-0013', 'perf/perf-0013.c', dependencies: easel_ui_dep), env: perf_env,
   timeout: 300)
 benchmark('perf-0014', executable('perf-0014', 'perf/perf-0014.c', dependencies: easel_ui_dep), env: perf_env,
+  timeout: 900)
+benchmark('perf-0015', executable('perf-0015', 'perf/perf-0015.c', dependencies: easel_ui_dep), env: perf_env,
   timeout: 900)
 

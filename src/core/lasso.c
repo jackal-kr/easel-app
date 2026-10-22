@@ -50,6 +50,37 @@ easel_path_free (EaselPath *p)
   *p = (EaselPath) { 0 };
 }
 
+/* One coordinate: u from the old origin, old size s, new origin o and size n. */
+static int
+scale_corner (int v, int s0, int s, int o, int n)
+{
+  long long u = (long long) v - s0;
+
+  if (u < 0)
+    return (int) (o + u);
+  if (u > s)
+    return (int) (o + n + (u - s));
+  return (int) (o + (2 * u * n + s) / (2 * (long long) s));
+}
+
+bool
+easel_lasso_scale_path (const EaselPath *src, int sx, int sy, int sw, int sh, int nx, int ny, int nw, int nh, EaselPath *out,
+                        size_t max_bytes)
+{
+  EaselPath p = { 0 };
+
+  if (sw <= 0 || sh <= 0 || nw <= 0 || nh <= 0)
+    return false;
+  for (size_t i = 0; i < src->n; i++)
+    if (!easel_path_add (&p, scale_corner (src->xy[2 * i], sx, sw, nx, nw), scale_corner (src->xy[2 * i + 1], sy, sh, ny, nh), max_bytes))
+      {
+        easel_path_free (&p);
+        return false;
+      }
+  *out = p;
+  return true;
+}
+
 /* A grid segment: for a horizontal one, the lattice row y and the column x it covers; for a vertical one, the pixel row y it is in
    and the lattice column x. */
 typedef struct

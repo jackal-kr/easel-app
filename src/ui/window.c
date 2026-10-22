@@ -1728,6 +1728,8 @@ show_selection_error (gpointer data)
     show_save_error (self, "Could Not Clear the Selection", "There is not enough memory to clear this selection.");
   else if (kind == 2)
     show_save_error (self, "Could Not Make the Selection", "There is not enough memory to make this selection.");
+  else if (kind == 3)
+    show_save_error (self, "Could Not Stretch the Selection", "There is not enough memory to stretch this selection.");
   else
     show_save_error (self, "Could Not Move the Selection", "There is not enough memory to move this selection.");
   g_object_unref (self);

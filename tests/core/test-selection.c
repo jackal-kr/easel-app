@@ -2,6 +2,7 @@
 /* The floating selection of feature 0013: lifting it (REQ-0013-07, -08), laying it over the picture and putting it down as
    one undo step (REQ-0013-11). */
 
+#include <limits.h>
 #include <malloc.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -863,6 +864,505 @@ lay_range_adds_up (void)
     }
 }
 
+/* 0015 T001 (REQ-0015-05, -06): the scale of lifted pixels and shape by the nearest pixel, with the keep-one-pixel rule. */
+
+/* The shape's pixels counted per row of a w x h mask. */
+static int
+mask_row (const uint8_t *m, int w, int j)
+{
+  int n = 0;
+
+  for (int i = 0; i < w; i++)
+    n += m[(size_t) j * w + i] != 0;
+  return n;
+}
+
+/* AS-2: the lifted 5 x 4 block (1, 1) to (5, 4) of the scenario picture, red at the local columns 1 to 3 of the rows 1 and 2, made 10
+   wide: the new pixel i is the lifted pixel i / 2, so the red is at the columns 2 to 7 of the rows 1 and 2. */
+static void
+as2_scale_pixels (void)
+{
+  uint32_t px[5 * 4], *out = NULL;
+
+  for (int j = 0; j < 4; j++)
+    for (int i = 0; i < 5; i++)
+      px[j * 5 + i] = (j == 1 || j == 2) && i >= 1 && i <= 3 ? RED : WHITE;
+  CHECK (easel_selection_scale (px, NULL, 5, 4, 10, 4, &out, NULL, SIZE_MAX) == EASEL_SELECTION_DONE);
+  CHECK (out != NULL);
+  for (int j = 0; j < 4; j++)
+    for (int i = 0; i < 10; i++)
+      CHECK (out[j * 10 + i] == ((j == 1 || j == 2) && i >= 2 && i <= 7 ? RED : WHITE));
+  free (out);
+  /* Shrunk to 3 wide: the new pixel i is the lifted pixel floor((i + 1/2) * 5 / 3), 0, 2 and 4. */
+  CHECK (easel_selection_scale (px, NULL, 5, 4, 3, 4, &out, NULL, SIZE_MAX) == EASEL_SELECTION_DONE);
+  CHECK (out[1 * 3 + 0] == WHITE && out[1 * 3 + 1] == RED && out[1 * 3 + 2] == WHITE);
+  free (out);
+}
+
+/* AS-4: the scale is always from the pixels as lifted, so a selection made smaller and then as big as before has its pixels back
+   exactly: the original scaled to its own size is the original, whatever sizes the stretches went through. */
+static void
+as4_scale_back_exactly (void)
+{
+  uint32_t px[7 * 5], *small = NULL, *again = NULL;
+
+  srand (3);
+  for (int i = 0; i < 7 * 5; i++)
+    px[i] = (uint32_t) rand () | 0xFF000000u;
+  CHECK (easel_selection_scale (px, NULL, 7, 5, 1, 5, &small, NULL, SIZE_MAX) == EASEL_SELECTION_DONE);
+  CHECK (easel_selection_scale (px, NULL, 7, 5, 7, 5, &again, NULL, SIZE_MAX) == EASEL_SELECTION_DONE);
+  CHECK (memcmp (px, again, sizeof px) == 0);
+  free (small);
+  free (again);
+}
+
+/* AS-7: the shape of the triangle (the 15 pixels i + j <= 4 of its 5 x 5 box) made 10 x 5 has 30 pixels, the rows holding 10, 8, 6,
+   4 and 2 from the left; the L (the column 0 of the rows 0 to 3 and the row 3 of the columns 0 to 3 of a 4 x 4 box, each pixel its
+   own color) made 1 x 1 keeps one pixel, with the color of its first pixel in reading order, and made 2 x 2 has its 2 lower pixels. */
+static void
+as7_scale_shape (void)
+{
+  uint8_t tri[25], el[16], *om = NULL;
+  uint32_t tpx[25], epx[16], *op = NULL;
+  int total = 0;
+  static const int want[5] = { 10, 8, 6, 4, 2 };
+
+  for (int j = 0; j < 5; j++)
+    for (int i = 0; i < 5; i++)
+      {
+        tri[j * 5 + i] = i + j <= 4;
+        tpx[j * 5 + i] = RED;
+      }
+  CHECK (easel_selection_scale (tpx, tri, 5, 5, 10, 5, &op, &om, SIZE_MAX) == EASEL_SELECTION_DONE);
+  CHECK (om != NULL);
+  for (int j = 0; j < 5; j++)
+    {
+      CHECK (mask_row (om, 10, j) == want[j]);
+      total += mask_row (om, 10, j);
+      for (int i = 0; i < want[j]; i++)
+        CHECK (om[j * 10 + i] != 0);                           /* from the left */
+    }
+  CHECK (total == 30);
+  free (op);
+  free (om);
+  for (int j = 0; j < 4; j++)
+    for (int i = 0; i < 4; i++)
+      {
+        el[j * 4 + i] = i == 0 || j == 3;
+        epx[j * 4 + i] = 0xFF000000u | (uint32_t) (j * 4 + i + 1);
+      }
+  CHECK (easel_selection_scale (epx, el, 4, 4, 1, 1, &op, &om, SIZE_MAX) == EASEL_SELECTION_DONE);
+  CHECK (om[0] != 0 && op[0] == 0xFF000001u);                    /* the nearest sample, the local (2, 2), is not in the L: the first pixel stays */
+  free (op);
+  free (om);
+  CHECK (easel_selection_scale (epx, el, 4, 4, 2, 2, &op, &om, SIZE_MAX) == EASEL_SELECTION_DONE);
+  CHECK (om[0] == 0 && om[1] == 0 && om[2] != 0 && om[3] != 0);  /* its lower row */
+  CHECK (op[2] == 0xFF000000u + 14 && op[3] == 0xFF000000u + 16);
+  free (op);
+  free (om);
+  /* A shape that grows is never empty either: one pixel made 3 x 3 is the 9 pixels. */
+  {
+    uint8_t one = 1;
+    uint32_t red = RED;
+
+    CHECK (easel_selection_scale (&red, &one, 1, 1, 3, 3, &op, &om, SIZE_MAX) == EASEL_SELECTION_DONE);
+    for (int i = 0; i < 9; i++)
+      CHECK (om[i] != 0 && op[i] == RED);
+    free (op);
+    free (om);
+  }
+}
+
+/* The memory: the pixels and the mask are counted against the limit exactly, a refusal makes nothing, and a size whose bytes overflow
+   is refused (never a short buffer). */
+static void
+as10_scale_memory (void)
+{
+  uint8_t mask[4] = { 1, 1, 1, 1 };
+  uint32_t px[4] = { RED, RED, RED, RED }, *op = (uint32_t *) 1;
+  uint8_t *om = (uint8_t *) 1;
+
+  CHECK (easel_selection_scale (px, mask, 2, 2, 6, 5, &op, &om, 6 * 5 * 4 + 6 * 5) == EASEL_SELECTION_DONE);
+  free (op);
+  free (om);
+  op = (uint32_t *) 1;
+  om = (uint8_t *) 1;
+  CHECK (easel_selection_scale (px, mask, 2, 2, 6, 5, &op, &om, 6 * 5 * 4 + 6 * 5 - 1) == EASEL_SELECTION_NO_MEMORY);
+  CHECK (op == NULL && om == NULL);                                /* nothing made */
+  CHECK (easel_selection_scale (px, NULL, 2, 2, 6, 5, &op, NULL, 6 * 5 * 4) == EASEL_SELECTION_DONE);
+  free (op);
+  CHECK (easel_selection_scale (px, NULL, 2, 2, 6, 5, &op, NULL, 6 * 5 * 4 - 1) == EASEL_SELECTION_NO_MEMORY);
+  CHECK (easel_selection_scale (px, NULL, 2, 2, INT_MAX, INT_MAX, &op, NULL, SIZE_MAX) == EASEL_SELECTION_NO_MEMORY);   /* the bytes overflow */
+  CHECK (op == NULL);
+}
+
+/* 0015 T002 (REQ-0015-03, -07): the rectangle a handle drag gives. */
+
+/* The rectangle of (x, y, w, h) dragged by the handle h through (dx, dy), with or without Shift. */
+static void
+stretched (EaselSelHandle h, int x, int y, int w, int hh, int dx, int dy, bool shift, int *nx, int *ny, int *nw, int *nh)
+{
+  easel_stretch_rect (h, x, y, w, hh, dx, dy, shift, nx, ny, nw, nh);
+}
+
+/* AS-5 (REQ-0015-07): Shift on a corner keeps the ratio; the side whose size differs more from its size at the press, as a factor,
+   leads (the width on a tie); the other is its size times the factor, halves up, at least 1, and both fit 10000. */
+static void
+as5_stretch_rect_ratio (void)
+{
+  int x, y, w, h;
+
+  /* Each handle moves only its own edges: marked (1, 1) 5 x 4 dragged through (2, 1). */
+  static const struct { EaselSelHandle h; int x, y, w, hh; } edges[] = {
+    { EASEL_SEL_HANDLE_TL, 3, 2, 3, 3 }, { EASEL_SEL_HANDLE_T, 1, 2, 5, 3 }, { EASEL_SEL_HANDLE_TR, 1, 2, 7, 3 },
+    { EASEL_SEL_HANDLE_L, 3, 1, 3, 4 },  { EASEL_SEL_HANDLE_R, 1, 1, 7, 4 }, { EASEL_SEL_HANDLE_BL, 3, 1, 3, 5 },
+    { EASEL_SEL_HANDLE_B, 1, 1, 5, 5 },  { EASEL_SEL_HANDLE_BR, 1, 1, 7, 5 } };
+
+  for (size_t k = 0; k < sizeof edges / sizeof edges[0]; k++)
+    {
+      stretched (edges[k].h, 1, 1, 5, 4, 2, 1, false, &x, &y, &w, &h);
+      CHECK (x == edges[k].x && y == edges[k].y && w == edges[k].w && h == edges[k].hh);
+    }
+  /* The 1-pixel stop beside the opposite edge, no mirroring: the right handle by (-10, 0), the left one by (10, 0), the left by (-1, 0). */
+  stretched (EASEL_SEL_HANDLE_R, 1, 1, 5, 4, -10, 0, false, &x, &y, &w, &h);
+  CHECK (x == 1 && y == 1 && w == 1 && h == 4);
+  stretched (EASEL_SEL_HANDLE_L, 1, 1, 5, 4, 10, 0, false, &x, &y, &w, &h);
+  CHECK (x == 5 && y == 1 && w == 1 && h == 4);
+  stretched (EASEL_SEL_HANDLE_L, 1, 1, 5, 4, -1, 0, false, &x, &y, &w, &h);
+  CHECK (x == 0 && y == 1 && w == 6 && h == 4);
+  stretched (EASEL_SEL_HANDLE_TL, 1, 1, 5, 4, 10, 10, false, &x, &y, &w, &h);
+  CHECK (x == 5 && y == 4 && w == 1 && h == 1);
+  /* The limit 10000, the fixed edge staying: the bottom handle by (0, 20000); the left handle growing past it. */
+  stretched (EASEL_SEL_HANDLE_B, 1, 1, 5, 4, 0, 20000, false, &x, &y, &w, &h);
+  CHECK (x == 1 && y == 1 && w == 5 && h == 10000);
+  stretched (EASEL_SEL_HANDLE_L, 1, 1, 5, 4, -20000, 0, false, &x, &y, &w, &h);
+  CHECK (x == 6 - 10000 && w == 10000);
+  /* AS-5: marked 5 x 4, the bottom-right handle with Shift. */
+  stretched (EASEL_SEL_HANDLE_BR, 1, 1, 5, 4, 5, 1, true, &x, &y, &w, &h);
+  CHECK (w == 10 && h == 8 && x == 1 && y == 1);
+  stretched (EASEL_SEL_HANDLE_BR, 1, 1, 5, 4, 1, 5, true, &x, &y, &w, &h);
+  CHECK (w == 11 && h == 9);                                       /* 5 x 2.25 = 11.25 */
+  stretched (EASEL_SEL_HANDLE_BR, 1, 1, 5, 4, -3, -1, true, &x, &y, &w, &h);
+  CHECK (w == 2 && h == 2);                                        /* 4 x 0.4 = 1.6 */
+  stretched (EASEL_SEL_HANDLE_BR, 1, 1, 5, 4, 5, -3, true, &x, &y, &w, &h);
+  CHECK (w == 10 && h == 8);                                       /* the width x2 differs more from 1 than the height x0.25 */
+  /* An edge handle ignores Shift. */
+  stretched (EASEL_SEL_HANDLE_R, 1, 1, 5, 4, 5, 0, true, &x, &y, &w, &h);
+  CHECK (w == 10 && h == 4);
+  /* A tie: the width leads. 4 x 2 by (-2, +1): the width x0.5 and the height x1.5 differ by the same; width leads: 2 x 1. */
+  stretched (EASEL_SEL_HANDLE_BR, 0, 0, 4, 2, -2, 1, true, &x, &y, &w, &h);
+  CHECK (w == 2 && h == 1);
+  /* Halves round up: 2 x 3 by (+1, 0): the factor 1.5 makes the height 4.5, 5. */
+  stretched (EASEL_SEL_HANDLE_BR, 0, 0, 2, 3, 1, 0, true, &x, &y, &w, &h);
+  CHECK (w == 3 && h == 5);
+  /* The corner opposite the fixed one: the top-left handle keeps the bottom-right corner. 5 x 4 at (1, 1) by (-5, -1): the width x2 leads: 10 x 8. */
+  stretched (EASEL_SEL_HANDLE_TL, 1, 1, 5, 4, -5, -1, true, &x, &y, &w, &h);
+  CHECK (w == 10 && h == 8 && x + w == 6 && y + h == 5);
+  /* At the limit the ratio holds: 1 x 10 by (+3000, 0): the other side would be 30010, so the width is reduced: 1000 x 10000. */
+  stretched (EASEL_SEL_HANDLE_BR, 0, 0, 1, 10, 3000, 0, true, &x, &y, &w, &h);
+  CHECK (w == 1000 && h == 10000);
+  /* The limit before the comparison: 5 x 4 by (20000, 0): the width stops at 10000 (x2000), the height 8000. */
+  stretched (EASEL_SEL_HANDLE_BR, 0, 0, 5, 4, 20000, 0, true, &x, &y, &w, &h);
+  CHECK (w == 10000 && h == 8000);
+  /* No movement: nothing changes. */
+  stretched (EASEL_SEL_HANDLE_BR, 1, 1, 5, 4, 0, 0, true, &x, &y, &w, &h);
+  CHECK (x == 1 && y == 1 && w == 5 && h == 4);
+}
+
+/* 0015 T003 (REQ-0015-04, -05, -09): the float stretched from its original; copies keep the image they were made with. */
+
+/* How many pixels of a laid w x h picture have a color. */
+static int
+count_color (const uint32_t *px, int n, uint32_t color)
+{
+  int k = 0;
+
+  for (int i = 0; i < n; i++)
+    k += px[i] == color;
+  return k;
+}
+
+/* A 40 x 20 white picture with the red block of the scenarios (the columns 2 to 4 of the rows 2 and 3). */
+static EaselImage *
+wide_picture (void)
+{
+  EaselImage *img = easel_image_new (40, 20, WHITE);
+
+  CHECK (img != NULL);
+  for (int y = 2; y <= 3; y++)
+    for (int x = 2; x <= 4; x++)
+      easel_image_set (img, x, y, RED);
+  return img;
+}
+
+/* REQ-0015-09, Check F2: the first stretch after copies exist makes the copies' image list (4 bytes per entry of capacity, so 12 bytes per
+   copy with the 8 of its place). It counts against the limit as the image does: with 9 copies (capacity 16: 192 bytes) a 10 x 4 stretch
+   (160 bytes of pixels) is refused under 192 with nothing changed, and done at 192; the memory held by the list is then within it. */
+static void
+as10_copies_list_counted_at_stretch (void)
+{
+  EaselImage *img = wide_picture ();
+  EaselFloat f = { 0 };
+  uint32_t *before;
+
+  CHECK (easel_selection_lift (&f, img, 1, 1, 5, 4, NULL, false, YELLOW, SIZE_MAX) == EASEL_SELECTION_DONE);
+  for (int i = 0; i < 9; i++)
+    CHECK (easel_selection_stamp (&f, SIZE_MAX));
+  CHECK (f.n_stamps == 9 && f.cap == 16 && f.stamp_img == NULL);
+  before = f.px;
+  CHECK (easel_selection_stretch (&f, 1, 1, 10, 4, 191) == EASEL_SELECTION_NO_MEMORY);
+  CHECK (f.px == before && f.w == 5 && f.h == 4 && f.n_stamps == 9 && f.stamp_img == NULL && f.orig_px == NULL);
+  CHECK (easel_selection_stretch (&f, 1, 1, 10, 4, 192) == EASEL_SELECTION_DONE);
+  CHECK (f.w == 10 && f.stamp_img != NULL);
+  CHECK (f.cap * (sizeof *f.stamps + sizeof *f.stamp_img) <= 192);          /* held, against the limit it was counted under */
+  easel_float_free (&f);
+  easel_image_free (img);
+}
+
+/* AS-11: a copy left before a stretch keeps its size and pixels, a copy left after has the stretched ones; the float is made from the
+   original each time (5 x 4, then 10 x 4, then 3 x 4: the middle pixel only of the red columns). The hole stays at the original's
+   size and shape, 20 yellow pixels, not the stretched float's. */
+static void
+as11_copies_keep_their_image (void)
+{
+  EaselImage *img = wide_picture ();
+  EaselFloat f = { 0 };
+  uint32_t out[40 * 20];
+  int x0, y0, x1, y1;
+
+  CHECK (easel_selection_lift (&f, img, 1, 1, 5, 4, NULL, false, YELLOW, SIZE_MAX) == EASEL_SELECTION_DONE);
+  f.x = 11;
+  f.y = 4;
+  CHECK (easel_selection_stamp (&f, SIZE_MAX));                    /* a 5 x 4 copy at (11, 4) */
+  CHECK (easel_selection_stretch (&f, 21, 4, 10, 4, SIZE_MAX) == EASEL_SELECTION_DONE);
+  CHECK (f.w == 10 && f.h == 4 && f.x == 21 && f.y == 4);
+  CHECK (easel_selection_stamp (&f, SIZE_MAX));                    /* a 10 x 4 copy at (21, 4) */
+  CHECK (easel_selection_stretch (&f, 21, 10, 3, 4, SIZE_MAX) == EASEL_SELECTION_DONE);
+  CHECK (f.w == 3 && f.h == 4 && f.x == 21 && f.y == 10);          /* made from the original 5 x 4, not from the 10 x 4 */
+  easel_selection_lay (&f, true, img, 0, 0, 40, 20, out, 40);
+  /* The hole: the original's 5 x 4 at (1, 1), 20 yellow pixels (the original red block is covered by it). */
+  CHECK (count_color (out, 40 * 20, YELLOW) == 20);
+  for (int y = 1; y <= 4; y++)
+    for (int x = 1; x <= 5; x++)
+      CHECK (out[y * 40 + x] == YELLOW);
+  /* The copy before the first stretch: 5 x 4, the red at the columns 12 to 14 of the rows 5 and 6. */
+  for (int x = 11; x <= 15; x++)
+    CHECK (out[5 * 40 + x] == (x >= 12 && x <= 14 ? RED : WHITE));
+  /* The copy before the second: 10 x 4, the red at the columns 23 to 28 of the rows 5 and 6. */
+  for (int x = 21; x <= 30; x++)
+    CHECK (out[5 * 40 + x] == (x >= 23 && x <= 28 ? RED : WHITE));
+  /* The float: 3 x 4 at (21, 10): the new pixel i is the original i * 5/3 + 5/6, the columns 0, 2 and 4: red at the middle one. */
+  for (int x = 21; x <= 23; x++)
+    CHECK (out[11 * 40 + x] == (x == 22 ? RED : WHITE));
+  CHECK (count_color (out, 40 * 20, RED) == 6 + 12 + 2);
+  /* The rectangle the lay can change: the hole, the copies and the float. */
+  CHECK (easel_selection_bounds (&f, true, img, &x0, &y0, &x1, &y1));
+  CHECK (x0 == 1 && y0 == 1 && x1 == 30 && y1 == 13);
+  easel_float_free (&f);
+  easel_image_free (img);
+}
+
+/* AS-4, REQ-0015-05, -06: the pixels are always made from those as lifted: a 5 x 4 float made 2 wide (the red columns 1 and 3 of the
+   original 1 to 3 survive as its two pixels) and then 5 wide again has the original's pixels back, not the red columns 0 to 4 that a
+   scale of the 2-wide image would give; and the hole keeps the original's size and place however big the float is made. */
+static void
+stretch_keeps_the_original_and_the_hole (void)
+{
+  EaselImage *img = wide_picture ();
+  EaselFloat f = { 0 };
+  uint32_t lifted[5 * 4];
+  int x0, y0, x1, y1;
+
+  CHECK (easel_selection_lift (&f, img, 1, 1, 5, 4, NULL, false, YELLOW, SIZE_MAX) == EASEL_SELECTION_DONE);
+  memcpy (lifted, f.px, sizeof lifted);
+  CHECK (easel_selection_stretch (&f, 1, 1, 2, 4, SIZE_MAX) == EASEL_SELECTION_DONE);
+  CHECK (easel_selection_stretch (&f, 1, 1, 5, 4, SIZE_MAX) == EASEL_SELECTION_DONE);
+  CHECK (f.w == 5 && f.h == 4 && memcmp (f.px, lifted, sizeof lifted) == 0);
+  /* The hole at the original's 5 x 4 whatever the size: bounds without the float and no copy are (1, 1) to (5, 4). */
+  CHECK (easel_selection_stretch (&f, 1, 1, 12, 6, SIZE_MAX) == EASEL_SELECTION_DONE);
+  CHECK (easel_selection_bounds (&f, false, img, &x0, &y0, &x1, &y1));
+  CHECK (x0 == 1 && y0 == 1 && x1 == 5 && y1 == 4);
+  CHECK (easel_selection_bounds (&f, true, img, &x0, &y0, &x1, &y1));
+  CHECK (x0 == 1 && y0 == 1 && x1 == 12 && y1 == 6);
+  easel_float_free (&f);
+  easel_image_free (img);
+}
+
+/* AS-10: a stretch that cannot get its memory makes nothing: the float, its copies and its place are as they were, also after earlier
+   stretches of the same drag succeeded. */
+static void
+as10_stretch_memory (void)
+{
+  EaselImage *img = wide_picture ();
+  EaselFloat f = { 0 };
+  uint32_t *before;
+
+  CHECK (easel_selection_lift (&f, img, 1, 1, 5, 4, NULL, false, YELLOW, SIZE_MAX) == EASEL_SELECTION_DONE);
+  CHECK (easel_selection_stamp (&f, SIZE_MAX));
+  CHECK (easel_selection_stretch (&f, 1, 1, 6, 4, 6 * 4 * 4) == EASEL_SELECTION_DONE);           /* 96 bytes: exactly enough */
+  before = f.px;
+  CHECK (easel_selection_stretch (&f, 3, 2, 12, 4, 12 * 4 * 4 - 1) == EASEL_SELECTION_NO_MEMORY);
+  CHECK (f.px == before && f.w == 6 && f.h == 4 && f.x == 1 && f.y == 1 && f.n_stamps == 1);
+  CHECK (easel_selection_stretch (&f, 1, 1, 6, 4, 6 * 4 * 4 - 1) == EASEL_SELECTION_NO_MEMORY);
+  CHECK (f.px == before && f.w == 6);
+  /* A shape counts its mask too. */
+  {
+    uint8_t mask[20];
+    EaselFloat g = { 0 };
+
+    memset (mask, 1, sizeof mask);
+    CHECK (easel_selection_lift (&g, img, 1, 1, 5, 4, mask, false, YELLOW, SIZE_MAX) == EASEL_SELECTION_DONE);
+    CHECK (easel_selection_stretch (&g, 1, 1, 6, 4, 6 * 4 * 4 + 6 * 4 - 1) == EASEL_SELECTION_NO_MEMORY);
+    CHECK (g.w == 5);
+    CHECK (easel_selection_stretch (&g, 1, 1, 6, 4, 6 * 4 * 4 + 6 * 4) == EASEL_SELECTION_DONE);
+    CHECK (g.w == 6 && g.mask != NULL);
+    easel_float_free (&g);
+  }
+  easel_float_free (&f);
+  easel_image_free (img);
+}
+
+/* 0015 T006 (REQ-0015-05, -06, -09; perf): the lazy stretch. */
+
+/* A lifted float of a w x h block of random pixels (with the L-shaped mask if shape) in the picture of the scenarios' larger kin, and
+   the pixels it was lifted with, for the reference. */
+static void
+lifted_block (EaselImage *img, EaselFloat *f, int w, int h, bool shape, uint32_t **ref, uint8_t **ref_mask)
+{
+  uint8_t *mask = NULL;
+
+  for (int i = 0; i < img->width * img->height; i++)
+    img->px[i] = 0xFF000000u | (uint32_t) rand ();
+  if (shape)
+    {
+      mask = malloc ((size_t) w * h);
+      CHECK (mask != NULL);
+      for (int j = 0; j < h; j++)
+        for (int i = 0; i < w; i++)
+          mask[j * w + i] = i == 0 || j == h - 1;
+    }
+  CHECK (easel_selection_lift (f, img, 1, 1, w, h, mask, false, YELLOW, SIZE_MAX) == EASEL_SELECTION_DONE);
+  *ref = malloc ((size_t) w * h * sizeof **ref);
+  CHECK (*ref != NULL);
+  memcpy (*ref, f->px, (size_t) w * h * sizeof **ref);
+  *ref_mask = mask;
+}
+
+/* The lazy stretch makes only the 256 x 256 blocks asked for, with the same pixels as the full scale: the pixels of a filled rectangle
+   equal the full result's, the others are not made (zero, and counted), the whole after easel_selection_complete; for a shape too, and
+   a shape that the nearest pixel loses keeps its one pixel at the completion. A refusal is the same as the full stretch's. */
+static void
+as2_lazy_stretch_matches_full (void)
+{
+  srand (9);
+  for (int round = 0; round < 40; round++)
+    {
+      EaselImage *img = easel_image_new (80, 60, 0);
+      EaselFloat f = { 0 };
+      uint32_t *ref, *full, *got;
+      uint8_t *ref_mask, *full_mask = NULL;
+      bool shape = round % 2;
+      int w = 3 + rand () % 30, h = 3 + rand () % 20, W = 1 + rand () % 700, H = 1 + rand () % 600, x0, y0, x1, y1;
+
+      if (round % 8 == 3)
+        W = 257 + 256 * (round % 3);                 /* a last block of one column: the edge of a block */
+      if (round % 8 == 5)
+        H = 257 + 256 * (round % 2);
+
+      CHECK (img != NULL);
+      lifted_block (img, &f, w, h, shape, &ref, &ref_mask);
+      CHECK (easel_selection_scale (ref, ref_mask, w, h, W, H, &full, shape ? &full_mask : NULL, SIZE_MAX) == EASEL_SELECTION_DONE);
+      CHECK (easel_selection_stretch_lazy (&f, 4, 5, W, H, SIZE_MAX) == EASEL_SELECTION_DONE);
+      CHECK (f.w == W && f.h == H && f.x == 4 && f.y == 5);
+      CHECK (f.made_px == 0);
+      x0 = rand () % W;
+      y0 = rand () % H;
+      x1 = x0 + 1 + rand () % 300;
+      y1 = y0 + 1 + rand () % 300;
+      easel_selection_fill (&f, x0, y0, x1, y1);
+      got = f.px;
+      /* Every pixel of the asked rectangle is the full result's; a pixel in a block that was not asked for is not made (zero). */
+      for (int j = 0; j < H; j++)
+        for (int i = 0; i < W; i++)
+          {
+            bool asked = i >= x0 && i < x1 && j >= y0 && j < y1;
+            bool made_block = (i / 256 >= x0 / 256 && i / 256 <= (x1 - 1) / 256 && j / 256 >= y0 / 256 && j / 256 <= (y1 - 1) / 256);
+
+            if (asked)
+              CHECK (got[(size_t) j * W + i] == full[(size_t) j * W + i]);
+            if (!made_block)
+              CHECK (got[(size_t) j * W + i] == 0);
+          }
+      CHECK (f.made_px > 0 && f.made_px <= (size_t) W * H);
+      easel_selection_complete (&f);
+      CHECK (f.made_px == (size_t) W * H);
+      CHECK (memcmp (f.px, full, (size_t) W * H * sizeof *full) == 0);
+      if (shape)
+        CHECK (memcmp (f.mask, full_mask, (size_t) W * H) == 0);
+      easel_float_free (&f);
+      free (ref);
+      free (ref_mask);
+      free (full);
+      free (full_mask);
+      easel_image_free (img);
+    }
+}
+
+/* A shape that the nearest pixel loses is known only when the whole image is made: the L (the column 0 and the row 3 of 4 x 4) made 1 x 1
+   lazily keeps its one pixel, the color of its first pixel in reading order, at the completion. */
+static void
+as7_lazy_shape_keeps_one_pixel (void)
+{
+  EaselImage *img = easel_image_new (20, 20, 0);
+  EaselFloat f = { 0 };
+  uint32_t *ref;
+  uint8_t *ref_mask;
+
+  CHECK (img != NULL);
+  srand (4);
+  lifted_block (img, &f, 4, 4, true, &ref, &ref_mask);
+  CHECK (easel_selection_stretch_lazy (&f, 1, 1, 1, 1, SIZE_MAX) == EASEL_SELECTION_DONE);
+  easel_selection_fill (&f, 0, 0, 1, 1);
+  CHECK (f.mask[0] == 0);                                              /* not yet: the nearest sample, the local (2, 2), is not in the L */
+  easel_selection_complete (&f);
+  CHECK (f.mask[0] == 1 && f.px[0] == ref[0]);
+  easel_float_free (&f);
+  free (ref);
+  free (ref_mask);
+  easel_image_free (img);
+}
+
+/* The refusal of the lazy stretch is the full one's (the bytes of pixels and mask against the limit, the float as it was), and a lazy
+   image with the copies' images kept works as the full one does. */
+static void
+as10_lazy_stretch_memory (void)
+{
+  EaselImage *img = wide_picture ();
+  EaselFloat f = { 0 };
+  uint32_t *before;
+
+  CHECK (easel_selection_lift (&f, img, 1, 1, 5, 4, NULL, false, YELLOW, SIZE_MAX) == EASEL_SELECTION_DONE);
+  CHECK (easel_selection_stamp (&f, SIZE_MAX));
+  CHECK (easel_selection_stretch_lazy (&f, 1, 1, 6, 4, 6 * 4 * 4) == EASEL_SELECTION_DONE);
+  before = f.px;
+  CHECK (easel_selection_stretch_lazy (&f, 3, 2, 12, 4, 12 * 4 * 4 - 1) == EASEL_SELECTION_NO_MEMORY);
+  CHECK (f.px == before && f.w == 6 && f.x == 1 && f.n_stamps == 1);
+  CHECK (easel_selection_stretch_lazy (&f, 1, 1, INT_MAX, INT_MAX, SIZE_MAX) == EASEL_SELECTION_NO_MEMORY);
+  /* The copy made before keeps the 5 x 4 image; the lazy image completed lays as the full one (the float 10 x 4 at (21, 4)). */
+  CHECK (easel_selection_stretch_lazy (&f, 21, 4, 10, 4, SIZE_MAX) == EASEL_SELECTION_DONE);
+  easel_selection_complete (&f);
+  {
+    uint32_t out[40 * 20];
+
+    easel_selection_lay (&f, true, img, 0, 0, 40, 20, out, 40);
+    CHECK (out[2 * 40 + 3] == RED && out[2 * 40 + 5] == WHITE);        /* the copy at (1, 1), 5 x 4: red at its local columns 1 to 3 */
+    CHECK (out[5 * 40 + 23] == RED && out[5 * 40 + 28] == RED);         /* the float, 10 x 4 at (21, 4): red at its columns 2 to 7 */
+    CHECK (out[5 * 40 + 22] == WHITE && out[5 * 40 + 29] == WHITE);
+  }
+  easel_float_free (&f);
+  easel_image_free (img);
+}
+
 int
 main (void)
 {
@@ -883,6 +1383,18 @@ main (void)
   RUN (as10_smear_memory);
   RUN (lay_matches_the_oracle);
   RUN (bounds_cover_the_changes);
+  RUN (as2_scale_pixels);
+  RUN (as4_scale_back_exactly);
+  RUN (as7_scale_shape);
+  RUN (as10_scale_memory);
+  RUN (as5_stretch_rect_ratio);
+  RUN (as11_copies_keep_their_image);
+  RUN (stretch_keeps_the_original_and_the_hole);
+  RUN (as2_lazy_stretch_matches_full);
+  RUN (as7_lazy_shape_keeps_one_pixel);
+  RUN (as10_lazy_stretch_memory);
+  RUN (as10_stretch_memory);
+  RUN (as10_copies_list_counted_at_stretch);
   RUN (lay_range_adds_up);
   return 0;
 }
