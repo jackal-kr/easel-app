@@ -1051,6 +1051,8 @@ tool_hint (EaselTool tool, gboolean transparent)
       return "Draws a polygon with the selected fill style.";
     case EASEL_TOOL_SELECT:
       return "Selects a rectangular part of the picture to move, copy, or edit.";
+    case EASEL_TOOL_FREE_SELECT:
+      return "Selects a free-form part of the picture to move, copy, or edit.";
     case EASEL_TOOL_GRADIENT:
       return "Fades the drawing color to transparent along a drag. A click or Enter applies it, Esc cancels it.";
     case EASEL_TOOL_PICK:
@@ -1578,7 +1580,7 @@ on_key_pressed (EaselWindow *self, guint keyval, guint keycode, GdkModifierType 
     }
   if (keyval == GDK_KEY_Escape && !dialog_is_open (self) && easel_canvas_finish_selection (self->canvas))
     return GDK_EVENT_STOP;                      /* Esc puts a selection down, or removes a marked one (REQ-0013-11) */
-  if (keyval == GDK_KEY_Escape && !dialog_is_open (self) && self->tool == EASEL_TOOL_SELECT
+  if (keyval == GDK_KEY_Escape && !dialog_is_open (self) && easel_tool_selects (self->tool)
       && easel_canvas_is_stroking (self->canvas))
     {
       easel_canvas_cancel_stroke (self->canvas);   /* Esc during a drag of Select cancels it (REQ-0013-18) */
@@ -1720,10 +1722,12 @@ static gboolean
 show_selection_error (gpointer data)
 {
   EaselWindow *self = data;
-  gboolean clear = GPOINTER_TO_INT (g_object_get_data (G_OBJECT (self), "selection-error-clear"));
+  int kind = GPOINTER_TO_INT (g_object_get_data (G_OBJECT (self), "selection-error-kind"));
 
-  if (clear)
+  if (kind == 1)
     show_save_error (self, "Could Not Clear the Selection", "There is not enough memory to clear this selection.");
+  else if (kind == 2)
+    show_save_error (self, "Could Not Make the Selection", "There is not enough memory to make this selection.");
   else
     show_save_error (self, "Could Not Move the Selection", "There is not enough memory to move this selection.");
   g_object_unref (self);
@@ -1733,7 +1737,7 @@ show_selection_error (gpointer data)
 static void
 on_selection_failed (EaselWindow *self, int kind)
 {
-  g_object_set_data (G_OBJECT (self), "selection-error-clear", GINT_TO_POINTER (kind == 1));
+  g_object_set_data (G_OBJECT (self), "selection-error-kind", GINT_TO_POINTER (kind));
   g_idle_add (show_selection_error, g_object_ref (self));
 }
 

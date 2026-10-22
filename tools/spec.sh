@@ -52,15 +52,16 @@ cmd_lint() {
 }
 
 # Every test named in backticks in the scenario-to-test map of one spec must be registered in tests/ (a core test as
-# `RUN (name)`, a ui or io test as `"/NNNN/name"`): the names drift when a test is split or moved. Run by /sdd-check; the
+# `RUN (name)`, a ui or io test as `"/NNNN/name"` or, in a long suite, `"/long/NNNN/name"`): the names drift when a test is split or
+# moved. The map ends at the next heading of any level (the Tasks follow it, and their Result lines name helpers too). Run by /sdd-check; the
 # plain lint does not do it, because a Plan names its tests before they are written.
 cmd_names() {
   local n="${1:-}" f t rc=0
   [[ "$n" =~ ^[0-9]{4}$ ]] || { echo "usage: tools/spec.sh lint --names <NNNN>"; return 1; }
   f=$(ls docs/specs/"$n"-*.md 2>/dev/null | head -1)
   [ -n "$f" ] || { echo "no spec $n"; return 1; }
-  for t in $(sed -n '/^### Scenario-to-test map/,/^### /p' "$f" | grep -oE '`[a-z][a-z0-9]*_[a-z0-9_]*`' | tr -d '`' | sort -u); do
-    if ! grep -rqE "(RUN \\(|\"/[0-9]{4}/)$t\\b" tests/; then
+  for t in $(sed -n '/^### Scenario-to-test map/,/^##/p' "$f" | grep -oE '`[a-z][a-z0-9]*_[a-z0-9_]*`' | tr -d '`' | sort -u); do
+    if ! grep -rqE "(RUN \\(|\"/(long/)?[0-9]{4}/)$t\\b" tests/; then
       echo "$f: the scenario map names a test that is not registered: $t"
       rc=1
     fi

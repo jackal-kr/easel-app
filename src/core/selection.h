@@ -18,11 +18,14 @@ typedef struct
 } EaselStamp;
 
 /* The lifted pixels (w x h, 0xAARRGGBB straight alpha) at the place (x, y) of the picture, which may be partly or wholly
-   outside it; the hole at (hx, hy), w x h, in hole_color (none after a lift with Ctrl); the stamps, in their order. */
+   outside it; the hole at (hx, hy), w x h, in hole_color (none after a lift with Ctrl); the stamps, in their order. mask is
+   NULL for a rectangle, else w x h bytes, 1 for a pixel of the shape (0014): only those pixels are lifted, leave the hole,
+   are laid and put down. */
 typedef struct
 {
   int x, y, w, h;
   uint32_t *px;
+  uint8_t *mask;
   bool hole;
   int hx, hy;
   uint32_t hole_color;
@@ -38,13 +41,24 @@ typedef enum
 } EaselSelectionResult;
 
 /* Lifts the rectangle (x, y, w, h), inside the picture, into f (which must be empty): its pixels are copied, and unless copy
-   it leaves a hole in hole_color. NO_MEMORY, with f empty, if its w x h x 4 bytes exceed max_bytes or cannot be had. */
-EaselSelectionResult easel_selection_lift (EaselFloat *f, const EaselImage *img, int x, int y, int w, int h, bool copy,
-                                           uint32_t hole_color, size_t max_bytes);
+   it leaves a hole in hole_color. With a mask (w x h bytes, copied) only the pixels of the shape are part of it and leave the
+   hole. NO_MEMORY, with f empty, if its w x h x 4 bytes (and the mask's w x h) exceed max_bytes or cannot be had. */
+EaselSelectionResult easel_selection_lift (EaselFloat *f, const EaselImage *img, int x, int y, int w, int h,
+                                           const uint8_t *mask, bool copy, uint32_t hole_color, size_t max_bytes);
 
 /* Leaves a copy of the float where it is now, as it would be put down there (REQ-0013-09); it belongs to the float's one
    step. FALSE, with nothing added, if the stamps would need more than max_bytes or cannot grow. */
 bool easel_selection_stamp (EaselFloat *f, size_t max_bytes);
+
+/* The rectangle of the picture, corners included, in which the lay can differ from the picture: the hole, the copies and, with
+   with_float, the float, clipped to the picture. FALSE if there is none. */
+bool easel_selection_bounds (const EaselFloat *f, bool with_float, const EaselImage *img, int *x0, int *y0, int *x1, int *y1);
+
+/* The smear (REQ-0014-11): moves the float from its place to (x, y), leaving a copy at every place on the 8-connected line between
+   them (as the Pencil draws it), the place it leaves included and the place it moves to excluded, so that a drag leaves a trail
+   without gaps however far each pointer event jumped. FALSE, with the float where it was and the copies of this call taken back
+   (those it had stay), if the copies would need more than max_bytes or cannot grow. */
+bool easel_selection_smear (EaselFloat *f, int x, int y, size_t max_bytes);
 
 /* Lays the result over the rectangle of w x h picture pixels at (x0, y0), written to dst (stride: dst_stride pixels): the
    picture, the hole, each stamp, then, if with_float, the float at its place; a float or stamp pixel replaces what is under
@@ -52,16 +66,22 @@ bool easel_selection_stamp (EaselFloat *f, size_t max_bytes);
 void easel_selection_lay (const EaselFloat *f, bool with_float, const EaselImage *img, int x0, int y0, int w, int h,
                           uint32_t *dst, size_t dst_stride);
 
+/* The same in parts, for a preview kept between frames: with with_base, the picture and the hole; then the copies first to last - 1 in
+   their order; then, with with_float, the float; each over what dst holds. Laying the base, then the copies in any split of 0 to n,
+   then the float, gives what easel_selection_lay gives. */
+void easel_selection_lay_range (const EaselFloat *f, size_t first, size_t last, bool with_float, const EaselImage *img, int x0, int y0,
+                                int w, int h, uint32_t *dst, size_t dst_stride, bool with_base);
+
 /* Writes the result into the picture as one undo step (REQ-0013-11): DONE, NOTHING if no pixel differs, or NO_MEMORY with
    the picture as before if the step's log would exceed max_bytes or cannot be had. The float is kept (the caller frees it). */
 EaselSelectionResult easel_selection_put_down (const EaselFloat *f, bool with_float, EaselImage *img,
                                                EaselHistory *history, size_t max_bytes);
 
-/* Clear Selection on a marked selection (REQ-0013-14): the rectangle (x, y, w, h), inside the picture, takes color as one
-   undo step; NOTHING if no pixel changes, NO_MEMORY with the picture as before. A float is cleared by easel_selection_put_down
-   without the float. */
-EaselSelectionResult easel_selection_clear (EaselImage *img, EaselHistory *history, int x, int y, int w, int h, uint32_t color,
-                                            size_t max_bytes);
+/* Clear Selection on a marked selection (REQ-0013-14): the rectangle (x, y, w, h), inside the picture, or with a mask only the
+   pixels of the shape (REQ-0014-09), takes color as one undo step; NOTHING if no pixel changes, NO_MEMORY with the picture as
+   before. A float is cleared by easel_selection_put_down without the float. */
+EaselSelectionResult easel_selection_clear (EaselImage *img, EaselHistory *history, int x, int y, int w, int h,
+                                            const uint8_t *mask, uint32_t color, size_t max_bytes);
 
 /* Frees the float's memory and empties it. */
 void easel_float_free (EaselFloat *f);

@@ -395,7 +395,7 @@ easel_tool_options_show_tool (EaselToolOptions *self, EaselTool tool)
 {
   int group = tool == EASEL_TOOL_BRUSH ? 0 : tool == EASEL_TOOL_AIRBRUSH ? 1 : tool == EASEL_TOOL_ERASER ? 2
               : tool == EASEL_TOOL_MAGNIFIER ? 3 : tool == EASEL_TOOL_LINE || tool == EASEL_TOOL_CURVE ? 4
-              : easel_tool_draws_shape (tool) || tool == EASEL_TOOL_POLYGON ? 5 : tool == EASEL_TOOL_SELECT ? 6 : -1;
+              : easel_tool_draws_shape (tool) || tool == EASEL_TOOL_POLYGON ? 5 : easel_tool_selects (tool) ? 6 : -1;
 
   /* Nothing of the options shows for a tool without any: the empty page, and no line above it (REQ-0006-02). */
   if (group >= 0)

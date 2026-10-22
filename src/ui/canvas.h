@@ -33,6 +33,25 @@ int easel_canvas_get_zoom (EaselCanvas *self);
    read the picture's own memory). */
 GdkTexture *easel_canvas_get_tile_texture (EaselCanvas *self, int tx, int ty);
 gsize easel_canvas_get_tiles_rebuilt (EaselCanvas *self);
+gsize easel_canvas_get_selection_copies (EaselCanvas *self);      /* test hook: the copies a smear or a stamp left on the floating selection */
+/* Test hooks of the preview of a floating selection (0014 T023): the tiles laid whole (the picture, the hole and every copy), the copies
+   laid one by one into a tile, the tiles where the float was laid over the trail, and the textures made of the trail (a texture is made
+   anew whenever its tile changes: one renderer may keep what it uploaded), all counted so far; the bytes the trail holds now; and a drop
+   of everything kept, so that the next frame lays it all afresh. */
+void easel_canvas_get_trail_counts (EaselCanvas *self, gsize *tiles, gsize *copies, gsize *floats, gsize *textures);
+gsize easel_canvas_get_trail_bytes (EaselCanvas *self);
+gsize easel_canvas_get_preview_bytes_held (EaselCanvas *self);   /* test hook: the trail's tiles and the float's tiles over it, as held now */
+void easel_canvas_drop_preview (EaselCanvas *self);
+/* Benchmark hook (0014 T015): draw the selection's line and its tint, or not, to measure what each costs a frame. Both are drawn by default. */
+void easel_canvas_set_overlay_probe (EaselCanvas *self, gboolean line, gboolean tint);
+/* Test hooks of the free-form line (0014 T015): its white line drawn as one strip per straight run (the default) or one per grid step,
+   and how many white strips the last frame drew for it. */
+void easel_canvas_set_line_merge (EaselCanvas *self, gboolean merge);
+gsize easel_canvas_get_line_strips (EaselCanvas *self);
+/* Test hooks of the tint of a free-form selection (0014 T015): below 100 % drawn one band per device row (the default) or one rectangle per
+   picture row as before, and how many rectangles the last frame drew for it. */
+void easel_canvas_set_tint_bands (EaselCanvas *self, gboolean bands);
+gsize easel_canvas_get_tint_rects (EaselCanvas *self);
 gsize easel_canvas_get_bytes_copied (EaselCanvas *self);
 
 /* Device pixels per logical pixel of the canvas's surface. */
@@ -100,6 +119,16 @@ gboolean easel_canvas_get_selection (EaselCanvas *self, int *x, int *y, int *w, 
 /* The size the status bar shows (REQ-0013-06): the part inside the picture of a rectangle being dragged out, or the
    selection's; FALSE for none. "selection-changed" (void) is emitted when it, or the selection, may have changed. */
 gboolean easel_canvas_get_selection_size (EaselCanvas *self, int *w, int *h);
+/* The shape of a marked or floating free-form selection (0014): w x h bytes, 1 for a pixel of its shape, over the rectangle that
+   easel_canvas_get_selection gives; NULL for none and for a rectangle. */
+const uint8_t *easel_canvas_get_selection_mask (EaselCanvas *self, int *w, int *h);
+/* Test hook: whether the canvas now asks for a frame every frame for the moving dashes of a selection's line (REQ-0014-17 c). */
+gboolean easel_canvas_get_ants_running (EaselCanvas *self);
+/* Test hooks of the moving dashes (0014 T015): the redraws they asked for so far and their step now (the whole logical pixels they have
+   advanced, 12 a second); a fixed time for them (0: the real clock) and whether they advance continuously instead of in steps. */
+void easel_canvas_get_ants_counts (EaselCanvas *self, gsize *redraws, gint64 *step);
+gsize easel_canvas_get_ants_calls (EaselCanvas *self);              /* test hook: the times the dashes' callback ran so far */
+void easel_canvas_set_ants_clock (EaselCanvas *self, gint64 usec, gboolean continuous);
 /* Test hook: hides the markers and the guide line of a waiting gradient (they still take presses), so that a rendered window
    is the picture and the preview alone. */
 void easel_canvas_set_guides_hidden (EaselCanvas *self, gboolean hidden);

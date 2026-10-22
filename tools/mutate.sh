@@ -181,7 +181,7 @@ judge () {
   fi
 }
 
-killed=0; crashed=0; survived=0; errors=0; inconclusives=0
+killed=0; crashed=0; survived=0; errors=0; inconclusives=0; long_only=0
 FAILED_TEST=
 reason=
 total_start=$(date +%s)
@@ -218,6 +218,16 @@ status_line () {
 while IFS=$'\t' read -r n req file tests name; do
   start=$(date +%s)
   position=$((position + 1))
+  # A mutant that only a long suite can kill (every test it names ends in -long, such as ui-0014-long) is not run here: the long
+  # suites belong to the gate and to /sdd-check (tests/meson.build). It is listed and counted apart, and fails nothing.
+  only_long=1
+  for t in $tests; do case "$t" in *-long) ;; *) only_long=0 ;; esac; done
+  if [ "$only_long" -eq 1 ]; then
+    long_only=$((long_only + 1))
+    printf '%-9s %s  %s  (needs %s, not run)\n' "LONG-ONLY" "$req" "$name" "$tests"
+    FINISHED=$(( $(date +%s) - total_start ))
+    continue
+  fi
   progress "$(status_line $((position - 1)) "mutant $position, $req $name")"
   ( while true; do
       for _ in $(seq "$HEARTBEAT"); do sleep 1; done
@@ -269,5 +279,7 @@ PY
   case "$result" in killed|crashed|INCONCLUSIVE) printf '          %s\n' "$reason" ;; esac
 done < "$SCRATCH/index.tsv"
 
-echo "$((killed + crashed + survived + errors + inconclusives)) mutants: $killed killed, $crashed killed by crash (test gap), $inconclusives inconclusive (no snapshot), $survived survived, $errors errors in $(( $(date +%s) - total_start )) s"
+long_note=
+[ "$long_only" -gt 0 ] && long_note=", $long_only long-only (not run)"
+echo "$((killed + crashed + survived + errors + inconclusives + long_only)) mutants: $killed killed, $crashed killed by crash (test gap), $inconclusives inconclusive (no snapshot), $survived survived, $errors errors$long_note in $(( $(date +%s) - total_start )) s"
 [ "$survived" -eq 0 ] && [ "$errors" -eq 0 ] && [ "$crashed" -eq 0 ] && [ "$inconclusives" -eq 0 ]

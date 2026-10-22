@@ -24,6 +24,7 @@ typedef enum
   EASEL_TOOL_POLYGON,
   EASEL_TOOL_GRADIENT,
   EASEL_TOOL_SELECT,
+  EASEL_TOOL_FREE_SELECT,
 } EaselTool;
 
 /* Reads a win.tool action target ("pan", "pencil", "brush", "airbrush", "eraser", "magnifier", "pick", "fill", "line", "rectangle",
@@ -38,6 +39,10 @@ gboolean easel_tool_draws_pending (EaselTool tool);
 
 /* TRUE for Line, the three shapes, Curve and Polygon: the tools whose line width Numpad + and - step (REQ-0010-04). */
 gboolean easel_tool_uses_line_width (EaselTool tool);
+
+/* TRUE for Select and Free-Form Select: the tools that mark a selection, which move, copy, smear, stamp and clear it alike
+   (0013, 0014). */
+gboolean easel_tool_selects (EaselTool tool);
 
 /* The win.tool action target of a tool: "pan", "pencil", ... */
 const char *easel_tool_name (EaselTool tool);

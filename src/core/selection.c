@@ -5,6 +5,7 @@
 #include <string.h>
 
 #include "change-log.h"
+#include "line.h"
 
 static bool
 inside (int x, int y, int rx, int ry, int rw, int rh)
@@ -13,19 +14,34 @@ inside (int x, int y, int rx, int ry, int rw, int rh)
 }
 
 EaselSelectionResult
-easel_selection_lift (EaselFloat *f, const EaselImage *img, int x, int y, int w, int h, bool copy, uint32_t hole_color,
-                      size_t max_bytes)
+easel_selection_lift (EaselFloat *f, const EaselImage *img, int x, int y, int w, int h, const uint8_t *mask, bool copy,
+                      uint32_t hole_color, size_t max_bytes)
 {
   size_t n = (size_t) w * (size_t) h;
+  size_t bytes;
 
   *f = (EaselFloat) { 0 };
   if (w <= 0 || h <= 0 || x < 0 || y < 0 || x > img->width - w || y > img->height - h)
     return EASEL_SELECTION_NO_MEMORY;
-  if (n > SIZE_MAX / sizeof *f->px || n * sizeof *f->px > max_bytes)
+  if (n > SIZE_MAX / (sizeof *f->px + 1))
+    return EASEL_SELECTION_NO_MEMORY;
+  bytes = n * sizeof *f->px + (mask != NULL ? n : 0);
+  if (bytes > max_bytes)
     return EASEL_SELECTION_NO_MEMORY;
   f->px = malloc (n * sizeof *f->px);
   if (f->px == NULL)
     return EASEL_SELECTION_NO_MEMORY;
+  if (mask != NULL)
+    {
+      f->mask = malloc (n);
+      if (f->mask == NULL)
+        {
+          free (f->px);
+          *f = (EaselFloat) { 0 };
+          return EASEL_SELECTION_NO_MEMORY;
+        }
+      memcpy (f->mask, mask, n);
+    }
   for (int j = 0; j < h; j++)
     memcpy (f->px + (size_t) j * w, img->px + (size_t) (y + j) * img->width + x, (size_t) w * sizeof *f->px);
   f->x = f->hx = x;
@@ -57,21 +73,75 @@ easel_selection_stamp (EaselFloat *f, size_t max_bytes)
   return true;
 }
 
-/* The float's pixel over (x, y) when it is at (px, py), or false if it does not cover it. */
-static bool
-float_pixel (const EaselFloat *f, int px, int py, int x, int y, uint32_t *v)
+bool
+easel_selection_smear (EaselFloat *f, int x, int y, size_t max_bytes)
 {
-  if (!inside (x, y, px, py, f->w, f->h))
-    return false;
-  *v = f->px[(size_t) (y - py) * f->w + (x - px)];
+  EaselLine l;
+  int lx, ly, x0 = f->x, y0 = f->y;
+  size_t n = f->n_stamps;
+
+  easel_line_init (&l, x0, y0, x, y);
+  while (easel_line_next (&l, &lx, &ly))
+    {
+      if (lx == x && ly == y)
+        break;                                  /* the place it moves to is not a copy */
+      f->x = lx;
+      f->y = ly;
+      if (!easel_selection_stamp (f, max_bytes))
+        {
+          f->n_stamps = n;
+          f->x = x0;
+          f->y = y0;
+          return false;
+        }
+    }
+  f->x = x;
+  f->y = y;
   return true;
+}
+
+/* Is (x, y) a pixel of the float's shape when it is at (px, py)? */
+static bool
+in_shape (const EaselFloat *f, int px, int py, int x, int y)
+{
+  return inside (x, y, px, py, f->w, f->h) && (f->mask == NULL || f->mask[(size_t) (y - py) * f->w + (x - px)] != 0);
+}
+
+/* The float's pixels at (px, py) written over the part of the window (x0, y0, w, h) that is inside the picture: the cost is the float's
+   own area, not the window's. */
+static void
+lay_float_at (const EaselFloat *f, int px, int py, const EaselImage *img, int x0, int y0, int w, int h, uint32_t *dst,
+              size_t dst_stride)
+{
+  int ax0 = px > x0 ? px : x0, ay0 = py > y0 ? py : y0;
+  int ax1 = px + f->w < x0 + w ? px + f->w : x0 + w, ay1 = py + f->h < y0 + h ? py + f->h : y0 + h;
+
+  ax0 = ax0 > 0 ? ax0 : 0;
+  ay0 = ay0 > 0 ? ay0 : 0;
+  ax1 = ax1 < img->width ? ax1 : img->width;
+  ay1 = ay1 < img->height ? ay1 : img->height;
+  for (int y = ay0; y < ay1; y++)
+    for (int x = ax0; x < ax1; x++)
+      {
+        size_t at = (size_t) (y - py) * f->w + (size_t) (x - px);
+
+        if (f->mask == NULL || f->mask[at] != 0)
+          dst[(size_t) (y - y0) * dst_stride + (size_t) (x - x0)] = f->px[at];
+      }
 }
 
 void
 easel_selection_lay (const EaselFloat *f, bool with_float, const EaselImage *img, int x0, int y0, int w, int h,
                      uint32_t *dst, size_t dst_stride)
 {
-  for (int j = 0; j < h; j++)
+  easel_selection_lay_range (f, 0, f->n_stamps, with_float, img, x0, y0, w, h, dst, dst_stride, true);
+}
+
+void
+easel_selection_lay_range (const EaselFloat *f, size_t first, size_t last, bool with_float, const EaselImage *img, int x0, int y0,
+                           int w, int h, uint32_t *dst, size_t dst_stride, bool with_base)
+{
+  for (int j = 0; with_base && j < h; j++)
     {
       int y = y0 + j;
 
@@ -85,20 +155,20 @@ easel_selection_lay (const EaselFloat *f, bool with_float, const EaselImage *img
           if (x < 0 || x >= img->width)
             continue;
           v = img->px[(size_t) y * img->width + x];
-          if (f->hole && inside (x, y, f->hx, f->hy, f->w, f->h))
+          if (f->hole && in_shape (f, f->hx, f->hy, x, y))
             v = f->hole_color;
-          for (size_t k = 0; k < f->n_stamps; k++)
-            float_pixel (f, f->stamps[k].x, f->stamps[k].y, x, y, &v);
-          if (with_float)
-            float_pixel (f, f->x, f->y, x, y, &v);
           dst[(size_t) j * dst_stride + i] = v;
         }
     }
+  for (size_t k = first; k < last; k++)
+    lay_float_at (f, f->stamps[k].x, f->stamps[k].y, img, x0, y0, w, h, dst, dst_stride);
+  if (with_float)
+    lay_float_at (f, f->x, f->y, img, x0, y0, w, h, dst, dst_stride);
 }
 
 /* The rectangle of the picture the result can differ in: the hole and the float, limited to the picture. FALSE if none. */
-static bool
-affected (const EaselFloat *f, bool with_float, const EaselImage *img, int *x0, int *y0, int *x1, int *y1)
+bool
+easel_selection_bounds (const EaselFloat *f, bool with_float, const EaselImage *img, int *x0, int *y0, int *x1, int *y1)
 {
   long long ax0 = img->width, ay0 = img->height, ax1 = -1, ay1 = -1;
 
@@ -142,7 +212,7 @@ easel_selection_put_down (const EaselFloat *f, bool with_float, EaselImage *img,
   uint32_t *row;
   bool ok = true;
 
-  if (!affected (f, with_float, img, &x0, &y0, &x1, &y1))
+  if (!easel_selection_bounds (f, with_float, img, &x0, &y0, &x1, &y1))
     return EASEL_SELECTION_NOTHING;
   row = malloc ((size_t) (x1 - x0 + 1) * sizeof *row);
   if (row == NULL)
@@ -182,7 +252,8 @@ easel_selection_put_down (const EaselFloat *f, bool with_float, EaselImage *img,
 }
 
 EaselSelectionResult
-easel_selection_clear (EaselImage *img, EaselHistory *history, int x, int y, int w, int h, uint32_t color, size_t max_bytes)
+easel_selection_clear (EaselImage *img, EaselHistory *history, int x, int y, int w, int h, const uint8_t *mask, uint32_t color,
+                       size_t max_bytes)
 {
   EaselChangeLog l;
   bool ok = true;
@@ -192,7 +263,8 @@ easel_selection_clear (EaselImage *img, EaselHistory *history, int x, int y, int
   easel_change_log_init (&l, max_bytes);
   for (int j = y; ok && j < y + h; j++)
     for (int i = x; ok && i < x + w; i++)
-      ok = easel_change_log_set (&l, img, i, j, color);
+      if (mask == NULL || mask[(size_t) (j - y) * w + (i - x)] != 0)
+        ok = easel_change_log_set (&l, img, i, j, color);
   if (!ok)
     {
       easel_change_log_restore (&l, img);
@@ -218,6 +290,7 @@ void
 easel_float_free (EaselFloat *f)
 {
   free (f->px);
+  free (f->mask);
   free (f->stamps);
   *f = (EaselFloat) { 0 };
 }
