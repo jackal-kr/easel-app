@@ -28,7 +28,8 @@ Input: feature number or name from `docs/specs/INDEX.md`.
    add `- [NEEDS CLARIFICATION: question and the options you see]`. A number in a requirement that comes from arithmetic is
    computed with a script, not estimated. A rule copied from the reference behavior is tried on the simplest picture a user makes (one color, one pixel) before it is accepted. A direction on the pixel grid is said as larger or smaller x or y, never above or below, and a statement that two things are the same is checked with the script that makes the numbers, in both directions.
 5. Run the `spec-reviewer` agent once and merge its findings.
-6. For a menu, dialog or bar, ask the user for a reference screenshot or mock-up before drafting, and when a widget choice
+6. For a menu, dialog or bar, and for anything drawn on the canvas (an outline, a preview, a marker), ask the user for a reference
+   screenshot or mock-up before drafting (for a drawing, at a high zoom), and when a widget choice
    changes a rule (a spin row clamps where a text row disables OK), say so in the same question.
    Ask JOD the open questions with AskUserQuestion: at most 4 per round, a recommended option first, concrete examples;
    for a default the user sees, show the result on JOD's own screen (e.g. 1920x1200 -> window 1440x900 -> picture 1024x768).

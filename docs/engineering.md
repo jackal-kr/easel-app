@@ -47,6 +47,10 @@ still apply: one source of truth for tool definitions, and no threads or caches 
 3. The core writes pixels with `easel_image_set`, the one dirty-marking path, which grows the image's dirty rectangle.
 4. The canvas re-uploads only that rectangle with `GdkMemoryTextureBuilder` and queues a redraw. The picture is drawn with
    nearest-neighbour filtering.
+5. A texture is never changed after it is made: memory that is changed in place (the picture's tiles, the trail of a floating
+   selection) gets a new `GdkTexture` after each change, and the old one is dropped; a renderer may keep what it uploaded of a
+   texture or read its memory again, and only a new texture is sure to be uploaded anew. (The ui tests use the Cairo renderer, which
+   reads the memory live and so cannot see a texture that was not made anew: a counter of the textures made checks it, 0014 T023.)
 
 ### Undo model
 From feature 0002 (`src/core/history`):
@@ -110,6 +114,12 @@ Defined by the packaging and release feature.
     (it must occur once in the file; no blank line, in the find or the replace text: `tools/mutate.sh` and `--lint` refuse a list that has one, naming the mutant; `tools/check-mutate-lint.sh` tests that), `--- replace` with the text that takes its place. Write the mutant
     that breaks the rule, run it, and fix the tests until it is killed; a mutant that is equivalent (no input can see the
     change) does not belong in the list.
+  - **Long suites.** A ui case that takes more than about 15 s is registered under `/long/NNNN/` and runs as the meson test
+    `ui-NNNN-long` (suite `long`), which the full `meson test` (the group gate) and `/sdd-check` run and `tools/mutate.sh` does not:
+    a mutant whose every `test:` ends in `-long` is printed as `LONG-ONLY` with what it needs, not run, counted apart in the
+    summary line (", N long-only (not run)") and fails nothing; `/sdd-check` runs it by hand against that suite. A long case keeps a
+    fast version in the short suite wherever that can kill the same mutants, so that only a mutant which truly needs the long case
+    (0014: a path of more than 65536 corners) is long-only.
 - **Progress of a long run.** `tools/mutate.sh` reports its progress on stderr and in a file, never on stdout (the result lines and the summary line of stdout are as they were): it prints `progress file: <path>` first, then for each mutant a line like `[48 of 263] 4:51 elapsed, about 22:10 left: mutant 48, REQ-... name`, one when it is done, and, while one mutant runs, a line every 30 seconds (`EASEL_MUTATE_HEARTBEAT` seconds; `still running REQ-... name, 31 s`). The estimate is the average of the finished mutants times the ones to come, less what the running one has taken, so it only goes down while one runs. A run started in the background is watched with `tail -f` on that file (or a Monitor on it) instead of waiting in silence for the summary line; `tools/check-mutate-progress.sh` checks all of this on the three mutants of REQ-0011-04 (`tools/isolated.sh tools/check-mutate-progress.sh`).
 - **What to run when (the skills point here):** after a task, the tests of the feature touched (`meson test -C build
   --print-errorlogs ui-NNNN`, plus the core and io tests) and the mutants of the task's requirements (`tools/mutate.sh
@@ -119,6 +129,11 @@ Defined by the packaging and release feature.
 - **Code that can abort the process** (a failed allocation in GLib, gdk-pixbuf or glycin) is tested in a subprocess
   (`g_test_trap_subprocess`, as `as19_save_without_memory` and `as8_open_without_memory` do), so that an abort is a failed
   assertion of the test and not a crash of the run.
+- **Below 100 %:** a ui test that compares two ways of drawing the same thing (a merged line against its steps, bands against
+  rows) is exact at 100 % and above; below 100 % antialiasing makes them differ, so it checks a bound the owner approved: the
+  differing pixels lie on the drawing only, and the largest difference in a channel (and, where it is stable, their number) stays
+  just above what the first build gave; it must fail when the drawing moves by a whole picture pixel (0014 T015).
+- **Scrolling:** a ui test of anything drawn for the part in view scrolls and renders without asking the canvas to redraw (`wait_for_next_frame` queues one, which hides a missing redraw); `render_as_is` waits for the layout only.
 - **Timing:** assert the path that started the work, not a count of frames; an idle loses to a pending frame.
 - **Gates:** build warning-free, all tests green after each task; `tools/spec.sh lint` clean before a spec is accepted (`tools/spec.sh lint --names NNNN` additionally fails when a test named in that spec's scenario-to-test map is not registered in `tests/`; `/sdd-check` runs it, the plain lint does not, because a Plan names its tests before they are written).
 - **Later:** CI in a container or the Flatpak SDK (libadwaita >= 1.8 needed); screenshot checks only if they prove worth the upkeep.
@@ -139,6 +154,10 @@ Rule P5 applies: no optimization without a measurement against a budget here.
 | Fill or Magnifier press to the painted frame | < 100 ms at 1920x1080 and 8000x8000 (JOD, 2026-10-18; measured one frame) |
 
 A benchmark refuses to run while another Easel or test window is open (`perf-common.h`), as the ui tests do, since a second window changes its timings, and it runs in the real session, never through `tools/isolated.sh` (see Testing).
+
+Each benchmark row comes from at least three runs, with the load average (`uptime`) noted; a run that disagrees with the others is
+run again five times in a row before a cause is looked for in the code (0014: 21 against 55 ms and 24 against 16.6 ms were the
+machine's state).
 
 The Fill and Magnifier budgets are benchmark budgets: `perf-0007` prints the numbers, `/sdd-check` reports them against the
 table, and no test fails on them (timing tests flake on a loaded machine). The worst-case fill (the comb) has no time budget;

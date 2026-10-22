@@ -25,7 +25,9 @@ Precondition: `Status: accepted` in the spec. Otherwise stop and say so.
    Show the plan. Wait for JOD's "go".
 2. **Tasks.** Fill `## Tasks`: small ordered slices, each `- [ ] T001 title (REQ-..., AS-...) - done when ...`. Every REQ and AS
    is covered, no task without a trace, a manual check at each user-visible slice. If `docs/engineering.md` has a budget for
-   what this feature touches, add a task to measure it and record the numbers in the Plan.
+   what this feature touches, add a task to measure it and record the numbers in the Plan; it comes right after the first task
+   that produces the cost, not with the gate.
+   A task likely to pass already through shared code says so in the Tasks list and names the mutant that proves its test.
    Put that task in the same group as any speed fix that relies on how a library behaves, and name the fallback in the Plan.
    The first task of a feature that changes the look of a panel ends with a manual look at that panel, before the other
    tasks build on it. A task that changes a core rule the ui depends on carries the ui change as well, so its group's gate can pass. Show ids and titles. Wait for "go".
@@ -35,8 +37,12 @@ Precondition: `Status: accepted` in the spec. Otherwise stop and say so.
      moves the view also checks where the picture is drawn, by rendering the window; a new case also passes when run alone;
    - a step or buffer kept under a memory budget has a test that compares the memory held (capacity) with the memory counted, not only the length;
    - a test of an input rule calls the function the signal callback calls, with the event's modifier state, never a function deeper down;
+   - a modifier that decides an action (Ctrl, Shift) is read from the event of the press, and the manual check lists each such action
+     to try with the real mouse, since no ui test sends real events;
    - a test that sets a state to reach a case (a zoom, a tool, the colors) asserts that state before it relies on it;
    - a test that closes a window keeps a weak pointer to it and asserts that it is still there before it touches it;
+   - a test helper that waits asks for what it waits for, and a case that ends far slower than its work is looked into: a wait that runs out its deadline passes in silence;
+   - a test that changes a process-wide setting (a GTK setting, an environment variable) sets it back to the test program's start value, not to what it takes for the default;
    - a pure function and its test are written in two separate edits, with a build and a red run between them;
    - when work from a later task is pulled forward, its tests are written and run red before that code too;
    - a test of a layout or drawing rule checks what the window lays out or draws, at a scrolled position too, never a value computed from the same constant;
