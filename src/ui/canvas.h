@@ -159,6 +159,23 @@ gboolean easel_canvas_move_selection (EaselCanvas *self, int dx, int dy);
 /* Esc and Enter (REQ-0013-11, -12): puts a floating selection down and removes the selection; FALSE, nothing done, without
    one or while a button is held. */
 gboolean easel_canvas_finish_selection (EaselCanvas *self);
+/* The copy of the selection (REQ-0016-03): a new picture of its rectangle, its shape's pixels as they are, the rest #00000000; NULL with
+   no selection or when its memory cannot be had (the selection's limit). */
+EaselImage *easel_canvas_copy_selection (EaselCanvas *self);
+/* The picture pixel at the top-left point of the part of the picture in view; (0, 0) while the picture's top-left corner is in view. */
+void easel_canvas_top_left_in_view (EaselCanvas *self, int *x, int *y);
+/* A paste (REQ-0016-05, -06): pic (taken) floats at (x, y), a rectangle with no hole whose fully transparent pixels leave the picture
+   as it is; a floating selection is put down first and a marked one removed. FALSE, with nothing changed, if its memory cannot be had. */
+gboolean easel_canvas_paste (EaselCanvas *self, EaselImage *pic, int x, int y);
+/* A paste that grows the picture to width x height first (Resize Canvas to Picture, REQ-0016-07): the new area in fill, pic (taken)
+   floating at (0, 0); the growth is one step with the put-down, and Undo while it floats takes it back; "picture-replaced" is emitted
+   when the picture's size changes. FALSE, with nothing changed, if its memory cannot be had. */
+gboolean easel_canvas_paste_grown (EaselCanvas *self, EaselImage *pic, int width, int height, uint32_t fill);
+/* Whether the memory for a paste of pic_w x pic_h can be had, and for the grown picture grown_w x grown_h (0 for none): each checked on its
+   own against the selection's limit and the system (REQ-0016-11), so that a refused paste is known before anything is changed. */
+gboolean easel_canvas_can_paste (EaselCanvas *self, int pic_w, int pic_h, int grown_w, int grown_h);
+/* The limit of the selection's memory (a test hook sets it). */
+size_t easel_canvas_get_selection_limit (EaselCanvas *self);
 /* Clear Selection (REQ-0013-14): FALSE, nothing done, without a selection or while a button is held. */
 gboolean easel_canvas_clear_selection (EaselCanvas *self);
 /* Select All (REQ-0013-15): a floating selection put down, then the whole picture marked. */

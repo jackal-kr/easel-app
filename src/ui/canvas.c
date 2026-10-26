@@ -147,6 +147,8 @@ struct _EaselCanvas
   uint8_t *sel_mask;                            /* the shape, sel_w x sel_h, NULL for a rectangle */
   EaselPath sel_path;                           /* the corners of the path it was made by: its line, closed (REQ-0014-05) */
   int sel_path_x, sel_path_y;                   /* the place of the selection when the path was made: the line moves with it */
+  EaselImage *paste_base;                       /* a grown paste floats: the picture's pixels before it (REQ-0016-07) */
+  uint32_t paste_fill;                          /* and the color of the area it added */
   EaselPath sel_path0;                          /* once stretched: the path as made, kept to scale afresh from (REQ-0015-06) */
   int sel_p0_x, sel_p0_y, sel_p0_w, sel_p0_h;   /* the shape box that path0 traced */
   size_t sel_lift_max, sel_step_max;            /* test hooks: what a lift and a put-down's step may use */
@@ -199,6 +201,8 @@ enum
   SIGNAL_GRADIENT_FAILED,
   SIGNAL_SELECTION_CHANGED,
   SIGNAL_CONTEXT_MENU,
+  SIGNAL_CANVAS_MENU,
+  SIGNAL_PICTURE_REPLACED,
   SIGNAL_SELECTION_FAILED,
   SIGNAL_PENDING_CHANGED,
   SIGNAL_COLOR_PICKED,
@@ -1147,6 +1151,41 @@ on_selection (EaselCanvas *self, double x, double y)
 /* The one function that puts a floating selection down and removes the selection (REQ-0013-11, -12); keep_marked keeps a
    marked one (Save, Save As). FALSE if the put-down could not get its memory: the picture is as before the lift and the
    selection is gone (REQ-0013-19). */
+/* The picture as it was before a grown paste, given back (Undo while the paste floats, a put-down that fails: REQ-0016-07). */
+static void
+restore_paste_base (EaselCanvas *self)
+{
+  uint32_t *px;
+
+  if (self->paste_base == NULL)
+    return;
+  px = self->img->px;
+  self->img->px = self->paste_base->px;
+  self->img->width = self->paste_base->width;
+  self->img->height = self->paste_base->height;
+  self->paste_base->px = px;
+  easel_image_free (self->paste_base);
+  self->paste_base = NULL;
+  g_signal_emit (self, signals[SIGNAL_PICTURE_REPLACED], 0);
+}
+
+/* The picture as it was before a grown paste is no longer needed (the paste was put down or cleared). */
+static void
+drop_paste_base (EaselCanvas *self)
+{
+  g_clear_pointer (&self->paste_base, easel_image_free);
+}
+
+/* The float put down (with its pixels or, for a clear, only its copies), as one step; a grown paste's step holds the growth. */
+static EaselSelectionResult
+put_down_float (EaselCanvas *self, gboolean with_float)
+{
+  if (self->paste_base != NULL)
+    return easel_selection_put_down_grown (&self->sel_float, with_float, self->img, self->history, self->paste_base->width,
+                                           self->paste_base->height, self->paste_fill, self->sel_step_max);
+  return easel_selection_put_down (&self->sel_float, with_float, self->img, self->history, self->sel_step_max);
+}
+
 static gboolean
 finish_selection (EaselCanvas *self, gboolean keep_marked)
 {
@@ -1157,11 +1196,15 @@ finish_selection (EaselCanvas *self, gboolean keep_marked)
       EaselSelectionResult r;
 
       easel_selection_complete (&self->sel_float);   /* a stretch still held: the whole image is made before it is laid */
-      r = easel_selection_put_down (&self->sel_float, TRUE, self->img, self->history, self->sel_step_max);
+      r = put_down_float (self, TRUE);
 
       ok = r != EASEL_SELECTION_NO_MEMORY;
       if (!ok)
-        g_signal_emit (self, signals[SIGNAL_SELECTION_FAILED], 0, 0);     /* the dialog comes after the action goes on */
+        {
+          restore_paste_base (self);                 /* a grown paste: the picture as before it, its size too (REQ-0016-07) */
+          g_signal_emit (self, signals[SIGNAL_SELECTION_FAILED], 0, 0);     /* the dialog comes after the action goes on */
+        }
+      drop_paste_base (self);
       drop_float (self);
       shape_free (self);
       self->sel_state = 0;
@@ -1325,7 +1368,9 @@ cancel_float (EaselCanvas *self)
 {
   if (self->sel_state != 2)
     return;
+  restore_paste_base (self);                     /* Undo while a grown paste floats: the growth goes too (REQ-0016-07) */
   drop_float (self);
+  g_clear_pointer (&self->paste_base, easel_image_free);
   shape_free (self);
   self->sel_state = 0;
   self->hover_sel = FALSE;
@@ -1364,12 +1409,13 @@ easel_canvas_clear_selection (EaselCanvas *self)
     r = easel_selection_clear (self->img, self->history, self->sel_x, self->sel_y, self->sel_w, self->sel_h, self->sel_mask,
                                hole_color (self), self->sel_step_max);
   else
-    r = easel_selection_put_down (&self->sel_float, FALSE, self->img, self->history, self->sel_step_max);
+    r = put_down_float (self, FALSE);              /* a grown paste: the growth stays, with its copies (REQ-0016-05) */
   if (r == EASEL_SELECTION_NO_MEMORY)
     {
       g_signal_emit (self, signals[SIGNAL_SELECTION_FAILED], 0, 1);          /* nothing changed, the selection stays */
       return TRUE;
     }
+  drop_paste_base (self);
   drop_float (self);
   shape_free (self);
   self->sel_state = 0;
@@ -1382,6 +1428,145 @@ easel_canvas_clear_selection (EaselCanvas *self)
   g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);
   gtk_widget_queue_draw (GTK_WIDGET (self));
   return TRUE;
+}
+
+void
+easel_canvas_top_left_in_view (EaselCanvas *self, int *x, int *y)
+{
+  double l = logical_per_pixel (self);
+  graphene_rect_t seen;
+
+  *x = *y = 0;
+  if (self->img == NULL || !gtk_widget_compute_bounds (gtk_widget_get_parent (GTK_WIDGET (self)), GTK_WIDGET (self), &seen))
+    return;
+  /* The pixel that holds the top-left point of the part of the picture in view; the margin before the picture counts as (0, 0). */
+  *x = (int) CLAMP (floor (seen.origin.x / l), 0, self->img->width - 1);
+  *y = (int) CLAMP (floor (seen.origin.y / l), 0, self->img->height - 1);
+}
+
+/* Whether `bytes` can be had: within the selection's limit and from the system (taken and let go at once). */
+static gboolean
+can_have (EaselCanvas *self, size_t bytes)
+{
+  void *probe;
+
+  if (bytes > self->sel_lift_max)
+    return FALSE;
+  probe = g_try_malloc (bytes);
+  g_free (probe);
+  return probe != NULL;
+}
+
+gboolean
+easel_canvas_can_paste (EaselCanvas *self, int pic_w, int pic_h, int grown_w, int grown_h)
+{
+  if (pic_w < 1 || pic_h < 1 || (size_t) pic_w > SIZE_MAX / 4 / (size_t) pic_h)
+    return FALSE;
+  if (!can_have (self, (size_t) pic_w * (size_t) pic_h * 4))
+    return FALSE;
+  if (grown_w > 0 && ((size_t) grown_w > SIZE_MAX / 4 / (size_t) grown_h || !can_have (self, (size_t) grown_w * (size_t) grown_h * 4)))
+    return FALSE;
+  return TRUE;
+}
+
+size_t
+easel_canvas_get_selection_limit (EaselCanvas *self)
+{
+  return self->sel_lift_max;
+}
+
+gboolean
+easel_canvas_paste_grown (EaselCanvas *self, EaselImage *pic, int width, int height, uint32_t fill)
+{
+  EaselFloat f = { 0 };
+  EaselImage *grown;
+  int old_w = self->img->width, old_h = self->img->height;
+
+  /* Everything had first, so a refusal changes nothing (REQ-0016-11): the paste's pixels and the grown picture. */
+  if (easel_selection_paste (&f, pic, 0, 0, self->sel_lift_max) != EASEL_SELECTION_DONE)
+    {
+      easel_image_free (pic);
+      return FALSE;
+    }
+  easel_image_free (pic);
+  grown = can_have (self, (size_t) width * (size_t) height * 4) ? easel_image_new (width, height, fill) : NULL;
+  if (grown == NULL)
+    {
+      easel_float_free (&f);
+      return FALSE;
+    }
+  finish_selection (self, FALSE);              /* on the picture as it was */
+  for (int y = 0; y < old_h; y++)
+    memcpy (grown->px + (size_t) y * (size_t) width, self->img->px + (size_t) y * (size_t) old_w, (size_t) old_w * sizeof *grown->px);
+  /* The picture takes the grown pixels; the old ones are kept as they were, for Undo while the paste floats and for a put-down that
+     fails, which give them back without allocating (Plan, "Where it is put down"). */
+  {
+    uint32_t *px = self->img->px;
+
+    self->img->px = grown->px;
+    self->img->width = width;
+    self->img->height = height;
+    grown->px = px;
+    grown->width = old_w;
+    grown->height = old_h;
+  }
+  self->paste_base = grown;
+  self->paste_fill = fill;
+  g_signal_emit (self, signals[SIGNAL_PICTURE_REPLACED], 0);
+  shape_free (self);
+  self->sel_float = f;
+  self->sel_state = 2;
+  self->sel_x = 0;
+  self->sel_y = 0;
+  self->sel_w = f.w;
+  self->sel_h = f.h;
+  self->sel_lifted_here = FALSE;
+  g_signal_emit (self, signals[SIGNAL_PENDING_CHANGED], 0);
+  g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);
+  gtk_widget_queue_draw (GTK_WIDGET (self));
+  return TRUE;
+}
+
+gboolean
+easel_canvas_paste (EaselCanvas *self, EaselImage *pic, int x, int y)
+{
+  EaselFloat f = { 0 };
+
+  /* The paste's pixels first: if they cannot be had nothing is put down (REQ-0016-11). */
+  if (easel_selection_paste (&f, pic, x, y, self->sel_lift_max) != EASEL_SELECTION_DONE)
+    {
+      easel_image_free (pic);
+      return FALSE;
+    }
+  easel_image_free (pic);
+  finish_selection (self, FALSE);              /* a floating selection put down, a marked one removed (REQ-0016-05) */
+  shape_free (self);
+  self->sel_float = f;
+  self->sel_state = 2;
+  self->sel_x = f.x;
+  self->sel_y = f.y;
+  self->sel_w = f.w;
+  self->sel_h = f.h;
+  self->sel_lifted_here = FALSE;
+  g_signal_emit (self, signals[SIGNAL_PENDING_CHANGED], 0);
+  g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);
+  gtk_widget_queue_draw (GTK_WIDGET (self));
+  return TRUE;
+}
+
+EaselImage *
+easel_canvas_copy_selection (EaselCanvas *self)
+{
+  if (self->sel_state == 1)
+    return easel_selection_copy_image (self->img, NULL, self->sel_x, self->sel_y, self->sel_w, self->sel_h, self->sel_mask,
+                                       self->sel_lift_max);
+  if (self->sel_state == 2)
+    {
+      easel_selection_complete (&self->sel_float);   /* a stretch still held: the copy has the whole image */
+      return easel_selection_copy_image (self->img, &self->sel_float, self->sel_float.x, self->sel_float.y, self->sel_float.w,
+                                         self->sel_float.h, NULL, self->sel_lift_max);
+    }
+  return NULL;
 }
 
 gboolean
@@ -3470,12 +3655,11 @@ easel_canvas_press_timed (EaselCanvas *self, guint button, double x, double y, g
     }
   if (self->tool == EASEL_TOOL_FREE_SELECT)
     {
-      /* The secondary button on a pixel of the shape asks for the context menu and changes nothing; elsewhere it does nothing
-         (REQ-0014-07, REQ-0013-17). */
+      /* The secondary button on a pixel of the shape asks for the selection's context menu, elsewhere for the canvas menu; neither
+         changes anything (REQ-0014-07, REQ-0013-17, REQ-0016-14). */
       if (button != GDK_BUTTON_PRIMARY)
         {
-          if (on_selection (self, x, y))
-            g_signal_emit (self, signals[SIGNAL_CONTEXT_MENU], 0, x, y);
+          g_signal_emit (self, signals[on_selection (self, x, y) ? SIGNAL_CONTEXT_MENU : SIGNAL_CANVAS_MENU], 0, x, y);
           return;
         }
       /* A press on the shape is a move (REQ-0014-08); any other press puts the selection down or removes it, and a path is traced
@@ -3498,12 +3682,11 @@ easel_canvas_press_timed (EaselCanvas *self, guint button, double x, double y, g
   if (self->tool == EASEL_TOOL_SELECT)
     {
       /* A press not on the selection: any selection is removed, and a rectangle is dragged out from the pixel under the
-         press, also outside the picture (REQ-0013-04). The secondary button on the selection asks for its context menu and
-         changes nothing; elsewhere it does nothing (REQ-0013-17). */
+         press, also outside the picture (REQ-0013-04). The secondary button on the selection asks for its context menu, elsewhere
+         for the canvas menu; neither changes anything (REQ-0013-17, REQ-0016-14). */
       if (button != GDK_BUTTON_PRIMARY)
         {
-          if (on_selection (self, x, y))
-            g_signal_emit (self, signals[SIGNAL_CONTEXT_MENU], 0, x, y);
+          g_signal_emit (self, signals[on_selection (self, x, y) ? SIGNAL_CONTEXT_MENU : SIGNAL_CANVAS_MENU], 0, x, y);
           return;
         }
       if (on_selection (self, x, y))
@@ -4334,6 +4517,12 @@ easel_canvas_class_init (EaselCanvasClass *klass)
                                                   NULL, G_TYPE_NONE, 1, G_TYPE_INT);
   signals[SIGNAL_CONTEXT_MENU] = g_signal_new ("context-menu", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST, 0, NULL, NULL,
                                                NULL, G_TYPE_NONE, 2, G_TYPE_DOUBLE, G_TYPE_DOUBLE);
+  /* The picture's pixels were replaced by the canvas (a paste grew it, or its growth was undone): its size may differ (REQ-0016-07). */
+  signals[SIGNAL_PICTURE_REPLACED] = g_signal_new ("picture-replaced", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST, 0, NULL, NULL, NULL,
+                                                   G_TYPE_NONE, 0);
+  /* A secondary press with Select or Free-Form Select not on the selection nor a handle: the canvas menu at (x, y) (REQ-0016-14). */
+  signals[SIGNAL_CANVAS_MENU] = g_signal_new ("canvas-menu", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST, 0, NULL, NULL, NULL,
+                                              G_TYPE_NONE, 2, G_TYPE_DOUBLE, G_TYPE_DOUBLE);
   signals[SIGNAL_PENDING_CHANGED] = g_signal_new ("pending-changed", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST, 0, NULL, NULL, NULL,
                                               G_TYPE_NONE, 0);
   signals[SIGNAL_STROKING_CHANGED] = g_signal_new ("stroking-changed", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST, 0, NULL,

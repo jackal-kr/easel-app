@@ -38,6 +38,14 @@ typedef struct
    which is within the 16 bytes per pixel of REQ-0002-16, since a span has at least one pixel. */
 bool easel_history_push_fill (EaselHistory *h, uint32_t old_value, uint32_t new_value, EaselSpan *spans, size_t n);
 
+/* A growth of the picture from old_w x old_h to its present new_w x new_h (the new area filled with fill) joined to the pixels a put-down
+   then changed (REQ-0016-07: a paste with Resize Canvas to Picture), as one step, which is added even with no change (the growth alone).
+   The changes' indexes are of the grown size. Undo writes their old values and crops back; redo grows with fill and writes the new
+   values. It counts 12 bytes per change plus 64 (a growth removes no pixel). Same ownership as easel_history_push; false: no memory, the
+   caller still owns changes. */
+bool easel_history_push_grow (EaselHistory *h, int old_w, int old_h, int new_w, int new_h, uint32_t fill, EaselChange *changes,
+                              size_t n);
+
 /* Write the step's pixels back through easel_image_set, so the screen update sees them. False: nothing to do. */
 bool easel_history_undo (EaselHistory *h, EaselImage *img);
 bool easel_history_redo (EaselHistory *h, EaselImage *img);

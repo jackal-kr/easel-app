@@ -664,6 +664,172 @@ missing_saver_reports_reason (void)
   easel_image_free (img);
 }
 
+/* 0016 T004 (REQ-0016-10, -15), AS-8: a picture read from bytes (the clipboard's) as from a file: the same pixels for every format and
+   orientation, the same refusals (a text, empty bytes, 10001 wide from the header) with the same sizes. */
+static void
+as8_open_bytes (void)
+{
+  static const char *names[] = { "rgba.png", "flat.jpg", "orient-6.jpg", "rgba.bmp", "named.dat", "anim.gif", "w10001.png",
+                                 "empty.png", "cut-header.png", "no-size.jpg" };
+
+  for (guint i = 0; i < G_N_ELEMENTS (names); i++)
+    {
+      g_autofree char *path = data (names[i]);
+      g_autofree char *contents = NULL;
+      g_autoptr (GBytes) bytes = NULL;
+      EaselImage *a = NULL, *b = NULL;
+      int aw = -1, ah = -1, bw = -2, bh = -2;
+      gsize len = 0;
+      EaselOpenResult ra, rb;
+
+      g_assert_true (g_file_get_contents (path, &contents, &len, NULL));
+      bytes = g_bytes_new (contents, len);
+      ra = easel_picture_open (path, &a, &aw, &ah);
+      rb = easel_picture_open_bytes (bytes, &b, &bw, &bh);
+      g_assert_cmpint (rb, ==, ra);
+      g_assert_cmpint (bw, ==, aw);
+      g_assert_cmpint (bh, ==, ah);
+      if (ra == EASEL_OPEN_OK)
+        {
+          g_assert_cmpint (b->width, ==, a->width);
+          g_assert_cmpint (b->height, ==, a->height);
+          g_assert_cmpmem (b->px, (gsize) b->width * b->height * 4, a->px, (gsize) a->width * a->height * 4);
+        }
+      else
+        g_assert_null (b);
+      easel_image_free (a);
+      easel_image_free (b);
+    }
+  /* Not a picture: a text, and no bytes at all. */
+  {
+    g_autoptr (GBytes) text = g_bytes_new_static ("hello, clipboard", 16);
+    g_autoptr (GBytes) none = g_bytes_new_static ("", 0);
+    EaselImage *img = (EaselImage *) 0x1;
+    int w = -1, h = -1;
+
+    g_assert_cmpint (easel_picture_open_bytes (text, &img, &w, &h), ==, EASEL_OPEN_NOT_PICTURE);
+    g_assert_null (img);
+    g_assert_cmpint (w, ==, 0);
+    img = (EaselImage *) 0x1;
+    g_assert_cmpint (easel_picture_open_bytes (none, &img, &w, &h), ==, EASEL_OPEN_NOT_PICTURE);
+    g_assert_null (img);
+  }
+}
+
+/* The memory case of AS-8 for bytes: refused before decoding, with the size, as for a file (a subprocess, as as8_open_without_memory). */
+static void
+as8_open_bytes_without_memory_subprocess (void)
+{
+  g_autofree char *path = data ("flat6000.png");
+  g_autofree char *contents = NULL;
+  g_autoptr (GBytes) bytes = NULL;
+  struct rlimit old, tight;
+  FILE *f = fopen ("/proc/self/statm", "r");
+  long pages = 0;
+  EaselImage *img = NULL;
+  int w = 0, h = 0;
+  gsize len = 0;
+  EaselOpenResult r;
+
+  g_assert_true (g_file_get_contents (path, &contents, &len, NULL));
+  bytes = g_bytes_new_take (g_steal_pointer (&contents), len);
+  g_assert_nonnull (f);
+  g_assert_cmpint (fscanf (f, "%ld", &pages), ==, 1);
+  fclose (f);
+  g_assert_cmpint (getrlimit (RLIMIT_AS, &old), ==, 0);
+  tight = old;
+  tight.rlim_cur = (rlim_t) pages * (rlim_t) sysconf (_SC_PAGESIZE) + (rlim_t) 100 * 1024 * 1024;
+  if (old.rlim_max != RLIM_INFINITY && tight.rlim_cur > old.rlim_max)
+    tight.rlim_cur = old.rlim_max;
+  g_assert_cmpint (setrlimit (RLIMIT_AS, &tight), ==, 0);
+  r = easel_picture_open_bytes (bytes, &img, &w, &h);
+  g_assert_cmpint (setrlimit (RLIMIT_AS, &old), ==, 0);
+  g_assert_cmpint (r, ==, EASEL_OPEN_NO_MEMORY);
+  g_assert_null (img);
+  g_assert_cmpint (w, ==, 6000);
+  g_assert_cmpint (h, ==, 6000);
+}
+
+static void
+as8_open_bytes_without_memory (void)
+{
+  g_test_trap_subprocess ("/0016/as8_open_bytes_without_memory/subprocess", 0, G_TEST_SUBPROCESS_DEFAULT);
+  g_test_trap_assert_passed ();
+}
+
+/* 0016 T004 (REQ-0016-03, -09), AS-9: a picture encoded to PNG bytes (what another app reads from the clipboard) opens again to exactly
+   the same pixels, partly and fully transparent ones included; JPEG bytes are flattened (opaque). */
+static void
+as9_encode_png (void)
+{
+  EaselImage *img = easel_image_new (W, H, 0), *back = NULL;
+  g_autoptr (GBytes) png = NULL, jpeg = NULL;
+  g_autoptr (GError) error = NULL;
+  int w = 0, h = 0;
+
+  g_assert_nonnull (img);
+  for (int y = 0; y < H; y++)
+    for (int x = 0; x < W; x++)
+      easel_image_set (img, x, y, pattern (x, y) | (x == 1 && y == 1 ? 0x00ABCDEFu : 0));   /* an alpha-0 pixel with a color too */
+  png = easel_picture_encode (img, EASEL_FORMAT_PNG, 90, &error);
+  g_assert_no_error (error);
+  g_assert_nonnull (png);
+  g_assert_cmpint (easel_picture_open_bytes (png, &back, &w, &h), ==, EASEL_OPEN_OK);
+  g_assert_cmpint (back->width, ==, W);
+  for (int y = 0; y < H; y++)
+    for (int x = 0; x < W; x++)
+      {
+        uint32_t want = easel_image_get (img, x, y);
+
+        /* gdk-pixbuf keeps the color of a fully transparent pixel; either way it is fully transparent */
+        if ((want >> 24) == 0)
+          g_assert_cmphex (easel_image_get (back, x, y) >> 24, ==, 0);
+        else
+          g_assert_cmphex (easel_image_get (back, x, y), ==, want);
+      }
+  easel_image_free (back);
+  jpeg = easel_picture_encode (img, EASEL_FORMAT_JPEG, 90, &error);
+  g_assert_no_error (error);
+  g_assert_cmpint (easel_picture_open_bytes (jpeg, &back, &w, &h), ==, EASEL_OPEN_OK);
+  for (int y = 0; y < H; y++)
+    for (int x = 0; x < W; x++)
+      g_assert_cmphex (easel_image_get (back, x, y) >> 24, ==, 0xFF);
+  easel_image_free (back);
+  easel_image_free (img);
+}
+
+/* 0016 (JOD, 2026-10-25, M1 with JS Paint): the PNG made for the clipboard is made fast: the same pixels back exactly (partly transparent
+   ones too), in a file larger than the default encoding makes of a noisy picture (compression level 1 against the default: about 20 times
+   quicker, twice the size, measured on a 3178 x 3099 photo-like picture: 113 ms against 2189 ms, which a browser waited for and gave up). */
+static void
+as9_encode_png_fast (void)
+{
+  EaselImage *img = easel_image_new (400, 300, 0), *back = NULL;
+  g_autoptr (GBytes) fast = NULL, normal = NULL;
+  g_autoptr (GError) error = NULL;
+  guint32 seed = 11;
+  int w = 0, h = 0;
+
+  g_assert_nonnull (img);
+  for (int y = 0; y < 300; y++)
+    for (int x = 0; x < 400; x++)
+      {
+        seed = seed * 1103515245u + 12345u;
+        easel_image_set (img, x, y, (seed >> 24) < 40 ? 0x80000000u | (seed & 0xFFFFFFu) : 0xFF000000u | (seed >> 8));
+      }
+  fast = easel_picture_encode_fast_png (img, &error);
+  g_assert_no_error (error);
+  g_assert_nonnull (fast);
+  normal = easel_picture_encode (img, EASEL_FORMAT_PNG, 90, &error);
+  g_assert_nonnull (normal);
+  g_assert_cmpuint (g_bytes_get_size (fast), >, g_bytes_get_size (normal));
+  g_assert_cmpint (easel_picture_open_bytes (fast, &back, &w, &h), ==, EASEL_OPEN_OK);
+  g_assert_cmpint (w, ==, 400);
+  g_assert_cmpmem (back->px, 400 * 300 * 4, img->px, 400 * 300 * 4);
+  easel_image_free (back);
+  easel_image_free (img);
+}
+
 int
 main (int argc, char **argv)
 {
@@ -673,6 +839,11 @@ main (int argc, char **argv)
   g_test_add_func ("/0005/as8_open_without_memory", as8_open_without_memory);
   g_test_add_func ("/0005/as8_open_without_memory/subprocess", as8_open_without_memory_subprocess);
   g_test_add_func ("/0005/as17_too_big_refused", as17_too_big_refused);
+  g_test_add_func ("/0016/as8_open_bytes", as8_open_bytes);
+  g_test_add_func ("/0016/as8_open_bytes_without_memory", as8_open_bytes_without_memory);
+  g_test_add_func ("/0016/as8_open_bytes_without_memory/subprocess", as8_open_bytes_without_memory_subprocess);
+  g_test_add_func ("/0016/as9_encode_png", as9_encode_png);
+  g_test_add_func ("/0016/as9_encode_png_fast", as9_encode_png_fast);
   g_test_add_func ("/0005/as18_orientation", as18_orientation);
   g_test_add_func ("/0005/sniff_sizes_match_decoder", sniff_sizes_match_decoder);
   g_test_add_func ("/0005/sniff_refuses_broken_files", sniff_refuses_broken_files);

@@ -20,20 +20,28 @@ ui_env.set('EASEL_TEST_DATA', meson.current_source_dir() / 'data')
 # File dialogs open in-process, so tests can find and close them.
 ui_env.set('GDK_DEBUG', 'no-portals')
 
-test_window = executable('test-window', 'ui/test-window.c',
-  dependencies: easel_ui_dep,
+test_window = executable('test-window', 'ui/test-window.c', 'ui/memory-clipboard.c',
+  dependencies: [easel_ui_dep, dependency('gio-unix-2.0')],
 )
 # One meson test per feature, each running the cases whose GTest path starts with the feature number (the cases are
 # registered as /0001/..., /0002/..., so every case is in exactly one of them); see docs/engineering.md, Testing.
 # Not parallel: run in parallel, the ui windows failed as5_zoom_keeps_center with a stale layout (598.25 against 1196.5)
 # in 2 of 3 runs. Earlier one-off failures of the ui tests, run as a single executable, are unexplained.
-foreach feature : ['0001', '0002', '0003', '0004', '0005', '0006', '0007', '0008', '0009', '0010', '0011', '0012', '0013', '0014', '0015']
+foreach feature : ['0001', '0002', '0003', '0004', '0005', '0006', '0007', '0008', '0009', '0010', '0011', '0012', '0013', '0014', '0015', '0016']
   test('ui-' + feature, test_window, args: ['-p', '/' + feature], env: ui_env, suite: 'ui', timeout: 180,
        is_parallel: false)
 endforeach
 # The cases that take more than about 15 s each (registered under /long/): run by the gate and /sdd-check, not by tools/mutate.sh,
 # which names the suites it runs (a mutant that only these can kill is listed in tests/mutants.txt with test: ui-0014-long).
 test('ui-0014-long', test_window, args: ['-p', '/long/0014'], env: ui_env, suite: ['ui', 'long'], timeout: 400, is_parallel: false)
+
+# The GDK clipboard behaviour 0016 relies on, probed by hand in the real session (the isolated session holds no clipboard): built, not
+# a test; run build/tests/probe-clipboard with the pointer outside its window (Plan of 0016, "The clipboard seam").
+executable('probe-clipboard', 'probe/probe-clipboard.c', dependencies: easel_ui_dep)
+# A clipboard owner that answers late or never, for the manual step M2 of 0016 (REQ-0016-15): build/tests/slow-clipboard-owner [SECONDS | never].
+executable('slow-clipboard-owner', 'probe/slow-clipboard-owner.c', dependencies: easel_ui_dep)
+# Two processes, as Easel and another app are: `own` puts Easel's copy on the clipboard, `read` reads it back (M1 of 0016).
+executable('probe-clipboard-xproc', 'probe/probe-clipboard-xproc.c', dependencies: easel_ui_dep)
 
 # Performance budgets (docs/engineering.md): meson test -C build --benchmark
 perf_env = environment()
@@ -62,4 +70,6 @@ benchmark('perf-0014', executable('perf-0014', 'perf/perf-0014.c', dependencies:
   timeout: 900)
 benchmark('perf-0015', executable('perf-0015', 'perf/perf-0015.c', dependencies: easel_ui_dep), env: perf_env,
   timeout: 900)
+benchmark('perf-0016', executable('perf-0016', 'perf/perf-0016.c', dependencies: easel_ui_dep), env: perf_env,
+  timeout: 300)
 

@@ -1119,6 +1119,307 @@ as10_copies_list_counted_at_stretch (void)
   easel_image_free (img);
 }
 
+/* 0016 T001 (REQ-0016-07), AS-7: the size a picture to paste takes in Fit Picture to Canvas: the side that limits takes the picture's
+   size, the other is rounded to the nearest pixel, halves up, at least 1. */
+static void
+as7_fit_size (void)
+{
+  static const int cases[][6] = { { 30, 20, 21, 11, 17, 11 },        /* 16.5 rounded up */
+                                  { 25, 11, 21, 11, 21, 9 },          /* 9.24 */
+                                  { 22, 5, 21, 11, 21, 5 },           /* 4.77 */
+                                  { 10000, 1, 21, 11, 21, 1 },        /* 0.0021: at least 1 */
+                                  { 1, 10000, 21, 11, 1, 11 },
+                                  { 1920, 1080, 1024, 768, 1024, 576 },
+                                  { 7353, 1024, 800, 600, 800, 111 }, /* 111.4 */
+                                  { 21, 11, 21, 11, 21, 11 } };       /* the same size */
+  int nw, nh;
+
+  for (size_t i = 0; i < sizeof cases / sizeof cases[0]; i++)
+    {
+      easel_fit_size (cases[i][0], cases[i][1], cases[i][2], cases[i][3], &nw, &nh);
+      CHECK (nw == cases[i][4] && nh == cases[i][5]);
+    }
+}
+
+/* 0016 T001 (REQ-0016-05, -06), AS-4: a float made from a pasted picture: no hole; its fully transparent pixels are neither laid, put
+   down nor stamped, also after a stretch; partly transparent ones replace all four channels; a picture of only fully transparent
+   pixels puts nothing down; the memory is refused with the float left empty. */
+static void
+as4_paste_float_skips_clear (void)
+{
+  EaselImage *img = wide_picture (), *before = wide_picture ();
+  EaselImage *pic = easel_image_new (3, 2, 0);
+  EaselHistory *h = easel_history_new (16 * 1024 * 1024);
+  EaselFloat f = { 0 };
+  uint32_t out[40 * 20];
+
+  CHECK (pic != NULL && h != NULL);
+  easel_image_set (pic, 0, 0, RED);
+  easel_image_set (pic, 1, 0, 0x00000000u);                          /* fully transparent: leaves the picture */
+  easel_image_set (pic, 2, 0, 0x80FF0000u);                          /* partly transparent: replaces */
+  easel_image_set (pic, 0, 1, 0x00FF0000u);                          /* alpha 0 with a color: leaves the picture too */
+  easel_image_set (pic, 1, 1, BLUE);
+  easel_image_set (pic, 2, 1, 0x00000000u);
+  /* Memory: 24 bytes needed. */
+  CHECK (easel_selection_paste (&f, pic, 2, 2, 23) == EASEL_SELECTION_NO_MEMORY);
+  CHECK (f.px == NULL && f.w == 0);
+  CHECK (easel_selection_paste (&f, pic, 2, 2, 24) == EASEL_SELECTION_DONE);
+  CHECK (f.x == 2 && f.y == 2 && f.w == 3 && f.h == 2 && !f.hole && f.mask == NULL);
+  /* Laid at (2, 2) over the red block: the transparent ones show the picture (red at (3, 2), red at (2, 3)), the others replace. */
+  easel_selection_lay (&f, true, img, 0, 0, 40, 20, out, 40);
+  CHECK (out[2 * 40 + 2] == RED && out[2 * 40 + 3] == RED && out[2 * 40 + 4] == 0x80FF0000u);
+  CHECK (out[3 * 40 + 2] == RED && out[3 * 40 + 3] == BLUE && out[3 * 40 + 4] == RED);
+  /* A copy left at (2, 2), the float moved to (10, 5): both skip the transparent ones; no hole at (2, 2). */
+  CHECK (easel_selection_stamp (&f, SIZE_MAX));
+  f.x = 10;
+  f.y = 5;
+  easel_selection_lay (&f, true, img, 0, 0, 40, 20, out, 40);
+  CHECK (out[2 * 40 + 3] == RED && out[3 * 40 + 3] == BLUE);
+  CHECK (out[5 * 40 + 10] == RED && out[5 * 40 + 11] == WHITE && out[5 * 40 + 12] == 0x80FF0000u);
+  CHECK (out[6 * 40 + 10] == WHITE && out[6 * 40 + 11] == BLUE && out[6 * 40 + 12] == WHITE);
+  /* Stretched to 6 x 4: each pixel doubled, the transparent ones still skipped. */
+  CHECK (easel_selection_stretch (&f, 10, 5, 6, 4, SIZE_MAX) == EASEL_SELECTION_DONE);
+  easel_selection_lay (&f, true, img, 0, 0, 40, 20, out, 40);
+  CHECK (out[5 * 40 + 12] == WHITE && out[6 * 40 + 13] == WHITE && out[5 * 40 + 14] == 0x80FF0000u);
+  CHECK (out[7 * 40 + 10] == WHITE && out[8 * 40 + 13] == BLUE && out[8 * 40 + 15] == WHITE);
+  /* Put down: the copy changes (2, 2) red to red (no change), (4, 2) to 0x80FF0000, (3, 3) to blue; the float its 4 x 2 non-clear
+     pixels on white: 2 + 8 changes; nothing else. */
+  CHECK (easel_selection_put_down (&f, true, img, h, SIZE_MAX) == EASEL_SELECTION_DONE);
+  CHECK (easel_image_get (img, 4, 2) == 0x80FF0000u && easel_image_get (img, 3, 3) == BLUE && easel_image_get (img, 3, 2) == RED);
+  CHECK (easel_image_get (img, 12, 5) == WHITE && easel_image_get (img, 14, 5) == 0x80FF0000u);
+  CHECK (easel_history_undo (h, img));
+  for (int y = 0; y < 20; y++)
+    for (int x = 0; x < 40; x++)
+      CHECK (easel_image_get (img, x, y) == easel_image_get (before, x, y));
+  easel_float_free (&f);
+  /* Only fully transparent pixels: nothing is put down, no step. */
+  for (int y = 0; y < 2; y++)
+    for (int x = 0; x < 3; x++)
+      easel_image_set (pic, x, y, (uint32_t) (x * 0x00102030u));
+  CHECK (easel_selection_paste (&f, pic, 2, 2, SIZE_MAX) == EASEL_SELECTION_DONE);
+  CHECK (easel_selection_put_down (&f, true, img, h, SIZE_MAX) == EASEL_SELECTION_NOTHING);
+  CHECK (easel_history_can_redo (h) && !easel_history_can_undo (h));          /* the step undone above stays redoable */
+  easel_float_free (&f);
+  easel_history_free (h);
+  easel_image_free (pic);
+  easel_image_free (before);
+  easel_image_free (img);
+}
+
+/* 0016 T003 (REQ-0016-03, -11), AS-2: the copy of a selection: its bounding rectangle, the pixels of its shape as they are, every other
+   pixel #00000000; a marked one from the picture, a floating one from its own pixels as they float (stretched, also outside the
+   picture); its memory refused with NULL. */
+static void
+as2_copy_image (void)
+{
+  EaselImage *img = wide_picture (), *c;
+  EaselFloat f = { 0 };
+  uint8_t tri[25];
+
+  /* Marked (1, 1) to (5, 4): the picture's pixels, red at the copy's columns 1 to 3 of its rows 1 and 2. */
+  c = easel_selection_copy_image (img, NULL, 1, 1, 5, 4, NULL, SIZE_MAX);
+  CHECK (c != NULL && c->width == 5 && c->height == 4);
+  for (int y = 0; y < 4; y++)
+    for (int x = 0; x < 5; x++)
+      CHECK (easel_image_get (c, x, y) == (x >= 1 && x <= 3 && y >= 1 && y <= 2 ? RED : WHITE));
+  easel_image_free (c);
+  /* The marked triangle (i + j <= 4 of a 5 x 5 box at (1, 1)): 15 pixels, the other 10 #00000000. */
+  for (int j = 0; j < 5; j++)
+    for (int i = 0; i < 5; i++)
+      tri[j * 5 + i] = i + j <= 4;
+  c = easel_selection_copy_image (img, NULL, 1, 1, 5, 5, tri, SIZE_MAX);
+  CHECK (c != NULL && c->width == 5 && c->height == 5);
+  for (int j = 0; j < 5; j++)
+    for (int i = 0; i < 5; i++)
+      CHECK (easel_image_get (c, i, j) == (i + j <= 4 ? easel_image_get (img, 1 + i, 1 + j) : 0x00000000u));
+  easel_image_free (c);
+  /* Memory: 100 bytes needed for 5 x 5. */
+  CHECK (easel_selection_copy_image (img, NULL, 1, 1, 5, 5, tri, 99) == NULL);
+  c = easel_selection_copy_image (img, NULL, 1, 1, 5, 5, tri, 100);
+  CHECK (c != NULL);
+  easel_image_free (c);
+  /* Floating, stretched to 10 x 4 and moved to (-3, 1), partly outside the picture: its own pixels, all of them. */
+  CHECK (easel_selection_lift (&f, img, 1, 1, 5, 4, NULL, false, YELLOW, SIZE_MAX) == EASEL_SELECTION_DONE);
+  CHECK (easel_selection_stretch (&f, -3, 1, 10, 4, SIZE_MAX) == EASEL_SELECTION_DONE);
+  c = easel_selection_copy_image (img, &f, f.x, f.y, f.w, f.h, NULL, SIZE_MAX);
+  CHECK (c != NULL && c->width == 10 && c->height == 4);
+  for (int y = 0; y < 4; y++)
+    for (int x = 0; x < 10; x++)
+      CHECK (easel_image_get (c, x, y) == f.px[y * 10 + x]);
+  CHECK (easel_image_get (c, 3, 1) == RED && easel_image_get (c, 0, 0) == WHITE);
+  easel_image_free (c);
+  easel_float_free (&f);
+  /* A floating triangle: outside its shape #00000000. */
+  CHECK (easel_selection_lift (&f, img, 1, 1, 5, 5, tri, false, YELLOW, SIZE_MAX) == EASEL_SELECTION_DONE);
+  c = easel_selection_copy_image (img, &f, f.x, f.y, f.w, f.h, NULL, SIZE_MAX);
+  CHECK (c != NULL);
+  CHECK (easel_image_get (c, 4, 4) == 0x00000000u && easel_image_get (c, 1, 1) == RED && easel_image_get (c, 4, 0) == WHITE);
+  easel_image_free (c);
+  easel_float_free (&f);
+  easel_image_free (img);
+}
+
+/* 0016 (JOD, 2026-10-23, after perf-0016): the copy made by rows equals the copy made pixel by pixel (the oracle below, the first
+   version of easel_selection_copy_image) for a marked rectangle, a free-form selection (transparent outside its shape), a floating
+   selection partly outside the picture, and one pixel wide and one pixel high. */
+static EaselImage *
+copy_oracle (const EaselImage *img, const EaselFloat *f, int x, int y, int w, int h, const uint8_t *mask)
+{
+  EaselImage *c = easel_image_new (w, h, 0x00000000u);
+
+  CHECK (c != NULL);
+  if (f != NULL)
+    mask = f->mask;
+  for (int j = 0; j < h; j++)
+    for (int i = 0; i < w; i++)
+      {
+        size_t at = (size_t) j * (size_t) w + (size_t) i;
+
+        if (mask == NULL || mask[at] != 0)
+          c->px[at] = f != NULL ? f->px[at] : img->px[(size_t) (y + j) * (size_t) img->width + (size_t) (x + i)];
+      }
+  return c;
+}
+
+static void
+check_copy_equals_oracle (const EaselImage *img, const EaselFloat *f, int x, int y, int w, int h, const uint8_t *mask)
+{
+  EaselImage *a = easel_selection_copy_image (img, f, x, y, w, h, mask, SIZE_MAX), *b = copy_oracle (img, f, x, y, w, h, mask);
+
+  CHECK (a != NULL && a->width == w && a->height == h);
+  CHECK (memcmp (a->px, b->px, (size_t) w * (size_t) h * sizeof *a->px) == 0);
+  easel_image_free (a);
+  easel_image_free (b);
+}
+
+static void
+copy_by_rows_matches_oracle (void)
+{
+  EaselImage *img = easel_image_new (40, 20, 0);
+  EaselFloat f = { 0 };
+  uint8_t mask[7 * 6];
+
+  CHECK (img != NULL);
+  for (int y = 0; y < 20; y++)
+    for (int x = 0; x < 40; x++)
+      easel_image_set (img, x, y, 0xFF000000u | (uint32_t) (x * 6 + 1) << 16 | (uint32_t) (y * 12 + 3) << 8 | (uint32_t) (x ^ y));
+  for (int k = 0; k < 7 * 6; k++)
+    mask[k] = (k * 7 + k / 7) % 3 != 0;
+  check_copy_equals_oracle (img, NULL, 3, 2, 7, 6, NULL);              /* a marked rectangle */
+  check_copy_equals_oracle (img, NULL, 33, 14, 7, 6, NULL);            /* at the picture's right and bottom edges */
+  check_copy_equals_oracle (img, NULL, 0, 0, 40, 20, NULL);            /* the whole picture */
+  check_copy_equals_oracle (img, NULL, 5, 4, 1, 9, NULL);              /* one pixel wide */
+  check_copy_equals_oracle (img, NULL, 5, 4, 9, 1, NULL);              /* one pixel high */
+  check_copy_equals_oracle (img, NULL, 3, 2, 7, 6, mask);              /* a free-form shape */
+  /* Floating, partly outside the picture, with and without a shape. */
+  CHECK (easel_selection_lift (&f, img, 3, 2, 7, 6, NULL, false, 0xFFFFFF00u, SIZE_MAX) == EASEL_SELECTION_DONE);
+  f.x = -2;
+  f.y = 17;
+  check_copy_equals_oracle (img, &f, f.x, f.y, f.w, f.h, NULL);
+  easel_float_free (&f);
+  CHECK (easel_selection_lift (&f, img, 3, 2, 7, 6, mask, false, 0xFFFFFF00u, SIZE_MAX) == EASEL_SELECTION_DONE);
+  f.x = 36;
+  check_copy_equals_oracle (img, &f, f.x, f.y, f.w, f.h, NULL);
+  easel_float_free (&f);
+  easel_image_free (img);
+}
+
+/* 0016 T010 (REQ-0016-05, -07), AS-7 and AS-15: a paste that grew the picture is put down as one step with the growth: Undo crops back
+   to the old size with every pixel; put down with no pixel changed (the float's pixels as the picture's), the growth is still a step;
+   cleared (put down without the float), the copies it left are in the step with the growth. */
+static void
+as7_put_down_grown (void)
+{
+  EaselImage *img = easel_image_new (4, 3, WHITE), *pic = easel_image_new (6, 5, RED);
+  EaselHistory *h = easel_history_new (1 << 20);
+  EaselFloat f = { 0 };
+
+  CHECK (img != NULL && pic != NULL && h != NULL);
+  /* The picture grown to 6 x 5 (yellow), the paste at (0, 0). */
+  CHECK (easel_image_resize (img, 6, 5, YELLOW) == EASEL_RESIZE_OK);
+  CHECK (easel_selection_paste (&f, pic, 0, 0, SIZE_MAX) == EASEL_SELECTION_DONE);
+  CHECK (easel_selection_put_down_grown (&f, true, img, h, 4, 3, YELLOW, SIZE_MAX) == EASEL_SELECTION_DONE);
+  CHECK (easel_image_get (img, 5, 4) == RED && easel_image_get (img, 0, 0) == RED);
+  CHECK (easel_history_undo (h, img));
+  CHECK (img->width == 4 && img->height == 3);
+  for (int y = 0; y < 3; y++)
+    for (int x = 0; x < 4; x++)
+      CHECK (easel_image_get (img, x, y) == WHITE);
+  CHECK (easel_history_redo (h, img));
+  CHECK (img->width == 6 && easel_image_get (img, 5, 4) == RED);
+  easel_float_free (&f);
+  /* Cleared: a copy left at (0, 0), the float moved to (3, 3) and discarded: the copy and the growth are the step. */
+  CHECK (easel_history_undo (h, img));
+  CHECK (easel_image_resize (img, 6, 5, YELLOW) == EASEL_RESIZE_OK);
+  easel_image_free (pic);
+  pic = easel_image_new (2, 2, BLUE);
+  CHECK (pic != NULL);
+  CHECK (easel_selection_paste (&f, pic, 0, 0, SIZE_MAX) == EASEL_SELECTION_DONE);
+  CHECK (easel_selection_stamp (&f, SIZE_MAX));
+  f.x = 3;
+  f.y = 3;
+  CHECK (easel_selection_put_down_grown (&f, false, img, h, 4, 3, YELLOW, SIZE_MAX) == EASEL_SELECTION_DONE);
+  CHECK (easel_image_get (img, 0, 0) == BLUE && easel_image_get (img, 3, 3) == YELLOW && easel_image_get (img, 2, 1) == WHITE);
+  CHECK (easel_history_undo (h, img));
+  CHECK (img->width == 4 && easel_image_get (img, 0, 0) == WHITE);
+  easel_float_free (&f);
+  /* Nothing to lay at all (a cleared paste with no copies: no hole, no copy, no float): the growth alone is the step. */
+  CHECK (easel_image_resize (img, 6, 5, YELLOW) == EASEL_RESIZE_OK);
+  easel_image_free (pic);
+  pic = easel_image_new (2, 2, BLUE);
+  CHECK (pic != NULL);
+  CHECK (easel_selection_paste (&f, pic, 0, 0, SIZE_MAX) == EASEL_SELECTION_DONE);
+  CHECK (easel_selection_put_down_grown (&f, false, img, h, 4, 3, YELLOW, SIZE_MAX) == EASEL_SELECTION_DONE);
+  CHECK (easel_history_undo (h, img));
+  CHECK (img->width == 4 && img->height == 3 && easel_image_get (img, 0, 0) == WHITE);
+  easel_float_free (&f);
+  /* The growth alone: the paste's pixels equal to what is under them (a wholly transparent one), still a step. */
+  CHECK (easel_image_resize (img, 6, 5, YELLOW) == EASEL_RESIZE_OK);
+  easel_image_free (pic);
+  pic = easel_image_new (6, 5, 0x00000000u);
+  CHECK (pic != NULL);
+  CHECK (easel_selection_paste (&f, pic, 0, 0, SIZE_MAX) == EASEL_SELECTION_DONE);
+  CHECK (easel_selection_put_down_grown (&f, true, img, h, 4, 3, YELLOW, SIZE_MAX) == EASEL_SELECTION_DONE);
+  CHECK (easel_history_can_undo (h));
+  CHECK (easel_history_undo (h, img));
+  CHECK (img->width == 4 && img->height == 3);
+  easel_float_free (&f);
+  easel_image_free (pic);
+  easel_history_free (h);
+  easel_image_free (img);
+}
+
+/* REQ-0002-16, REQ-0016-07, Check F3 of 0016: the step of a put-down that grew the picture holds the memory the budget counts. A pasted
+   513 x 512 picture of stripes opposite to the picture's changes just more than a power of two of pixels, so the log's spare half
+   must not stay with the step. */
+static void
+as7_grown_step_holds_what_it_counts (void)
+{
+  EaselImage *img = easel_image_new (600, 600, WHITE), *pic = easel_image_new (513, 512, WHITE);
+  EaselHistory *h = easel_history_new ((size_t) 512 << 20);
+  EaselFloat f = { 0 };
+  size_t before, held, counted;
+
+  CHECK (img != NULL && pic != NULL && h != NULL);
+  for (int y = 0; y < 600; y++)
+    for (int x = 0; x < 600; x++)
+      img->px[y * 600 + x] = (x & 1) ? RED : WHITE;
+  for (int y = 0; y < 512; y++)
+    for (int x = 0; x < 513; x++)
+      pic->px[y * 513 + x] = (x & 1) ? WHITE : RED;          /* every pixel differs from the one under it */
+  CHECK (easel_selection_paste (&f, pic, 0, 0, SIZE_MAX) == EASEL_SELECTION_DONE);
+  before = heap_in_use ();
+  CHECK (easel_selection_put_down_grown (&f, true, img, h, 550, 550, YELLOW, SIZE_MAX) == EASEL_SELECTION_DONE);
+  held = heap_in_use () - before;
+  counted = easel_history_bytes (h);
+  printf ("  held %zu bytes, counted %zu\n", held, counted);
+  CHECK (held <= counted + counted / 100 + 4096);
+  easel_float_free (&f);
+  easel_history_free (h);
+  easel_image_free (pic);
+  easel_image_free (img);
+}
+
 /* AS-11: a copy left before a stretch keeps its size and pixels, a copy left after has the stretched ones; the float is made from the
    original each time (5 x 4, then 10 x 4, then 3 x 4: the middle pixel only of the red columns). The hole stays at the original's
    size and shape, 20 yellow pixels, not the stretched float's. */
@@ -1396,5 +1697,11 @@ main (void)
   RUN (as10_stretch_memory);
   RUN (as10_copies_list_counted_at_stretch);
   RUN (lay_range_adds_up);
+  RUN (as7_fit_size);
+  RUN (as4_paste_float_skips_clear);
+  RUN (as2_copy_image);
+  RUN (copy_by_rows_matches_oracle);
+  RUN (as7_put_down_grown);
+  RUN (as7_grown_step_holds_what_it_counts);
   return 0;
 }

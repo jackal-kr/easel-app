@@ -16,6 +16,7 @@
 #include "selection.h"
 #include "magnifier.h"
 #include "palette-bar.h"
+#include "memory-clipboard.h"
 #include "picture-file.h"
 #include "palette-file.h"
 #include "status-bar.h"
@@ -1535,8 +1536,12 @@ texture_is_not_copied (void)
 static char *
 describe_section (GMenuModel *model, int section)
 {
-  g_autoptr (GMenuModel) items = g_menu_model_get_item_link (model, section, G_MENU_LINK_SECTION);
+  g_autoptr (GMenuModel) items = NULL;
   GString *out = g_string_new (NULL);
+
+  g_assert_cmpint (section, <, g_menu_model_get_n_items (model));             /* GMenu crashes on an index past its end */
+  items = g_menu_model_get_item_link (model, section, G_MENU_LINK_SECTION);
+  g_assert_nonnull (items);                                                   /* the item is a section */
 
   for (int i = 0; i < g_menu_model_get_n_items (items); i++)
     {
@@ -12380,19 +12385,18 @@ as10_select_all_edit_menu (void)
   g_assert_cmpint (g_menu_model_get_n_items (menu), ==, 3);
   edit_section = g_menu_model_get_item_link (menu, 1, G_MENU_LINK_SECTION);
   g_assert_nonnull (edit_section);
-  g_assert_cmpint (g_menu_model_get_n_items (edit_section), ==, 1);
+  g_assert_cmpint (g_menu_model_get_n_items (edit_section), ==, 3);           /* 0016: Copy To… and Paste From… after Edit */
   g_menu_model_get_item_attribute (edit_section, 0, "label", "s", &label);
   g_assert_cmpstr (label, ==, "_Edit");
   edit = g_menu_model_get_item_link (edit_section, 0, G_MENU_LINK_SUBMENU);
   g_assert_nonnull (edit);
-  {
-    g_autoptr (GMenu) wrap = g_menu_new ();
-
-    g_menu_append_section (wrap, NULL, edit);
-    items = describe_section (G_MENU_MODEL (wrap), 0);
-  }
+  items = describe_section (edit, 1);                                         /* 0016: Cut, Copy, Paste are its first section */
   g_assert_cmpstr (items, ==, "Select _All|win.select-all; _Clear Selection|win.clear-selection");
-  g_menu_model_get_item_attribute (edit, 1, "accel", "s", &accel);
+  {
+    g_autoptr (GMenuModel) second = g_menu_model_get_item_link (edit, 1, G_MENU_LINK_SECTION);
+
+    g_menu_model_get_item_attribute (second, 1, "accel", "s", &accel);
+  }
   g_assert_cmpstr (accel, ==, "Delete");
   g_assert_true (has_accel ("win.select-all", GDK_KEY_a, GDK_CONTROL_MASK));
   /* Ctrl+A with the Pencil: Select, the whole picture. */
@@ -12438,6 +12442,8 @@ as10_select_all_edit_menu (void)
   close_windows ();
 }
 
+static gboolean canvas_menu_shown (EaselWindow *win);
+
 /* AS-11 (REQ-0013-17): a secondary press on the selection (marked, and floating) opens the context menu at the pointer with
    Clear Selection and Select All, and changes nothing else; while it is open the arrows, Esc, Enter and Delete are not taken
    by the window (they act on the menu); closing it keeps the selection; Clear Selection from it acts as AS-9; a secondary
@@ -12463,8 +12469,8 @@ as11_context_menu (void)
     GMenuModel *model = gtk_popover_menu_get_menu_model (menu);
 
     g_assert_nonnull (model);
-    items = describe_section (model, 0);
-    g_assert_cmpstr (items, ==, "_Clear Selection|win.clear-selection; Select _All|win.select-all");
+    items = describe_section (model, 1);                     /* 0016: Cut, Copy and Paste come first (REQ-0016-01) */
+    g_assert_cmpstr (items, ==, "_Clear Selection|win.clear-selection; Select _All|win.select-all; Copy _To…|win.copy-to");
   }
   /* On a marked selection: the menu, nothing else. */
   shape_press_move (win, 1, 1, 1, 5, 4);
@@ -12500,12 +12506,15 @@ as11_context_menu (void)
   g_assert_cmpint (count_color (img, CYAN), ==, 20);
   g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
   assert_same_picture (img, start);
-  /* A secondary press elsewhere, and the middle button: nothing. */
+  /* A secondary press elsewhere: the canvas menu, not the selection's (0016, REQ-0016-14); the middle button: nothing. */
   shape_press_move (win, 1, 1, 1, 5, 4);
   shape_release (win, 1);
   shape_press_move (win, 3, 40, 40, 40, 40);
   shape_release (win, 3);
   g_assert_false (gtk_widget_get_visible (GTK_WIDGET (menu)));
+  g_assert_true (canvas_menu_shown (win));
+  gtk_popover_popdown (GTK_POPOVER (easel_window_get_canvas_menu (win)));
+  wait_for_layout (win);
   shape_press_move (win, 2, 3, 2, 3, 2);
   shape_release (win, 2);
   g_assert_false (gtk_widget_get_visible (GTK_WIDGET (menu)));
@@ -12545,7 +12554,10 @@ as12_drags_that_do_not_finish (void)
       g_assert_true (easel_canvas_is_stroking (canvas));
       g_assert_cmpstr (easel_status_bar_get_text (bar, EASEL_STATUS_SELECTION), ==, "5 × 4");
       if (way == 0)
+      {
         shape_press_move (win, 3, 40, 40, 40, 40);
+        g_assert_false (canvas_menu_shown (win));            /* 0016: a cancelling or handle press opens no canvas menu */
+      }
       else
         g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
       g_assert_false (easel_canvas_is_stroking (canvas));
@@ -12580,6 +12592,7 @@ as12_drags_that_do_not_finish (void)
   g_assert_true (easel_canvas_is_stroking (canvas));
   assert_same_picture (img, moved);
   shape_press_move (win, 3, 40, 40, 40, 40);
+  g_assert_false (canvas_menu_shown (win));            /* 0016: a cancelling or handle press opens no canvas menu */
   g_assert_false (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
   shape_release (win, 3);
   shape_release (win, 1);
@@ -12595,7 +12608,10 @@ as12_drags_that_do_not_finish (void)
       shape_press_move (win, 1, 3, 2, 13, 5);
       g_assert_true (selection_is (win, 11, 4, 5, 4));
       if (way == 0)
+      {
         shape_press_move (win, 3, 3, 2, 3, 2);            /* where the selection returns to: it is only a cancel, no menu */
+        g_assert_false (canvas_menu_shown (win));            /* 0016: a cancelling or handle press opens no canvas menu */
+      }
       else if (way == 1)
         g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
       else
@@ -12617,6 +12633,7 @@ as12_drags_that_do_not_finish (void)
   shape_press_move (win, 1, 13, 5, 13, 8);
   g_assert_true (selection_is (win, 11, 7, 5, 4));
   shape_press_move (win, 3, 40, 40, 40, 40);
+  g_assert_false (canvas_menu_shown (win));            /* 0016: a cancelling or handle press opens no canvas menu */
   g_assert_true (selection_is (win, 11, 4, 5, 4));
   g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
   g_assert_true (floating);
@@ -12914,6 +12931,7 @@ as14_selection_blocked (void)
   easel_palette_bar_press (bar, 17, 1, 2);
   g_assert_true (easel_window_is_choosing_color (win));
   shape_press_move (win, 3, 50, 50, 90, 80);
+  g_assert_false (canvas_menu_shown (win));            /* 0016: a cancelling or handle press opens no canvas menu */
   g_assert_false (easel_canvas_is_stroking (canvas));
   shape_release (win, 3);
   assert_keys_not_taken_by_selection (win, 4);
@@ -12930,6 +12948,7 @@ as14_selection_blocked (void)
   easel_canvas_press (canvas, 1, hx, hy);
   g_assert_true (easel_canvas_is_resizing (canvas));
   shape_press_move (win, 3, 50, 50, 90, 80);
+  g_assert_false (canvas_menu_shown (win));            /* 0016: a cancelling or handle press opens no canvas menu */
   g_assert_false (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
   g_assert_false (easel_canvas_is_stroking (canvas));
   shape_release (win, 3);
@@ -14446,7 +14465,10 @@ as11_traces_that_do_not_finish (void)
     {
       trace_triangle_held (win);
       if (way == 0)
+      {
         shape_press_move (win, 3, 40, 40, 40, 40);
+        g_assert_false (canvas_menu_shown (win));            /* 0016: a cancelling or handle press opens no canvas menu */
+      }
       else
         g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
       g_assert_false (easel_canvas_is_stroking (canvas));
@@ -14488,6 +14510,7 @@ as11_traces_that_do_not_finish (void)
   corner_to (win, 45, 45);
   assert_same_picture (img, moved);
   shape_press_move (win, 3, 50, 50, 50, 50);
+  g_assert_false (canvas_menu_shown (win));            /* 0016: a cancelling or handle press opens no canvas menu */
   g_assert_false (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
   shape_release (win, 3);
   shape_release (win, 1);
@@ -14534,7 +14557,10 @@ as11_traces_that_do_not_finish (void)
       modifier_keys (win, 0);
       g_assert_true (selection_is (win, 14, 4, 5, 5));
       if (way == 0)
+      {
         shape_press_move (win, 3, 50, 50, 50, 50);
+        g_assert_false (canvas_menu_shown (win));            /* 0016: a cancelling or handle press opens no canvas menu */
+      }
       else if (way == 1)
         g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
       else
@@ -15471,6 +15497,7 @@ as8_selection_handle_wins (void)
       easel_canvas_release (canvas, 1);
       g_assert_true (selection_is (win, 0, 0, img->width, img->height));       /* neither put down nor removed */
       easel_canvas_press (canvas, 3, px, py);                                  /* the secondary button: nothing either */
+      g_assert_false (canvas_menu_shown (win));            /* 0016: a cancelling or handle press opens no canvas menu */
       g_assert_false (gtk_widget_get_visible (GTK_WIDGET (easel_window_get_selection_menu (win))));
       easel_canvas_release (canvas, 3);
       g_assert_true (selection_is (win, 0, 0, img->width, img->height));
@@ -15489,6 +15516,7 @@ as8_selection_handle_wins (void)
   shape_release (win, 1);
   sel_handle_center (canvas, EASEL_SEL_HANDLE_R, &rx, &ry);
   easel_canvas_press (canvas, 3, rx, ry);
+  g_assert_false (canvas_menu_shown (win));            /* 0016: a cancelling or handle press opens no canvas menu */
   easel_canvas_release (canvas, 3);
   g_assert_false (gtk_widget_get_visible (GTK_WIDGET (easel_window_get_selection_menu (win))));
   g_assert_true (selection_is (win, 1, 1, 5, 4));
@@ -16273,7 +16301,10 @@ as9_stretch_that_does_not_finish (void)
       hold_r_handle (win, 5);
       g_assert_true (selection_is (win, 1, 1, 10, 4));
       if (way == 0)
+      {
         shape_press_move (win, 3, 50, 50, 50, 50);
+        g_assert_false (canvas_menu_shown (win));            /* 0016: a cancelling or handle press opens no canvas menu */
+      }
       else if (way == 1)
         g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
       else
@@ -16301,7 +16332,10 @@ as9_stretch_that_does_not_finish (void)
       g_assert_true (selection_is (win, 1, 1, 7, 4));
       g_assert_cmpuint (easel_canvas_get_selection_copies (canvas), ==, 1);
       if (way == 0)
+      {
         shape_press_move (win, 3, 50, 50, 50, 50);
+        g_assert_false (canvas_menu_shown (win));            /* 0016: a cancelling or handle press opens no canvas menu */
+      }
       else if (way == 1)
         g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
       else
@@ -16605,18 +16639,1688 @@ as17_free_context_menu (void)
   wait_for_layout (win);
   g_assert_false (gtk_widget_get_visible (GTK_WIDGET (menu)));
   g_assert_true (selection_is (win, 1, 1, 5, 5));
-  /* Outside the shape but inside its rectangle, elsewhere, and the middle button: nothing opens, the selection stays. */
-  shape_press_move (win, 3, 5, 5, 5, 5);
-  shape_release (win, 3);
-  g_assert_false (gtk_widget_get_visible (GTK_WIDGET (menu)));
-  shape_press_move (win, 3, 40, 40, 40, 40);
-  shape_release (win, 3);
-  g_assert_false (gtk_widget_get_visible (GTK_WIDGET (menu)));
+  /* Outside the shape but inside its rectangle, and elsewhere: the canvas menu, not the selection's (0016, REQ-0016-14); the middle
+     button: nothing; the selection stays. */
+  for (int k = 0; k < 2; k++)
+    {
+      shape_press_move (win, 3, k == 0 ? 5 : 40, k == 0 ? 5 : 40, k == 0 ? 5 : 40, k == 0 ? 5 : 40);
+      shape_release (win, 3);
+      g_assert_false (gtk_widget_get_visible (GTK_WIDGET (menu)));
+      g_assert_true (canvas_menu_shown (win));
+      gtk_popover_popdown (GTK_POPOVER (easel_window_get_canvas_menu (win)));
+      wait_for_layout (win);
+    }
   shape_press_move (win, 2, 2, 2, 2, 2);
   shape_release (win, 2);
   g_assert_false (gtk_widget_get_visible (GTK_WIDGET (menu)));
   g_assert_true (selection_is (win, 1, 1, 5, 5));
   g_assert_cmpint (count_color (img, YELLOW), ==, 300 * 200);
+  close_windows ();
+}
+
+/* ---- 0016: the clipboard ---- */
+
+static void zoom_in_to (EaselWindow *win, int z);
+
+/* The five clipboard actions' sensitivity, as "cut copy paste copy-to paste-from", 1 or 0 each. */
+static char *
+clipboard_sensitivity (EaselWindow *win)
+{
+  static const char *names[] = { "cut", "copy", "paste", "copy-to", "paste-from" };
+  GString *out = g_string_new (NULL);
+
+  for (guint i = 0; i < G_N_ELEMENTS (names); i++)
+    g_string_append_printf (out, "%s%d", i ? " " : "", action_enabled (win, names[i]));
+  return g_string_free (out, FALSE);
+}
+
+/* A 2 x 2 PNG another app might put on the clipboard. */
+static GBytes *
+small_png (void)
+{
+  EaselImage *img = easel_image_new (2, 2, 0xFFFF0000u);
+  GBytes *png;
+
+  g_assert_nonnull (img);
+  png = easel_picture_encode (img, EASEL_FORMAT_PNG, 90, NULL);
+  g_assert_nonnull (png);
+  easel_image_free (img);
+  return png;
+}
+
+/* The window given the tests' clipboard (the isolated session holds none: Plan of 0016, "The clipboard seam"). */
+static EaselMemoryClipboard *
+memory_clipboard (EaselWindow *win)
+{
+  g_autoptr (EaselMemoryClipboard) clipboard = easel_memory_clipboard_new ();
+
+  easel_window_set_clipboard (win, EASEL_CLIPBOARD (clipboard));
+  return clipboard;                               /* the window holds it */
+}
+
+/* AS-1 (REQ-0016-01, -02): the Edit submenu (Cut, Copy, Paste; Select All, Clear Selection), the selection's context menu (Cut, Copy,
+   Paste; Clear Selection, Select All, Copy To…), Copy To… and Paste From… after Edit in the primary menu, the shortcuts; Cut, Copy and
+   Copy To… only with a selection; Paste only while the clipboard holds a picture or copied files, following it as it changes; Paste
+   From… while the picture exists. */
+static void
+as1_clipboard_menus (void)
+{
+  EaselWindow *win = start_window ();
+  EaselMemoryClipboard *clipboard = memory_clipboard (win);
+  GMenuModel *menu = menu_of (easel_window_get_main_menu_button (win));
+  GMenuModel *sel = gtk_popover_menu_get_menu_model (easel_window_get_selection_menu (win));
+  g_autoptr (GMenuModel) edit_section = g_menu_model_get_item_link (menu, 1, G_MENU_LINK_SECTION);
+  g_autoptr (GMenuModel) edit = g_menu_model_get_item_link (edit_section, 0, G_MENU_LINK_SUBMENU);
+  g_autofree char *primary = describe_section (menu, 1), *e0 = NULL, *e1 = NULL, *s0 = describe_section (sel, 0);
+  g_autofree char *s1 = describe_section (sel, 1), *none = NULL, *marked = NULL, *text = NULL, *picture = NULL, *files = NULL;
+  g_autoptr (GBytes) png = small_png ();
+  static const char *paths[] = { "/tmp/a.png", NULL };
+
+  g_assert_cmpstr (primary, ==, "_Edit|(null); Copy _To…|win.copy-to; Paste _From…|win.paste-from");
+  g_assert_nonnull (edit);
+  g_assert_cmpint (g_menu_model_get_n_items (edit), ==, 2);
+  e0 = describe_section (edit, 0);
+  e1 = describe_section (edit, 1);
+  g_assert_cmpstr (e0, ==, "Cu_t|win.cut; _Copy|win.copy; _Paste|win.paste");
+  g_assert_cmpstr (e1, ==, "Select _All|win.select-all; _Clear Selection|win.clear-selection");
+  g_assert_cmpstr (s0, ==, "Cu_t|win.cut; _Copy|win.copy; _Paste|win.paste");
+  g_assert_cmpstr (s1, ==, "_Clear Selection|win.clear-selection; Select _All|win.select-all; Copy _To…|win.copy-to");
+  g_assert_true (has_accel ("win.cut", GDK_KEY_x, GDK_CONTROL_MASK));
+  g_assert_true (has_accel ("win.copy", GDK_KEY_c, GDK_CONTROL_MASK));
+  g_assert_true (has_accel ("win.paste", GDK_KEY_v, GDK_CONTROL_MASK));
+  /* The clipboard holds text: no selection, no picture to paste. */
+  easel_memory_clipboard_set_other_text (clipboard, "some text");
+  none = clipboard_sensitivity (win);
+  g_assert_cmpstr (none, ==, "0 0 0 0 1");
+  use_select (win);
+  shape_press_move (win, 1, 1, 1, 5, 4);
+  shape_release (win, 1);
+  marked = clipboard_sensitivity (win);
+  g_assert_cmpstr (marked, ==, "1 1 0 1 1");
+  /* Another app puts a picture on the clipboard, then copied files, then text again: Paste follows. */
+  easel_memory_clipboard_set_other_bytes (clipboard, "image/png", png);
+  picture = clipboard_sensitivity (win);
+  g_assert_cmpstr (picture, ==, "1 1 1 1 1");
+  /* A picture type GDK has no deserializer for ("image/x-fake": no texture type is offered with it) still makes Paste sensitive. */
+  easel_memory_clipboard_set_other_bytes (clipboard, "image/x-fake", png);
+  {
+    g_autofree char *fake = clipboard_sensitivity (win);
+
+    g_assert_cmpstr (fake, ==, "1 1 1 1 1");
+  }
+  easel_memory_clipboard_set_other_text (clipboard, "some text");
+  {
+    g_autofree char *back = clipboard_sensitivity (win);
+
+    g_assert_cmpstr (back, ==, "1 1 0 1 1");
+  }
+  easel_memory_clipboard_set_other_files (clipboard, paths);
+  files = clipboard_sensitivity (win);
+  g_assert_cmpstr (files, ==, "1 1 1 1 1");
+  easel_memory_clipboard_set_other_text (clipboard, "more text");
+  text = clipboard_sensitivity (win);
+  g_assert_cmpstr (text, ==, "1 1 0 1 1");
+  /* No selection again: Cut, Copy and Copy To… insensitive. */
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+  g_free (none);
+  none = clipboard_sensitivity (win);
+  g_assert_cmpstr (none, ==, "0 0 0 0 1");
+  close_windows ();
+}
+
+/* AS-11 (REQ-0016-02): while a mouse button is held for a stroke or a drag (a pencil stroke, a rectangle dragged out, a move, a stretch),
+   all five are ignored: insensitive until the release. */
+static void
+as11_ignored_during_drags (void)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  EaselMemoryClipboard *clipboard = memory_clipboard (win);
+  g_autoptr (GBytes) png = small_png ();
+  double x, y;
+
+  easel_memory_clipboard_set_other_bytes (clipboard, "image/png", png);
+  /* A pencil stroke held. */
+  use_pencil (win);
+
+  shape_press_move (win, 1, 3, 3, 6, 6);
+  g_assert_true (easel_canvas_is_stroking (canvas));
+  {
+    g_autofree char *held = clipboard_sensitivity (win);
+
+    g_assert_cmpstr (held, ==, "0 0 0 0 0");
+  }
+  shape_release (win, 1);
+  {
+    g_autofree char *after = clipboard_sensitivity (win);
+    g_assert_cmpstr (after, ==, "0 0 1 0 1");
+  }
+  /* A rectangle dragged out, a move, a stretch. */
+  use_select (win);
+  shape_press_move (win, 1, 1, 1, 5, 4);
+  {
+    g_autofree char *held = clipboard_sensitivity (win);
+
+    g_assert_cmpstr (held, ==, "0 0 0 0 0");
+  }
+  shape_release (win, 1);
+  shape_press_move (win, 1, 3, 2, 8, 2);
+  {
+    g_autofree char *held = clipboard_sensitivity (win);
+
+    g_assert_cmpstr (held, ==, "0 0 0 0 0");
+  }
+  shape_release (win, 1);
+  sel_handle_center (canvas, EASEL_SEL_HANDLE_R, &x, &y);
+  easel_canvas_press (canvas, 1, x, y);
+  easel_canvas_motion (canvas, x + 3, y);
+  {
+    g_autofree char *held = clipboard_sensitivity (win);
+
+    g_assert_cmpstr (held, ==, "0 0 0 0 0");
+  }
+  easel_canvas_release (canvas, 1);
+  {
+    g_autofree char *after = clipboard_sensitivity (win);
+
+    g_assert_cmpstr (after, ==, "1 1 1 1 1");
+  }
+  close_windows ();
+}
+
+/* An asynchronous call's result, kept for the caller that waits for it. */
+static void
+store_result (GObject *source, GAsyncResult *result, gpointer data)
+{
+  *(GAsyncResult **) data = g_object_ref (result);
+}
+
+static gsize clipboard_png_size;       /* the bytes of the PNG clipboard_png read last */
+
+/* The picture the clipboard holds as another app reads it: its PNG, read through the clipboard and opened as a file's would be. */
+static EaselImage *
+clipboard_png (EaselClipboard *clipboard)
+{
+  g_autoptr (GInputStream) stream = NULL;
+  g_autoptr (GOutputStream) sink = g_memory_output_stream_new_resizable ();
+  g_autoptr (GBytes) bytes = NULL;
+  GAsyncResult *result = NULL;
+  const char *mime = NULL;
+  EaselImage *img = NULL;
+  int w, h;
+
+  easel_clipboard_read_async (clipboard, (const char *[]) { "image/png", NULL }, NULL, store_result, &result);
+  while (result == NULL)
+    g_main_context_iteration (NULL, TRUE);
+  stream = easel_clipboard_read_finish (clipboard, result, &mime, NULL);
+  g_clear_object (&result);
+  g_assert_nonnull (stream);
+  g_assert_cmpstr (mime, ==, "image/png");
+  /* Read as another app would, without blocking this main loop, which writes the content. */
+  g_output_stream_splice_async (sink, stream, G_OUTPUT_STREAM_SPLICE_CLOSE_SOURCE | G_OUTPUT_STREAM_SPLICE_CLOSE_TARGET,
+                                G_PRIORITY_DEFAULT, NULL, store_result, &result);
+  while (result == NULL)
+    g_main_context_iteration (NULL, TRUE);
+  g_assert_cmpint (g_output_stream_splice_finish (sink, result, NULL), >, 0);
+  g_object_unref (result);
+  bytes = g_memory_output_stream_steal_as_bytes (G_MEMORY_OUTPUT_STREAM (sink));
+  clipboard_png_size = g_bytes_get_size (bytes);
+  g_assert_cmpint (easel_picture_open_bytes (bytes, &img, &w, &h), ==, EASEL_OPEN_OK);
+  return img;
+}
+
+/* The picture the window's own content holds (the own path of a paste: no PNG). */
+static const EaselImage *
+clipboard_own (EaselClipboard *clipboard)
+{
+  GdkContentProvider *content = easel_clipboard_get_content (clipboard);
+
+  g_assert_true (easel_clipboard_is_local (clipboard));
+  g_assert_true (EASEL_IS_CLIPBOARD_PICTURE (content));
+  return easel_clipboard_picture_get_image (EASEL_CLIPBOARD_PICTURE (content));
+}
+
+/* img is w x h and its pixel (i, j) is want (i, j). */
+static void
+assert_copy (const EaselImage *img, int w, int h, uint32_t (*want) (int i, int j))
+{
+  g_assert_nonnull (img);
+  g_assert_cmpint (img->width, ==, w);
+  g_assert_cmpint (img->height, ==, h);
+  for (int j = 0; j < h; j++)
+    for (int i = 0; i < w; i++)
+      g_assert_cmphex (easel_image_get (img, i, j), ==, want (i, j));
+}
+
+/* The copy of (1, 1) to (5, 4) of the red block's picture (yellow, red at its columns 1 to 3 of its rows 1 and 2). */
+static uint32_t
+want_marked (int i, int j)
+{
+  return i >= 1 && i <= 3 && j >= 1 && j <= 2 ? 0xFFFF0000u : YELLOW;
+}
+
+/* The copy of the triangle: its shape i + j <= 4 from the red block's picture at (1, 1), the rest fully transparent. */
+static uint32_t
+want_triangle (int i, int j)
+{
+  return i + j > 4 ? 0x00000000u : (i + 1 >= 2 && i + 1 <= 4 && j + 1 >= 2 && j + 1 <= 3 ? 0xFFFF0000u : YELLOW);
+}
+
+/* AS-2 (REQ-0016-03): Copy puts the selection's copy on the clipboard, read back exactly by Easel's own path and by another app's (PNG);
+   the picture, the selection and the history unchanged; the copy is a snapshot (a Delete after it does not change it); a floating
+   triangle's copy is its box with the other pixels fully transparent. */
+static void
+as2_copy (void)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  EaselClipboard *clipboard = EASEL_CLIPBOARD (memory_clipboard (win));
+  const EaselImage *img = easel_window_get_picture (win);
+  g_autoptr (EaselImage) start = NULL, png = NULL;
+  int x, y, w, h;
+  gboolean floating;
+
+  use_select (win);
+  start = paint_red_block (win);
+  easel_canvas_set_colors (canvas, 0xFF000000u, CYAN);
+  shape_press_move (win, 1, 1, 1, 5, 4);
+  shape_release (win, 1);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "copy", NULL);
+  assert_copy (clipboard_own (clipboard), 5, 4, want_marked);
+  png = clipboard_png (clipboard);
+  assert_copy (png, 5, 4, want_marked);
+  g_assert_true (selection_is (win, 1, 1, 5, 4));
+  g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  g_assert_false (floating);
+  assert_same_picture (img, start);
+  g_assert_false (action_enabled (win, "undo"));
+  g_assert_false (easel_window_get_modified (win));
+  /* A snapshot: Delete clears the area, the copy keeps the red. */
+  g_assert_true (key_taken (win, GDK_KEY_Delete, 0));
+  assert_copy (clipboard_own (clipboard), 5, 4, want_marked);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  assert_same_picture (img, start);
+  /* The triangle floating at (11, 4): 5 x 5, the 10 pixels outside its shape fully transparent, by both paths. */
+  use_free_select (win);
+  mark_triangle (win);
+  shape_press_move (win, 1, 2, 2, 12, 5);
+  shape_release (win, 1);
+  g_assert_true (selection_is (win, 11, 4, 5, 5));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "copy", NULL);
+  assert_copy (clipboard_own (clipboard), 5, 5, want_triangle);
+  g_clear_pointer (&png, easel_image_free);
+  png = clipboard_png (clipboard);
+  for (int j = 0; j < 5; j++)
+    for (int i = 0; i < 5; i++)
+      if (i + j <= 4)
+        g_assert_cmphex (easel_image_get (png, i, j), ==, want_triangle (i, j));
+      else
+        g_assert_cmphex (easel_image_get (png, i, j) >> 24, ==, 0);
+  g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  g_assert_true (floating);
+  close_windows ();
+}
+
+/* M1 of 0016 (JOD, 2026-10-25): a copy whose PNG is bigger than a pipe holds (64 KiB) reaches another app whole. Select All of a noisy
+   picture (its PNG is far over 64 KiB), Copy, read it back through the PNG path as another app reads it: the same pixels, every one. The
+   provider had written only what the pipe took at once and reported success, so other apps got a PNG cut off at 65536 bytes. */
+static void
+as2_copy_big (void)
+{
+  EaselWindow *win = start_window ();
+  EaselMemoryClipboard *clipboard = memory_clipboard (win);
+  EaselImage *img = (EaselImage *) easel_window_get_picture (win);
+  g_autoptr (EaselImage) back = NULL;
+  guint32 seed = 7;
+
+  for (int y = 0; y < img->height; y++)
+    for (int x = 0; x < img->width; x++)
+      {
+        seed = seed * 1103515245u + 12345u;
+        easel_image_set (img, x, y, 0xFF000000u | (seed >> 8));
+      }
+  easel_canvas_update (easel_window_get_canvas (win));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "select-all", NULL);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "copy", NULL);
+  back = clipboard_png (EASEL_CLIPBOARD (clipboard));
+  {
+    /* Made fast (JS Paint gave up waiting for the default encoding of a big picture): the bytes another app reads are those of the fast
+       encoding, not the default one. */
+    g_autoptr (GBytes) fast = easel_picture_encode_fast_png (img, NULL);
+
+    g_assert_cmpuint (clipboard_png_size, ==, g_bytes_get_size (fast));
+  }
+  g_assert_cmpint (back->width, ==, img->width);
+  g_assert_cmpint (back->height, ==, img->height);
+  g_assert_cmpmem (back->px, (gsize) back->width * back->height * 4, img->px, (gsize) img->width * img->height * 4);
+  close_windows ();
+}
+
+/* AS-3 (REQ-0016-04): Cut copies the selection and clears it as Clear Selection does: Opaque, the area takes the background; one undo
+   step, Undo restores it and the clipboard keeps the copy; Transparent, the area becomes #00000000; with no memory for the clear's
+   step, "Could Not Clear the Selection", the clipboard holds the copy and the selection is as it was. */
+static void
+as3_cut (void)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  EaselClipboard *clipboard = EASEL_CLIPBOARD (memory_clipboard (win));
+  const EaselImage *img = easel_window_get_picture (win);
+  g_autoptr (EaselImage) start = NULL;
+
+  use_select (win);
+  start = paint_red_block (win);
+  easel_canvas_set_colors (canvas, 0xFF000000u, CYAN);
+  for (int transparent = 0; transparent < 2; transparent++)
+    {
+      if (transparent)
+        g_signal_emit_by_name (find_mapped_by_tooltip (GTK_WIDGET (win), "Transparent: moving or clearing leaves a transparent hole"), "clicked");
+      shape_press_move (win, 1, 1, 1, 5, 4);
+      shape_release (win, 1);
+      g_action_group_activate_action (G_ACTION_GROUP (win), "cut", NULL);
+      assert_copy (clipboard_own (clipboard), 5, 4, want_marked);
+      for (int yy = 1; yy <= 4; yy++)
+        for (int xx = 1; xx <= 5; xx++)
+          g_assert_cmphex (easel_image_get (img, xx, yy), ==, transparent ? 0x00000000u : CYAN);
+      g_assert_cmpint (differing_pixels (img, start), ==, 20);
+      g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+      assert_same_picture (img, start);
+      g_assert_false (action_enabled (win, "undo"));
+      assert_copy (clipboard_own (clipboard), 5, 4, want_marked);
+    }
+  /* The clear refused: the copy made, the selection as it was. */
+  easel_memory_clipboard_set_other_text (EASEL_MEMORY_CLIPBOARD (clipboard), "something else");
+  shape_press_move (win, 1, 1, 1, 5, 4);
+  shape_release (win, 1);
+  easel_canvas_set_selection_step_limit (canvas, 100);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "cut", NULL);
+  assert_alert (win, "Could Not Clear the Selection", "There is not enough memory to clear this selection.");
+  easel_canvas_set_selection_step_limit (canvas, SIZE_MAX);
+  assert_copy (clipboard_own (clipboard), 5, 4, want_marked);
+  g_assert_true (selection_is (win, 1, 1, 5, 4));
+  assert_same_picture (img, start);
+  close_windows ();
+}
+
+/* Another app copies a w x h picture of one color (as PNG). */
+static void
+other_copies (EaselMemoryClipboard *clipboard, int w, int h, uint32_t color)
+{
+  EaselImage *img = easel_image_new (w, h, color);
+  g_autoptr (GBytes) png = NULL;
+
+  g_assert_nonnull (img);
+  png = easel_picture_encode (img, EASEL_FORMAT_PNG, 90, NULL);
+  easel_image_free (img);
+  g_assert_nonnull (png);
+  easel_memory_clipboard_set_other_bytes (clipboard, "image/png", png);
+}
+
+/* The oversize prompt (REQ-0016-13), or NULL. */
+static AdwAlertDialog *
+paste_prompt (EaselWindow *win)
+{
+  AdwAlertDialog *dialog;
+
+  wait_for_dialogs (win, 1);
+  dialog = open_alert (win);
+  if (dialog != NULL && g_strcmp0 (adw_alert_dialog_get_heading (dialog), "Pasted Picture Is Larger Than the Canvas") != 0)
+    return NULL;
+  return dialog;
+}
+
+/* AS-7 (REQ-0016-07): a paste wider or taller than the picture asks first, nothing put down yet; Fit makes it as large as fits with its
+   ratio kept, at (0, 0); Resize grows the picture to the larger of each side, the new area in the window's background color (yellow in
+   the test settings; easel_canvas_set_colors sets only the canvas's, for the holes), and pastes at
+   (0, 0); Undo while it floats gives the old size and every pixel back with no step and the redo step kept; after the put-down one Undo
+   does; Cancel changes nothing (a floating selection stays floating, a pending curve pending); the view scrolls to (0, 0), the zoom
+   kept; a paste of the picture's size asks nothing, one pixel wider asks. */
+static void
+as7_oversize_paste (void)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  EaselMemoryClipboard *clipboard = memory_clipboard (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  g_autoptr (EaselImage) start = NULL;
+  View view;
+  int x, y, w, h;
+  gboolean floating;
+
+  use_select (win);
+  start = paint_red_block (win);
+  easel_canvas_set_colors (canvas, 0xFF000000u, CYAN);
+  /* 310 x 220 on 300 x 200: the prompt first, nothing changed yet; Fit: 282 x 200 (310 x 200 / 220 = 281.8). */
+  other_copies (clipboard, 310, 220, 0xFF0000FFu);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "paste", NULL);
+  g_assert_nonnull (paste_prompt (win));
+  g_assert_false (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  assert_same_picture (img, start);
+  respond (win, "fit");
+  g_assert_true (selection_is (win, 0, 0, 282, 200));
+  g_assert_cmpint (img->width, ==, 300);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  assert_same_picture (img, start);
+  /* Resize: the picture 310 x 220, the paste at (0, 0); Undo while it floats: 300 x 200, every pixel, no step. */
+  shape_press_move (win, 1, 1, 1, 5, 4);
+  shape_release (win, 1);
+  g_assert_true (key_taken (win, GDK_KEY_Delete, 0));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);          /* a redo step to keep */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "paste", NULL);
+  respond (win, "resize");
+  g_assert_cmpint (img->width, ==, 310);
+  g_assert_cmpint (img->height, ==, 220);
+  g_assert_cmpstr (easel_status_bar_get_text (easel_window_get_status_bar (win), EASEL_STATUS_SIZE), ==, "310 × 220 px");
+  g_assert_true (selection_is (win, 0, 0, 310, 220));
+  g_assert_false (easel_window_get_modified (win));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_cmpint (img->width, ==, 300);
+  assert_same_picture (img, start);
+  g_assert_true (action_enabled (win, "redo"));
+  g_assert_false (action_enabled (win, "undo"));
+  g_assert_cmpstr (easel_status_bar_get_text (easel_window_get_status_bar (win), EASEL_STATUS_SIZE), ==, "300 × 200 px");
+  /* Wider only, 320 x 100: Resize gives 320 x 200, the new strip below the paste cyan after the put-down; one Undo gives back all. */
+  other_copies (clipboard, 320, 100, 0xFF0000FFu);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "paste", NULL);
+  respond (win, "resize");
+  g_assert_cmpint (img->width, ==, 320);
+  g_assert_cmpint (img->height, ==, 200);
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+  g_assert_cmphex (easel_image_get (img, 310, 150), ==, YELLOW);            /* the window's background (the test settings') */
+  g_assert_cmphex (easel_image_get (img, 310, 50), ==, 0xFF0000FFu);
+  g_assert_cmphex (easel_image_get (img, 100, 150), ==, YELLOW);
+  g_assert_true (easel_window_get_modified (win));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_cmpint (img->width, ==, 300);
+  assert_same_picture (img, start);
+  /* Taller only, 100 x 300: the prompt; Resize gives 300 x 300 (the picture grows downwards only), Fit 67 x 200 (100 x 200 / 300). */
+  other_copies (clipboard, 100, 300, 0xFF0000FFu);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "paste", NULL);
+  respond (win, "resize");
+  g_assert_cmpint (img->width, ==, 300);
+  g_assert_cmpint (img->height, ==, 300);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_cmpint (img->height, ==, 200);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "paste", NULL);
+  respond (win, "fit");
+  g_assert_true (selection_is (win, 0, 0, 67, 200));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  other_copies (clipboard, 320, 100, 0xFF0000FFu);
+  /* Fit of 320 x 100: 300 x 94 (100 x 300 / 320 = 93.75). */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "paste", NULL);
+  respond (win, "fit");
+  g_assert_true (selection_is (win, 0, 0, 300, 94));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  /* Cancel: a floating selection stays floating; then a pending curve stays pending. */
+  shape_press_move (win, 1, 1, 1, 5, 4);
+  shape_release (win, 1);
+  shape_press_move (win, 1, 3, 2, 8, 2);
+  shape_release (win, 1);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "paste", NULL);
+  respond (win, "cancel");
+  g_assert_true (selection_is (win, 6, 1, 5, 4));
+  g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  g_assert_true (floating);
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  assert_same_picture (img, start);
+  use_tool (win, "curve");
+  shape_press_move (win, 1, 20, 20, 40, 20);
+  shape_release (win, 1);
+  g_assert_true (easel_canvas_is_pending (canvas));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "paste", NULL);
+  respond (win, "cancel");
+  g_assert_true (easel_canvas_is_pending (canvas));
+  g_assert_cmpint (easel_window_get_tool (win), ==, EASEL_TOOL_CURVE);
+  assert_same_picture (img, start);
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));                                /* the curve dropped */
+  /* The view scrolled away at 800 %: after Fit the picture's top-left corner is in view, still at 800 %. */
+  use_select (win);
+  zoom_in_to (win, 800);
+  view = view_of (win);
+  gtk_adjustment_set_value (view.h, gtk_adjustment_get_upper (view.h));
+  gtk_adjustment_set_value (view.v, gtk_adjustment_get_upper (view.v));
+  wait_for_layout (win);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "paste", NULL);
+  respond (win, "fit");
+  wait_for_layout (win);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 800);
+  g_assert_cmpfloat (gtk_adjustment_get_value (view.h), ==, gtk_adjustment_get_lower (view.h));
+  g_assert_cmpfloat (gtk_adjustment_get_value (view.v), ==, gtk_adjustment_get_lower (view.v));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  /* The picture's size asks nothing; one pixel wider asks. */
+  other_copies (clipboard, 300, 200, 0xFF0000FFu);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "paste", NULL);
+  g_assert_null (open_alert (win));
+  g_assert_true (selection_is (win, 0, 0, 300, 200));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  other_copies (clipboard, 301, 200, 0xFF0000FFu);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "paste", NULL);
+  g_assert_nonnull (paste_prompt (win));
+  respond (win, "cancel");
+  assert_same_picture (img, start);
+  close_windows ();
+}
+
+/* AS-12 (REQ-0016-13): the prompt's heading, body and buttons (Resize Canvas to Picture suggested and the default, Fit Picture to
+   Canvas, Cancel; Esc and closing are Cancel); a window resize leaves it open; a quit request closes it as Cancel and the quit goes on. */
+static void
+as12_oversize_prompt (void)
+{
+  EaselWindow *win = start_window ();
+  EaselMemoryClipboard *clipboard = memory_clipboard (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  AdwAlertDialog *dialog;
+  g_autoptr (EaselImage) start = NULL;
+
+  use_select (win);
+  start = paint_red_block (win);
+  other_copies (clipboard, 310, 220, 0xFF0000FFu);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "paste", NULL);
+  dialog = paste_prompt (win);
+  g_assert_nonnull (dialog);
+  g_assert_cmpstr (adw_alert_dialog_get_body (dialog), ==, "The picture is 310 × 220 pixels; the canvas is 300 × 200.");
+  g_assert_cmpstr (adw_alert_dialog_get_response_label (dialog, "resize"), ==, "_Resize Canvas to Picture");
+  g_assert_cmpstr (adw_alert_dialog_get_response_label (dialog, "fit"), ==, "_Fit Picture to Canvas");
+  g_assert_cmpstr (adw_alert_dialog_get_response_label (dialog, "cancel"), ==, "_Cancel");
+  g_assert_cmpint (adw_alert_dialog_get_response_appearance (dialog, "resize"), ==, ADW_RESPONSE_SUGGESTED);
+  g_assert_cmpstr (adw_alert_dialog_get_default_response (dialog), ==, "resize");
+  g_assert_cmpstr (adw_alert_dialog_get_close_response (dialog), ==, "cancel");
+  /* A window resize leaves it open. */
+  gtk_window_set_default_size (GTK_WINDOW (win), 900, 700);
+  wait_for_layout (win);
+  g_assert_true (open_alert (win) == dialog);
+  /* A quit request closes it as Cancel (libadwaita closes an open dialog as its close response, as for the New and Open prompts,
+     REQ-0005-02): nothing is pasted or changed, the window stays; a second quit request quits. */
+  gtk_window_close (GTK_WINDOW (win));
+  wait_for_dialogs (win, 0);
+  g_assert_null (open_alert (win));
+  g_assert_cmpuint (g_list_length (gtk_application_get_windows (app)), ==, 1);
+  assert_same_picture (img, start);
+  g_assert_false (easel_canvas_is_pending (easel_window_get_canvas (win)));
+  g_assert_false (action_enabled (win, "undo"));
+  gtk_window_close (GTK_WINDOW (win));
+  g_assert_null (gtk_application_get_windows (app));
+  (void) img;
+  close_windows ();
+}
+
+/* AS-15 (REQ-0016-05, -07): a paste that grew the picture, then Delete: the growth stays, no pasted pixel, one undo step; Undo gives
+   back the old size and every pixel; with a Ctrl copy of the paste left before the Delete, the copy is in the picture too. */
+static void
+as15_clear_grown_paste (void)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  EaselMemoryClipboard *clipboard = memory_clipboard (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  g_autoptr (EaselImage) start = NULL;
+
+  use_select (win);
+  start = paint_red_block (win);
+  easel_canvas_set_colors (canvas, 0xFF000000u, CYAN);
+  other_copies (clipboard, 310, 220, 0xFF0000FFu);
+  for (int ctrl = 0; ctrl < 2; ctrl++)
+    {
+      g_action_group_activate_action (G_ACTION_GROUP (win), "paste", NULL);
+      respond (win, "resize");
+      if (ctrl)
+        {
+          modifier_keys (win, GDK_CONTROL_MASK);
+          shape_press_move (win, 1, 5, 5, 7, 5);
+          shape_release (win, 1);
+          modifier_keys (win, 0);
+          g_assert_true (selection_is (win, 2, 0, 310, 220));
+        }
+      g_assert_true (key_taken (win, GDK_KEY_Delete, 0));
+      g_assert_cmpint (img->width, ==, 310);
+      g_assert_cmpint (img->height, ==, 220);
+      g_assert_cmphex (easel_image_get (img, 3, 2), ==, ctrl ? 0xFF0000FFu : 0xFFFF0000u);
+      g_assert_cmphex (easel_image_get (img, 305, 210), ==, ctrl ? 0xFF0000FFu : YELLOW);      /* the window's background */
+      g_assert_cmphex (easel_image_get (img, 100, 100), ==, ctrl ? 0xFF0000FFu : YELLOW);
+      g_assert_true (action_enabled (win, "undo"));
+      g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+      g_assert_cmpint (img->width, ==, 300);
+      assert_same_picture (img, start);
+      g_assert_false (action_enabled (win, "undo"));
+    }
+  close_windows ();
+}
+
+/* The name of the window's own cursor, "" when it has none (the tool's shows). */
+static const char *
+window_cursor_name (EaselWindow *win)
+{
+  GdkCursor *cursor = gtk_widget_get_cursor (GTK_WIDGET (win));
+
+  return cursor != NULL ? gdk_cursor_get_name (cursor) : "";
+}
+
+/* What the window shows while it waits for the clipboard (REQ-0016-15), checked from a timer that runs inside the wait. */
+typedef struct
+{
+  EaselWindow *win;
+  gboolean ran;
+  gboolean busy_cursor;
+  gboolean input_blocked_taken;   /* a key was taken or a quit request closed the window while it waited: should stay FALSE */
+  gboolean window_still_open;
+  gboolean undo_changed;
+  gboolean quit;                  /* send a quit request during the wait */
+} WaitProbe;
+
+static gboolean
+probe_during_wait (gpointer data)
+{
+  WaitProbe *p = data;
+  p->ran = TRUE;
+  p->busy_cursor = g_strcmp0 (window_cursor_name (p->win), "wait") == 0;
+  /* Keys and the shortcuts that would act are not handled while it waits. */
+  p->input_blocked_taken = key_taken (p->win, GDK_KEY_Delete, 0) || key_taken (p->win, GDK_KEY_a, GDK_CONTROL_MASK);
+  g_action_group_activate_action (G_ACTION_GROUP (p->win), "select-all", NULL);
+  g_action_group_activate_action (G_ACTION_GROUP (p->win), "paste", NULL);
+  if (p->quit)
+    gtk_window_close (GTK_WINDOW (p->win));
+  p->window_still_open = gtk_application_get_windows (app) != NULL;
+  g_assert_true (p->window_still_open);             /* the quit waits for the read: a window destroyed here would be used after it */
+  p->undo_changed = action_enabled (p->win, "undo");
+  return G_SOURCE_REMOVE;
+}
+
+/* AS-14 (REQ-0016-15): the window waits on the spot for the clipboard, with the busy cursor, and nothing acts meanwhile (keys, Select All,
+   another Paste, a quit request); an owner that never answers: after the limit "Could Not Paste" with "The clipboard's picture cannot
+   be read." and nothing changed; a quit request during the wait is handled after it (the window closes); three quick Ctrl+V paste once
+   per press, one after the other. */
+static void
+as14_clipboard_wait (void)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  EaselMemoryClipboard *clipboard = memory_clipboard (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  g_autoptr (EaselImage) start = NULL;
+  WaitProbe probe = { win };
+  int x, y, w, h;
+  gboolean floating;
+
+  use_select (win);
+  start = paint_red_block (win);
+  easel_window_set_clipboard_timeout (win, 400);
+  other_copies (clipboard, 3, 2, 0xFF0000FFu);
+  easel_memory_clipboard_set_never_answers (clipboard, TRUE);
+  g_timeout_add (100, probe_during_wait, &probe);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "paste", NULL);
+  g_assert_true (probe.ran);
+  g_assert_true (probe.busy_cursor);
+  g_assert_false (probe.input_blocked_taken);
+  g_assert_true (probe.window_still_open);
+  g_assert_false (probe.undo_changed);
+  assert_alert (win, "Could Not Paste", "The clipboard's picture cannot be read.");
+  g_assert_false (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  assert_same_picture (img, start);
+  g_assert_false (action_enabled (win, "undo"));
+  g_assert_cmpstr (window_cursor_name (win), !=, "wait");
+  /* Input is taken again: a rectangle can be marked. */
+  shape_press_move (win, 1, 1, 1, 5, 4);
+  shape_release (win, 1);
+  g_assert_true (selection_is (win, 1, 1, 5, 4));
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+  /* The owner answers again: the paste works (the limit left nothing stuck). */
+  easel_memory_clipboard_set_never_answers (clipboard, FALSE);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "paste", NULL);
+  g_assert_true (selection_is (win, 0, 0, 3, 2));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  /* Three quick pastes of different pictures: each is put down by the next; the third floats; three steps in all. */
+  for (int k = 0; k < 3; k++)
+    {
+      other_copies (clipboard, 3, 2, 0xFF000000u | (uint32_t) (60 * (k + 1)));
+      g_action_group_activate_action (G_ACTION_GROUP (win), "paste", NULL);
+    }
+  g_assert_true (selection_is (win, 0, 0, 3, 2));
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+  g_assert_cmphex (easel_image_get (img, 0, 0), ==, 0xFF0000B4u);                     /* the third picture's color (60 x 3) */
+  for (int k = 0; k < 3; k++)
+    {
+      g_assert_true (action_enabled (win, "undo"));
+      g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+    }
+  g_assert_false (action_enabled (win, "undo"));
+  assert_same_picture (img, start);
+  /* A quit request during the wait is handled after it: the window closes once the read has failed. */
+  easel_memory_clipboard_set_never_answers (clipboard, TRUE);
+  probe = (WaitProbe) { win, .quit = TRUE };
+  g_timeout_add (100, probe_during_wait, &probe);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "paste", NULL);
+  g_assert_true (probe.ran);
+  g_assert_true (probe.window_still_open);
+  for (int i = 0; i < 50 && gtk_application_get_windows (app) != NULL; i++)
+    g_main_context_iteration (NULL, FALSE);
+  g_assert_null (gtk_application_get_windows (app));
+}
+
+/* Check F1 of 0016 (REQ-0016-15, 2026-10-26): a read that times out is cancelled, and its callback may come after the wait has given up,
+   from the main loop (as a cancelled splice from a pipe does). The late callback must touch nothing the wait has left: the window gives
+   up, shows "Could Not Paste", and the read's task, with the clipboard it holds, is let go once the callback has come. A reference kept
+   by the callback (the result stored where the wait had been) leaves the clipboard alive when the window has closed. First with an
+   owner that answers, to show the clipboard goes away when nothing leaks. */
+static void
+as14_late_callback_after_timeout (void)
+{
+  for (int late = 0; late < 2; late++)
+    {
+      EaselWindow *win = start_window ();
+      EaselMemoryClipboard *clipboard = memory_clipboard (win);
+      gpointer weak = clipboard;
+
+      g_object_add_weak_pointer (G_OBJECT (clipboard), &weak);
+      other_copies (clipboard, 3, 2, 0xFF0000FFu);
+      if (late)
+        {
+          easel_window_set_clipboard_timeout (win, 300);
+          easel_memory_clipboard_set_never_answers (clipboard, TRUE);
+          easel_memory_clipboard_set_late_cancel (clipboard, TRUE);
+        }
+      g_action_group_activate_action (G_ACTION_GROUP (win), "paste", NULL);
+      if (late)
+        assert_alert (win, "Could Not Paste", "The clipboard's picture cannot be read.");
+      else
+        g_assert_true (selection_is (win, 0, 0, 3, 2));
+      for (int i = 0; i < 20; i++)                                   /* the late callback comes now */
+        g_main_context_iteration (NULL, FALSE);
+      close_windows ();
+      for (int i = 0; i < 20 && weak != NULL; i++)
+        g_main_context_iteration (NULL, FALSE);
+      g_assert_cmpint (late * 10 + (weak != NULL), ==, late * 10);   /* tens: which run; units: the clipboard still alive */
+    }
+}
+
+/* Check F1 of 0016 for the store at quit (Plan, "Clipboard store at quit"): a clipboard manager that never answers is given up after
+   2 seconds and the quit goes on; its callback, come later, keeps nothing (the clipboard goes away). */
+static void
+store_at_quit_late_callback (void)
+{
+  EaselWindow *win = start_window ();
+  EaselMemoryClipboard *clipboard = memory_clipboard (win);
+  gpointer weak = clipboard;
+  gint64 start;
+
+  g_object_add_weak_pointer (G_OBJECT (clipboard), &weak);
+  use_select (win);
+  paint_red_block (win);
+  shape_press_move (win, 1, 1, 1, 5, 4);
+  shape_release (win, 1);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "copy", NULL);
+  g_assert_true (easel_clipboard_is_local (EASEL_CLIPBOARD (clipboard)));
+  easel_memory_clipboard_set_store_hangs (clipboard, TRUE);
+  easel_memory_clipboard_set_late_cancel (clipboard, TRUE);
+  start = g_get_monotonic_time ();
+  gtk_window_close (GTK_WINDOW (win));
+  for (int i = 0; i < 100 && gtk_application_get_windows (app) != NULL; i++)
+    g_main_context_iteration (NULL, FALSE);
+  g_assert_null (gtk_application_get_windows (app));
+  g_assert_cmpint (g_get_monotonic_time () - start, >=, 2 * G_USEC_PER_SEC);              /* it waited for the manager */
+  g_assert_cmpint (g_get_monotonic_time () - start, <, 3 * G_USEC_PER_SEC);
+  for (int i = 0; i < 20 && weak != NULL; i++)
+    g_main_context_iteration (NULL, FALSE);
+  g_assert_null (weak);
+}
+
+/* Check F2 of 0016 (REQ-0016-15, JOD 2026-10-26): a quit request during a read that then succeeds: the picture that arrives is dropped
+   and nothing is pasted; an unmodified picture: the window closes; a modified one: the window asks to save, the picture as it was, no
+   selection, no new step. */
+static void
+as14_quit_during_read_that_succeeds (void)
+{
+  for (int modified = 1; modified >= 0; modified--)          /* the modified case first: a paste under the prompt fails an assertion */
+    {
+      EaselWindow *win = start_window ();
+      EaselCanvas *canvas = easel_window_get_canvas (win);
+      EaselMemoryClipboard *clipboard = memory_clipboard (win);
+      WaitProbe probe = { win, .quit = TRUE };
+      g_autoptr (EaselImage) start = NULL;
+      int x, y, w, h;
+      gboolean floating;
+
+      if (modified)
+        {
+          const EaselImage *img = easel_window_get_picture (win);
+
+          /* One step: a red block, a rectangle over it cleared with Delete; the picture as it is then is what must stay. */
+          use_select (win);
+          paint_red_block (win);
+          shape_press_move (win, 1, 1, 1, 5, 4);
+          shape_release (win, 1);
+          g_assert_true (key_taken (win, GDK_KEY_Delete, 0));
+          g_assert_true (easel_window_get_modified (win));
+          start = easel_image_new (img->width, img->height, 0);
+          g_assert_nonnull (start);
+          memcpy (start->px, img->px, (size_t) img->width * (size_t) img->height * sizeof *img->px);
+        }
+      other_copies (clipboard, 3, 2, 0xFF0000FFu);
+      easel_memory_clipboard_set_answer_delay (clipboard, 300);              /* answers after the quit request (100 ms) */
+      g_timeout_add (100, probe_during_wait, &probe);
+      g_action_group_activate_action (G_ACTION_GROUP (win), "paste", NULL);
+      g_assert_true (probe.ran);
+      g_assert_true (probe.window_still_open);
+      if (!modified)
+        {
+          for (int i = 0; i < 50 && gtk_application_get_windows (app) != NULL; i++)
+            g_main_context_iteration (NULL, FALSE);
+          g_assert_null (gtk_application_get_windows (app));
+          continue;
+        }
+      wait_for_dialogs (win, 1);
+      g_assert_nonnull (open_alert (win));                                     /* the quit asks to save */
+      g_assert_false (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+      assert_same_picture (easel_window_get_picture (win), start);
+      respond (win, "cancel");                                                /* the window stays */
+      g_assert_true (action_enabled (win, "undo"));
+      g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);   /* one step only: the Delete, no paste */
+      g_assert_false (action_enabled (win, "undo"));
+      gtk_window_close (GTK_WINDOW (win));                                    /* unmodified again (the undo): it closes */
+      for (int i = 0; i < 50 && gtk_application_get_windows (app) != NULL; i++)
+        g_main_context_iteration (NULL, FALSE);
+      g_assert_null (gtk_application_get_windows (app));
+    }
+}
+
+/* The clipboard part of AS-8 (REQ-0016-10, -15): through the seam, a copied PNG file pastes (3 x 2 at (0, 0)); a copied text file gives
+   "Could Not Paste “n.txt”" with "This is not a picture the app can open."; a copied file that is gone, "The file cannot be read."; a
+   picture and a file offered together: the picture; a 10001 x 1 picture "Could Not Paste" with the 10000 body; bytes that are no
+   picture, the not-a-picture body; nothing changes with an error. */
+static void
+as8_paste_from_and_files (void)
+{
+  g_autofree char *dir = g_dir_make_tmp ("easel-ui-XXXXXX", NULL);
+  g_autofree char *png_path = g_build_filename (dir, "a.png", NULL);
+  g_autofree char *txt_path = g_build_filename (dir, "n.txt", NULL);
+  g_autofree char *gone_path = g_build_filename (dir, "gone.png", NULL);
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  EaselMemoryClipboard *clipboard = memory_clipboard (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  g_autoptr (EaselImage) start = NULL, file_png = easel_image_new (3, 2, 0xFF00FF00u), wide = easel_image_new (10001, 1, 0xFF0000FFu);
+  g_autoptr (GBytes) wide_png = easel_picture_encode (wide, EASEL_FORMAT_PNG, 90, NULL), small = small_png ();
+  g_autoptr (GdkContentProvider) both = NULL;
+  g_autoptr (GBytes) garbage = g_bytes_new_static ("this is not a picture", 21);
+  const char *png_files[] = { png_path, NULL }, *txt_files[] = { txt_path, NULL }, *gone_files[] = { gone_path, NULL };
+  int x, y, w, h;
+  gboolean floating;
+
+  use_select (win);
+  start = paint_red_block (win);
+  g_assert_true (easel_picture_save (file_png, png_path, EASEL_FORMAT_PNG, 90, NULL));
+  g_assert_true (g_file_set_contents (txt_path, "hello", -1, NULL));
+  /* A copied PNG file. */
+  easel_memory_clipboard_set_other_files (clipboard, png_files);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "paste", NULL);
+  g_assert_true (selection_is (win, 0, 0, 3, 2));
+  g_assert_false (easel_window_get_modified (win));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  assert_same_picture (img, start);
+  /* A copied text file, and a copied file that is gone. */
+  easel_memory_clipboard_set_other_files (clipboard, txt_files);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "paste", NULL);
+  assert_alert (win, "Could Not Paste “n.txt”", "This is not a picture the app can open.");
+  g_assert_false (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  easel_memory_clipboard_set_other_files (clipboard, gone_files);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "paste", NULL);
+  assert_alert (win, "Could Not Paste “gone.png”", "The file cannot be read.");
+  /* Two copied files: the first of the list is read (a text file second, a PNG first, and the other way round). */
+  {
+    const char *two[] = { png_path, txt_path, NULL }, *two_reversed[] = { txt_path, png_path, NULL };
+
+    easel_memory_clipboard_set_other_files (clipboard, two);
+    g_action_group_activate_action (G_ACTION_GROUP (win), "paste", NULL);
+    g_assert_null (open_alert (win));
+    g_assert_true (selection_is (win, 0, 0, 3, 2));
+    g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+    easel_memory_clipboard_set_other_files (clipboard, two_reversed);
+    g_action_group_activate_action (G_ACTION_GROUP (win), "paste", NULL);
+    assert_alert (win, "Could Not Paste “n.txt”", "This is not a picture the app can open.");
+  }
+  /* A picture and a file offered together: the picture wins. */
+  {
+    g_autoptr (GdkContentProvider) png = gdk_content_provider_new_for_bytes ("image/png", small);
+    GSList *list = g_slist_append (NULL, g_file_new_for_path (txt_path));
+    g_autoptr (GdkContentProvider) files = gdk_content_provider_new_typed (GDK_TYPE_FILE_LIST, list);
+    GdkContentProvider *both_list[] = { g_object_ref (png), g_object_ref (files) };       /* the union takes them */
+
+    both = gdk_content_provider_new_union (both_list, 2);
+    g_slist_free_full (list, g_object_unref);
+  }
+  easel_memory_clipboard_set_other (clipboard, both);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "paste", NULL);
+  g_assert_null (open_alert (win));
+  g_assert_true (selection_is (win, 0, 0, 2, 2));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  /* 10001 x 1, and bytes that are no picture. */
+  easel_memory_clipboard_set_other_bytes (clipboard, "image/png", wide_png);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "paste", NULL);
+  assert_alert (win, "Could Not Paste", "The picture is bigger than 10000 pixels in width or height.");
+  easel_memory_clipboard_set_other_bytes (clipboard, "image/png", garbage);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "paste", NULL);
+  assert_alert (win, "Could Not Paste", "This is not a picture the app can open.");
+  g_assert_false (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  assert_same_picture (img, start);
+  g_assert_false (action_enabled (win, "undo"));
+  close_windows ();
+}
+
+/* AS-8 (REQ-0016-08), the dialog part: Paste From… shows a file dialog titled "Paste From" and puts nothing down, removes nothing and
+   applies nothing before a file is chosen; Cancel (Esc) changes nothing, a floating selection staying floating; a quit request does
+   nothing while it is open; a chosen file is read as Open reads it and pasted: 3 x 2 at (0, 0), the picture's file and title unchanged;
+   a text file named a.png gives "Could Not Paste “a.png”" with "This is not a picture the app can open." and changes nothing; a picture
+   wider than the picture asks first. */
+static void
+as8_paste_from_dialog (void)
+{
+  g_autofree char *dir = g_dir_make_tmp ("easel-ui-XXXXXX", NULL);
+  g_autofree char *png_path = g_build_filename (dir, "three.png", NULL);
+  g_autofree char *text_path = g_build_filename (dir, "a.png", NULL);
+  g_autofree char *big_path = g_build_filename (dir, "big.png", NULL);
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  g_autoptr (EaselImage) start = NULL, small = easel_image_new (3, 2, 0xFF00FF00u), big = easel_image_new (310, 220, 0xFF0000FFu);
+  g_autoptr (GFile) png_file = g_file_new_for_path (png_path), text_file = g_file_new_for_path (text_path);
+  g_autoptr (GFile) big_file = g_file_new_for_path (big_path);
+  g_autofree char *title = NULL;
+  GtkWindow *chooser;
+  int x, y, w, h;
+  gboolean floating;
+
+  use_select (win);
+  start = paint_red_block (win);
+  g_assert_true (easel_picture_save (small, png_path, EASEL_FORMAT_PNG, 90, NULL));
+  g_assert_true (g_file_set_contents (text_path, "not a picture", -1, NULL));
+  g_assert_true (easel_picture_save (big, big_path, EASEL_FORMAT_PNG, 90, NULL));
+  title = g_strdup (gtk_window_get_title (GTK_WINDOW (win)));
+  /* The dialog with a floating selection: nothing is put down before a file is chosen; Cancel leaves it floating. */
+  shape_press_move (win, 1, 1, 1, 5, 4);
+  shape_release (win, 1);
+  shape_press_move (win, 1, 3, 2, 13, 5);
+  shape_release (win, 1);
+  g_assert_true (selection_is (win, 11, 4, 5, 4));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "paste-from", NULL);
+  wait_for_layout (win);
+  for (gint64 deadline = g_get_monotonic_time () + 3 * G_USEC_PER_SEC; other_toplevel (win) == NULL && g_get_monotonic_time () < deadline;)
+    g_main_context_iteration (NULL, FALSE);
+  chooser = other_toplevel (win);
+  g_assert_nonnull (chooser);
+  g_assert_cmpstr (gtk_window_get_title (chooser), ==, "Paste From");
+  g_assert_true (selection_is (win, 11, 4, 5, 4));
+  g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  g_assert_true (floating);
+  assert_same_picture (img, start);
+  /* A quit request does nothing while it is open. */
+  gtk_window_close (GTK_WINDOW (win));
+  wait_for_layout (win);
+  g_assert_true (gtk_widget_get_visible (GTK_WIDGET (win)));
+  g_assert_nonnull (other_toplevel (win));
+  gtk_window_close (other_toplevel (win));               /* Esc: cancelled */
+  wait_for_layout (win);
+  g_assert_null (other_toplevel (win));
+  g_assert_true (selection_is (win, 11, 4, 5, 4));
+  g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  g_assert_true (floating);
+  assert_same_picture (img, start);
+  g_assert_cmpstr (gtk_window_get_title (GTK_WINDOW (win)), ==, title);                 /* after the cancelled dialog: exactly as it was */
+  /* A file chosen in the dialog itself: the floating selection is put down (a step, so the title gets the modified mark), then the
+     file floats at (0, 0); the picture keeps its name. */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "paste-from", NULL);
+  for (gint64 deadline = g_get_monotonic_time () + 3 * G_USEC_PER_SEC; other_toplevel (win) == NULL && g_get_monotonic_time () < deadline;)
+    g_main_context_iteration (NULL, FALSE);
+  chooser = other_toplevel (win);
+  g_assert_nonnull (chooser);
+  g_assert_true (GTK_IS_FILE_CHOOSER (chooser));
+  /* The in-process chooser GtkFileDialog shows (GDK_DEBUG=no-portals) has only this deprecated interface to drive it: its folder
+     first, a moment for it to be read, then the file. */
+  {
+    g_autoptr (GFile) folder = g_file_new_for_path (dir);
+
+    G_GNUC_BEGIN_IGNORE_DEPRECATIONS
+    g_assert_true (gtk_file_chooser_set_current_folder (GTK_FILE_CHOOSER (chooser), folder, NULL));
+    for (gint64 deadline = g_get_monotonic_time () + 1500000; g_get_monotonic_time () < deadline;)
+      g_main_context_iteration (NULL, FALSE);
+    g_assert_true (gtk_file_chooser_set_file (GTK_FILE_CHOOSER (chooser), png_file, NULL));
+    G_GNUC_END_IGNORE_DEPRECATIONS
+    for (gint64 deadline = g_get_monotonic_time () + 1500000; g_get_monotonic_time () < deadline;)
+      g_main_context_iteration (NULL, FALSE);
+  }
+  g_signal_emit_by_name (chooser, "response", GTK_RESPONSE_ACCEPT);
+  wait_for_layout (win);
+  g_assert_true (selection_is (win, 0, 0, 3, 2));
+  g_assert_true (g_str_has_suffix (gtk_window_get_title (GTK_WINDOW (win)), "Untitled – Easel"));
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+  g_assert_cmphex (easel_image_get (img, 0, 0), ==, 0xFF00FF00u);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);               /* the paste */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);               /* the move */
+  assert_same_picture (img, start);
+  g_assert_false (action_enabled (win, "undo"));
+  /* A text file named a.png: the dialog with the name, nothing changed. */
+  easel_window_paste_from_file (win, text_file);
+  assert_alert (win, "Could Not Paste “a.png”", "This is not a picture the app can open.");
+  g_assert_false (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  assert_same_picture (img, start);
+  /* A picture bigger than the picture: the prompt first. */
+  easel_window_paste_from_file (win, big_file);
+  g_assert_nonnull (paste_prompt (win));
+  respond (win, "cancel");
+  assert_same_picture (img, start);
+  g_assert_cmpstr (gtk_window_get_title (GTK_WINDOW (win)), ==, title);
+  close_windows ();
+}
+
+/* AS-9 (REQ-0016-09, -12): Copy To… shows a save dialog titled "Copy To" (Cancel changes nothing and writes nothing); the chosen file
+   gets the selection's copy as Save As writes a picture: t.png is 5 x 5 with the triangle's 15 pixels and 10 transparent ones, t.jpg
+   flattened on white; a name with no extension gets .png and an existing file asks "Replace “t.png”?" (Cancel keeps it, Replace
+   writes); a .gif is "Cannot Save This Kind of File"; into a folder that cannot be written "Could Not Save “t.png”" and nothing else
+   changes; the picture, its file, title, modified mark, history and the selection (marked or floating) are as they were. */
+static void
+as9_copy_to (void)
+{
+  g_autofree char *dir = g_dir_make_tmp ("easel-ui-XXXXXX", NULL);
+  g_autofree char *locked = g_build_filename (dir, "locked", NULL);
+  g_autofree char *png = g_build_filename (dir, "t.png", NULL), *jpg = g_build_filename (dir, "t.jpg", NULL);
+  g_autofree char *bare = g_build_filename (dir, "t", NULL), *gif = g_build_filename (dir, "t.gif", NULL);
+  g_autofree char *in_locked = g_build_filename (locked, "t.png", NULL);
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  g_autoptr (EaselImage) start = NULL, back = NULL;
+  g_autofree char *title = NULL;
+  GtkWindow *chooser;
+  int x, y, w, h, fw, fh;
+  gboolean floating;
+
+  use_free_select (win);
+  start = paint_red_block (win);
+  easel_canvas_set_colors (canvas, 0xFF000000u, CYAN);
+  title = g_strdup (gtk_window_get_title (GTK_WINDOW (win)));
+  g_assert_cmpint (g_mkdir (locked, 0700), ==, 0);
+  mark_triangle (win);
+  /* The dialog; Cancel changes nothing and writes nothing. */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "copy-to", NULL);
+  for (gint64 deadline = g_get_monotonic_time () + 3 * G_USEC_PER_SEC; other_toplevel (win) == NULL && g_get_monotonic_time () < deadline;)
+    g_main_context_iteration (NULL, FALSE);
+  chooser = other_toplevel (win);
+  g_assert_nonnull (chooser);
+  g_assert_cmpstr (gtk_window_get_title (chooser), ==, "Copy To");
+  /* Cancelled after a moment: closing a chooser that is still reading its folder makes GTK show an error of its own. */
+  for (gint64 deadline = g_get_monotonic_time () + 1500000; g_get_monotonic_time () < deadline;)
+    g_main_context_iteration (NULL, FALSE);
+  gtk_window_close (chooser);
+  wait_for_layout (win);
+  for (gint64 deadline = g_get_monotonic_time () + 3 * G_USEC_PER_SEC; other_toplevel (win) != NULL && g_get_monotonic_time () < deadline;)
+    g_main_context_iteration (NULL, FALSE);
+  g_assert_null (other_toplevel (win));
+  g_assert_false (g_file_test (png, G_FILE_TEST_EXISTS));
+  g_assert_true (selection_is (win, 1, 1, 5, 5));
+  /* t.png: the copy with its transparency. */
+  easel_window_copy_to_chosen (win, png);
+  {
+    EaselImage *file = NULL;
+
+    g_assert_cmpint (easel_picture_open (png, &file, &fw, &fh), ==, EASEL_OPEN_OK);
+    g_assert_cmpint (fw, ==, 5);
+    g_assert_cmpint (fh, ==, 5);
+    for (int j = 0; j < 5; j++)
+      for (int i = 0; i < 5; i++)
+        {
+          if (i + j <= 4)
+            g_assert_cmphex (easel_image_get (file, i, j), ==, want_triangle (i, j));
+          else
+            g_assert_cmphex (easel_image_get (file, i, j) >> 24, ==, 0);
+        }
+    easel_image_free (file);
+  }
+  g_assert_cmpstr (gtk_window_get_title (GTK_WINDOW (win)), ==, title);
+  g_assert_false (easel_window_get_modified (win));
+  g_assert_false (action_enabled (win, "undo"));
+  g_assert_true (selection_is (win, 1, 1, 5, 5));
+  assert_same_picture (img, start);
+  /* t.jpg: flattened on white, the 10 outside pixels white. */
+  easel_window_copy_to_chosen (win, jpg);
+  {
+    EaselImage *file = NULL;
+
+    g_assert_cmpint (easel_picture_open (jpg, &file, &fw, &fh), ==, EASEL_OPEN_OK);
+    for (int j = 0; j < 5; j++)
+      for (int i = 0; i < 5; i++)
+        {
+          g_assert_cmphex (easel_image_get (file, i, j) >> 24, ==, 0xFF);
+          if (i + j > 4)
+            g_assert_cmphex (easel_image_get (file, i, j) & 0x00F0F0F0u, ==, 0x00F0F0F0u);
+        }
+    easel_image_free (file);
+  }
+  /* No extension: .png added, and the existing t.png asks; Cancel keeps it, Replace writes (the floating selection, a different copy). */
+  shape_press_move (win, 1, 2, 2, 12, 5);
+  shape_release (win, 1);
+  g_assert_true (selection_is (win, 11, 4, 5, 5));
+  g_assert_true (g_file_set_contents (png, "old", -1, NULL));
+  easel_window_copy_to_chosen (win, bare);
+  wait_for_dialogs (win, 1);
+  g_assert_nonnull (open_alert (win));
+  g_assert_cmpstr (adw_alert_dialog_get_heading (open_alert (win)), ==, "Replace “t.png”?");
+  respond (win, "cancel");
+  wait_for_layout (win);
+  {
+    g_autofree char *kept = NULL;
+
+    g_assert_true (g_file_get_contents (png, &kept, NULL, NULL));
+    g_assert_cmpstr (kept, ==, "old");
+  }
+  easel_window_copy_to_chosen (win, bare);
+  wait_for_dialogs (win, 1);
+  respond (win, "replace");
+  wait_for_layout (win);                                   /* the answer reaches the write on the next iteration */
+  {
+    EaselImage *file = NULL;
+
+    g_assert_cmpint (easel_picture_open (png, &file, &fw, &fh), ==, EASEL_OPEN_OK);        /* the copy replaced the old bytes */
+    easel_image_free (file);
+  }
+  g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  g_assert_true (floating);                                    /* the floating selection stays floating */
+  g_assert_true (selection_is (win, 11, 4, 5, 5));
+  /* A .gif cannot be written; a folder that cannot be written is a save error. */
+  easel_window_copy_to_chosen (win, gif);
+  assert_alert (win, "Cannot Save This Kind of File", "Pictures can be saved as PNG, JPEG, BMP, TIFF or WebP.");
+  g_assert_false (g_file_test (gif, G_FILE_TEST_EXISTS));
+  g_assert_cmpint (g_chmod (locked, 0500), ==, 0);
+  easel_window_copy_to_chosen (win, in_locked);
+  wait_for_dialogs (win, 1);
+  g_assert_nonnull (open_alert (win));
+  g_assert_cmpstr (adw_alert_dialog_get_heading (open_alert (win)), ==, "Could Not Save “t.png”");
+  adw_dialog_close (ADW_DIALOG (open_alert (win)));
+  wait_for_dialogs (win, 0);
+  g_assert_cmpint (g_chmod (locked, 0700), ==, 0);
+  g_assert_false (g_file_test (in_locked, G_FILE_TEST_EXISTS));
+  g_assert_cmpstr (gtk_window_get_title (GTK_WINDOW (win)), ==, title);
+  g_assert_false (easel_window_get_modified (win));
+  g_assert_true (selection_is (win, 11, 4, 5, 5));              /* (Undo is there while a selection floats: REQ-0013-12) */
+  assert_same_picture (img, start);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);              /* forgets the float: no step to undo after it */
+  g_assert_false (action_enabled (win, "undo"));
+  assert_same_picture (img, start);
+  /* A modified picture stays modified (not saved by Copy To…), and its title keeps the mark. */
+  use_pencil (win);
+  A_STROKE (win);
+  g_assert_true (easel_window_get_modified (win));
+  use_select (win);
+  shape_press_move (win, 1, 1, 1, 5, 4);
+  shape_release (win, 1);
+  easel_window_copy_to_chosen (win, png);
+  g_assert_true (easel_window_get_modified (win));
+  g_assert_true (g_str_has_prefix (gtk_window_get_title (GTK_WINDOW (win)), "• "));
+  close_windows ();
+}
+
+#define COPY_HEADING "Could Not Copy the Selection"
+#define COPY_BODY "There is not enough memory to copy this selection."
+#define PASTE_BODY "There is not enough memory to paste this picture."
+
+/* AS-10 (REQ-0016-11): without the memory for the copy of the selection, Copy, Cut and Copy To… show "Could Not Copy the Selection" and
+   leave the clipboard, the picture and the selection as they were (Cut clears nothing, Copy To… writes nothing); without the memory for
+   a paste, its fitted size or the picture's growth, "Could Not Paste" with the memory body and nothing changed (the tool, a floating
+   selection too); a put-down that cannot get the step's memory after a growth gives the picture back as before, its size too. */
+static void
+as10_clipboard_memory (void)
+{
+  g_autofree char *dir = g_dir_make_tmp ("easel-ui-XXXXXX", NULL);
+  g_autofree char *file = g_build_filename (dir, "c.png", NULL);
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  EaselMemoryClipboard *clipboard = memory_clipboard (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  g_autoptr (EaselImage) start = NULL;
+  int x, y, w, h;
+  gboolean floating;
+
+  use_select (win);
+  start = paint_red_block (win);
+  easel_canvas_set_colors (canvas, 0xFF000000u, CYAN);
+  /* Copy, Cut and Copy To…: 5 x 4 is 80 bytes. */
+  easel_memory_clipboard_set_other_text (clipboard, "what it held");
+  shape_press_move (win, 1, 1, 1, 5, 4);
+  shape_release (win, 1);
+  easel_canvas_set_selection_lift_limit (canvas, 79);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "copy", NULL);
+  assert_alert (win, COPY_HEADING, COPY_BODY);
+  g_assert_false (easel_clipboard_is_local (EASEL_CLIPBOARD (clipboard)));               /* the clipboard still holds what it held */
+  g_assert_true (selection_is (win, 1, 1, 5, 4));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "cut", NULL);
+  assert_alert (win, COPY_HEADING, COPY_BODY);
+  g_assert_false (easel_clipboard_is_local (EASEL_CLIPBOARD (clipboard)));
+  g_assert_true (selection_is (win, 1, 1, 5, 4));
+  assert_same_picture (img, start);                                                     /* nothing cleared */
+  g_assert_false (action_enabled (win, "undo"));
+  easel_window_copy_to_chosen (win, file);
+  assert_alert (win, COPY_HEADING, COPY_BODY);
+  g_assert_false (g_file_test (file, G_FILE_TEST_EXISTS));
+  g_assert_true (selection_is (win, 1, 1, 5, 4));
+  easel_canvas_set_selection_lift_limit (canvas, SIZE_MAX);
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+  /* A paste of 3 x 2 (24 bytes) refused: a floating selection stays floating where it was; with the Pencil the tool stays. */
+  other_copies (clipboard, 3, 2, 0xFF0000FFu);
+  shape_press_move (win, 1, 1, 1, 5, 4);
+  shape_release (win, 1);
+  shape_press_move (win, 1, 3, 2, 13, 5);
+  shape_release (win, 1);
+  easel_canvas_set_selection_lift_limit (canvas, 23);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "paste", NULL);
+  assert_alert (win, "Could Not Paste", PASTE_BODY);
+  g_assert_true (selection_is (win, 11, 4, 5, 4));
+  g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  g_assert_true (floating);
+  g_assert_cmpint (easel_window_get_tool (win), ==, EASEL_TOOL_SELECT);
+  easel_canvas_set_selection_lift_limit (canvas, SIZE_MAX);
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  assert_same_picture (img, start);
+  use_pencil (win);
+  easel_canvas_set_selection_lift_limit (canvas, 23);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "paste", NULL);
+  assert_alert (win, "Could Not Paste", PASTE_BODY);
+  g_assert_cmpint (easel_window_get_tool (win), ==, EASEL_TOOL_PENCIL);
+  easel_canvas_set_selection_lift_limit (canvas, SIZE_MAX);
+  use_select (win);
+  /* Fit: 310 x 220 on 300 x 200 is 282 x 200 = 225600 bytes; refused under it, the Pencil still the tool. */
+  use_pencil (win);
+  other_copies (clipboard, 310, 220, 0xFF0000FFu);
+  easel_canvas_set_selection_lift_limit (canvas, 300000);                               /* the 310 x 220 picture is 272800 */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "paste", NULL);
+  g_assert_nonnull (paste_prompt (win));
+  easel_canvas_set_selection_lift_limit (canvas, 225599);
+  respond (win, "fit");
+  assert_alert (win, "Could Not Paste", PASTE_BODY);
+  g_assert_cmpint (easel_window_get_tool (win), ==, EASEL_TOOL_PENCIL);
+  g_assert_false (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  assert_same_picture (img, start);
+  /* Resize: 310 x 100 on 300 x 200: the paste 124000 bytes fits, the grown picture 310 x 200 = 248000 does not; the Pencil stays the
+     tool (the memory is looked for before the tool changes). */
+  easel_canvas_set_selection_lift_limit (canvas, SIZE_MAX);
+  other_copies (clipboard, 310, 100, 0xFF0000FFu);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "paste", NULL);
+  g_assert_nonnull (paste_prompt (win));
+  easel_canvas_set_selection_lift_limit (canvas, 130000);
+  respond (win, "resize");
+  assert_alert (win, "Could Not Paste", PASTE_BODY);
+  g_assert_cmpint (easel_window_get_tool (win), ==, EASEL_TOOL_PENCIL);
+  use_select (win);
+  g_assert_cmpint (img->width, ==, 300);
+  g_assert_cmpint (img->height, ==, 200);
+  g_assert_false (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  assert_same_picture (img, start);
+  g_assert_false (action_enabled (win, "undo"));
+  /* A put-down that cannot get the step's memory after a growth: the picture as before the paste, its size too, the dialog of 0013. */
+  easel_canvas_set_selection_lift_limit (canvas, SIZE_MAX);
+  other_copies (clipboard, 310, 220, 0xFF0000FFu);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "paste", NULL);
+  respond (win, "resize");
+  g_assert_cmpint (img->width, ==, 310);
+  easel_canvas_set_selection_step_limit (canvas, 100);
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+  assert_alert (win, MOVE_HEADING, MOVE_BODY);
+  easel_canvas_set_selection_step_limit (canvas, SIZE_MAX);
+  g_assert_cmpint (img->width, ==, 300);
+  g_assert_cmpint (img->height, ==, 200);
+  g_assert_false (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  assert_same_picture (img, start);
+  g_assert_false (action_enabled (win, "undo"));
+  close_windows ();
+}
+
+/* The store at quit (Plan, "Clipboard store at quit"): when the window closes and the clipboard holds the window's own copy, the
+   desktop's clipboard manager is asked to keep it, and the quit goes on whatever the answer (none keeps it: the memory clipboard's
+   store fails at once); another app's content is not asked about. */
+static void
+store_at_quit (void)
+{
+  /* 0: another app's content; 1: our copy; 2: our copy and a modified picture (the quit prompt's Discard goes on to the quit). */
+  for (int mode = 0; mode < 3; mode++)
+    {
+      EaselWindow *win = start_window ();
+      EaselMemoryClipboard *clipboard = g_object_ref (memory_clipboard (win));
+      guint ours = mode > 0;
+
+      use_select (win);
+      paint_red_block (win);
+      shape_press_move (win, 1, 1, 1, 5, 4);
+      shape_release (win, 1);
+      if (ours)
+        g_action_group_activate_action (G_ACTION_GROUP (win), "copy", NULL);
+      else
+        easel_memory_clipboard_set_other_text (clipboard, "another app's");
+      if (mode == 2)
+        {
+          g_assert_true (key_taken (win, GDK_KEY_Delete, 0));                 /* a step: the picture is modified */
+          g_assert_true (easel_window_get_modified (win));
+        }
+      g_assert_true (easel_clipboard_is_local (EASEL_CLIPBOARD (clipboard)) == (ours == 1));
+      g_assert_cmpuint (easel_memory_clipboard_get_store_requests (clipboard), ==, 0);
+      gtk_window_close (GTK_WINDOW (win));
+      if (mode == 2)
+        {
+          wait_for_dialogs (win, 1);
+          g_assert_cmpuint (easel_memory_clipboard_get_store_requests (clipboard), ==, 0);       /* not yet: the prompt is asking */
+          g_assert_nonnull (open_alert (win));
+          g_signal_emit_by_name (open_alert (win), "response", "discard");     /* the quit destroys the window and its prompt */
+        }
+      for (int i = 0; i < 100 && gtk_application_get_windows (app) != NULL; i++)
+        g_main_context_iteration (NULL, FALSE);
+      g_assert_null (gtk_application_get_windows (app));
+      g_assert_cmpuint (easel_memory_clipboard_get_store_requests (clipboard), ==, ours);
+      g_object_unref (clipboard);
+    }
+}
+
+/* AS-4 (REQ-0016-05, -06): Ctrl+V with the Pencil: Select becomes the tool and the copy floats at (0, 0), "5 x 4" in the status bar, the
+   picture unchanged; dragged by (10, 5) and put down: 6 pixels changed, one step; the triangle's copy pasted and put down at once: 4
+   pixels changed, the red ones under its transparent pixels stay red; a paste is a rectangle (its outline the 5 x 5 box). */
+static void
+as4_paste_and_put_down (void)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  EaselMemoryClipboard *clipboard = memory_clipboard (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  EaselStatusBar *bar = easel_window_get_status_bar (win);
+  g_autoptr (EaselImage) start = NULL;
+  int x, y, w, h;
+  gboolean floating;
+
+  use_select (win);
+  start = paint_red_block (win);
+  easel_canvas_set_colors (canvas, 0xFF000000u, CYAN);
+  shape_press_move (win, 1, 1, 1, 5, 4);
+  shape_release (win, 1);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "copy", NULL);
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+  use_pencil (win);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "paste", NULL);
+  g_assert_cmpint (easel_window_get_tool (win), ==, EASEL_TOOL_SELECT);
+  g_assert_true (selection_is (win, 0, 0, 5, 4));
+  g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  g_assert_true (floating);
+  g_assert_cmpstr (easel_status_bar_get_text (bar, EASEL_STATUS_SELECTION), ==, "5 × 4");
+  assert_same_picture (img, start);
+  g_assert_null (easel_canvas_get_selection_mask (canvas, &w, &h));                     /* a rectangle */
+  shape_press_move (win, 1, 1, 1, 11, 6);
+  shape_release (win, 1);
+  g_assert_true (selection_is (win, 10, 5, 5, 4));
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+  g_assert_cmpint (differing_pixels (img, start), ==, 6);
+  for (int yy = 6; yy <= 7; yy++)
+    for (int xx = 11; xx <= 13; xx++)
+      g_assert_cmphex (easel_image_get (img, xx, yy), ==, 0xFFFF0000u);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  assert_same_picture (img, start);
+  g_assert_false (action_enabled (win, "undo"));
+  /* The triangle: copied, pasted and put down at (0, 0) at once. */
+  use_free_select (win);
+  mark_triangle (win);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "copy", NULL);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "paste", NULL);
+  g_assert_true (selection_is (win, 0, 0, 5, 5));
+  g_assert_null (easel_canvas_get_selection_mask (canvas, &w, &h));
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+  g_assert_cmpint (differing_pixels (img, start), ==, 4);
+  g_assert_cmphex (easel_image_get (img, 1, 1), ==, 0xFFFF0000u);
+  g_assert_cmphex (easel_image_get (img, 2, 1), ==, 0xFFFF0000u);
+  g_assert_cmphex (easel_image_get (img, 3, 1), ==, 0xFFFF0000u);
+  g_assert_cmphex (easel_image_get (img, 1, 2), ==, 0xFFFF0000u);
+  g_assert_cmphex (easel_image_get (img, 3, 3), ==, 0xFFFF0000u);
+  g_assert_cmphex (easel_image_get (img, 4, 3), ==, 0xFFFF0000u);
+  (void) clipboard;
+  close_windows ();
+}
+
+/* AS-5 (REQ-0016-05): scrolled (at 800 %, as the test window shows all of the picture at 400 %), a paste lands at the top-left picture
+   pixel in view and is drawn there; at 100 % unscrolled at (0, 0); a paste that runs past the picture's right and bottom edges floats
+   there and only its part inside is put down. */
+static void
+as5_paste_top_left_in_view (void)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  EaselMemoryClipboard *clipboard = memory_clipboard (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  g_autoptr (EaselImage) start = NULL;
+  g_autofree uint32_t *px = NULL;
+  View view;
+  int w, h, cx, cy, tx, ty;
+
+  use_select (win);
+  start = paint_red_block (win);
+  /* At 100 %, not scrolled: (0, 0). */
+  other_copies (clipboard, 3, 2, 0xFF0000FFu);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "paste", NULL);
+  g_assert_true (selection_is (win, 0, 0, 3, 2));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  /* At 800 %, scrolled to the far corner: the picture pixel under the view's top-left point (partly shown). */
+  zoom_in_to (win, 800);
+  view = view_of (win);
+  gtk_adjustment_set_value (view.h, gtk_adjustment_get_upper (view.h));
+  gtk_adjustment_set_value (view.v, gtk_adjustment_get_upper (view.v));
+  wait_for_layout (win);
+  tx = (int) floor (view_to_canvas (view.h, 0) / 8);
+  ty = (int) floor (view_to_canvas (view.v, 0) / 8);
+  g_assert_cmpint (tx, >, 0);
+  g_assert_cmpint (ty, >, 0);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "paste", NULL);
+  g_assert_true (selection_is (win, tx, ty, 3, 2));
+  easel_canvas_set_guides_hidden (canvas, TRUE);
+  wait_for_next_frame (win);
+  px = render_pixels (win, &w, &h, &cx, &cy);
+  g_assert_cmphex (px[(gsize) (cy + (ty + 1) * 8 + 4) * w + cx + (tx + 2) * 8 + 4], ==, 0xFF0000FFu);    /* drawn where it floats */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  assert_same_picture (img, start);
+  /* 250 x 180 from the same view: no prompt (smaller than 300 x 200), past the right and bottom edges, only its part inside put down. */
+  other_copies (clipboard, 250, 180, 0xFF0000FFu);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "paste", NULL);
+  g_assert_true (selection_is (win, tx, ty, 250, 180));
+  g_assert_cmpint (tx + 250, >, 300);
+  g_assert_cmpint (ty + 180, >, 200);
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+  g_assert_cmpint (differing_pixels (img, start), ==, (300 - tx) * (200 - ty));
+  g_assert_cmphex (easel_image_get (img, 299, 199), ==, 0xFF0000FFu);
+  g_assert_cmphex (easel_image_get (img, tx - 1, ty - 1), ==, YELLOW);
+  close_windows ();
+}
+
+/* AS-6 (REQ-0016-05): Undo while a paste floats removes it, no step added, the redo step kept; Ctrl+V puts a floating selection down
+   first (one step), and a floating paste too (a step of its own); with a curve pending Ctrl+V applies it (one step) and Select is the
+   tool; a paste put down where it changes no pixel adds no step. */
+static void
+as6_paste_undo_and_order (void)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  EaselMemoryClipboard *clipboard = memory_clipboard (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  g_autoptr (EaselImage) start = NULL;
+  int x, y, w, h;
+  gboolean floating;
+
+  use_select (win);
+  start = paint_red_block (win);
+  easel_canvas_set_colors (canvas, 0xFF000000u, CYAN);
+  other_copies (clipboard, 3, 2, 0xFF0000FFu);
+  /* A step undone: a redo step to keep. */
+  shape_press_move (win, 1, 1, 1, 5, 4);
+  shape_release (win, 1);
+  g_assert_true (key_taken (win, GDK_KEY_Delete, 0));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_true (action_enabled (win, "redo"));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "paste", NULL);
+  g_assert_true (selection_is (win, 0, 0, 3, 2));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_false (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  assert_same_picture (img, start);
+  g_assert_true (action_enabled (win, "redo"));
+  g_assert_false (action_enabled (win, "undo"));
+  /* A floating selection moved by (3, 0), then Ctrl+V: put down first (one step), then the paste floats. */
+  shape_press_move (win, 1, 1, 1, 5, 4);
+  shape_release (win, 1);
+  shape_press_move (win, 1, 3, 2, 6, 2);
+  shape_release (win, 1);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "paste", NULL);
+  g_assert_true (selection_is (win, 0, 0, 3, 2));
+  g_assert_true (action_enabled (win, "undo"));
+  /* Ctrl+V again: the first paste is put down at (0, 0) as a step of its own, the second floats. */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "paste", NULL);
+  g_assert_cmphex (easel_image_get (img, 0, 0), ==, 0xFF0000FFu);
+  g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  g_assert_true (floating);
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);   /* the second paste */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);   /* the first */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);   /* the move */
+  assert_same_picture (img, start);
+  g_assert_false (action_enabled (win, "undo"));
+  /* A curve pending: Ctrl+V applies it (one step), Select is the tool. */
+  use_tool (win, "curve");
+  shape_press_move (win, 1, 20, 20, 40, 20);
+  shape_release (win, 1);
+  g_assert_true (easel_canvas_is_pending (canvas));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "paste", NULL);
+  g_assert_cmpint (easel_window_get_tool (win), ==, EASEL_TOOL_SELECT);
+  g_assert_true (selection_is (win, 0, 0, 3, 2));
+  g_assert_cmphex (easel_image_get (img, 30, 20), ==, 0xFF000000u);       /* the curve, a straight line here */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);   /* the paste, floating */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);   /* the curve */
+  assert_same_picture (img, start);
+  /* A paste put down where its pixels already are: no step. The copy of (1, 1) to (5, 4) pasted, moved by (1, 1) to where it came
+     from, Esc. */
+  use_select (win);
+  shape_press_move (win, 1, 1, 1, 5, 4);
+  shape_release (win, 1);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "copy", NULL);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "paste", NULL);
+  shape_press_move (win, 1, 1, 1, 2, 2);
+  shape_release (win, 1);
+  g_assert_true (selection_is (win, 1, 1, 5, 4));
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+  assert_same_picture (img, start);
+  g_assert_false (action_enabled (win, "undo"));
+  close_windows ();
+}
+
+/* Whether the canvas menu is open. */
+static gboolean
+canvas_menu_shown (EaselWindow *win)
+{
+  return gtk_widget_get_visible (GTK_WIDGET (easel_window_get_canvas_menu (win)));
+}
+
+/* A secondary click at the picture pixel (x, y), and the menus closed again after it if they opened. */
+static gboolean
+secondary_click_opens_canvas_menu (EaselWindow *win, int x, int y)
+{
+  gboolean shown;
+
+  shape_press_move (win, 3, x, y, x, y);
+  shape_release (win, 3);
+  shown = canvas_menu_shown (win);
+  g_assert_false (gtk_widget_get_visible (GTK_WIDGET (easel_window_get_selection_menu (win))));
+  if (shown)
+    {
+      gtk_popover_popdown (GTK_POPOVER (easel_window_get_canvas_menu (win)));
+      wait_for_layout (win);
+    }
+  return shown;
+}
+
+/* AS-13 (REQ-0016-14): with Select or Free-Form Select, a secondary press in the canvas area not on the selection and not on a handle
+   opens the canvas menu at the pointer: Paste, Paste From…, Select All; Zoom In, Zoom Out, Normal Size, each sensitive as its
+   counterpart; it puts nothing down; not on a selection handle, a picture handle, or during a held primary drag. */
+static void
+as13_canvas_menu (void)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  GtkPopoverMenu *menu = easel_window_get_canvas_menu (win);
+  GMenuModel *model;
+  g_autofree char *s0 = NULL, *s1 = NULL;
+  graphene_rect_t r;
+  double x, y;
+  int sx, sy, sw, sh;
+  gboolean floating;
+
+  g_assert_nonnull (menu);
+  model = gtk_popover_menu_get_menu_model (menu);
+  g_assert_cmpint (g_menu_model_get_n_items (model), ==, 2);
+  s0 = describe_section (model, 0);
+  s1 = describe_section (model, 1);
+  g_assert_cmpstr (s0, ==, "_Paste|win.paste; Paste _From…|win.paste-from; Select _All|win.select-all");
+  g_assert_cmpstr (s1, ==, "Zoom _In|win.zoom-in; Zoom _Out|win.zoom-out; _Normal Size|win.zoom-normal");
+  g_assert_true (has_accel ("win.zoom-normal", GDK_KEY_Page_Up, GDK_CONTROL_MASK));
+  /* No selection, Select: the menu at (15, 8); Normal Size insensitive at 100 %. */
+  use_select (win);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 100);
+  g_assert_false (action_enabled (win, "zoom-normal"));
+  g_assert_true (secondary_click_opens_canvas_menu (win, 15, 8));
+  /* Marked: the same; the selection stays. */
+  shape_press_move (win, 1, 1, 1, 5, 4);
+  shape_release (win, 1);
+  g_assert_true (secondary_click_opens_canvas_menu (win, 15, 8));
+  g_assert_true (selection_is (win, 1, 1, 5, 4));
+  /* On the selection: its own menu, not the canvas menu. */
+  shape_press_move (win, 3, 3, 2, 3, 2);
+  shape_release (win, 3);
+  g_assert_true (gtk_widget_get_visible (GTK_WIDGET (easel_window_get_selection_menu (win))));
+  g_assert_false (canvas_menu_shown (win));
+  gtk_popover_popdown (GTK_POPOVER (easel_window_get_selection_menu (win)));
+  wait_for_layout (win);
+  /* On a selection handle and on a picture handle: no menu. */
+  sel_handle_center (canvas, EASEL_SEL_HANDLE_R, &x, &y);
+  easel_canvas_press (canvas, 3, x, y);
+  easel_canvas_release (canvas, 3);
+  g_assert_false (canvas_menu_shown (win));
+  g_assert_true (easel_canvas_get_handle_rect (canvas, EASEL_HANDLE_CORNER, &r));
+  easel_canvas_press (canvas, 3, r.origin.x + 2.5, r.origin.y + 2.5);
+  easel_canvas_release (canvas, 3);
+  g_assert_false (canvas_menu_shown (win));
+  g_assert_true (selection_is (win, 1, 1, 5, 4));
+  /* Floating (moved by (1, 5) to (2, 6)): the menu opens and closing it leaves the selection floating where it was. */
+  shape_press_move (win, 1, 3, 2, 4, 7);
+  shape_release (win, 1);
+  g_assert_true (selection_is (win, 2, 6, 5, 4));
+  shape_press_move (win, 3, 15, 8, 15, 8);
+  shape_release (win, 3);
+  g_assert_true (canvas_menu_shown (win));
+  /* While it is open the window takes none of the menu's keys: Esc closes the menu, it does not put the selection down. */
+  {
+    static const guint keys[] = { GDK_KEY_Right, GDK_KEY_Escape, GDK_KEY_Return, GDK_KEY_Delete };
+
+    for (guint k = 0; k < G_N_ELEMENTS (keys); k++)
+      g_assert_false (key_taken (win, keys[k], 0));
+  }
+  gtk_popover_popdown (GTK_POPOVER (menu));
+  wait_for_layout (win);
+  g_assert_true (easel_canvas_get_selection (canvas, &sx, &sy, &sw, &sh, &floating));
+  g_assert_true (floating);
+  g_assert_true (selection_is (win, 2, 6, 5, 4));
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+  /* During a held primary drag (a rectangle dragged out): the secondary press cancels it, no menu. */
+  shape_press_move (win, 1, 40, 40, 50, 50);
+  shape_press_move (win, 3, 50, 50, 50, 50);
+  g_assert_false (canvas_menu_shown (win));
+  shape_release (win, 3);
+  shape_release (win, 1);
+  g_assert_false (canvas_menu_shown (win));
+  /* At 800 % Zoom In is insensitive. */
+  zoom_in_to (win, 800);
+  g_assert_false (action_enabled (win, "zoom-in"));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-normal", NULL);
+  wait_for_layout (win);
+  /* Free-Form Select: the triangle's box outside its shape (5, 5) opens the canvas menu. */
+  use_free_select (win);
+  mark_triangle (win);
+  g_assert_true (secondary_click_opens_canvas_menu (win, 5, 5));
+  g_assert_true (selection_is (win, 1, 1, 5, 5));
   close_windows ();
 }
 
@@ -17517,6 +19221,27 @@ main (int argc, char **argv)
   g_test_add_func ("/0015/as1_handle_cursors", as1_handle_cursors);
   g_test_add_func ("/0015/as8_selection_handle_wins", as8_selection_handle_wins);
   g_test_add_func ("/0015/as2_stretch_right", as2_stretch_right);
+  g_test_add_func ("/0016/as1_clipboard_menus", as1_clipboard_menus);
+  g_test_add_func ("/0016/as11_ignored_during_drags", as11_ignored_during_drags);
+  g_test_add_func ("/0016/as13_canvas_menu", as13_canvas_menu);
+  g_test_add_func ("/0016/as2_copy", as2_copy);
+  g_test_add_func ("/0016/as2_copy_big", as2_copy_big);
+  g_test_add_func ("/0016/as3_cut", as3_cut);
+  g_test_add_func ("/0016/as4_paste_and_put_down", as4_paste_and_put_down);
+  g_test_add_func ("/0016/as5_paste_top_left_in_view", as5_paste_top_left_in_view);
+  g_test_add_func ("/0016/as6_paste_undo_and_order", as6_paste_undo_and_order);
+  g_test_add_func ("/0016/as7_oversize_paste", as7_oversize_paste);
+  g_test_add_func ("/0016/as12_oversize_prompt", as12_oversize_prompt);
+  g_test_add_func ("/0016/as15_clear_grown_paste", as15_clear_grown_paste);
+  g_test_add_func ("/0016/as14_clipboard_wait", as14_clipboard_wait);
+  g_test_add_func ("/0016/as8_paste_from_and_files", as8_paste_from_and_files);
+  g_test_add_func ("/0016/as8_paste_from_dialog", as8_paste_from_dialog);
+  g_test_add_func ("/0016/as9_copy_to", as9_copy_to);
+  g_test_add_func ("/0016/as10_clipboard_memory", as10_clipboard_memory);
+  g_test_add_func ("/0016/store_at_quit", store_at_quit);
+  g_test_add_func ("/0016/as14_late_callback_after_timeout", as14_late_callback_after_timeout);
+  g_test_add_func ("/0016/store_at_quit_late_callback", store_at_quit_late_callback);
+  g_test_add_func ("/0016/as14_quit_during_read_that_succeeds", as14_quit_during_read_that_succeeds);
   g_test_add_func ("/0015/as6_ctrl_stretch", as6_ctrl_stretch);
   g_test_add_func ("/0015/as11_copies_and_stretch", as11_copies_and_stretch);
   g_test_add_func ("/0015/as2_zoom_changes_during_stretch", as2_zoom_changes_during_stretch);

@@ -55,6 +55,7 @@ typedef struct
   uint8_t *fill;                   /* a lazily stretched image: per 256 x 256 block of it, 1 once made; NULL when whole */
   int fill_cols, fill_rows;
   size_t made_px, kept_px;         /* the pixels of the current image made so far, and those of them in the shape */
+  bool skip_clear;                 /* a paste (0016): its fully transparent pixels are neither laid nor put down, nor its copies' */
 } EaselFloat;
 
 typedef enum
@@ -69,6 +70,27 @@ typedef enum
    hole. NO_MEMORY, with f empty, if its w x h x 4 bytes (and the mask's w x h) exceed max_bytes or cannot be had. */
 EaselSelectionResult easel_selection_lift (EaselFloat *f, const EaselImage *img, int x, int y, int w, int h,
                                            const uint8_t *mask, bool copy, uint32_t hole_color, size_t max_bytes);
+
+/* A float made from a pasted picture (REQ-0016-05, -06): f (which must be empty) holds a copy of pic's pixels at (x, y), a rectangle
+   with no hole, and its fully transparent pixels (alpha 0) leave the picture as it is wherever the float or its copies are laid or put
+   down, also after a stretch. NO_MEMORY, with f empty, if its 4 bytes a pixel exceed max_bytes or cannot be had. */
+EaselSelectionResult easel_selection_paste (EaselFloat *f, const EaselImage *pic, int x, int y, size_t max_bytes);
+
+/* The copy of a selection (REQ-0016-03): a new w x h picture of its bounding rectangle, the pixels of its shape as they are and every
+   other pixel #00000000. Without f, the marked selection (x, y, w, h) of img with its mask (NULL: a rectangle), which must be inside
+   the picture; with f, the floating selection's own pixels and shape as they float (x, y, w, h being its own; its image whole). NULL if
+   its 4 bytes a pixel exceed max_bytes or cannot be had. */
+EaselImage *easel_selection_copy_image (const EaselImage *img, const EaselFloat *f, int x, int y, int w, int h, const uint8_t *mask,
+                                        size_t max_bytes);
+
+/* The size of a w x h picture fitted into W x H with its ratio kept (REQ-0016-07): the side that limits takes W or H, the other is
+   rounded to the nearest pixel, halves up, at least 1. */
+void easel_fit_size (int w, int h, int W, int H, int *nw, int *nh);
+
+/* As easel_selection_put_down for a paste that grew the picture from old_w x old_h (the new area in fill): one step with the growth,
+   added even when no pixel changes (REQ-0016-07); Undo crops back. */
+EaselSelectionResult easel_selection_put_down_grown (const EaselFloat *f, bool with_float, EaselImage *img, EaselHistory *history,
+                                                     int old_w, int old_h, uint32_t fill, size_t max_bytes);
 
 /* Leaves a copy of the float where it is now, as it would be put down there (REQ-0013-09); it belongs to the float's one
    step. FALSE, with nothing added, if the stamps would need more than max_bytes or cannot grow. */

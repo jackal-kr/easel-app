@@ -26,6 +26,9 @@ typedef enum
    header, before any pixel is decoded. */
 EaselOpenResult easel_picture_open (const char *path, EaselImage **img, int *width, int *height);
 
+/* The same from bytes in memory (the clipboard's, 0016): the same checks in the same order, the same results and sizes. */
+EaselOpenResult easel_picture_open_bytes (GBytes *bytes, EaselImage **img, int *width, int *height);
+
 /* Reads only the first bytes of the file and answers its format ("png", "jpeg", "bmp", "tiff", "webp" or "gif", the
    gdk-pixbuf names) and the size it states, as stored, without decoding anything (Plan, "How formats are detected").
    FALSE if the file is empty or cut off before its size, has no size marker, is of another kind, or cannot be read; the
@@ -39,6 +42,15 @@ gboolean easel_picture_sniff (const char *path, const char **format, int *width,
    installed). */
 gboolean easel_picture_save (const EaselImage *img, const char *path, EaselFormat format, int jpeg_quality,
                              GError **error);
+
+/* img encoded in the given format as easel_picture_save writes it (the same flattening, quality and memory check), as bytes in
+   memory (the clipboard's PNG, 0016); NULL with error on failure. */
+GBytes *easel_picture_encode (const EaselImage *img, EaselFormat format, int jpeg_quality, GError **error);
+
+/* A PNG made at the encoder's fastest level, for the clipboard (REQ-0016-03): about 20 times quicker than the default and about twice
+   the size (3178 x 3099, photo-like: 113 ms and 24 MB against 2189 ms and 12 MB), because another app waits for it while Easel encodes and
+   a browser gave up after about two seconds (JS Paint, M1 of 0016); a file the user saves keeps the default level. */
+GBytes *easel_picture_encode_fast_png (const EaselImage *img, GError **error);
 
 /* Test hook (REQ-0005-06, REQ-0005-10): treats the gdk-pixbuf format of that name ("webp", "tiff", ...) as not installed,
    for opening and for saving, until it is called again with NULL. */

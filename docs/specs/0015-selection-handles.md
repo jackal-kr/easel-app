@@ -51,7 +51,7 @@ they are used.
   (floor((i + 1/2) × w / W), floor((j + 1/2) × h / H)). They are always made from the pixels as lifted, however many times the
   selection is stretched, so a selection made smaller and then as big as before has its pixels back exactly (JOD). Copies left
   before a stretch (by Ctrl, a smear or a stamp, REQ-0013-09, REQ-0014-11, REQ-0014-12) keep the size and pixels they had; copies
-  left after it have the stretched size and pixels.
+  left after it have the stretched size and pixels. (Pointer note, Clipboard, 2026-10-22: a pasted selection is stretched from its pixels as pasted, after Fit the fitted ones, REQ-0016-06.)
 - REQ-0015-06 A free-form selection's shape shall be stretched by the same rule: the new pixel (i, j) is in the shape when the lifted
   pixel it is made from is. If that leaves no pixel, the one new pixel nearest the center of the new box among those whose footprint
   (the lifted pixels it covers) holds a shape pixel stays in the shape, with the color of the first such shape pixel in reading order
@@ -74,7 +74,7 @@ they are used.
   lost focus ends it as last shown, and a press that shows the lost release then acts as a press of its own. Save, Save As, New, Open
   and Quit put it down first as last shown. Enter, Delete, Select All, Redo, the arrow keys, another tool, the View and Image actions
   and Ctrl pressed after the press change nothing during it; Shift acts as REQ-0015-07 says. (JOD: a lost focus or Save keeps the
-  stretch as last shown, as for a move, unlike a picture resize, which they cancel, REQ-0004-19.)
+  stretch as last shown, as for a move, unlike a picture resize, which they cancel, REQ-0004-19.) (Pointer note, Clipboard, 2026-10-22: the Clipboard commands are ignored during the stretch, REQ-0016-02.)
 - REQ-0015-09 If the memory for the stretched pixels (and shape), or for the copy of REQ-0015-04, cannot be had, then the app shall
   show the dialog "Could Not Stretch the Selection", "There is not enough memory to stretch this selection.", put the selection back
   at the size, place and pixels it had at the press (marked again if this drag lifted it, with no copy of this drag), and end the

@@ -387,8 +387,10 @@ test: ui-0005
 file: src/ui/window.c
 test: ui-0005
 --- find
+  self->decode_after_paint = FALSE;
   gtk_widget_set_cursor_from_name (GTK_WIDGET (self), "wait");
 --- replace
+  self->decode_after_paint = FALSE;
   (void) 0;
 
 === REQ-0005-02 the canvas does not show the busy cursor while loading
@@ -396,8 +398,11 @@ file: src/ui/window.c
 test: ui-0005
 --- find
   easel_canvas_set_busy (self->canvas, TRUE);
+  easel_canvas_set_input_blocked (self->canvas, TRUE);
+  self->frame_at_request
 --- replace
-  (void) 0;
+  easel_canvas_set_input_blocked (self->canvas, TRUE);
+  self->frame_at_request
 
 === REQ-0005-02 a quit during loading is not held until the picture is shown
 file: src/ui/window.c
@@ -421,9 +426,9 @@ test: ui-0005
 --- find
   if (self->open_dialog_open)
     return TRUE;
-  /* One prompt
+  /* A stroke in progress is ended first
 --- replace
-  /* One prompt
+  /* A stroke in progress is ended first
 
 === REQ-0005-17 a picture that is too big is refused without telling the user why
 file: src/ui/window.c
@@ -516,9 +521,9 @@ test: ui-0005 ui-0001
 file: src/ui/window.c
 test: ui-0005
 --- find
-save_format (path), self->settings.jpeg_quality
+easel_picture_save (self->picture, path, save_format (path), self->settings.jpeg_quality
 --- replace
-save_format (path), 90
+easel_picture_save (self->picture, path, save_format (path), 90
 
 # ---- Save without memory, and the rules around a failed save (0005 T013) ----
 
@@ -3048,7 +3053,7 @@ test: core-selection
 file: src/core/selection.c
 test: core-selection
 --- find
-        if (f->mask == NULL || f->mask[at] != 0)
+        if ((f->mask == NULL || f->mask[at] != 0) && !(f->skip_clear && (f->px[at] >> 24) == 0))
 --- replace
         if ((f->mask == NULL || f->mask[at] != 0) && f->px[at] >> 24 == 0xFF)
 
@@ -3070,7 +3075,7 @@ test: core-selection
 file: src/core/selection.c
 test: core-selection
 --- find
-  if (!easel_change_log_push (&l, history))
+  if (!push_step (&l, history, img, growth))
     {
       easel_change_log_restore (&l, img);
       easel_change_log_free (&l);
@@ -3474,7 +3479,7 @@ test: ui-0013
 file: src/ui/canvas.c
 test: ui-0013
 --- find
-    r = easel_selection_put_down (&self->sel_float, FALSE, self->img, self->history, self->sel_step_max);
+    r = put_down_float (self, FALSE);              /* a grown paste: the growth stays, with its copies (REQ-0016-05) */
 --- replace
     r = EASEL_SELECTION_NOTHING;
 
@@ -3549,18 +3554,15 @@ test: ui-0013
 file: src/ui/canvas.c
 test: ui-0013
 --- find
-          if (on_selection (self, x, y))
-            g_signal_emit (self, signals[SIGNAL_CONTEXT_MENU], 0, x, y);
-          return;
-        }
-      if (on_selection (self, x, y))
+         for the canvas menu; neither changes anything (REQ-0013-17, REQ-0016-14). */
+      if (button != GDK_BUTTON_PRIMARY)
         {
+          g_signal_emit (self, signals[on_selection (self, x, y) ? SIGNAL_CONTEXT_MENU : SIGNAL_CANVAS_MENU], 0, x, y);
 --- replace
-          g_signal_emit (self, signals[SIGNAL_CONTEXT_MENU], 0, x, y);
-          return;
-        }
-      if (on_selection (self, x, y))
+         for the canvas menu; neither changes anything (REQ-0013-17, REQ-0016-14). */
+      if (button != GDK_BUTTON_PRIMARY)
         {
+          g_signal_emit (self, signals[SIGNAL_CONTEXT_MENU], 0, x, y);
 
 === REQ-0013-17 the window takes Esc, Enter, Delete and the arrows while a menu is open
 file: src/ui/window.c
@@ -3717,10 +3719,9 @@ test: core-selection
 file: src/ui/canvas.c
 test: ui-0013
 --- find
-      if (!ok)
-        g_signal_emit (self, signals[SIGNAL_SELECTION_FAILED], 0, 0);     /* the dialog comes after the action goes on */
+          g_signal_emit (self, signals[SIGNAL_SELECTION_FAILED], 0, 0);     /* the dialog comes after the action goes on */
 --- replace
-      (void) ok;
+          (void) ok;
 
 === REQ-0013-19 the quit goes on after a selection could not be put down
 file: src/ui/window.c
@@ -3998,9 +3999,9 @@ test: core-selection
 file: src/core/selection.c
 test: core-selection
 --- find
-        if (f->mask == NULL || f->mask[at] != 0)
+        if ((f->mask == NULL || f->mask[at] != 0) && !(f->skip_clear && (f->px[at] >> 24) == 0))
 --- replace
-        if (1)
+        if (!(f->skip_clear && (f->px[at] >> 24) == 0))
 
 === REQ-0014-08 the mask's bytes are not counted against the lift's limit
 file: src/core/selection.c
@@ -4151,15 +4152,15 @@ test: ui-0014
 file: src/ui/canvas.c
 test: ui-0014
 --- find
-            g_signal_emit (self, signals[SIGNAL_CONTEXT_MENU], 0, x, y);
-          return;
-        }
-      /* A press on the shape is a move
+         changes anything (REQ-0014-07, REQ-0013-17, REQ-0016-14). */
+      if (button != GDK_BUTTON_PRIMARY)
+        {
+          g_signal_emit (self, signals[on_selection (self, x, y) ? SIGNAL_CONTEXT_MENU : SIGNAL_CANVAS_MENU], 0, x, y);
 --- replace
-            (void) y;
-          return;
-        }
-      /* A press on the shape is a move
+         changes anything (REQ-0014-07, REQ-0013-17, REQ-0016-14). */
+      if (button != GDK_BUTTON_PRIMARY)
+        {
+          g_signal_emit (self, signals[SIGNAL_CANVAS_MENU], 0, x, y);
 
 === REQ-0004-12 the canvas is not drawn again when the view scrolls sideways
 file: src/ui/canvas.c
@@ -5866,3 +5867,961 @@ test: ui-0015
 --- replace
   if (self->guides_hidden || self->stretching)
     return;                                       /* (a path being traced is no selection yet: nothing is tinted) */
+
+# ---- the fit size and a float from a pasted picture (0016 T001) ----
+
+=== REQ-0016-06 a paste's fully transparent pixels are laid and put down
+file: src/core/selection.c
+test: core-selection
+--- find
+        if ((f->mask == NULL || f->mask[at] != 0) && !(f->skip_clear && (f->px[at] >> 24) == 0))
+--- replace
+        if (f->mask == NULL || f->mask[at] != 0)
+
+=== REQ-0016-06 a paste's partly transparent pixels are skipped too
+file: src/core/selection.c
+test: core-selection
+--- find
+        if ((f->mask == NULL || f->mask[at] != 0) && !(f->skip_clear && (f->px[at] >> 24) == 0))
+--- replace
+        if ((f->mask == NULL || f->mask[at] != 0) && !(f->skip_clear && (f->px[at] >> 24) < 0xFF))
+
+=== REQ-0016-06 a pasted float does not skip its transparent pixels
+file: src/core/selection.c
+test: core-selection
+--- find
+  f->skip_clear = true;
+--- replace
+  f->skip_clear = false;
+
+=== REQ-0016-06 a copy of a paste made before a stretch lays its transparent pixels
+file: src/core/selection.c
+test: core-selection
+--- find
+  return (ImageView) { f->ow, f->oh, f->orig_px, f->orig_mask, f->skip_clear };
+--- replace
+  return (ImageView) { f->ow, f->oh, f->orig_px, f->orig_mask, false };
+
+=== REQ-0016-11 a paste ignores the memory limit
+file: src/core/selection.c
+test: core-selection
+--- find
+  EaselSelectionResult r = image_alloc (false, pic->width, pic->height, max_bytes, false, &px, &no_mask);
+--- replace
+  EaselSelectionResult r = image_alloc (false, pic->width, pic->height, SIZE_MAX, false, &px, &no_mask);
+
+=== REQ-0016-07 the fitted side rounds halves down
+file: src/core/selection.c
+test: core-selection
+--- find
+      long long o = (2LL * h * W + w) / (2LL * w);
+--- replace
+      long long o = (2LL * h * W) / (2LL * w);
+
+=== REQ-0016-07 the fitted side may be 0
+file: src/core/selection.c
+test: core-selection
+--- find
+      *nh = (int) (o < 1 ? 1 : o);
+--- replace
+      *nh = (int) o;
+
+=== REQ-0016-07 the fitted width rounds halves down
+file: src/core/selection.c
+test: core-selection
+--- find
+      long long o = (2LL * w * H + h) / (2LL * h);
+--- replace
+      long long o = (2LL * w * H) / (2LL * h);
+
+=== REQ-0016-07 the fitted width may be 0
+file: src/core/selection.c
+test: core-selection
+--- find
+      *nw = (int) (o < 1 ? 1 : o);
+--- replace
+      *nw = (int) o;
+
+# ---- the joint growth step (0016 T002) ----
+
+=== REQ-0016-07 the growth alone adds no step
+file: src/core/history.c
+test: core-history
+--- find
+  commit_step (h, (Step) { .kind = STEP_GROW, .old_w = old_w, .old_h = old_h, .new_w = new_w, .new_h = new_h, .fill = fill,
+--- replace
+  if (n == 0)
+    return true;
+  commit_step (h, (Step) { .kind = STEP_GROW, .old_w = old_w, .old_h = old_h, .new_w = new_w, .new_h = new_h, .fill = fill,
+
+=== REQ-0016-07 undo of a grown paste keeps the grown size
+file: src/core/history.c
+test: core-history
+--- find
+      if (easel_image_resize (img, undo ? s->old_w : s->new_w, undo ? s->old_h : s->new_h, s->fill) != EASEL_RESIZE_OK)
+--- replace
+      if (easel_image_resize (img, s->new_w, s->new_h, s->fill) != EASEL_RESIZE_OK)
+
+=== REQ-0016-07 redo of a grown paste fills the new area with another color
+file: src/core/history.c
+test: core-history
+--- find
+      if (easel_image_resize (img, undo ? s->old_w : s->new_w, undo ? s->old_h : s->new_h, s->fill) != EASEL_RESIZE_OK)
+--- replace
+      if (easel_image_resize (img, undo ? s->old_w : s->new_w, undo ? s->old_h : s->new_h, 0) != EASEL_RESIZE_OK)
+
+=== REQ-0016-07 undo of a grown paste writes the pasted values back
+file: src/core/history.c
+test: core-history
+--- find
+            easel_image_set (img, x, y, s->changes[i].old_value);
+--- replace
+            easel_image_set (img, x, y, s->changes[i].new_value);
+
+=== REQ-0016-07 redo of a grown paste leaves the pasted pixels out
+file: src/core/history.c
+test: core-history
+--- find
+          if (!undo)
+            easel_image_set (img, x, y, s->changes[i].new_value);
+--- replace
+          if (!undo)
+            (void) 0;
+
+# ---- the copy of a selection (0016 T003) ----
+
+=== REQ-0016-03 the copy holds the pixels outside the shape too
+file: src/core/selection.c
+test: core-selection
+--- find
+          if (mask[at] != 0)
+            c->px[at] = f != NULL ? f->px[at] : img->px[(size_t) (y + j) * (size_t) img->width + (size_t) (x + i)];
+--- replace
+          if (1)
+            c->px[at] = f != NULL ? f->px[at] : img->px[(size_t) (y + j) * (size_t) img->width + (size_t) (x + i)];
+
+=== REQ-0016-03 the copy of a floating selection is taken from the picture
+file: src/core/selection.c
+test: core-selection
+--- find
+          c->px[at] = f != NULL ? f->px[at] : img->px[(size_t) (y + j) * (size_t) img->width + (size_t) (x + i)];
+--- replace
+          c->px[at] = img->px[(size_t) ((y + j) < 0 ? 0 : (y + j)) * (size_t) img->width + (size_t) ((x + i) < 0 ? 0 : (x + i))];
+
+=== REQ-0016-03 the copy of a floating selection ignores its shape
+file: src/core/selection.c
+test: core-selection
+--- find
+  if (f != NULL)
+    mask = f->mask;
+--- replace
+  if (f != NULL)
+    mask = NULL;
+
+=== REQ-0016-11 the copy ignores the memory limit
+file: src/core/selection.c
+test: core-selection
+--- find
+  if (w < 1 || h < 1 || (size_t) w > max_bytes / 4 / (size_t) h)
+--- replace
+  if (w < 1 || h < 1)
+
+=== REQ-0016-11 a copy that exactly fits the limit is refused
+file: src/core/selection.c
+test: core-selection
+--- find
+  if (w < 1 || h < 1 || (size_t) w > max_bytes / 4 / (size_t) h)
+--- replace
+  if (w < 1 || h < 1 || (size_t) w >= max_bytes / 4 / (size_t) h)
+
+# ---- open from bytes, encode to bytes (0016 T004) ----
+
+=== REQ-0016-10 a picture from bytes is decoded without the memory check
+file: src/io/picture-file.c
+test: io-picture-file
+--- find
+  if (w > EASEL_IMAGE_MAX_SIZE || h > EASEL_IMAGE_MAX_SIZE || !memory_for (w, h, 2))
+--- replace
+  if (w > EASEL_IMAGE_MAX_SIZE || h > EASEL_IMAGE_MAX_SIZE)
+
+=== REQ-0016-10 a picture from bytes bigger than 10000 is decoded
+file: src/io/picture-file.c
+test: io-picture-file
+--- find
+  if (w > EASEL_IMAGE_MAX_SIZE || h > EASEL_IMAGE_MAX_SIZE || !memory_for (w, h, 2))
+--- replace
+  if (!memory_for (w, h, 2))
+
+=== REQ-0016-10 a refused picture from bytes reports no size
+file: src/io/picture-file.c
+test: io-picture-file
+--- find
+      *width = w;
+      *height = h;
+      return w > EASEL_IMAGE_MAX_SIZE || h > EASEL_IMAGE_MAX_SIZE ? EASEL_OPEN_TOO_BIG : EASEL_OPEN_NO_MEMORY;
+--- replace
+      return w > EASEL_IMAGE_MAX_SIZE || h > EASEL_IMAGE_MAX_SIZE ? EASEL_OPEN_TOO_BIG : EASEL_OPEN_NO_MEMORY;
+
+=== REQ-0016-03 the encoded bytes leave out the transparency
+file: src/io/picture-file.c
+test: io-picture-file
+--- find
+    pb = to_pixbuf (img, easel_format_is_flat (format));
+--- replace
+    pb = to_pixbuf (img, TRUE);
+
+# ---- the clipboard actions, their menus and sensitivity (0016 T005) ----
+
+=== REQ-0016-02 Cut, Copy and Copy To are sensitive without a selection
+file: src/ui/window.c
+test: ui-0016
+--- find
+    g_simple_action_set_enabled (G_SIMPLE_ACTION (g_action_map_lookup_action (G_ACTION_MAP (self), selection_actions[i])), selection);
+--- replace
+    g_simple_action_set_enabled (G_SIMPLE_ACTION (g_action_map_lookup_action (G_ACTION_MAP (self), selection_actions[i])), idle);
+
+=== REQ-0016-02 Paste is sensitive whatever the clipboard holds
+file: src/ui/window.c
+test: ui-0016
+--- find
+  g_simple_action_set_enabled (G_SIMPLE_ACTION (g_action_map_lookup_action (G_ACTION_MAP (self), "paste")), picture);
+--- replace
+  g_simple_action_set_enabled (G_SIMPLE_ACTION (g_action_map_lookup_action (G_ACTION_MAP (self), "paste")), idle);
+
+=== REQ-0016-02 Paste From is sensitive while a button is held
+file: src/ui/window.c
+test: ui-0016
+--- find
+  g_simple_action_set_enabled (G_SIMPLE_ACTION (g_action_map_lookup_action (G_ACTION_MAP (self), "paste-from")), idle);
+--- replace
+  g_simple_action_set_enabled (G_SIMPLE_ACTION (g_action_map_lookup_action (G_ACTION_MAP (self), "paste-from")), self->picture != NULL);
+
+=== REQ-0016-02 copied files do not make Paste sensitive
+file: src/ui/window.c
+test: ui-0016
+--- find
+  if (gdk_content_formats_contain_gtype (formats, GDK_TYPE_TEXTURE) || gdk_content_formats_contain_gtype (formats, GDK_TYPE_FILE_LIST))
+--- replace
+  if (gdk_content_formats_contain_gtype (formats, GDK_TYPE_TEXTURE))
+
+=== REQ-0016-02 a picture offered by its MIME type does not make Paste sensitive
+file: src/ui/window.c
+test: ui-0016
+--- find
+    if (g_str_has_prefix (types[i], "image/"))
+--- replace
+    if (g_str_has_prefix (types[i], "image/x-none/"))
+
+=== REQ-0016-02 Paste does not follow the clipboard as it changes
+file: src/ui/window.c
+test: ui-0016
+--- find
+  g_signal_connect_swapped (self->clipboard, "changed", G_CALLBACK (update_clipboard_actions), self);
+--- replace
+  (void) 0;
+
+=== REQ-0016-02 the commands stay sensitive while a button is held
+file: src/ui/window.c
+test: ui-0016
+--- find
+  easel_tool_options_set_busy (self->tool_options, stroking);
+  update_clipboard_actions (self);
+--- replace
+  easel_tool_options_set_busy (self->tool_options, stroking);
+
+# ---- the canvas menu (0016 T006) ----
+
+=== REQ-0016-14 a secondary press with Select outside the selection opens nothing
+file: src/ui/canvas.c
+test: ui-0016
+--- find
+         for the canvas menu; neither changes anything (REQ-0013-17, REQ-0016-14). */
+      if (button != GDK_BUTTON_PRIMARY)
+        {
+          g_signal_emit (self, signals[on_selection (self, x, y) ? SIGNAL_CONTEXT_MENU : SIGNAL_CANVAS_MENU], 0, x, y);
+--- replace
+         for the canvas menu; neither changes anything (REQ-0013-17, REQ-0016-14). */
+      if (button != GDK_BUTTON_PRIMARY)
+        {
+          if (on_selection (self, x, y))
+            g_signal_emit (self, signals[SIGNAL_CONTEXT_MENU], 0, x, y);
+
+=== REQ-0016-14 a secondary press with Free-Form Select outside the shape opens nothing
+file: src/ui/canvas.c
+test: ui-0016
+--- find
+         changes anything (REQ-0014-07, REQ-0013-17, REQ-0016-14). */
+      if (button != GDK_BUTTON_PRIMARY)
+        {
+          g_signal_emit (self, signals[on_selection (self, x, y) ? SIGNAL_CONTEXT_MENU : SIGNAL_CANVAS_MENU], 0, x, y);
+--- replace
+         changes anything (REQ-0014-07, REQ-0013-17, REQ-0016-14). */
+      if (button != GDK_BUTTON_PRIMARY)
+        {
+          if (on_selection (self, x, y))
+            g_signal_emit (self, signals[SIGNAL_CONTEXT_MENU], 0, x, y);
+
+=== REQ-0016-14 a secondary press on the selection opens the canvas menu
+file: src/ui/canvas.c
+test: ui-0016
+--- find
+         for the canvas menu; neither changes anything (REQ-0013-17, REQ-0016-14). */
+      if (button != GDK_BUTTON_PRIMARY)
+        {
+          g_signal_emit (self, signals[on_selection (self, x, y) ? SIGNAL_CONTEXT_MENU : SIGNAL_CANVAS_MENU], 0, x, y);
+--- replace
+         for the canvas menu; neither changes anything (REQ-0013-17, REQ-0016-14). */
+      if (button != GDK_BUTTON_PRIMARY)
+        {
+          g_signal_emit (self, signals[SIGNAL_CANVAS_MENU], 0, x, y);
+
+=== REQ-0016-14 the window takes the keys while the canvas menu is open
+file: src/ui/window.c
+test: ui-0016
+--- find
+  if (self->canvas_menu != NULL && gtk_widget_get_visible (self->canvas_menu))
+    return TRUE;
+--- replace
+  if (self->canvas_menu != NULL && FALSE)
+    return TRUE;
+
+# ---- Copy and Cut (0016 T007) ----
+
+=== REQ-0016-03 Copy puts nothing on the clipboard
+file: src/ui/window.c
+test: ui-0016
+--- find
+  easel_clipboard_set_content (self->clipboard, provider);
+  return TRUE;
+--- replace
+  (void) provider;
+  return TRUE;
+
+=== REQ-0016-03 the copy offered to another app is not a PNG with its transparency
+file: src/ui/clipboard.c
+test: ui-0016
+--- find
+  GBytes *png = easel_picture_encode_fast_png (EASEL_CLIPBOARD_PICTURE (source)->copy, &error);
+--- replace
+  GBytes *png = easel_picture_encode (EASEL_CLIPBOARD_PICTURE (source)->copy, EASEL_FORMAT_BMP, 90, &error);
+
+=== REQ-0016-03 the copy is offered as another MIME type than image/png
+file: src/ui/clipboard.c
+test: ui-0016
+--- find
+  return gdk_content_formats_new ((const char *[]) { "image/png" }, 1);
+--- replace
+  return gdk_content_formats_new ((const char *[]) { "image/bmp" }, 1);
+
+=== REQ-0016-03 the copy of a floating selection is taken from the picture under it
+file: src/ui/canvas.c
+test: ui-0016
+--- find
+      return easel_selection_copy_image (self->img, &self->sel_float, self->sel_float.x, self->sel_float.y, self->sel_float.w,
+--- replace
+      return easel_selection_copy_image (self->img, NULL, self->sel_float.x < 0 ? 0 : self->sel_float.x, self->sel_float.y, self->sel_float.w,
+
+=== REQ-0016-04 Cut copies without clearing
+file: src/ui/window.c
+test: ui-0016
+--- find
+  if (copy_selection (self))
+    easel_canvas_clear_selection (self->canvas);
+--- replace
+  copy_selection (self);
+
+# ---- a paste no bigger than the picture (0016 T008) ----
+
+=== REQ-0016-05 a paste lands at (0, 0) whatever the view shows
+file: src/ui/canvas.c
+test: ui-0016
+--- find
+  *x = (int) CLAMP (floor (seen.origin.x / l), 0, self->img->width - 1);
+--- replace
+  *x = 0 * (int) CLAMP (floor (seen.origin.x / l), 0, self->img->width - 1);
+
+=== REQ-0016-05 a paste lands at the first pixel wholly in view, not the one partly shown
+file: src/ui/canvas.c
+test: ui-0016
+--- find
+  *y = (int) CLAMP (floor (seen.origin.y / l), 0, self->img->height - 1);
+--- replace
+  *y = (int) CLAMP (ceil (seen.origin.y / l), 0, self->img->height - 1);
+
+=== REQ-0016-05 a paste leaves the tool as it was
+file: src/ui/window.c
+test: ui-0016
+--- find
+  g_action_group_change_action_state (G_ACTION_GROUP (self), "tool", g_variant_new_string ("select"));
+  easel_canvas_top_left_in_view (self->canvas, &x, &y);
+--- replace
+  easel_canvas_top_left_in_view (self->canvas, &x, &y);
+
+=== REQ-0016-05 a paste drops the floating selection instead of putting it down
+file: src/ui/canvas.c
+test: ui-0016
+--- find
+  finish_selection (self, FALSE);              /* a floating selection put down, a marked one removed (REQ-0016-05) */
+--- replace
+  drop_float (self);
+
+# ---- the copy by rows (0016, JOD 2026-10-23, after perf-0016) ----
+
+=== REQ-0016-03 the copy by rows steps through the picture with the copy's width
+file: src/core/selection.c
+test: core-selection
+--- find
+      memcpy (c->px + (size_t) j * (size_t) w, img->px + (size_t) (y + j) * (size_t) img->width + (size_t) x, (size_t) w * sizeof *c->px);
+--- replace
+      memcpy (c->px + (size_t) j * (size_t) w, img->px + (size_t) (y + j) * (size_t) w + (size_t) x, (size_t) w * sizeof *c->px);
+
+=== REQ-0016-03 the copy by rows leaves out the last row
+file: src/core/selection.c
+test: core-selection
+--- find
+  else if (mask == NULL)
+    for (int j = 0; j < h; j++)
+--- replace
+  else if (mask == NULL)
+    for (int j = 0; j < h - 1; j++)
+
+=== REQ-0016-03 the copy by rows starts one pixel right of the selection
+file: src/core/selection.c
+test: core-selection
+--- find
+      memcpy (c->px + (size_t) j * (size_t) w, img->px + (size_t) (y + j) * (size_t) img->width + (size_t) x, (size_t) w * sizeof *c->px);
+--- replace
+      memcpy (c->px + (size_t) j * (size_t) w, img->px + (size_t) (y + j) * (size_t) img->width + (size_t) x + 1, (size_t) (w - 1) * sizeof *c->px);
+
+=== REQ-0016-03 the copy of a floating rectangle leaves out its last row
+file: src/core/selection.c
+test: core-selection
+--- find
+    memcpy (c->px, f->px, (size_t) w * (size_t) h * sizeof *c->px);
+--- replace
+    memcpy (c->px, f->px, (size_t) w * (size_t) (h - 1) * sizeof *c->px);
+
+# ---- the oversize prompt, Fit and Resize, a grown paste (0016 T010) ----
+
+=== REQ-0016-07 Resize grows the picture to the smaller of each side
+file: src/ui/window.c
+test: ui-0016
+--- find
+          if (easel_canvas_paste_grown (self->canvas, pic, MAX (w, pic->width), MAX (h, pic->height), self->background))
+--- replace
+          if (easel_canvas_paste_grown (self->canvas, pic, MIN (w, pic->width), MIN (h, pic->height), self->background))
+
+=== REQ-0016-07 Resize fills the new area with transparent pixels
+file: src/ui/window.c
+test: ui-0016
+--- find
+          if (easel_canvas_paste_grown (self->canvas, pic, MAX (w, pic->width), MAX (h, pic->height), self->background))
+--- replace
+          if (easel_canvas_paste_grown (self->canvas, pic, MAX (w, pic->width), MAX (h, pic->height), 0))
+
+=== REQ-0016-07 Cancel fits the picture anyway
+file: src/ui/window.c
+test: ui-0016
+--- find
+  else if (g_strcmp0 (answer, "fit") == 0)
+--- replace
+  else if (g_strcmp0 (answer, "fit") == 0 || g_strcmp0 (answer, "cancel") == 0)
+
+=== REQ-0016-07 the view does not scroll to the picture's corner after Fit or Resize
+file: src/ui/window.c
+test: ui-0016
+--- find
+  gtk_adjustment_set_value (h, gtk_adjustment_get_lower (h));
+--- replace
+  (void) h;
+
+=== REQ-0016-07 a paste as wide and as tall as the picture asks
+file: src/ui/window.c
+test: ui-0016
+--- find
+  if (pic->width > self->picture->width || pic->height > self->picture->height)
+--- replace
+  if (pic->width >= self->picture->width || pic->height >= self->picture->height)
+
+=== REQ-0016-07 only a paste wider than the picture asks
+file: src/ui/window.c
+test: ui-0016
+--- find
+  if (pic->width > self->picture->width || pic->height > self->picture->height)
+--- replace
+  if (pic->width > self->picture->width)
+
+=== REQ-0016-07 Undo while a grown paste floats keeps the growth
+file: src/ui/canvas.c
+test: ui-0016
+--- find
+  restore_paste_base (self);                     /* Undo while a grown paste floats: the growth goes too (REQ-0016-07) */
+--- replace
+  drop_paste_base (self);
+
+=== REQ-0016-07 a grown paste is put down as a plain step, the growth lost to Undo
+file: src/ui/canvas.c
+test: ui-0016
+--- find
+  if (self->paste_base != NULL)
+    return easel_selection_put_down_grown (&self->sel_float, with_float, self->img, self->history, self->paste_base->width,
+--- replace
+  if (0 && self->paste_base != NULL)
+    return easel_selection_put_down_grown (&self->sel_float, with_float, self->img, self->history, self->paste_base->width,
+
+=== REQ-0016-05 Clear Selection on a grown paste takes the growth away
+file: src/ui/canvas.c
+test: ui-0016
+--- find
+    r = put_down_float (self, FALSE);              /* a grown paste: the growth stays, with its copies (REQ-0016-05) */
+--- replace
+    r = easel_selection_put_down (&self->sel_float, FALSE, self->img, self->history, self->sel_step_max);
+
+=== REQ-0016-07 a grown put-down that changes no pixel adds no step
+file: src/core/selection.c
+test: core-selection
+--- find
+  if (l.n == 0 && growth == NULL)
+--- replace
+  if (l.n == 0)
+
+=== REQ-0016-07 a grown put-down with nothing to lay adds no step
+file: src/core/selection.c
+test: core-selection
+--- find
+      if (growth == NULL || history == NULL)
+        return EASEL_SELECTION_NOTHING;
+--- replace
+      return EASEL_SELECTION_NOTHING;
+
+=== REQ-0016-07 the grown step crops back to the wrong size
+file: src/core/selection.c
+test: core-selection
+--- find
+  if (!easel_history_push_grow (history, growth->old_w, growth->old_h, img->width, img->height, growth->fill, l->log, l->n))
+--- replace
+  if (!easel_history_push_grow (history, growth->old_h, growth->old_w, img->width, img->height, growth->fill, l->log, l->n))
+
+# ---- reading the clipboard: the wait, files, errors (0016 T012) ----
+
+=== REQ-0016-15 the busy cursor does not show while Paste waits
+file: src/ui/window.c
+test: ui-0016
+--- find
+  gtk_widget_set_cursor_from_name (GTK_WIDGET (self), "wait");
+  easel_canvas_set_busy (self->canvas, TRUE);
+  easel_canvas_set_input_blocked (self->canvas, TRUE);
+  wait.timer
+--- replace
+  easel_canvas_set_busy (self->canvas, TRUE);
+  easel_canvas_set_input_blocked (self->canvas, TRUE);
+  wait.timer
+
+=== REQ-0016-15 the commands act while Paste waits for the clipboard
+file: src/ui/window.c
+test: ui-0016
+--- find
+  return self->prompt_open || self->save_dialog_open || self->open_dialog_open || self->loading || self->reading_clipboard
+         || self->chooser_open
+--- replace
+  return self->prompt_open || self->save_dialog_open || self->open_dialog_open || self->loading
+         || self->chooser_open
+
+=== REQ-0016-15 a quit request is not held back while Paste waits
+file: src/ui/window.c
+test: ui-0016
+--- find
+  if (self->reading_clipboard)
+    {
+      self->close_after_reading = TRUE;
+--- replace
+  if (FALSE)
+    {
+      self->close_after_reading = TRUE;
+
+=== REQ-0016-15 a quit request that waited for the read is forgotten after it
+file: src/ui/window.c
+test: ui-0016
+--- find
+      self->close_after_reading = FALSE;
+      gtk_window_close (GTK_WINDOW (self));
+--- replace
+      self->close_after_reading = FALSE;
+
+=== REQ-0016-15 a failed read shows its dialog although a quit waits
+file: src/ui/window.c
+test: ui-0016
+--- find
+  if (self->close_after_reading)
+    return;       /* a quit request waits for this read: nothing was changed, and a dialog would take the quit (REQ-0016-15) */
+--- replace
+  (void) 0;
+
+=== REQ-0016-15 input stays blocked after the read
+file: src/ui/window.c
+test: ui-0016
+--- find
+  easel_canvas_set_busy (self->canvas, FALSE);
+  easel_canvas_set_input_blocked (self->canvas, FALSE);
+  if (self->close_after_reading)
+--- replace
+  easel_canvas_set_busy (self->canvas, FALSE);
+  if (self->close_after_reading)
+
+=== REQ-0016-15 copied files win over a picture on the clipboard
+file: src/ui/window.c
+test: ui-0016
+--- find
+  if (has_picture)
+    {
+      answer = g_new0 (Answer, 1);
+--- replace
+  if (has_picture && n == 0)
+    {
+      answer = g_new0 (Answer, 1);
+
+=== REQ-0016-10 a picture bigger than 10000 gives the not-a-picture body
+file: src/ui/window.c
+test: ui-0016
+--- find
+      body = "The picture is bigger than 10000 pixels in width or height.";
+--- replace
+      body = "This is not a picture the app can open.";
+
+=== REQ-0016-10 a file's error does not name the file
+file: src/ui/window.c
+test: ui-0016
+--- find
+  g_autofree char *heading = name != NULL ? g_strdup_printf ("Could Not Paste “%s”", name) : g_strdup ("Could Not Paste");
+--- replace
+  g_autofree char *heading = g_strdup ("Could Not Paste");
+
+=== REQ-0016-10 a file that cannot be read gives the clipboard's body
+file: src/ui/window.c
+test: ui-0016
+--- find
+      body = name != NULL ? "The file cannot be read." : "The clipboard's picture cannot be read.";
+--- replace
+      body = "The clipboard's picture cannot be read.";
+
+=== REQ-0016-10 a text file is reported as unreadable, not as no picture
+file: src/ui/window.c
+test: ui-0016
+--- find
+    case EASEL_OPEN_NOT_PICTURE:
+      body = "This is not a picture the app can open.";
+      break;
+--- replace
+    case EASEL_OPEN_NOT_PICTURE:
+      body = "The file cannot be read.";
+      break;
+
+=== REQ-0016-15 a copied file is read from the last of the list
+file: src/ui/window.c
+test: ui-0016
+--- find
+          g_autofree char *path = g_file_get_path (files->data);
+          g_autofree char *name = g_file_get_basename (files->data);
+--- replace
+          g_autofree char *path = g_file_get_path (g_slist_last (files)->data);
+          g_autofree char *name = g_file_get_basename (g_slist_last (files)->data);
+
+# ---- Paste From… (0016 T013) ----
+
+=== REQ-0016-08 the dialog of Paste From is titled as Open's
+file: src/ui/window.c
+test: ui-0016
+--- find
+  dialog = make_picture_dialog (self, "Paste From");
+--- replace
+  dialog = make_picture_dialog (self, "Open Picture");
+
+=== REQ-0016-08 a quit request puts the floating selection down while the file dialog is open
+file: src/ui/window.c
+test: ui-0016
+--- find
+  if (self->open_dialog_open)
+    return TRUE;
+  /* A stroke in progress is ended first
+--- replace
+  if (FALSE)
+    return TRUE;
+  /* A stroke in progress is ended first
+
+=== REQ-0016-08 a quit request is not held back while Paste From's dialog is open
+file: src/ui/window.c
+test: ui-0016
+--- find
+  self->open_dialog_open = TRUE;                 /* a quit request does nothing meanwhile, as for Open (REQ-0005-02) */
+--- replace
+  (void) 0;
+
+=== REQ-0016-10 a refused file does not name itself in Paste From's dialog
+file: src/ui/window.c
+test: ui-0016
+--- find
+    paste_error (self, name, opened);
+  else
+    paste_picture (self, pic);
+--- replace
+    paste_error (self, NULL, opened);
+  else
+    paste_picture (self, pic);
+
+=== REQ-0016-08 Paste From does nothing with the file chosen
+file: src/ui/window.c
+test: ui-0016
+--- find
+  if (file != NULL)                         /* Cancelled: nothing changes (REQ-0016-08) */
+    easel_window_paste_from_file (self, file);
+--- replace
+  (void) file;
+
+# ---- Copy To… (0016 T014) ----
+
+=== REQ-0016-09 Copy To writes the whole picture, not the selection's copy
+file: src/ui/window.c
+test: ui-0016
+--- find
+  return req->copy != NULL ? write_copy (req->self, req->copy, req->path) : easel_window_save_to (req->self, req->path);
+--- replace
+  return easel_window_save_to (req->self, req->path);
+
+=== REQ-0016-09 the dialog of Copy To is titled as Save As's
+file: src/ui/window.c
+test: ui-0016
+--- find
+  gtk_file_dialog_set_title (dialog, "Copy To");
+--- replace
+  gtk_file_dialog_set_title (dialog, "Save Picture As");
+
+=== REQ-0016-09 Copy To does not ask before replacing a name it completed
+file: src/ui/window.c
+test: ui-0016
+--- find
+  req->copy = copy;
+  save_chosen (req, path);
+--- replace
+  req->copy = copy;
+  req->path = g_strdup (path);
+  save_request_finish (req, write_request (req));
+
+=== REQ-0016-12 a failed write of Copy To shows no save error
+file: src/ui/window.c
+test: ui-0016
+--- find
+      show_save_error (self, heading, body);
+      return FALSE;
+    }
+  return TRUE;
+--- replace
+      (void) heading;
+      (void) body;
+      return FALSE;
+    }
+  return TRUE;
+
+=== REQ-0016-09 Copy To marks the picture saved or modified
+file: src/ui/window.c
+test: ui-0016
+--- find
+      show_save_error (self, heading, body);
+      return FALSE;
+    }
+  return TRUE;
+--- replace
+      show_save_error (self, heading, body);
+      return FALSE;
+    }
+  easel_history_mark_saved (self->history);
+  return TRUE;
+
+=== REQ-0016-09 Copy To writes JPEG at a quality of its own, not the settings'
+file: src/ui/window.c
+test: ui-0016
+--- find
+easel_picture_save (copy, path, save_format (path), self->settings.jpeg_quality
+--- replace
+easel_picture_save (copy, path, save_format (path), 1
+
+# ---- memory failures and the store at quit (0016 T015) ----
+
+=== REQ-0016-11 Copy with no memory shows no dialog
+file: src/ui/window.c
+test: ui-0016
+--- find
+        show_copy_error (self);                  /* a selection but no memory for its copy (REQ-0016-11) */
+--- replace
+        (void) 0;
+
+=== REQ-0016-11 Copy To with no memory for the copy shows no dialog
+file: src/ui/window.c
+test: ui-0016
+--- find
+        show_copy_error (self);                  /* a selection but no memory for its copy: nothing is written (REQ-0016-11) */
+--- replace
+        (void) 0;
+
+=== REQ-0016-04 Cut clears the selection although its copy failed
+file: src/ui/window.c
+test: ui-0016
+--- find
+  if (copy_selection (self))
+    easel_canvas_clear_selection (self->canvas);
+--- replace
+  copy_selection (self);
+  easel_canvas_clear_selection (self->canvas);
+
+=== REQ-0016-11 a paste with no memory changes the tool first
+file: src/ui/window.c
+test: ui-0016
+--- find
+  if (!easel_canvas_can_paste (self->canvas, pic->width, pic->height, 0, 0))
+    {
+      easel_image_free (pic);
+--- replace
+  if (FALSE)
+    {
+      easel_image_free (pic);
+
+=== REQ-0016-11 a paste ignores the selection's memory limit
+file: src/ui/canvas.c
+test: ui-0016
+--- find
+  if (bytes > self->sel_lift_max)
+    return FALSE;
+--- replace
+  if (0)
+    return FALSE;
+
+=== REQ-0016-07 a put-down that fails after a growth leaves the picture grown
+file: src/ui/canvas.c
+test: ui-0016
+--- find
+          restore_paste_base (self);                 /* a grown paste: the picture as before it, its size too (REQ-0016-07) */
+--- replace
+          drop_paste_base (self);
+
+=== REQ-0016-11 a failed Fit shows no dialog
+file: src/ui/window.c
+test: ui-0016
+--- find
+      else
+        paste_error (self, NULL, EASEL_OPEN_NO_MEMORY);
+      free (px);
+--- replace
+      free (px);
+
+=== REQ-0016-03 the store is not asked when the window closes with nothing modified
+file: src/ui/window.c
+test: ui-0016
+--- find
+    {
+      store_clipboard_for_quit (self);
+      return FALSE;
+    }
+  ask_unsaved (self, quit_now);
+--- replace
+    {
+      return FALSE;
+    }
+  ask_unsaved (self, quit_now);
+
+=== REQ-0016-03 the store is not asked when the quit prompt is discarded
+file: src/ui/window.c
+test: ui-0016
+--- find
+  store_clipboard_for_quit (self);
+  gtk_window_destroy (GTK_WINDOW (self));
+--- replace
+  gtk_window_destroy (GTK_WINDOW (self));
+
+=== REQ-0016-11 a refused Resize has already changed the tool
+file: src/ui/canvas.c
+test: ui-0016
+--- find
+  if (grown_w > 0 && ((size_t) grown_w > SIZE_MAX / 4 / (size_t) grown_h || !can_have (self, (size_t) grown_w * (size_t) grown_h * 4)))
+    return FALSE;
+--- replace
+  if (grown_w > 0 && ((size_t) grown_w > SIZE_MAX / 4 / (size_t) grown_h || FALSE))
+    return FALSE;
+
+=== REQ-0016-03 the PNG offered to another app is cut off at what a pipe takes at once
+file: src/ui/clipboard.c
+test: ui-0016
+--- find
+      g_output_stream_write_all_async (w->stream, g_bytes_get_data (png, NULL), g_bytes_get_size (png), G_PRIORITY_DEFAULT,
+--- replace
+      g_output_stream_write_all_async (w->stream, g_bytes_get_data (png, NULL), MIN (g_bytes_get_size (png), 65536), G_PRIORITY_DEFAULT,
+
+=== REQ-0016-03 the PNG offered to another app is made at the default, slow level
+file: src/ui/clipboard.c
+test: ui-0016
+--- find
+  GBytes *png = easel_picture_encode_fast_png (EASEL_CLIPBOARD_PICTURE (source)->copy, &error);
+--- replace
+  GBytes *png = easel_picture_encode (EASEL_CLIPBOARD_PICTURE (source)->copy, EASEL_FORMAT_PNG, 90, &error);
+
+=== REQ-0016-03 the clipboard's PNG encoder is not asked for its fast level
+file: src/io/picture-file.c
+test: io-picture-file
+--- find
+    encoded = gdk_pixbuf_save_to_buffer (pb, &buffer, &size, name, error, "compression", "1", NULL);
+--- replace
+    encoded = gdk_pixbuf_save_to_buffer (pb, &buffer, &size, name, error, NULL);
+
+# ---- the check's findings F1 to F3 (0016 T018) ----
+
+=== REQ-0016-15 a clipboard read that gave up keeps what its late callback brings
+file: src/ui/window.c
+test: ui-0016
+--- find
+    g_main_context_iteration (NULL, TRUE);
+  return answer_take (answer);
+--- replace
+    g_main_context_iteration (NULL, TRUE);
+  return answer->result;
+
+=== REQ-0016-15 the store at quit that gave up keeps what its late callback brings
+file: src/ui/window.c
+test: ui-0016
+--- find
+  result = answer_take (answer);
+  if (result == NULL)
+    g_cancellable_cancel (cancellable);
+--- replace
+  result = answer->result;
+  if (result == NULL)
+    g_cancellable_cancel (cancellable);
+
+=== REQ-0016-15 a late callback keeps its result although the wait has gone
+file: src/ui/window.c
+test: ui-0016
+--- find
+  if (answer->given_up)
+    g_free (answer);                            /* the wait has gone: nothing to keep */
+  else
+    answer->result = g_object_ref (result);
+--- replace
+  answer->result = g_object_ref (result);
+
+=== REQ-0016-15 a picture that arrives after a quit request is pasted
+file: src/ui/window.c
+test: ui-0016
+--- find
+      g_clear_pointer (&img, easel_image_free);
+      self->close_after_reading = FALSE;
+--- replace
+      self->close_after_reading = FALSE;
+
+=== REQ-0016-07 the grown step keeps its log's spare capacity
+file: src/core/selection.c
+test: core-selection
+--- find
+  if (l->cap > l->n && l->n > 0)
+    {
+      EaselChange *p = realloc (l->log, l->n * sizeof *l->log);     /* held as counted (REQ-0002-16) */
+--- replace
+  if (0)
+    {
+      EaselChange *p = realloc (l->log, l->n * sizeof *l->log);     /* held as counted (REQ-0002-16) */

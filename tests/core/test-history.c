@@ -406,6 +406,62 @@ as6_fill_step_budget (void)
   easel_image_free (img);
 }
 
+/* 0016 T002 (REQ-0016-05, -07), AS-7 and AS-15: a growth of the picture joined to the pixels a paste put down, one step: undo writes the
+   old values and crops back to the old size, every pixel as before; redo grows with the same fill and writes the new values; it counts
+   64 bytes plus 12 per change (a growth removes no pixel); a step of the growth alone (no pixel put down, after Clear) is still a step;
+   it discards the redo steps, and the steps before it stay undoable through it. */
+static void
+as7_grow_step (void)
+{
+  EaselImage *img = easel_image_new (21, 11, WHITE);
+  EaselHistory *h = easel_history_new (1 << 20);
+  EaselChange *changes;
+  size_t n = 0, before;
+
+  CHECK (img != NULL && h != NULL);
+  draw_row (img, h, 2, 0, 4, BLACK);                           /* an earlier step */
+  CHECK (easel_history_undo (h, img));                         /* now redoable: the grow step discards it */
+  draw_row (img, h, 3, 0, 1, BLACK);
+  before = easel_history_bytes (h);
+  /* The paste grew the picture to 30 x 20 (yellow) and is put down: 3 pixels changed. */
+  CHECK (easel_image_resize (img, 30, 20, 0xFFFFFF00u) == EASEL_RESIZE_OK);
+  changes = malloc (3 * sizeof *changes);
+  CHECK (changes != NULL);
+  changes[n++] = (EaselChange) { 0 * 30 + 0, WHITE, BLACK };
+  changes[n++] = (EaselChange) { 15 * 30 + 25, 0xFFFFFF00u, BLACK };          /* in the grown part */
+  changes[n++] = (EaselChange) { 10 * 30 + 20, WHITE, BLACK };                /* the old corner */
+  for (size_t i = 0; i < n; i++)
+    easel_image_set (img, (int) (changes[i].index % 30), (int) (changes[i].index / 30), changes[i].new_value);
+  CHECK (easel_history_push_grow (h, 21, 11, 30, 20, 0xFFFFFF00u, changes, n));
+  CHECK (easel_history_bytes (h) == before + 64 + 3 * 12);
+  CHECK (!easel_history_can_redo (h));
+  /* Undo: 21 x 11, every pixel as before (white, with row 3's two black pixels). */
+  CHECK (easel_history_undo (h, img));
+  CHECK (img->width == 21 && img->height == 11);
+  for (int y = 0; y < 11; y++)
+    for (int x = 0; x < 21; x++)
+      CHECK (easel_image_get (img, x, y) == (y == 3 && x <= 1 ? BLACK : WHITE));
+  /* Redo: 30 x 20, the grown part yellow, the three pixels black. */
+  CHECK (easel_history_redo (h, img));
+  CHECK (img->width == 30 && img->height == 20);
+  CHECK (easel_image_get (img, 0, 0) == BLACK && easel_image_get (img, 25, 15) == BLACK && easel_image_get (img, 20, 10) == BLACK);
+  CHECK (easel_image_get (img, 29, 19) == 0xFFFFFF00u && easel_image_get (img, 21, 0) == 0xFFFFFF00u && easel_image_get (img, 5, 5) == WHITE);
+  /* The step before stays undoable through it. */
+  CHECK (easel_history_undo (h, img) && easel_history_undo (h, img));
+  CHECK (img->width == 21 && easel_image_get (img, 0, 3) == WHITE);
+  CHECK (easel_history_redo (h, img) && easel_history_redo (h, img));
+  CHECK (img->width == 30 && easel_image_get (img, 0, 3) == BLACK);
+  /* The growth alone (a Clear of a grown paste): no change, still one step, 64 bytes. */
+  before = easel_history_bytes (h);
+  CHECK (easel_image_resize (img, 35, 20, 0xFF00FF00u) == EASEL_RESIZE_OK);
+  CHECK (easel_history_push_grow (h, 30, 20, 35, 20, 0xFF00FF00u, NULL, 0));
+  CHECK (easel_history_bytes (h) == before + 64);
+  CHECK (easel_history_undo (h, img) && img->width == 30);
+  CHECK (easel_history_redo (h, img) && img->width == 35 && easel_image_get (img, 34, 0) == 0xFF00FF00u);
+  easel_history_free (h);
+  easel_image_free (img);
+}
+
 int
 main (void)
 {
@@ -420,5 +476,6 @@ main (void)
   RUN (as17_huge_step_kept_alone);
   RUN (as6_fill_step_undo_redo);
   RUN (as6_fill_step_budget);
+  RUN (as7_grow_step);
   return 0;
 }

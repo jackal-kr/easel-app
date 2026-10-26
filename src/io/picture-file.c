@@ -228,18 +228,28 @@ sniff_webp (const guint8 *b, int *w, int *h)
   return FALSE;
 }
 
+static gboolean sniff_stream (FILE *f, const char **format, int *width, int *height);
+
 gboolean
 easel_picture_sniff (const char *path, const char **format, int *width, int *height)
 {
-  guint8 b[32];
   FILE *f;
+
+  if (!g_file_test (path, G_FILE_TEST_IS_REGULAR) || (f = g_fopen (path, "rb")) == NULL)
+    return FALSE;
+  return sniff_stream (f, format, width, height);
+}
+
+/* The sniffer over an open stream, which it closes: a file's, or bytes' through fmemopen. */
+static gboolean
+sniff_stream (FILE *f, const char **format, int *width, int *height)
+{
+  guint8 b[32];
   size_t got;
   const char *name = NULL;
   int w = 0, h = 0;
   gboolean ok = FALSE;
 
-  if (!g_file_test (path, G_FILE_TEST_IS_REGULAR) || (f = g_fopen (path, "rb")) == NULL)
-    return FALSE;
   memset (b, 0, sizeof b);
   got = fread (b, 1, sizeof b, f);
   if (got >= 24 && sniff_png (b, &w, &h))
@@ -303,12 +313,14 @@ is_readable_file (const char *path)
   return TRUE;
 }
 
+static EaselOpenResult from_pixbuf (GdkPixbuf *pixbuf, EaselImage **img, int *width, int *height);
+
 EaselOpenResult
 easel_picture_open (const char *path, EaselImage **img, int *width, int *height)
 {
   g_autoptr (GdkPixbuf) pixbuf = NULL;
   g_autoptr (GError) error = NULL;
-  const char *format, *orientation;
+  const char *format;
   int w = 0, h = 0;
 
   *img = NULL;
@@ -349,9 +361,16 @@ easel_picture_open (const char *path, EaselImage **img, int *width, int *height)
       return EASEL_OPEN_NOT_PICTURE;
     }
 
-  /* One pass into the picture, upright, as 8-bit RGBA; then the decoder's pixels are freed at once, before the caller
-     does anything else (Plan, "Memory when opening"). */
-  orientation = gdk_pixbuf_get_option (pixbuf, "orientation");
+  return from_pixbuf (g_steal_pointer (&pixbuf), img, width, height);
+}
+
+/* One pass into the picture, upright, as 8-bit RGBA; then the decoder's pixels are freed at once, before the caller does anything
+   else (Plan, "Memory when opening"). Takes pixbuf. */
+static EaselOpenResult
+from_pixbuf (GdkPixbuf *pixbuf, EaselImage **img, int *width, int *height)
+{
+  const char *orientation = gdk_pixbuf_get_option (pixbuf, "orientation");
+
   *img = easel_image_from_bytes (gdk_pixbuf_read_pixels (pixbuf), gdk_pixbuf_get_width (pixbuf),
                                  gdk_pixbuf_get_height (pixbuf), gdk_pixbuf_get_rowstride (pixbuf),
                                  gdk_pixbuf_get_n_channels (pixbuf), orientation ? atoi (orientation) : 1);
@@ -359,12 +378,51 @@ easel_picture_open (const char *path, EaselImage **img, int *width, int *height)
     {
       *width = gdk_pixbuf_get_width (pixbuf);
       *height = gdk_pixbuf_get_height (pixbuf);
+      g_object_unref (pixbuf);
       return EASEL_OPEN_NO_MEMORY;
     }
-  g_clear_object (&pixbuf);
+  g_object_unref (pixbuf);
   *width = (*img)->width;
   *height = (*img)->height;
   return EASEL_OPEN_OK;
+}
+
+EaselOpenResult
+easel_picture_open_bytes (GBytes *bytes, EaselImage **img, int *width, int *height)
+{
+  g_autoptr (GInputStream) stream = NULL;
+  g_autoptr (GError) error = NULL;
+  GdkPixbuf *pixbuf;
+  const char *format;
+  gsize len = 0;
+  const void *data = g_bytes_get_data (bytes, &len);
+  FILE *f;
+  int w = 0, h = 0;
+
+  *img = NULL;
+  *width = *height = 0;
+  /* The same checks as a file's, in the same order: what it is and how big from its first bytes, then the memory (REQ-0016-10). */
+  if (len == 0 || (f = fmemopen ((void *) data, len, "rb")) == NULL || !sniff_stream (f, &format, &w, &h))
+    return EASEL_OPEN_NOT_PICTURE;
+  if (w > EASEL_IMAGE_MAX_SIZE || h > EASEL_IMAGE_MAX_SIZE || !memory_for (w, h, 2))
+    {
+      *width = w;
+      *height = h;
+      return w > EASEL_IMAGE_MAX_SIZE || h > EASEL_IMAGE_MAX_SIZE ? EASEL_OPEN_TOO_BIG : EASEL_OPEN_NO_MEMORY;
+    }
+  stream = g_memory_input_stream_new_from_bytes (bytes);
+  pixbuf = gdk_pixbuf_new_from_stream (stream, NULL, &error);
+  if (pixbuf == NULL)
+    {
+      if (g_error_matches (error, GDK_PIXBUF_ERROR, GDK_PIXBUF_ERROR_INSUFFICIENT_MEMORY))
+        {
+          *width = w;
+          *height = h;
+          return EASEL_OPEN_NO_MEMORY;
+        }
+      return EASEL_OPEN_NOT_PICTURE;
+    }
+  return from_pixbuf (pixbuf, img, width, height);
 }
 
 /* ---- saving ---- */
@@ -423,6 +481,23 @@ format_name (EaselFormat format)
 gboolean
 easel_picture_save (const EaselImage *img, const char *path, EaselFormat format, int jpeg_quality, GError **error)
 {
+  g_autoptr (GBytes) bytes = easel_picture_encode (img, format, jpeg_quality, error);
+  gsize size = 0;
+  const char *buffer;
+
+  if (bytes == NULL)
+    return FALSE;
+  buffer = g_bytes_get_data (bytes, &size);
+  /* Written to a temporary file and renamed over the target, so a failure never leaves it half-written, in every
+     format. GIO's g_file_replace_contents() is not used: when it cannot create the temporary file it rewrites the
+     target in place. */
+  return g_file_set_contents_full (path, buffer, (gssize) size, G_FILE_SET_CONTENTS_CONSISTENT, 0666, error);
+}
+
+/* The encoding itself; png_fast asks the PNG encoder for its fastest level (1). */
+static GBytes *
+encode_with (const EaselImage *img, EaselFormat format, int jpeg_quality, gboolean png_fast, GError **error)
+{
   g_autoptr (GdkPixbuf) pb = NULL;
   g_autofree char *buffer = NULL;
   g_autofree char *quality = g_strdup_printf ("%d", jpeg_quality);
@@ -437,7 +512,7 @@ easel_picture_save (const EaselImage *img, const char *path, EaselFormat format,
   if (pb == NULL)
     {
       g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_NO_SPACE, g_strerror (ENOMEM));
-      return FALSE;
+      return NULL;
     }
   /* A format taken out by the test hook is handed to gdk-pixbuf under a name it does not know, so the failure and its
      message are gdk-pixbuf's own (Plan, "A missing loader or saver"). */
@@ -448,13 +523,23 @@ easel_picture_save (const EaselImage *img, const char *path, EaselFormat format,
     encoded = gdk_pixbuf_save_to_buffer (pb, &buffer, &size, name, error, "quality", quality, NULL);
   else if (format == EASEL_FORMAT_WEBP)
     encoded = gdk_pixbuf_save_to_buffer (pb, &buffer, &size, name, error, "lossless", "TRUE", NULL);
+  else if (format == EASEL_FORMAT_PNG && png_fast)
+    encoded = gdk_pixbuf_save_to_buffer (pb, &buffer, &size, name, error, "compression", "1", NULL);
   else
     encoded = gdk_pixbuf_save_to_buffer (pb, &buffer, &size, name, error, NULL);
   if (!encoded)
-    return FALSE;
+    return NULL;
+  return g_bytes_new_take (g_steal_pointer (&buffer), size);
+}
 
-  /* Written to a temporary file and renamed over the target, so a failure never leaves it half-written, in every
-     format. GIO's g_file_replace_contents() is not used: when it cannot create the temporary file it rewrites the
-     target in place. */
-  return g_file_set_contents_full (path, buffer, (gssize) size, G_FILE_SET_CONTENTS_CONSISTENT, 0666, error);
+GBytes *
+easel_picture_encode (const EaselImage *img, EaselFormat format, int jpeg_quality, GError **error)
+{
+  return encode_with (img, format, jpeg_quality, FALSE, error);
+}
+
+GBytes *
+easel_picture_encode_fast_png (const EaselImage *img, GError **error)
+{
+  return encode_with (img, EASEL_FORMAT_PNG, 90, TRUE, error);
 }

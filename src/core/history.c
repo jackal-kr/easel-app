@@ -10,6 +10,7 @@ typedef enum
   STEP_CHANGES,           /* pixels that changed: changes, n */
   STEP_RESIZE,            /* a new size: the fields below */
   STEP_FILL,              /* a fill: old_color becomes new_color in every pixel of the spans */
+  STEP_GROW,              /* a growth from old_w x old_h to new_w x new_h with fill, then the changes (0016: a paste's put-down) */
 } StepKind;
 
 typedef struct
@@ -184,6 +185,16 @@ easel_history_push (EaselHistory *h, EaselChange *changes, size_t n)
 }
 
 bool
+easel_history_push_grow (EaselHistory *h, int old_w, int old_h, int new_w, int new_h, uint32_t fill, EaselChange *changes, size_t n)
+{
+  if (n > (SIZE_MAX - BYTES_PER_STEP) / BYTES_PER_CHANGE || !make_room (h))
+    return false;
+  commit_step (h, (Step) { .kind = STEP_GROW, .old_w = old_w, .old_h = old_h, .new_w = new_w, .new_h = new_h, .fill = fill,
+                           .changes = changes, .n = n });
+  return true;
+}
+
+bool
 easel_history_push_fill (EaselHistory *h, uint32_t old_value, uint32_t new_value, EaselSpan *spans, size_t n)
 {
   if (n == 0)
@@ -266,6 +277,24 @@ apply_step (const Step *s, EaselImage *img, bool undo)
             if (x >= kept_w || y >= kept_h)
               img->px[(size_t) y * (size_t) s->old_w + (size_t) x] = s->removed[i++];
       }
+      return true;
+    }
+
+  if (s->kind == STEP_GROW)
+    {
+      /* The size first, so that a buffer that cannot be had changes nothing; the changes' indexes are of the grown size. Undo crops
+         back (the cropped pixels were the fill's, or the paste's over it) and writes the old values of the changes that stay. */
+      if (easel_image_resize (img, undo ? s->old_w : s->new_w, undo ? s->old_h : s->new_h, s->fill) != EASEL_RESIZE_OK)
+        return false;
+      for (size_t i = 0; i < s->n; i++)
+        {
+          int x = (int) (s->changes[i].index % (uint32_t) s->new_w), y = (int) (s->changes[i].index / (uint32_t) s->new_w);
+
+          if (!undo)
+            easel_image_set (img, x, y, s->changes[i].new_value);
+          else if (x < s->old_w && y < s->old_h)
+            easel_image_set (img, x, y, s->changes[i].old_value);
+        }
       return true;
     }
 

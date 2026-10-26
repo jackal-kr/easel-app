@@ -9,6 +9,7 @@
 #include "grid-dialog.h"
 #include "magnifier.h"
 #include "canvas.h"
+#include "clipboard.h"
 #include "palette-bar.h"
 #include "palette-file.h"
 #include "picture-file.h"
@@ -22,6 +23,7 @@ struct _EaselWindow
 {
   AdwApplicationWindow parent_instance;
 
+  EaselClipboard *clipboard;  /* the desktop's, or a test's (Plan of 0016, "The clipboard seam") */
   GtkScrolledWindow *scroller;
   EaselCanvas *canvas;
   EaselPaletteBar *palette_bar;
@@ -35,6 +37,8 @@ struct _EaselWindow
   GtkMenuButton *main_menu_button;
   GMenuModel *selection_menu_model;   /* the template's selection_menu (REQ-0013-17) */
   GtkWidget *selection_menu;          /* its popover, parented to the canvas */
+  GMenuModel *canvas_menu_model;      /* the template's canvas_menu (REQ-0016-14) */
+  GtkWidget *canvas_menu;             /* its popover, parented to the canvas */
   GtkMenuButton *image_button;
   GtkMenuButton *view_button;
   GtkLabel *zoom_label;       /* the View menu's zoom row, created in code */
@@ -54,12 +58,17 @@ struct _EaselWindow
   gboolean loading;       /* a picture is being opened (REQ-0005-02) */
   GFile *loading_file;
   gboolean close_after_loading;   /* a quit request came while loading */
+  gboolean reading_clipboard;     /* Paste is waiting for the clipboard (REQ-0016-15) */
+  gboolean close_after_reading;   /* a quit request came while it waited */
+  guint clipboard_timeout_ms;     /* the limit of that wait: 5000 (a test hook sets it) */
   gulong paint_handler;   /* the frame clock's after-paint that starts the decode */
   gint64 frame_at_request;
   char *cursor_at_decode;  /* test hook */
   int frames_before_decode;
   gboolean decode_after_paint;   /* test hook: the last decode was started by a frame's after-paint */
   gboolean prompt_open;   /* a "Save Changes?" prompt, from showing it until its choice is carried out */
+  AdwDialog *paste_prompt;   /* the oversize-paste prompt while it is open (REQ-0016-13) */
+  EaselImage *paste_pending; /* the picture it asks about, read when Paste was chosen */
   void (*prompt_then) (EaselWindow *self);   /* what Discard, or a Save that worked, goes on to do */
 
   /* The color chooser (REQ-0003-11..14): what it edits, a swatch number or one of the CHOOSE_ values. */
@@ -78,6 +87,8 @@ enum
 typedef void (*SaveDone) (EaselWindow *self, gboolean saved);
 
 G_DEFINE_FINAL_TYPE (EaselWindow, easel_window, ADW_TYPE_APPLICATION_WINDOW)
+
+static void update_clipboard_actions (EaselWindow *self);
 
 static void sync_zoom_ui (EaselWindow *self);
 static void update_title (EaselWindow *self);
@@ -118,6 +129,7 @@ create_picture (EaselWindow *self, int area_width, int area_height)
       return;
     }
   easel_canvas_set_image (self->canvas, self->picture);
+  update_clipboard_actions (self);
   easel_status_bar_set_size (self->status_bar, TRUE, self->picture->width, self->picture->height);
   sync_zoom_ui (self);
   update_title (self);
@@ -276,6 +288,7 @@ typedef struct
   EaselWindow *self;      /* owned reference while the dialog is open */
   char *path;
   SaveDone done;
+  EaselImage *copy;       /* Copy To… (REQ-0016-09): the selection's copy to write, instead of the picture; owned */
 } SaveRequest;
 
 static void
@@ -285,7 +298,34 @@ save_request_finish (SaveRequest *req, gboolean saved)
     req->done (req->self, saved);
   g_object_unref (req->self);
   g_free (req->path);
+  easel_image_free (req->copy);
   g_free (req);
+}
+
+/* The copy of the selection written to path as Save As writes the picture (REQ-0016-09, -12); the picture, its file, title, modified
+   mark and history are not touched; a failure is the save error of REQ-0001-31. */
+static gboolean
+write_copy (EaselWindow *self, const EaselImage *copy, const char *path)
+{
+  g_autoptr (GError) error = NULL;
+
+  if (!easel_picture_save (copy, path, save_format (path), self->settings.jpeg_quality, &error))
+    {
+      g_autofree char *name = g_path_get_basename (path);
+      g_autofree char *heading = g_strdup_printf ("Could Not Save “%s”", name);
+      g_autofree char *body = g_strdup_printf ("“%s” could not be saved: %s", path, error->message);
+
+      show_save_error (self, heading, body);
+      return FALSE;
+    }
+  return TRUE;
+}
+
+/* What a save request writes: the picture, or for Copy To… the copy. */
+static gboolean
+write_request (SaveRequest *req)
+{
+  return req->copy != NULL ? write_copy (req->self, req->copy, req->path) : easel_window_save_to (req->self, req->path);
 }
 
 static void
@@ -295,7 +335,7 @@ on_replace_response (AdwAlertDialog *dialog, GAsyncResult *result, SaveRequest *
   gboolean saved = FALSE;
 
   if (g_strcmp0 (response, "replace") == 0)
-    saved = easel_window_save_to (req->self, req->path);
+    saved = write_request (req);
   save_request_finish (req, saved);
 }
 
@@ -346,7 +386,7 @@ save_chosen (SaveRequest *req, const char *chosen)
       ask_replace (req);
       return;
     }
-  save_request_finish (req, easel_window_save_to (req->self, req->path));
+  save_request_finish (req, write_request (req));
 }
 
 static void
@@ -373,6 +413,74 @@ easel_window_save_chosen (EaselWindow *self, const char *path)
 
   req->self = g_object_ref (self);
   save_chosen (req, path);
+}
+
+static void show_copy_error (EaselWindow *self);
+
+/* Copy To… with a name chosen (REQ-0016-09): the copy is made now, so the selection may change while a replace question waits. */
+void
+easel_window_copy_to_chosen (EaselWindow *self, const char *path)
+{
+  SaveRequest *req;
+  EaselImage *copy = self->picture != NULL ? easel_canvas_copy_selection (self->canvas) : NULL;
+
+  if (copy == NULL)
+    {
+      int x, y, w, h;
+      gboolean floating;
+
+      if (self->picture != NULL && easel_canvas_get_selection (self->canvas, &x, &y, &w, &h, &floating))
+        show_copy_error (self);                  /* a selection but no memory for its copy: nothing is written (REQ-0016-11) */
+      return;
+    }
+  req = g_new0 (SaveRequest, 1);
+  req->self = g_object_ref (self);
+  req->copy = copy;
+  save_chosen (req, path);
+}
+
+static void
+on_copy_to_dialog_done (GtkFileDialog *dialog, GAsyncResult *result, EaselWindow *self)
+{
+  g_autoptr (GFile) file = gtk_file_dialog_save_finish (dialog, result, NULL);
+  g_autofree char *chosen = file ? g_file_get_path (file) : NULL;
+
+  self->save_dialog_open = FALSE;
+  if (chosen != NULL)               /* Cancelled: nothing is written and nothing changes */
+    easel_window_copy_to_chosen (self, chosen);
+  g_object_unref (self);
+}
+
+/* Copy To… (REQ-0016-09): a save dialog titled "Copy To", suggesting Untitled.png in the folder of the picture's file or the Pictures
+   folder. */
+static void
+copy_to_activated (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+  EaselWindow *self = user_data;
+  g_autoptr (GtkFileDialog) dialog = NULL;
+  g_autoptr (GFile) folder = NULL;
+  const char *pictures = g_get_user_special_dir (G_USER_DIRECTORY_PICTURES);
+
+  if (self->picture == NULL || dialog_is_open (self) || easel_canvas_is_stroking (self->canvas)
+      || easel_canvas_is_resizing (self->canvas) || !g_action_group_get_action_enabled (G_ACTION_GROUP (self), "copy-to"))
+    return;
+  dialog = gtk_file_dialog_new ();
+  if (self->path != NULL)
+    {
+      g_autoptr (GFile) current = g_file_new_for_path (self->path);
+
+      folder = g_file_get_parent (current);
+    }
+  if (folder == NULL || !g_file_query_exists (folder, NULL))
+    {
+      g_clear_object (&folder);
+      folder = g_file_new_for_path (pictures && g_file_test (pictures, G_FILE_TEST_IS_DIR) ? pictures : g_get_home_dir ());
+    }
+  gtk_file_dialog_set_title (dialog, "Copy To");
+  gtk_file_dialog_set_initial_folder (dialog, folder);
+  gtk_file_dialog_set_initial_name (dialog, "Untitled.png");
+  self->save_dialog_open = TRUE;                 /* a quit request behaves as for Save As (REQ-0001-43) */
+  gtk_file_dialog_save (dialog, GTK_WINDOW (self), NULL, (GAsyncReadyCallback) on_copy_to_dialog_done, g_object_ref (self));
 }
 
 /* The name the dialog suggests for a file that cannot be saved in place: its name without the extension, plus .png
@@ -497,9 +605,71 @@ ask_unsaved (EaselWindow *self, void (*then) (EaselWindow *self))
   adw_dialog_present (dialog, GTK_WIDGET (self));
 }
 
+/* The answer of a call that a wait may give up on (Check F1 of 0016): a cancelled call can still call back from the main loop after the
+   wait has returned, so the answer lives on the heap and the last of the callback and the wait frees it. */
+typedef struct
+{
+  GAsyncResult *result;
+  gboolean given_up;
+} Answer;
+
+static void
+on_answer (GObject *source, GAsyncResult *result, gpointer data)
+{
+  Answer *answer = data;
+
+  if (answer->given_up)
+    g_free (answer);                            /* the wait has gone: nothing to keep */
+  else
+    answer->result = g_object_ref (result);
+}
+
+/* The wait is over: the result if it came (the caller's to unref) and the answer freed; otherwise NULL, the answer left to its callback. */
+static GAsyncResult *
+answer_take (Answer *answer)
+{
+  GAsyncResult *result = answer->result;
+
+  if (result == NULL)
+    answer->given_up = TRUE;
+  else
+    g_free (answer);
+  return result;
+}
+
+/* The store at quit (Plan of 0016): when the window's own copy is on the clipboard, the desktop's clipboard manager is asked to keep it,
+   waited for on the spot for at most 2 seconds; the quit goes on whatever the answer (with none, the copy is gone after it). */
+static void
+store_clipboard_for_quit (EaselWindow *self)
+{
+  g_autoptr (GCancellable) cancellable = NULL;
+  Answer *answer;
+  GAsyncResult *result;
+  gint64 deadline;
+
+  /* Whatever the window put there is kept (a picture now, text and rich text with 0017); another app's content is not ours to store. */
+  if (self->clipboard == NULL || !easel_clipboard_is_local (self->clipboard))
+    return;
+  cancellable = g_cancellable_new ();
+  answer = g_new0 (Answer, 1);
+  easel_clipboard_store_async (self->clipboard, cancellable, on_answer, answer);
+  deadline = g_get_monotonic_time () + 2 * G_USEC_PER_SEC;
+  while (answer->result == NULL && g_get_monotonic_time () < deadline)
+    g_main_context_iteration (NULL, FALSE);
+  result = answer_take (answer);
+  if (result == NULL)
+    g_cancellable_cancel (cancellable);
+  else
+    {
+      easel_clipboard_store_finish (self->clipboard, result, NULL);
+      g_object_unref (result);
+    }
+}
+
 static void
 quit_now (EaselWindow *self)
 {
+  store_clipboard_for_quit (self);
   gtk_window_destroy (GTK_WINDOW (self));
 }
 
@@ -509,6 +679,9 @@ easel_window_close_request (GtkWindow *window)
 {
   EaselWindow *self = EASEL_WINDOW (window);
 
+  /* While Open's or Paste From's file dialog is open a quit request does nothing, and so puts nothing down (REQ-0005-02, REQ-0016-08). */
+  if (self->open_dialog_open)
+    return TRUE;
   /* A stroke in progress is ended first (REQ-0001-33), a pending curve or polygon put down (REQ-0011-12); an open color
      chooser closes as Cancel (REQ-0003-14). */
   easel_canvas_end_stroke (self->canvas);
@@ -524,13 +697,19 @@ easel_window_close_request (GtkWindow *window)
       self->close_after_loading = TRUE;
       return TRUE;
     }
-  if (self->open_dialog_open)
-    return TRUE;
+  if (self->reading_clipboard)
+    {
+      self->close_after_reading = TRUE;           /* handled after the read (REQ-0016-15) */
+      return TRUE;
+    }
   /* One prompt at a time (REQ-0001-38). */
   if (self->prompt_open)
     return TRUE;
   if (!easel_history_is_modified (self->history))
-    return FALSE;
+    {
+      store_clipboard_for_quit (self);
+      return FALSE;
+    }
   ask_unsaved (self, quit_now);
   return TRUE;
 }
@@ -741,10 +920,11 @@ on_open_dialog_done (GtkFileDialog *dialog, GAsyncResult *result, EaselWindow *s
   g_object_unref (self);
 }
 
-static void
-show_open_dialog (EaselWindow *self)
+/* A file dialog for pictures with Open's folders and filters (REQ-0005-05), titled title: Open's, and Paste From's (REQ-0016-08). */
+static GtkFileDialog *
+make_picture_dialog (EaselWindow *self, const char *title)
 {
-  g_autoptr (GtkFileDialog) dialog = gtk_file_dialog_new ();
+  GtkFileDialog *dialog = gtk_file_dialog_new ();
   g_autoptr (GListStore) filters = g_list_store_new (GTK_TYPE_FILE_FILTER);
   g_autoptr (GtkFileFilter) pictures = gtk_file_filter_new ();
   g_autoptr (GtkFileFilter) all = gtk_file_filter_new ();
@@ -772,10 +952,18 @@ show_open_dialog (EaselWindow *self)
   gtk_file_filter_add_pattern (all, "*");
   g_list_store_append (filters, pictures);
   g_list_store_append (filters, all);
-  gtk_file_dialog_set_title (dialog, "Open Picture");
+  gtk_file_dialog_set_title (dialog, title);
   gtk_file_dialog_set_filters (dialog, G_LIST_MODEL (filters));
   gtk_file_dialog_set_default_filter (dialog, pictures);
   gtk_file_dialog_set_initial_folder (dialog, folder);
+  return dialog;
+}
+
+static void
+show_open_dialog (EaselWindow *self)
+{
+  g_autoptr (GtkFileDialog) dialog = make_picture_dialog (self, "Open Picture");
+
   self->open_dialog_open = TRUE;
   gtk_file_dialog_open (dialog, GTK_WINDOW (self), NULL, (GAsyncReadyCallback) on_open_dialog_done, g_object_ref (self));
 }
@@ -868,7 +1056,8 @@ save_as_activated (GSimpleAction *action, GVariant *parameter, gpointer user_dat
 static gboolean
 dialog_is_open (EaselWindow *self)
 {
-  return self->prompt_open || self->save_dialog_open || self->open_dialog_open || self->loading || self->chooser_open
+  return self->prompt_open || self->save_dialog_open || self->open_dialog_open || self->loading || self->reading_clipboard
+         || self->chooser_open
          || adw_application_window_get_visible_dialog (ADW_APPLICATION_WINDOW (self)) != NULL;
 }
 
@@ -1188,6 +1377,24 @@ easel_window_get_zoom_text (EaselWindow *self)
   return gtk_label_get_text (self->zoom_label);
 }
 
+void
+easel_window_set_clipboard_timeout (EaselWindow *self, guint ms)
+{
+  self->clipboard_timeout_ms = ms;
+}
+
+void
+easel_window_set_clipboard (EaselWindow *self, EaselClipboard *clipboard)
+{
+  if (self->clipboard != NULL)
+    g_signal_handlers_disconnect_by_data (self->clipboard, self);
+  g_clear_object (&self->clipboard);
+  g_clear_pointer (&self->paste_pending, easel_image_free);
+  self->clipboard = clipboard != NULL ? g_object_ref (clipboard) : easel_gdk_clipboard_new (gtk_widget_get_clipboard (GTK_WIDGET (self)));
+  g_signal_connect_swapped (self->clipboard, "changed", G_CALLBACK (update_clipboard_actions), self);
+  update_clipboard_actions (self);
+}
+
 GtkPopoverMenu *
 easel_window_get_selection_menu (EaselWindow *self)
 {
@@ -1202,6 +1409,20 @@ on_context_menu (EaselWindow *self, double x, double y)
   gtk_popover_popup (GTK_POPOVER (self->selection_menu));
 }
 
+/* A secondary press with a select tool not on the selection: the canvas menu at the pointer (REQ-0016-14). */
+static void
+on_canvas_menu (EaselWindow *self, double x, double y)
+{
+  gtk_popover_set_pointing_to (GTK_POPOVER (self->canvas_menu), &(GdkRectangle) { (int) x, (int) y, 1, 1 });
+  gtk_popover_popup (GTK_POPOVER (self->canvas_menu));
+}
+
+GtkPopoverMenu *
+easel_window_get_canvas_menu (EaselWindow *self)
+{
+  return GTK_POPOVER_MENU (self->canvas_menu);
+}
+
 /* A menu or popover is open: its keys are its own (REQ-0013-17). */
 static gboolean
 menu_is_open (EaselWindow *self)
@@ -1209,6 +1430,8 @@ menu_is_open (EaselWindow *self)
   GtkMenuButton *buttons[] = { self->main_menu_button, self->image_button, self->view_button };
 
   if (self->selection_menu != NULL && gtk_widget_get_visible (self->selection_menu))
+    return TRUE;
+  if (self->canvas_menu != NULL && gtk_widget_get_visible (self->canvas_menu))
     return TRUE;
   for (guint i = 0; i < G_N_ELEMENTS (buttons); i++)
     if (buttons[i] != NULL && gtk_menu_button_get_popover (buttons[i]) != NULL
@@ -1745,6 +1968,42 @@ on_selection_failed (EaselWindow *self, int kind)
 
 /* The status bar's selection size follows the selection and the rectangle being dragged out (REQ-0013-06); Clear Selection
    is there only while a selection exists (REQ-0013-14). */
+/* Whether the clipboard holds something Paste takes (REQ-0016-02): a picture, or copied files (as Files' Copy puts them). */
+static gboolean
+clipboard_has_picture (EaselClipboard *clipboard)
+{
+  GdkContentFormats *formats = easel_clipboard_get_formats (clipboard);
+  const char *const *types;
+  gsize n = 0;
+
+  if (gdk_content_formats_contain_gtype (formats, GDK_TYPE_TEXTURE) || gdk_content_formats_contain_gtype (formats, GDK_TYPE_FILE_LIST))
+    return TRUE;
+  types = gdk_content_formats_get_mime_types (formats, &n);
+  for (gsize i = 0; i < n; i++)
+    if (g_str_has_prefix (types[i], "image/"))
+      return TRUE;
+  return FALSE;
+}
+
+/* The five clipboard commands' sensitivity (REQ-0016-02): Cut, Copy and Copy To… with a selection, Paste while the clipboard holds a
+   picture or files, Paste From… while the picture exists; none while a button is held for a stroke or a drag. Kept up to date at every
+   change of the selection, the clipboard, the picture and a held button. */
+static void
+update_clipboard_actions (EaselWindow *self)
+{
+  int x, y, w, h;
+  gboolean floating;
+  gboolean idle = self->picture != NULL && !easel_canvas_is_stroking (self->canvas) && !easel_canvas_is_resizing (self->canvas);
+  gboolean selection = idle && easel_canvas_get_selection (self->canvas, &x, &y, &w, &h, &floating);
+  gboolean picture = idle && self->clipboard != NULL && clipboard_has_picture (self->clipboard);
+  static const char *selection_actions[] = { "cut", "copy", "copy-to" };
+
+  for (guint i = 0; i < G_N_ELEMENTS (selection_actions); i++)
+    g_simple_action_set_enabled (G_SIMPLE_ACTION (g_action_map_lookup_action (G_ACTION_MAP (self), selection_actions[i])), selection);
+  g_simple_action_set_enabled (G_SIMPLE_ACTION (g_action_map_lookup_action (G_ACTION_MAP (self), "paste")), picture);
+  g_simple_action_set_enabled (G_SIMPLE_ACTION (g_action_map_lookup_action (G_ACTION_MAP (self), "paste-from")), idle);
+}
+
 static void
 on_selection_changed (EaselWindow *self)
 {
@@ -1756,6 +2015,7 @@ on_selection_changed (EaselWindow *self)
   if (clear != NULL)
     g_simple_action_set_enabled (G_SIMPLE_ACTION (clear),
                                  easel_canvas_get_selection (self->canvas, &x, &y, &w, &h, &floating));
+  update_clipboard_actions (self);
 }
 
 /* Select All (REQ-0013-15): ignored when a tool change is (before the picture exists, with a dialog open, during a stroke or
@@ -1787,6 +2047,400 @@ static void
 on_stroking_changed (EaselWindow *self, gboolean stroking)
 {
   easel_tool_options_set_busy (self->tool_options, stroking);
+  update_clipboard_actions (self);
+}
+
+/* The memory for the copy of the selection could not be had: the dialog, and nothing else changed (REQ-0016-11). */
+static void
+show_copy_error (EaselWindow *self)
+{
+  show_save_error (self, "Could Not Copy the Selection", "There is not enough memory to copy this selection.");
+}
+
+/* Copy (REQ-0016-03): the selection's copy on the clipboard, replacing what it held. FALSE if there was nothing to copy or no memory for
+   the copy (its dialog: 0016 T015). */
+static gboolean
+copy_selection (EaselWindow *self)
+{
+  EaselImage *copy;
+  g_autoptr (GdkContentProvider) provider = NULL;
+
+  if (self->picture == NULL || dialog_is_open (self) || easel_canvas_is_stroking (self->canvas))
+    return FALSE;
+  copy = easel_canvas_copy_selection (self->canvas);
+  if (copy == NULL)
+    {
+      int x, y, w, h;
+      gboolean floating;
+
+      if (easel_canvas_get_selection (self->canvas, &x, &y, &w, &h, &floating))
+        show_copy_error (self);                  /* a selection but no memory for its copy (REQ-0016-11) */
+      return FALSE;
+    }
+  provider = easel_clipboard_picture_new (copy);
+  easel_clipboard_set_content (self->clipboard, provider);
+  return TRUE;
+}
+
+/* The picture types a paste reads, in the order it prefers them: PNG first (exact), then the others Open reads (REQ-0016-05). */
+static const char *const paste_mime_types[] = { "image/png", "image/webp", "image/tiff", "image/bmp", "image/jpeg", "image/gif", NULL };
+
+/* A read that waits for the clipboard: input waits and the busy cursor shows (REQ-0016-15). */
+typedef struct
+{
+  EaselWindow *self;
+  GCancellable *cancellable;
+  gboolean timed_out;
+  guint timer;
+} ClipboardWait;
+
+static gboolean
+on_clipboard_timeout (gpointer data)
+{
+  ClipboardWait *wait = data;
+
+  wait->timed_out = TRUE;
+  wait->timer = 0;
+  g_cancellable_cancel (wait->cancellable);
+  return G_SOURCE_REMOVE;
+}
+
+/* The main loop runs until the call answers or the limit passes; the result (the caller's to unref), or NULL on a time-out (the call is
+   cancelled, and its late callback frees the answer). */
+static GAsyncResult *
+wait_for_clipboard_result (ClipboardWait *wait, Answer *answer)
+{
+  while (answer->result == NULL && !wait->timed_out)
+    g_main_context_iteration (NULL, TRUE);
+  return answer_take (answer);
+}
+
+/* A refusal of the paste: the error dialog and nothing changed (REQ-0016-10). name is the file's, for a file. */
+static void
+paste_error (EaselWindow *self, const char *name, EaselOpenResult why)
+{
+  g_autofree char *heading = name != NULL ? g_strdup_printf ("Could Not Paste “%s”", name) : g_strdup ("Could Not Paste");
+  const char *body;
+
+  if (self->close_after_reading)
+    return;       /* a quit request waits for this read: nothing was changed, and a dialog would take the quit (REQ-0016-15) */
+
+  switch (why)
+    {
+    case EASEL_OPEN_TOO_BIG:
+      body = "The picture is bigger than 10000 pixels in width or height.";
+      break;
+    case EASEL_OPEN_NO_MEMORY:
+      body = "There is not enough memory to paste this picture.";
+      break;
+    case EASEL_OPEN_NOT_PICTURE:
+      body = "This is not a picture the app can open.";
+      break;
+    case EASEL_OPEN_UNREADABLE:
+    default:
+      body = name != NULL ? "The file cannot be read." : "The clipboard's picture cannot be read.";
+      break;
+    }
+  show_save_error (self, heading, body);
+}
+
+/* The clipboard's picture (REQ-0016-05, -15): Easel's own copy taken as it is; another app's picture read as PNG first and then the
+   types Open reads; copied files only: the first file, opened as Open does. NULL if there is none (a refusal shows its dialog), or if a
+   quit request came during the wait (the window may be gone when this returns). */
+static EaselImage *
+read_clipboard_picture (EaselWindow *self)
+{
+  GdkContentProvider *content = easel_clipboard_get_content (self->clipboard);
+  GdkContentFormats *formats = easel_clipboard_get_formats (self->clipboard);
+  ClipboardWait wait = { self, g_cancellable_new (), FALSE, 0 };
+  Answer *answer;
+  GAsyncResult *result = NULL;
+  g_autoptr (GInputStream) stream = NULL;
+  g_autoptr (GOutputStream) sink = NULL;
+  g_autoptr (GBytes) bytes = NULL;
+  const char *const *types;
+  gboolean has_picture = FALSE;
+  EaselImage *img = NULL;
+  EaselOpenResult opened = EASEL_OPEN_UNREADABLE;
+  gsize n = 0;
+  int w = 0, h = 0;
+
+  if (easel_clipboard_is_local (self->clipboard) && EASEL_IS_CLIPBOARD_PICTURE (content))
+    {
+      const EaselImage *own = easel_clipboard_picture_get_image (EASEL_CLIPBOARD_PICTURE (content));
+
+      img = easel_image_new (own->width, own->height, 0);
+      if (img == NULL)
+        paste_error (self, NULL, EASEL_OPEN_NO_MEMORY);
+      else
+        memcpy (img->px, own->px, (size_t) own->width * (size_t) own->height * sizeof *img->px);
+      g_object_unref (wait.cancellable);
+      return img;
+    }
+  /* From here the window waits on the spot: the busy cursor, input blocked, a quit request handled after (REQ-0016-15). */
+  self->reading_clipboard = TRUE;
+  gtk_widget_set_cursor_from_name (GTK_WIDGET (self), "wait");
+  easel_canvas_set_busy (self->canvas, TRUE);
+  easel_canvas_set_input_blocked (self->canvas, TRUE);
+  wait.timer = g_timeout_add (self->clipboard_timeout_ms, on_clipboard_timeout, &wait);
+  types = gdk_content_formats_get_mime_types (formats, &n);
+  for (gsize i = 0; i < n && !has_picture; i++)
+    has_picture = g_str_has_prefix (types[i], "image/");
+  has_picture = has_picture || gdk_content_formats_contain_gtype (formats, GDK_TYPE_TEXTURE);
+  if (has_picture)
+    {
+      answer = g_new0 (Answer, 1);
+      easel_clipboard_read_async (self->clipboard, (const char **) paste_mime_types, wait.cancellable, on_answer, answer);
+      result = wait_for_clipboard_result (&wait, answer);
+      stream = result != NULL ? easel_clipboard_read_finish (self->clipboard, result, NULL, NULL) : NULL;
+      g_clear_object (&result);
+      if (stream != NULL)
+        {
+          /* Read without blocking: when the content is of this process its writer is this main loop (perf-0016, 2026-10-23). */
+          sink = g_memory_output_stream_new_resizable ();
+          answer = g_new0 (Answer, 1);
+          g_output_stream_splice_async (sink, stream, G_OUTPUT_STREAM_SPLICE_CLOSE_SOURCE | G_OUTPUT_STREAM_SPLICE_CLOSE_TARGET,
+                                        G_PRIORITY_DEFAULT, wait.cancellable, on_answer, answer);
+          result = wait_for_clipboard_result (&wait, answer);
+          if (result != NULL && g_output_stream_splice_finish (sink, result, NULL) >= 0)
+            {
+              bytes = g_memory_output_stream_steal_as_bytes (G_MEMORY_OUTPUT_STREAM (sink));
+              opened = easel_picture_open_bytes (bytes, &img, &w, &h);
+            }
+          g_clear_object (&result);
+        }
+      if (img == NULL)
+        paste_error (self, NULL, opened);
+    }
+  else
+    {
+      GSList *files = NULL;
+
+      answer = g_new0 (Answer, 1);
+      easel_clipboard_read_files_async (self->clipboard, wait.cancellable, on_answer, answer);
+      result = wait_for_clipboard_result (&wait, answer);
+      if (result != NULL)
+        files = easel_clipboard_read_files_finish (self->clipboard, result, NULL);
+      g_clear_object (&result);
+      if (files != NULL)
+        {
+          g_autofree char *path = g_file_get_path (files->data);
+          g_autofree char *name = g_file_get_basename (files->data);
+
+          opened = path != NULL ? easel_picture_open (path, &img, &w, &h) : EASEL_OPEN_UNREADABLE;
+          if (img == NULL)
+            paste_error (self, name, opened);
+        }
+      else
+        paste_error (self, NULL, EASEL_OPEN_UNREADABLE);
+      g_slist_free_full (files, g_object_unref);
+    }
+  g_clear_handle_id (&wait.timer, g_source_remove);
+  g_object_unref (wait.cancellable);
+  /* Back to the tool's cursor and to taking input, a quit request that came meanwhile handled now. */
+  self->reading_clipboard = FALSE;
+  gtk_widget_set_cursor (GTK_WIDGET (self), NULL);
+  easel_canvas_set_busy (self->canvas, FALSE);
+  easel_canvas_set_input_blocked (self->canvas, FALSE);
+  if (self->close_after_reading)
+    {
+      /* A picture that arrives after a quit request is dropped, and nothing is pasted (REQ-0016-15): the quit may destroy the window. */
+      g_clear_pointer (&img, easel_image_free);
+      self->close_after_reading = FALSE;
+      gtk_window_close (GTK_WINDOW (self));
+    }
+  return img;
+}
+
+/* The view scrolled so the picture's top-left corner is in view, the zoom kept (REQ-0016-07). */
+static void
+scroll_to_origin (EaselWindow *self)
+{
+  GtkAdjustment *h = gtk_scrolled_window_get_hadjustment (self->scroller), *v = gtk_scrolled_window_get_vadjustment (self->scroller);
+
+  gtk_adjustment_set_value (h, gtk_adjustment_get_lower (h));
+  gtk_adjustment_set_value (v, gtk_adjustment_get_lower (v));
+}
+
+/* The answer of the oversize-paste prompt (REQ-0016-07): Resize grows the picture to the larger of each side and pastes at (0, 0);
+   Fit makes the picture as large as fits, by the nearest pixel, and pastes it at (0, 0); Cancel, Esc or closing changes nothing. */
+static void
+on_paste_prompt_answered (AdwAlertDialog *dialog, const char *answer, EaselWindow *self)
+{
+  EaselImage *pic;
+  int w = self->picture->width, h = self->picture->height;
+
+  if (self->paste_prompt != ADW_DIALOG (dialog))
+    return;                                       /* answered already (closing it after an answer answers again) */
+  self->paste_prompt = NULL;
+  pic = g_steal_pointer (&self->paste_pending);
+  if (g_strcmp0 (answer, "resize") == 0)
+    {
+      /* The memory for the paste and the grown picture first: a refusal changes nothing, the tool included (REQ-0016-11). */
+      if (!easel_canvas_can_paste (self->canvas, pic->width, pic->height, MAX (w, pic->width), MAX (h, pic->height)))
+        {
+          easel_image_free (pic);
+          paste_error (self, NULL, EASEL_OPEN_NO_MEMORY);
+        }
+      else
+        {
+          g_action_group_change_action_state (G_ACTION_GROUP (self), "tool", g_variant_new_string ("select"));
+          if (easel_canvas_paste_grown (self->canvas, pic, MAX (w, pic->width), MAX (h, pic->height), self->background))
+            scroll_to_origin (self);
+          else
+            paste_error (self, NULL, EASEL_OPEN_NO_MEMORY);
+        }
+    }
+  else if (g_strcmp0 (answer, "fit") == 0)
+    {
+      uint32_t *px = NULL;
+      EaselImage *fitted = NULL;
+      int nw, nh;
+
+      easel_fit_size (pic->width, pic->height, w, h, &nw, &nh);
+      /* The fitted picture and its float are each had within the selection's limit before anything changes (REQ-0016-11). */
+      if (easel_canvas_can_paste (self->canvas, nw, nh, 0, 0)
+          && easel_selection_scale (pic->px, NULL, pic->width, pic->height, nw, nh, &px, NULL,
+                                    easel_canvas_get_selection_limit (self->canvas)) == EASEL_SELECTION_DONE)
+        fitted = easel_image_new (nw, nh, 0);
+      if (fitted != NULL)
+        {
+          memcpy (fitted->px, px, (size_t) nw * (size_t) nh * sizeof *px);
+          g_action_group_change_action_state (G_ACTION_GROUP (self), "tool", g_variant_new_string ("select"));
+          if (easel_canvas_paste (self->canvas, fitted, 0, 0))
+            scroll_to_origin (self);
+          else
+            paste_error (self, NULL, EASEL_OPEN_NO_MEMORY);
+        }
+      else
+        paste_error (self, NULL, EASEL_OPEN_NO_MEMORY);
+      free (px);
+      easel_image_free (pic);
+    }
+  else
+    easel_image_free (pic);
+  sync_history_ui (self);
+}
+
+/* The prompt for a picture wider or taller than the picture (REQ-0016-13), before anything is put down or applied. */
+static void
+ask_paste_size (EaselWindow *self, EaselImage *pic)
+{
+  g_autofree char *body = g_strdup_printf ("The picture is %d × %d pixels; the canvas is %d × %d.", pic->width, pic->height,
+                                           self->picture->width, self->picture->height);
+  AdwDialog *dialog = adw_alert_dialog_new ("Pasted Picture Is Larger Than the Canvas", body);
+
+  /* Added as Cancel, Fit, Resize: side by side they read so, stacked (the long labels) the suggested one is on top. */
+  adw_alert_dialog_add_responses (ADW_ALERT_DIALOG (dialog), "cancel", "_Cancel", "fit", "_Fit Picture to Canvas", "resize",
+                                  "_Resize Canvas to Picture", NULL);
+  adw_alert_dialog_set_response_appearance (ADW_ALERT_DIALOG (dialog), "resize", ADW_RESPONSE_SUGGESTED);
+  adw_alert_dialog_set_default_response (ADW_ALERT_DIALOG (dialog), "resize");
+  adw_alert_dialog_set_close_response (ADW_ALERT_DIALOG (dialog), "cancel");
+  self->paste_pending = pic;
+  self->paste_prompt = dialog;
+  g_signal_connect_object (dialog, "response", G_CALLBACK (on_paste_prompt_answered), self, G_CONNECT_DEFAULT);
+  adw_dialog_present (dialog, GTK_WIDGET (self));
+}
+
+/* A read picture pasted (REQ-0016-05): a bigger one asks first (REQ-0016-07); then what is pending applied as a tool change does,
+   Select made the tool, and the picture floating at the top-left pixel in view. Takes pic. */
+static void
+paste_picture (EaselWindow *self, EaselImage *pic)
+{
+  int x, y;
+
+  if (pic->width > self->picture->width || pic->height > self->picture->height)
+    {
+      ask_paste_size (self, pic);
+      return;
+    }
+  if (!easel_canvas_can_paste (self->canvas, pic->width, pic->height, 0, 0))
+    {
+      easel_image_free (pic);
+      paste_error (self, NULL, EASEL_OPEN_NO_MEMORY);          /* nothing changed, the tool included (REQ-0016-11) */
+      return;
+    }
+  g_action_group_change_action_state (G_ACTION_GROUP (self), "tool", g_variant_new_string ("select"));
+  easel_canvas_top_left_in_view (self->canvas, &x, &y);
+  if (!easel_canvas_paste (self->canvas, pic, x, y))
+    paste_error (self, NULL, EASEL_OPEN_NO_MEMORY);
+}
+
+/* Paste (REQ-0016-05): the clipboard's picture read first, then pasted. */
+static void
+paste_activated (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+  EaselWindow *self = user_data;
+  EaselImage *pic;
+
+  if (self->picture == NULL || dialog_is_open (self) || easel_canvas_is_stroking (self->canvas)
+      || easel_canvas_is_resizing (self->canvas))
+    return;
+  pic = read_clipboard_picture (self);
+  if (pic != NULL)
+    paste_picture (self, pic);
+}
+
+/* A file chosen for Paste From… (REQ-0016-08): read as Open reads it and pasted; a refusal shows its dialog and changes nothing. */
+void
+easel_window_paste_from_file (EaselWindow *self, GFile *file)
+{
+  g_autofree char *path = g_file_get_path (file);
+  g_autofree char *name = g_file_get_basename (file);
+  EaselImage *pic = NULL;
+  EaselOpenResult opened;
+  int w, h;
+
+  if (self->picture == NULL || dialog_is_open (self) || easel_canvas_is_stroking (self->canvas)
+      || easel_canvas_is_resizing (self->canvas))
+    return;
+  opened = path != NULL ? easel_picture_open (path, &pic, &w, &h) : EASEL_OPEN_UNREADABLE;
+  if (pic == NULL)
+    paste_error (self, name, opened);
+  else
+    paste_picture (self, pic);
+}
+
+static void
+on_paste_from_dialog_done (GtkFileDialog *dialog, GAsyncResult *result, EaselWindow *self)
+{
+  g_autoptr (GFile) file = gtk_file_dialog_open_finish (dialog, result, NULL);
+
+  self->open_dialog_open = FALSE;
+  if (file != NULL)                         /* Cancelled: nothing changes (REQ-0016-08) */
+    easel_window_paste_from_file (self, file);
+  g_object_unref (self);
+}
+
+/* Paste From… (REQ-0016-08): the file dialog; nothing is put down, removed or applied before a file is chosen. */
+static void
+paste_from_activated (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+  EaselWindow *self = user_data;
+  g_autoptr (GtkFileDialog) dialog = NULL;
+
+  if (self->picture == NULL || dialog_is_open (self) || easel_canvas_is_stroking (self->canvas)
+      || easel_canvas_is_resizing (self->canvas))
+    return;
+  dialog = make_picture_dialog (self, "Paste From");
+  self->open_dialog_open = TRUE;                 /* a quit request does nothing meanwhile, as for Open (REQ-0005-02) */
+  gtk_file_dialog_open (dialog, GTK_WINDOW (self), NULL, (GAsyncReadyCallback) on_paste_from_dialog_done, g_object_ref (self));
+}
+
+static void
+copy_activated (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+  copy_selection (user_data);
+}
+
+/* Cut (REQ-0016-04): the copy, then Clear Selection's own clear; if the copy fails nothing is cleared. */
+static void
+cut_activated (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+  EaselWindow *self = user_data;
+
+  if (copy_selection (self))
+    easel_canvas_clear_selection (self->canvas);
 }
 
 static void
@@ -1873,6 +2527,11 @@ static const GActionEntry win_actions[] = {
   { .name = "close", .activate = close_activated },
   { .name = "clear-selection", .activate = clear_selection_activated },
   { .name = "select-all", .activate = select_all_activated },
+  { .name = "cut", .activate = cut_activated },
+  { .name = "copy", .activate = copy_activated },
+  { .name = "paste", .activate = paste_activated },
+  { .name = "copy-to", .activate = copy_to_activated },
+  { .name = "paste-from", .activate = paste_from_activated },
 };
 
 EaselToolOptions *
@@ -1945,6 +2604,14 @@ easel_window_dispose (GObject *object)
       gtk_widget_unparent (self->selection_menu);
       self->selection_menu = NULL;
     }
+  if (self->canvas_menu != NULL)
+    {
+      gtk_widget_unparent (self->canvas_menu);
+      self->canvas_menu = NULL;
+    }
+  if (self->clipboard != NULL)
+    g_signal_handlers_disconnect_by_data (self->clipboard, self);
+  g_clear_object (&self->clipboard);
   if (self->chooser_cancel != NULL)
     g_cancellable_cancel (self->chooser_cancel);
   g_clear_object (&self->chooser_cancel);
@@ -2047,6 +2714,7 @@ easel_window_class_init (EaselWindowClass *klass)
   gtk_widget_class_bind_template_child (widget_class, EaselWindow, main_menu_button);
   gtk_widget_class_bind_template_child_full (widget_class, "selection_menu", FALSE,
                                             G_STRUCT_OFFSET (EaselWindow, selection_menu_model));
+  gtk_widget_class_bind_template_child_full (widget_class, "canvas_menu", FALSE, G_STRUCT_OFFSET (EaselWindow, canvas_menu_model));
   gtk_widget_class_bind_template_child (widget_class, EaselWindow, view_button);
 }
 
@@ -2057,6 +2725,7 @@ easel_window_init (EaselWindow *self)
 
   gtk_widget_init_template (GTK_WIDGET (self));
 
+  self->clipboard_timeout_ms = 5000;
   easel_settings_file_load (settings_path, &self->settings);
   self->tool = EASEL_TOOL_PAN;
   self->foreground = 0xFF000000u;
@@ -2068,6 +2737,7 @@ easel_window_init (EaselWindow *self)
 
   g_action_map_add_action_entries (G_ACTION_MAP (self), win_actions, G_N_ELEMENTS (win_actions), self);
   g_simple_action_set_enabled (G_SIMPLE_ACTION (g_action_map_lookup_action (G_ACTION_MAP (self), "clear-selection")), FALSE);
+  easel_window_set_clipboard (self, NULL);
   add_zoom_submenu (self);
   g_action_group_change_action_state (G_ACTION_GROUP (self), "magnifier-level",
                                       g_variant_new_int32 (easel_magnifier_levels[EASEL_MAGNIFIER_DEFAULT]));
@@ -2129,6 +2799,12 @@ easel_window_init (EaselWindow *self)
   gtk_popover_set_has_arrow (GTK_POPOVER (self->selection_menu), FALSE);
   gtk_widget_set_halign (self->selection_menu, GTK_ALIGN_START);
   gtk_widget_set_parent (self->selection_menu, GTK_WIDGET (self->canvas));
+  g_signal_connect_object (self->canvas, "canvas-menu", G_CALLBACK (on_canvas_menu), self, G_CONNECT_SWAPPED);
+  g_signal_connect_object (self->canvas, "picture-replaced", G_CALLBACK (picture_size_changed), self, G_CONNECT_SWAPPED);
+  self->canvas_menu = gtk_popover_menu_new_from_model (self->canvas_menu_model);
+  gtk_popover_set_has_arrow (GTK_POPOVER (self->canvas_menu), FALSE);
+  gtk_widget_set_halign (self->canvas_menu, GTK_ALIGN_START);
+  gtk_widget_set_parent (self->canvas_menu, GTK_WIDGET (self->canvas));
   g_signal_connect_object (self->canvas, "pending-changed", G_CALLBACK (sync_history_ui), self, G_CONNECT_SWAPPED);
   g_signal_connect_object (self->canvas, "stroke-finished", G_CALLBACK (on_stroke_finished), self, G_CONNECT_SWAPPED);
   g_signal_connect (self, "notify::is-active", G_CALLBACK (on_active_changed), NULL);

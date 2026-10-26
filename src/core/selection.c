@@ -14,12 +14,13 @@ typedef struct
   int w, h;
   const uint32_t *px;
   const uint8_t *mask;
+  bool skip_clear;
 } ImageView;
 
 static ImageView
 current_view (const EaselFloat *f)
 {
-  return (ImageView) { f->w, f->h, f->px, f->mask };
+  return (ImageView) { f->w, f->h, f->px, f->mask, f->skip_clear };
 }
 
 /* The image as lifted: the float's own until it is stretched. */
@@ -28,7 +29,7 @@ original_view (const EaselFloat *f)
 {
   if (f->orig_px == NULL)
     return current_view (f);
-  return (ImageView) { f->ow, f->oh, f->orig_px, f->orig_mask };
+  return (ImageView) { f->ow, f->oh, f->orig_px, f->orig_mask, f->skip_clear };
 }
 
 /* The image the copy k was made with. */
@@ -41,7 +42,7 @@ stamp_view (const EaselFloat *f, size_t k)
     return current_view (f);
   if (id == EASEL_IMAGE_ORIGINAL)
     return original_view (f);
-  return (ImageView) { f->kept[id].w, f->kept[id].h, f->kept[id].px, f->kept[id].mask };
+  return (ImageView) { f->kept[id].w, f->kept[id].h, f->kept[id].px, f->kept[id].mask, f->skip_clear };
 }
 
 static bool
@@ -175,7 +176,7 @@ lay_float_at (const ImageView *f, int px, int py, const EaselImage *img, int x0,
       {
         size_t at = (size_t) (y - py) * f->w + (size_t) (x - px);
 
-        if (f->mask == NULL || f->mask[at] != 0)
+        if ((f->mask == NULL || f->mask[at] != 0) && !(f->skip_clear && (f->px[at] >> 24) == 0))
           dst[(size_t) (y - y0) * dst_stride + (size_t) (x - x0)] = f->px[at];
       }
 }
@@ -262,8 +263,53 @@ easel_selection_bounds (const EaselFloat *f, bool with_float, const EaselImage *
   return true;
 }
 
+/* The growth a paste made (REQ-0016-07): the picture's size before it and the fill of the new area; NULL for none. */
+typedef struct
+{
+  int old_w, old_h;
+  uint32_t fill;
+} Growth;
+
+static EaselSelectionResult put_down_with (const EaselFloat *f, bool with_float, EaselImage *img, EaselHistory *history, size_t max_bytes,
+                                           const Growth *growth);
+
 EaselSelectionResult
 easel_selection_put_down (const EaselFloat *f, bool with_float, EaselImage *img, EaselHistory *history, size_t max_bytes)
+{
+  return put_down_with (f, with_float, img, history, max_bytes, NULL);
+}
+
+EaselSelectionResult
+easel_selection_put_down_grown (const EaselFloat *f, bool with_float, EaselImage *img, EaselHistory *history, int old_w, int old_h,
+                                uint32_t fill, size_t max_bytes)
+{
+  return put_down_with (f, with_float, img, history, max_bytes, &(Growth) { old_w, old_h, fill });
+}
+
+/* The put-down's pixels as one step; with a growth, the step holds it too and is added even with no pixel changed. */
+static bool
+push_step (EaselChangeLog *l, EaselHistory *history, const EaselImage *img, const Growth *growth)
+{
+  if (growth == NULL)
+    return easel_change_log_push (l, history);
+  if (l->cap > l->n && l->n > 0)
+    {
+      EaselChange *p = realloc (l->log, l->n * sizeof *l->log);     /* held as counted (REQ-0002-16) */
+
+      if (p != NULL)
+        {
+          l->log = p;
+          l->cap = l->n;
+        }
+    }
+  if (!easel_history_push_grow (history, growth->old_w, growth->old_h, img->width, img->height, growth->fill, l->log, l->n))
+    return false;
+  *l = (EaselChangeLog) { NULL, 0, 0, l->max_bytes };
+  return true;
+}
+
+static EaselSelectionResult
+put_down_with (const EaselFloat *f, bool with_float, EaselImage *img, EaselHistory *history, size_t max_bytes, const Growth *growth)
 {
   EaselChangeLog l;
   int x0, y0, x1, y1;
@@ -271,7 +317,13 @@ easel_selection_put_down (const EaselFloat *f, bool with_float, EaselImage *img,
   bool ok = true;
 
   if (!easel_selection_bounds (f, with_float, img, &x0, &y0, &x1, &y1))
-    return EASEL_SELECTION_NOTHING;
+    {
+      /* Nothing to lay: with a growth the step is the growth alone. */
+      if (growth == NULL || history == NULL)
+        return EASEL_SELECTION_NOTHING;
+      return easel_history_push_grow (history, growth->old_w, growth->old_h, img->width, img->height, growth->fill, NULL, 0)
+               ? EASEL_SELECTION_DONE : EASEL_SELECTION_NO_MEMORY;
+    }
   row = malloc ((size_t) (x1 - x0 + 1) * sizeof *row);
   if (row == NULL)
     return EASEL_SELECTION_NO_MEMORY;
@@ -290,7 +342,7 @@ easel_selection_put_down (const EaselFloat *f, bool with_float, EaselImage *img,
       easel_change_log_free (&l);
       return EASEL_SELECTION_NO_MEMORY;
     }
-  if (l.n == 0)
+  if (l.n == 0 && growth == NULL)
     {
       easel_change_log_free (&l);
       return EASEL_SELECTION_NOTHING;
@@ -300,7 +352,7 @@ easel_selection_put_down (const EaselFloat *f, bool with_float, EaselImage *img,
       easel_change_log_free (&l);
       return EASEL_SELECTION_DONE;
     }
-  if (!easel_change_log_push (&l, history))
+  if (!push_step (&l, history, img, growth))
     {
       easel_change_log_restore (&l, img);
       easel_change_log_free (&l);
@@ -744,4 +796,76 @@ easel_selection_complete (EaselFloat *f)
     keep_one_pixel (&orig, f->w, f->h, f->px, f->mask);
   free (f->fill);
   f->fill = NULL;
+}
+
+EaselSelectionResult
+easel_selection_paste (EaselFloat *f, const EaselImage *pic, int x, int y, size_t max_bytes)
+{
+  uint32_t *px;
+  uint8_t *no_mask;
+  EaselSelectionResult r = image_alloc (false, pic->width, pic->height, max_bytes, false, &px, &no_mask);
+
+  if (r != EASEL_SELECTION_DONE)
+    return r;
+  memcpy (px, pic->px, (size_t) pic->width * (size_t) pic->height * sizeof *px);
+  *f = (EaselFloat) { 0 };
+  f->px = px;
+  f->x = f->hx = x;
+  f->y = f->hy = y;
+  f->w = f->ow = pic->width;
+  f->h = f->oh = pic->height;
+  f->skip_clear = true;
+  return EASEL_SELECTION_DONE;
+}
+
+void
+easel_fit_size (int w, int h, int W, int H, int *nw, int *nh)
+{
+  /* W / w <= H / h: the width limits. In whole numbers: W * h <= H * w. The other side, h * W / w, rounded halves up. */
+  if ((long long) W * h <= (long long) H * w)
+    {
+      long long o = (2LL * h * W + w) / (2LL * w);
+
+      *nw = W;
+      *nh = (int) (o < 1 ? 1 : o);
+    }
+  else
+    {
+      long long o = (2LL * w * H + h) / (2LL * h);
+
+      *nh = H;
+      *nw = (int) (o < 1 ? 1 : o);
+    }
+}
+
+EaselImage *
+easel_selection_copy_image (const EaselImage *img, const EaselFloat *f, int x, int y, int w, int h, const uint8_t *mask,
+                            size_t max_bytes)
+{
+  EaselImage *c;
+
+  if (w < 1 || h < 1 || (size_t) w > max_bytes / 4 / (size_t) h)
+    return NULL;
+  c = easel_image_new (w, h, 0x00000000u);
+  if (c == NULL)
+    return NULL;
+  if (f != NULL)
+    mask = f->mask;
+  /* A rectangle is copied a row at a time (a whole floating image at once); a shape pixel by pixel (perf-0016: 8000 x 8000 took
+     about 100 ms pixel by pixel). */
+  if (mask == NULL && f != NULL)
+    memcpy (c->px, f->px, (size_t) w * (size_t) h * sizeof *c->px);
+  else if (mask == NULL)
+    for (int j = 0; j < h; j++)
+      memcpy (c->px + (size_t) j * (size_t) w, img->px + (size_t) (y + j) * (size_t) img->width + (size_t) x, (size_t) w * sizeof *c->px);
+  else
+    for (int j = 0; j < h; j++)
+      for (int i = 0; i < w; i++)
+        {
+          size_t at = (size_t) j * (size_t) w + (size_t) i;
+
+          if (mask[at] != 0)
+            c->px[at] = f != NULL ? f->px[at] : img->px[(size_t) (y + j) * (size_t) img->width + (size_t) (x + i)];
+        }
+  return c;
 }

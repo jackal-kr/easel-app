@@ -3,6 +3,8 @@
 
 #include <adwaita.h>
 
+#include "clipboard.h"
+
 #include "canvas.h"
 #include "palette-bar.h"
 #include "status-bar.h"
@@ -38,6 +40,11 @@ GtkMenuButton *easel_window_get_image_button (EaselWindow *self);
 GtkMenuButton *easel_window_get_view_button (EaselWindow *self);
 /* The selection's context menu (REQ-0013-17), for tests: shown while it is open. */
 GtkPopoverMenu *easel_window_get_selection_menu (EaselWindow *self);
+GtkPopoverMenu *easel_window_get_canvas_menu (EaselWindow *self);
+/* The clipboard the window uses (0016): NULL for the desktop's; the ui tests give theirs (the isolated session holds none). */
+void easel_window_set_clipboard (EaselWindow *self, EaselClipboard *clipboard);
+/* The limit of the wait for the clipboard's content, in ms (REQ-0016-15): 5000 unless a test sets it. */
+void easel_window_set_clipboard_timeout (EaselWindow *self, guint ms);
 /* The zoom as the View menu's row shows it, for example "100%" (REQ-0004-01). */
 const char *easel_window_get_zoom_text (EaselWindow *self);
 
@@ -54,6 +61,10 @@ void easel_window_finish_color_choice (EaselWindow *self, const GdkRGBA *rgba);
    result, or the error dialog, follows from the main loop. Does nothing before the start-up picture exists or while a
    dialog is open. */
 void easel_window_open_file (EaselWindow *self, GFile *file);
+/* A file chosen for Paste From… (0016): read as Open reads it and pasted; a refusal shows its dialog. Also the tests' way to choose one. */
+void easel_window_paste_from_file (EaselWindow *self, GFile *file);
+/* The name chosen for Copy To… (0016): the selection's copy is written as Save As writes a picture; also the tests' way to choose one. */
+void easel_window_copy_to_chosen (EaselWindow *self, const char *path);
 
 /* A picture is being opened: from the request until it is shown or the error is. */
 gboolean easel_window_is_loading (EaselWindow *self);
