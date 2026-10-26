@@ -100,7 +100,10 @@ Defined by the packaging and release feature.
 - A red check copies the file aside and restores it; git stash is never used for it.
 - A ui test that checks a color sets its own theme and puts the default back at the end.
 - **A probe or throwaway window** is started with its pid saved and stopped with `kill <pid>`, never `pkill -f` (the pattern
-  can match the shell that runs it, and the window stays open and spoils the next ui run).
+  can match the shell that runs it, and the window stays open and spoils the next ui run). A probe or helper that sets the
+  desktop's clipboard acts from a click, since the compositor ignores a set from a client without recent input, and it is checked
+  from outside (a second process, `xclip`) before JOD is asked to use it (0016 M2: the first helper set nothing, and Easel saw an old
+  screenshot).
 - **Mutation tool (`tools/mutate.sh`):** puts one deliberate bug at a time into a scratch copy of the sources, builds, runs
   the tests that must catch it, and prints `killed` or `SURVIVED` (a hole in the tests) with the requirement ID and the
   time, then a total; the exit status is non-zero if any mutant survived or did not build. It never touches the working
@@ -129,6 +132,14 @@ Defined by the packaging and release feature.
 - **Code that can abort the process** (a failed allocation in GLib, gdk-pixbuf or glycin) is tested in a subprocess
   (`g_test_trap_subprocess`, as `as19_save_without_memory` and `as8_open_without_memory` do), so that an abort is a failed
   assertion of the test and not a crash of the run.
+- **Data that crosses a process boundary** (a clipboard write, a pipe, a socket) is tested with more bytes than a pipe holds at once
+  (64 KiB on Linux), read back whole from the other end; a small payload passes a write that writes only what the pipe takes (0016:
+  every copy over 64 KiB reached other apps cut off, unseen until M1).
+- **A seam for a desktop service** (0016's `EaselClipboard`) mirrors the transport, and its Plan names what it cannot see: the bytes
+  and the time another process gets (a pipe's size, an encode made at the request, the other app's patience), the compositor's rules
+  (a clipboard set only after input), and when a cancelled call calls back (GIO: several iterations later, so the double answers a
+  cancel late). Each gets a two-process probe and a manual step naming the other app, in the first task that serves the data, not
+  only at the end.
 - **Below 100 %:** a ui test that compares two ways of drawing the same thing (a merged line against its steps, bands against
   rows) is exact at 100 % and above; below 100 % antialiasing makes them differ, so it checks a bound the owner approved: the
   differing pixels lie on the drawing only, and the largest difference in a channel (and, where it is stable, their number) stays
@@ -164,6 +175,10 @@ lost release (REQ-0007-18) and ends the held gesture early (0015: a worst event 
 133 to 136 ms). An event worse than three times the median is hunted, with a breakpoint on the slow path, before its row is written,
 not recorded as unexplained. A memory row says what its "before" is (the process's peak, a high-water mark shared by the cases of one
 run).
+
+Work another app waits for is timed where it waits: a clipboard provider's encode from the other app's request to the last byte, not
+only the action that set it up (0016: a 3178 x 3099 copy's PNG took 2.2 s at the request and a browser gave up; 0.11 s at the fast
+level).
 
 The Fill and Magnifier budgets are benchmark budgets: `perf-0007` prints the numbers, `/sdd-check` reports them against the
 table, and no test fails on them (timing tests flake on a loaded machine). The worst-case fill (the comb) has no time budget;

@@ -20,6 +20,7 @@ Precondition: `Status: accepted` in the spec. Otherwise stop and say so.
    A buffer that grows by doubling and is handed to the history is shrunk to its length first.
    A put-down, cancel or commit is placed at the one function every path to it goes through, and the Plan names that function.
    A risk that says it is "checked in AS-n" names the task that writes the check.
+   Data the feature hands to another process is listed in the Plan with who waits for it, a test above a pipe's size, its time at the request, and a two-process probe in the first task that serves it; the Plan names what a seam cannot see (`docs/engineering.md`, Testing).
    A signal handler's return type is checked against the signal's.
    Write an ADR in `docs/decisions/` only if a choice contradicts the constitution or would be questioned later.
    Show the plan. Wait for JOD's "go".
@@ -41,6 +42,7 @@ Precondition: `Status: accepted` in the spec. Otherwise stop and say so.
      to try with the real mouse, since no ui test sends real events;
    - a test that sets a state to reach a case (a zoom, a tool, the colors) asserts that state before it relies on it;
    - a test that closes a window keeps a weak pointer to it and asserts that it is still there before it touches it;
+   - a probe or helper that sets the desktop's clipboard acts from a click and is checked from outside (a second process, `xclip`) before JOD is asked to use it;
    - a test helper that waits asks for what it waits for, and a case that ends far slower than its work is looked into: a wait that runs out its deadline passes in silence;
    - a test that changes a process-wide setting (a GTK setting, an environment variable) sets it back to the test program's start value, not to what it takes for the default;
    - a pure function and its test are written in two separate edits, with a build and a red run between them;
