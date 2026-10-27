@@ -14,6 +14,7 @@
 # "crashed": killed by crash, a test gap, counted apart and failing the run (docs/engineering.md, "Mutation tool"). A run that
 # ended because the window gave no snapshot (the line "EASEL-INCONCLUSIVE: no snapshot", exit status 75) is no verdict: that
 # mutant is run once more, and a second one is "INCONCLUSIVE", counted apart and failing the run; it is never counted as killed.
+# A test that meson reports skipped (exit 77, no display) is the same: no verdict, never "survived".
 # Format of the list and how to add a mutant: docs/engineering.md, "Mutation tool".
 set -u
 cd "$(dirname "$0")/.."
@@ -122,13 +123,18 @@ echo "building the scratch copy ..."
 meson setup "$BUILD" "$TREE" >"$SCRATCH/setup.log" 2>&1 || { cat "$SCRATCH/setup.log"; exit 2; }
 ninja -C "$BUILD" >"$SCRATCH/build.log" 2>&1 || { tail -20 "$SCRATCH/build.log"; echo "the unmodified sources do not build" >&2; exit 2; }
 
-# The tests of a mutant, by their meson names, one meson call for the lot (without a rebuild: ninja has built them).
+# The tests of a mutant, by their meson names, one meson call for the lot (without a rebuild: ninja has built them). 1 when one
+# failed; 2 when one was skipped (exit 77, meson's "SKIP": no display, say), which meson counts as a pass but is no verdict.
 run_tests () {
   local t
   for t in $1; do                       # one after the other: the first test that fails is the kill, the rest are spared
     if ! meson test -C "$BUILD" --no-rebuild --print-errorlogs "$t" >"$SCRATCH/test.log" 2>&1; then
       FAILED_TEST=$t
       return 1
+    fi
+    if grep -qE '^Skipped: +[1-9]' "$SCRATCH/test.log"; then
+      FAILED_TEST=$t
+      return 2
     fi
   done
 }
@@ -172,10 +178,16 @@ inconclusive () {
   grep -q 'EASEL-INCONCLUSIVE: no snapshot' "$SCRATCH/test.log"
 }
 
+# A run whose test was skipped is no verdict either (a mutant counted as survived in 1 s while the session gave no display: 0017).
+
 # Runs the tests of a mutant and sets KIND to survived, killed, crashed or inconclusive.
 judge () {
-  if run_tests "$tests"; then KIND=survived
-  elif inconclusive; then KIND=inconclusive
+  local rc
+
+  run_tests "$tests"
+  rc=$?
+  if [ "$rc" -eq 0 ]; then KIND=survived
+  elif [ "$rc" -eq 2 ] || inconclusive; then KIND=inconclusive
   elif killed_by_assertion; then KIND=killed
   else KIND=crashed
   fi
@@ -257,7 +269,7 @@ PY
     note=
     judge
     if [ "$KIND" = inconclusive ]; then
-      note="the first run was inconclusive (no snapshot) and was run again; "
+      note="the first run was inconclusive (no snapshot or a skipped test) and was run again; "
       judge
     fi
     case "$KIND" in
@@ -267,7 +279,7 @@ PY
         result="crashed"; crashed=$((crashed + 1)); reason="${note}killed by crash (test gap), by $FAILED_TEST: $(why_failed)"
         cp "$SCRATCH/test.log" "$SCRATCH/crash-$n.log"; reason="$reason (log: .scratch/mutate/crash-$n.log)" ;;
       inconclusive)
-        result="INCONCLUSIVE"; inconclusives=$((inconclusives + 1)); reason="no snapshot twice, so no verdict on this mutant"
+        result="INCONCLUSIVE"; inconclusives=$((inconclusives + 1)); reason="no snapshot or a skipped test twice, so no verdict on this mutant"
         cp "$SCRATCH/test.log" "$SCRATCH/inconclusive-$n.log"; reason="$reason (log: .scratch/mutate/inconclusive-$n.log)" ;;
     esac
   fi
@@ -281,5 +293,5 @@ done < "$SCRATCH/index.tsv"
 
 long_note=
 [ "$long_only" -gt 0 ] && long_note=", $long_only long-only (not run)"
-echo "$((killed + crashed + survived + errors + inconclusives + long_only)) mutants: $killed killed, $crashed killed by crash (test gap), $inconclusives inconclusive (no snapshot), $survived survived, $errors errors$long_note in $(( $(date +%s) - total_start )) s"
+echo "$((killed + crashed + survived + errors + inconclusives + long_only)) mutants: $killed killed, $crashed killed by crash (test gap), $inconclusives inconclusive (no snapshot or skipped), $survived survived, $errors errors$long_note in $(( $(date +%s) - total_start )) s"
 [ "$survived" -eq 0 ] && [ "$errors" -eq 0 ] && [ "$crashed" -eq 0 ] && [ "$inconclusives" -eq 0 ]
