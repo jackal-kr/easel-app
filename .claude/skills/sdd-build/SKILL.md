@@ -40,6 +40,8 @@ Precondition: `Status: accepted` in the spec. Otherwise stop and say so.
    - a test of an input rule calls the function the signal callback calls, with the event's modifier state, never a function deeper down;
    - a modifier that decides an action (Ctrl, Shift) is read from the event of the press, and the manual check lists each such action
      to try with the real mouse, since no ui test sends real events;
+   - where the keys go after a popover, dialog or menu closes is a manual check in the real session in the task that adds it, not
+     only at the feature's M1: the isolated session does not return the focus as the desktop does (0017: GTK gave it back twice there);
    - a test that sets a state to reach a case (a zoom, a tool, the colors) asserts that state before it relies on it;
    - a test that closes a window keeps a weak pointer to it and asserts that it is still there before it touches it;
    - a probe or helper that sets the desktop's clipboard acts from a click and is checked from outside (a second process, `xclip`) before JOD is asked to use it;

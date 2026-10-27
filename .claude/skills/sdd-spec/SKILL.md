@@ -17,12 +17,18 @@ Input: feature number or name from `docs/specs/INDEX.md`.
    A file the user edits by hand needs its syntax in the spec (comments, spaces, case, repeated keys, bad lines), not only its keys.
    A requirement about how something looks names the reference it follows. A control that repeats an existing control's meaning reuses its look; say so, and ask only where a mock-up draws it otherwise.
    A mode or option whose name or tooltip names an effect on the picture is checked against every place the picture changes (a hole, a clear, a put-down) before the spec is accepted.
+   A control the user can reach from the keyboard has its key and its tooltip in the spec, decided with the control, not after it.
+   Every way a control can change a value (its buttons, the arrow keys, the Page keys, the wheel, typing) is listed in the spec with
+   the value's mixed and limit states; a wheel over a floating control is checked against the view's own scrolling.
+   A control whose "nothing chosen" or "the same picked again" matters is probed with the widget meant for it before the spec names
+   that widget (GtkDropDown cannot unselect, nor report a pick of the selected row).
    For any tool or control that holds state between two events (a press and its release, a drag and its end, a dialog and
    its answer), the spec needs a scenario for the second event never arriving, and one for the view (zoom, scroll, window size) changing while it is held.
    A rule for a failure (memory, I/O) that names one event says what happens to the thing in every other state it can be in (held, waiting, unshown).
    A memory limit named in a rule says whether it counts each allocation or a total, and the Plan's "What grows" says the same.
    A new region of the canvas that takes presses (a marker, a handle) is checked, with its hit area computed, against the press coordinates of every scenario of the feature; a rule that one hit area wins over another is tried at the edges of both areas, also where one reaches inside the picture.
    A reference to a spec that is not built yet uses the feature name, not its number, because roadmap numbers move.
+   A scenario that needs something to be missing (a font, a file, a device) names one no system can have, not a real one.
    If this feature changes a requirement of an implemented spec, add a pointer note to that requirement.
 4. Take behavior from XP Paint knowledge, jspaint (behavior, not code), JOD's descriptions and `docs/reference`; never from the
    source code of an existing implementation. If behavior is unknown or has several reasonable answers, do not decide:

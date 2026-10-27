@@ -132,6 +132,13 @@ Defined by the packaging and release feature.
 - **Code that can abort the process** (a failed allocation in GLib, gdk-pixbuf or glycin) is tested in a subprocess
   (`g_test_trap_subprocess`, as `as19_save_without_memory` and `as8_open_without_memory` do), so that an abort is a failed
   assertion of the test and not a crash of the run.
+- **Which allocations can fail softly:** `malloc`, `realloc` and GLib's `g_try_*` return NULL; `g_new`, `g_malloc`, `g_strdup` and
+  `g_strndup` abort. A spec sentence for a memory failure names only a path that can return NULL, and a NULL test after an aborting
+  allocation is dead code (0017 F2: a copy's dialog for a `g_strndup` that cannot fail softly).
+- **A test-only switch** that makes a failure path reachable (a step limit, a show limit, a rich-text limit) is off by default, leaves
+  the production path unchanged, and is proven used by a mutant that removes it.
+- **A long case** that asserts a style or a set of flags asserts the bit the step is about, or compares with a neighbour's state:
+  a whole value also holds what earlier steps of the case left (0017 T018b: a typed character inherited Underline).
 - **Data that crosses a process boundary** (a clipboard write, a pipe, a socket) is tested with more bytes than a pipe holds at once
   (64 KiB on Linux), read back whole from the other end; a small payload passes a write that writes only what the pipe takes (0016:
   every copy over 64 KiB reached other apps cut off, unseen until M1).
