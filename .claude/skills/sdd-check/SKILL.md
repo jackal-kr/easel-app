@@ -15,7 +15,10 @@ description: Step 3 of the loop, also usable any time. Read-only check of a feat
    A crashed mutant is reported with its saved log, `.scratch/mutate/crash-N.log`, copied out first (a later run of `mutate.sh` empties that folder), and is run again alone three times first, to tell the mutant's own flaw from a known flake; one that is inconclusive (no snapshot) is run again once by the tool, and a second one fails the run.
    Read the `Result:` line of every task: copy them into Check, report every `characterization` task as a finding, and
    report a manual step (or a task) without a `Result:` as a finding.
-3. Drift: behavior in code that is not in the spec; Plan items not built; spec statements contradicted by tests.
+3. Drift: behavior in code that is not in the spec; Plan items not built; spec statements contradicted by tests. Read every
+   user-visible string (headings, bodies, tooltips, labels), every conversion (units, rounding, clamps, mappings) and every fallback
+   in the code against the spec, and list what the code does that the spec does not state (0017's F2, two memory dialogs, and F8,
+   the paste reader's sizes, had this shape).
 4. Constitution: layering, warnings, tests shipped with the change, no AI trailers in commits.
 5. Read `git diff` for correctness: pixel bounds and overflow, GTK object lifetime, one undo step per user-visible edit.
    A step or buffer kept under a memory budget is checked for the memory held (capacity) against the memory counted, not only the length; every function that pushes a log to the history, and every allocation the feature adds that the limit counts, has its own such test.
