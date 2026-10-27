@@ -20,6 +20,7 @@ static const char *const names[] = {
   [EASEL_TOOL_GRADIENT] = "gradient",
   [EASEL_TOOL_SELECT] = "select",
   [EASEL_TOOL_FREE_SELECT] = "free-select",
+  [EASEL_TOOL_TEXT] = "text",
 };
 
 gboolean

@@ -14,9 +14,13 @@
 #include "lattice.h"
 #include "line.h"
 #include "selection.h"
+#include "settings.h"
 #include "grid.h"
 #include "magnifier.h"
 #include "stroke.h"
+#include "text-buffer.h"
+#include "text-put.h"
+#include "text-render.h"
 #include "view.h"
 
 /* Straight-alpha 0xAARRGGBB in memory order (ADR-0002). */
@@ -112,6 +116,33 @@ struct _EaselCanvas
   gboolean selecting;                           /* a rectangle is being dragged out (REQ-0013-04) */
   guint sel_button;
   int sel_px0, sel_py0, sel_px1, sel_py1;       /* the pixel under the press and under the pointer */
+  gboolean sel_for_text;                        /* the rectangle dragged out is a text box's (REQ-0017-03) */
+  gboolean text_dragged;                        /* its pointer has gone beyond the drag threshold: a drag to the release, not a click */
+  double text_press_x, text_press_y;            /* where that press was, in logical pixels */
+  gboolean text_open;                           /* a text box is open (0017) */
+  int tb_x, tb_y, tb_w, tb_set_h;               /* its left, top, width and set height (REQ-0017-26) */
+  EaselTextBuffer *text_buf;
+  char *text_family;                            /* the starting style (REQ-0017-12), set by the window */
+  int text_size;
+  guint8 text_flags;
+  int hover_text;                               /* the pointer over the open box: 1 inside, 2 on its move band, else 0 */
+  PangoLayout *text_layout;                     /* the box's text laid out at picture scale (the Plan) */
+  EaselTextInk text_ink;                        /* its pixels: colors and mask, owned (REQ-0017-16) */
+  int text_h;                                   /* the text's height, picture pixels */
+  gboolean text_opaque;                         /* the Text tool's mode: Opaque (REQ-0017-02) */
+  gboolean caret_on;                            /* the caret is shown now (blinking, REQ-0017-05) */
+  guint caret_blink;                            /* its timer, or 0 */
+  size_t text_show_max;                         /* the most the ink may use (a test hook, REQ-0017-07) */
+  size_t text_step_max;                         /* the most the put-down's step may use (a test hook, REQ-0017-18) */
+  guint error_bells;                            /* the error bells sounded (a test hook) */
+  gboolean text_selecting;                      /* a drag inside the box selects (REQ-0017-06) */
+  int text_drag;                                /* a drag of the box: 0 none, 1 a move by its band, 2 a resize by a handle (REQ-0017-09, -10) */
+  int text_drag_handle;                         /* the handle of a resize (EaselSelHandle) */
+  double text_drag_x0, text_drag_y0;            /* the press, in picture pixels */
+  int text_drag_old[4];                         /* the box at the press: x, y, width, set height */
+  int text_drag_shown_h;                        /* its height as shown at the press */
+  size_t text_anchor;
+  GtkIMContext *im;                             /* input methods, compose and dead keys (REQ-0017-06) */
   EaselFloat sel_float;                         /* while floating: the lifted pixels at (sel_x, sel_y) (REQ-0013-07) */
   gboolean sel_moving;                          /* a move drag of the selection is held */
   gboolean sel_copy;                            /* Ctrl was held at the move's press: it moves a copy (REQ-0013-09) */
@@ -204,6 +235,7 @@ enum
   SIGNAL_CANVAS_MENU,
   SIGNAL_PICTURE_REPLACED,
   SIGNAL_SELECTION_FAILED,
+  SIGNAL_TEXT_FAILED,
   SIGNAL_PENDING_CHANGED,
   SIGNAL_COLOR_PICKED,
   SIGNAL_PICK_ENDED,
@@ -233,6 +265,7 @@ static gboolean on_spray_tick (gpointer data);
    reach 5 + 2 pixels past the picture, inside the margin of EASEL_VIEW_MARGIN around it (REQ-0009-01). */
 #define HANDLE_SIZE 5.0
 #define HANDLE_HIT 9.0
+#define TEXT_BAND 4.0          /* the width of a text box's move band, logical pixels (REQ-0017-09) */
 #define MARKER_SIZE 5.0          /* a gradient's marker: the size of a handle (REQ-0012-13) ... */
 #define MARKER_HIT 9.0           /* ... and its hit area */
 
@@ -321,6 +354,8 @@ easel_canvas_set_image (EaselCanvas *self, EaselImage *img)
   self->hover = EASEL_HANDLE_NONE;
   self->hover_sel_handle = -1;
   self->tiles_rebuilt = 0;
+  self->text_show_max = SIZE_MAX;
+  self->text_step_max = SIZE_MAX;
   if (img != NULL)
     {
       /* Every tile is new, so earlier dirty marks are already covered. */
@@ -513,7 +548,9 @@ drag_rect (EaselCanvas *self, int *x, int *y, int *w, int *h)
 {
   int x0 = self->sel_px0, y0 = self->sel_py0, x1 = self->sel_px1, y1 = self->sel_py1, lx, ly, hx, hy;
 
-  if (self->shift)
+  if (self->sel_for_text && !self->text_dragged)
+    return FALSE;                                 /* a box's press within the drag threshold is a click: no rectangle (REQ-0017-03) */
+  if (self->shift && !self->sel_for_text)
     easel_figure_constrain (EASEL_FIGURE_RECTANGLE, x0, y0, &x1, &y1);
   lx = MAX (MIN (x0, x1), 0);
   ly = MAX (MIN (y0, y1), 0);
@@ -577,7 +614,1137 @@ easel_canvas_get_selection_size (EaselCanvas *self, int *w, int *h)
     }
   if (self->selecting)
     return drag_rect (self, &x, &y, w, h);
+  if (self->text_open)
+    return easel_canvas_text_box (self, &x, &y, w, h);           /* REQ-0017-01: the box's size as a selection's */
   return easel_canvas_get_selection (self, &x, &y, w, h, &floating);
+}
+
+/* ---- the text box (0017) ---- */
+
+static void text_free_ink (EaselCanvas *self);
+static void text_close (EaselCanvas *self);
+
+gboolean
+easel_canvas_text_box (EaselCanvas *self, int *x, int *y, int *w, int *h)
+{
+  if (!self->text_open)
+    return FALSE;
+  *x = self->tb_x;
+  *y = self->tb_y;
+  *w = self->tb_w;
+  /* The larger of the set height and the text's, down to the picture's bottom edge (REQ-0017-26, REQ-0017-07) */
+  *h = MIN (MAX (self->tb_set_h, self->text_h), self->img->height - self->tb_y);
+  return TRUE;
+}
+
+EaselTextBuffer *
+easel_canvas_text_buffer (EaselCanvas *self)
+{
+  return self->text_open ? self->text_buf : NULL;
+}
+
+gboolean
+easel_canvas_text_ink (EaselCanvas *self, EaselTextInk *ink)
+{
+  if (!self->text_open || self->text_ink.mask == NULL)
+    return FALSE;
+  *ink = self->text_ink;
+  return TRUE;
+}
+
+/* At the start of the text or of a line started by Enter the style is the next character's; at a wrapped line's start, as anywhere
+   else, the one before (REQ-0017-26, JOD, 2026-10-26) */
+static void
+style_at_caret_of (const EaselTextBuffer *b, EaselTextStyle *out)
+{
+  size_t len, caret = easel_text_buffer_caret (b);
+  const char *text = easel_text_buffer_text (b, &len);
+
+  easel_text_buffer_style_at_caret (b, caret == 0 || text[caret - 1] == '\n', out);
+}
+
+void
+easel_canvas_text_selection_style (EaselCanvas *self, EaselTextStyle *out, unsigned *mixed)
+{
+  size_t len, caret;
+  const char *text;
+
+  *mixed = 0;
+  if (!self->text_open)
+    return;
+  text = easel_text_buffer_text (self->text_buf, &len);
+  caret = easel_text_buffer_caret (self->text_buf);
+  easel_text_buffer_selection_style (self->text_buf, caret == 0 || text[caret - 1] == '\n', out, mixed);
+}
+
+void
+easel_canvas_text_style_at_caret (EaselCanvas *self, EaselTextStyle *out)
+{
+  if (self->text_open)
+    style_at_caret_of (self->text_buf, out);
+}
+
+void
+easel_canvas_set_text_show_limit (EaselCanvas *self, size_t max_bytes)
+{
+  self->text_show_max = max_bytes;
+}
+
+void
+easel_canvas_set_text_step_limit (EaselCanvas *self, size_t max_bytes)
+{
+  self->text_step_max = max_bytes;
+}
+
+guint
+easel_canvas_get_error_bells (EaselCanvas *self)
+{
+  return self->error_bells;
+}
+
+static void
+error_bell (EaselCanvas *self)
+{
+  self->error_bells++;
+  gtk_widget_error_bell (GTK_WIDGET (self));
+}
+
+void
+easel_canvas_set_text_opaque (EaselCanvas *self, gboolean opaque)
+{
+  self->text_opaque = opaque;
+  gtk_widget_queue_draw (GTK_WIDGET (self));
+}
+
+static gboolean
+caret_tick (gpointer data)
+{
+  EaselCanvas *self = data;
+
+  self->caret_on = !self->caret_on;
+  gtk_widget_queue_draw (GTK_WIDGET (self));
+  return G_SOURCE_CONTINUE;
+}
+
+/* The caret shown again, and blinking as the desktop says (REQ-0017-05): a change starts it over, as in other GNOME text fields. */
+static void
+caret_restart (EaselCanvas *self)
+{
+  gboolean blink = TRUE;
+  int time = 1200;
+
+  g_clear_handle_id (&self->caret_blink, g_source_remove);
+  self->caret_on = TRUE;
+  g_object_get (gtk_widget_get_settings (GTK_WIDGET (self)), "gtk-cursor-blink", &blink, "gtk-cursor-blink-time", &time, NULL);
+  if (blink && self->text_open)
+    self->caret_blink = g_timeout_add (MAX (time / 2, 50), caret_tick, self);
+}
+
+/* The box's layout and pixels made again from its text (the Plan): after every edit and change of its width. */
+static void
+text_relayout (EaselCanvas *self)
+{
+  EaselTextInk ink;
+
+  g_clear_object (&self->text_layout);
+  self->text_layout = easel_text_render_layout (self->text_buf, self->tb_w);
+  self->text_h = easel_text_render_height (self->text_layout);
+  if (easel_text_render_ink (self->text_layout, self->text_buf, self->tb_x, self->tb_y, self->text_show_max, &ink))
+    {
+      text_free_ink (self);
+      self->text_ink = ink;
+    }
+}
+
+void
+easel_canvas_text_edited (EaselCanvas *self)
+{
+  if (!self->text_open)
+    return;
+  text_relayout (self);
+  caret_restart (self);
+  g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);
+  gtk_widget_queue_draw (GTK_WIDGET (self));
+}
+
+gboolean
+easel_canvas_text_step (EaselCanvas *self, gboolean undo)
+{
+  int rect[4];
+  bool geometry = false;
+
+  if (!self->text_open)
+    return FALSE;
+  if (undo && !easel_text_buffer_can_undo (self->text_buf))
+    {
+      text_close (self);                              /* nothing left: no step, the picture's redo steps kept */
+      return TRUE;
+    }
+  if (!(undo ? easel_text_buffer_undo (self->text_buf, rect, &geometry) : easel_text_buffer_redo (self->text_buf, rect, &geometry)))
+    {
+      if (undo || easel_text_buffer_can_redo (self->text_buf))
+        error_bell (self);                            /* no memory for it: the box as it was (REQ-0017-08) */
+      return TRUE;
+    }
+  if (geometry)
+    {
+      self->tb_x = rect[0];
+      self->tb_y = rect[1];
+      self->tb_w = rect[2];
+      self->tb_set_h = rect[3];
+    }
+  easel_canvas_text_edited (self);
+  return TRUE;
+}
+
+gboolean
+easel_canvas_text_select_all (EaselCanvas *self)
+{
+  size_t len;
+
+  if (!self->text_open)
+    return FALSE;
+  easel_text_buffer_text (self->text_buf, &len);
+  easel_text_buffer_select (self->text_buf, 0, len);
+  easel_canvas_text_edited (self);
+  return TRUE;
+}
+
+gboolean
+easel_canvas_text_can_redo (EaselCanvas *self)
+{
+  return self->text_open && easel_text_buffer_can_redo (self->text_buf);
+}
+
+/* ---- editing the box (REQ-0017-06, REQ-0017-07) ---- */
+
+typedef struct
+{
+  const char *text;            /* an insertion at the caret, replacing the selection */
+  size_t len;
+  size_t from, to;             /* or a deletion, when text is NULL */
+  EaselTextEditKind kind;
+  EaselTextField field;        /* or, when not 0, a change of this style field to `value` (REQ-0017-12) */
+  const EaselTextStyle *value;
+  const EaselTextRun *runs;    /* an insertion in these runs (a paste, REQ-0017-20), when not NULL */
+  size_t n_runs;
+  int step;                    /* or, when not 0, each part's size stepped by it (REQ-0017-12) */
+} TextOp;
+
+/* Whether the caret is at the start of the text or of a line started by Enter (REQ-0017-26). */
+static gboolean
+caret_at_line_start (const EaselTextBuffer *b)
+{
+  size_t len, caret = easel_text_buffer_caret (b);
+  const char *text = easel_text_buffer_text (b, &len);
+
+  return caret == 0 || text[caret - 1] == '\n';
+}
+
+static gboolean
+apply_op (EaselTextBuffer *b, const TextOp *op)
+{
+  EaselTextStyle st;
+  bool changed;
+
+  if (op->step != 0)
+    return easel_text_buffer_step_size (b, op->step, EASEL_TEXT_SIZE_MIN, EASEL_TEXT_SIZE_MAX, caret_at_line_start (b), &changed);
+  if (op->field != 0)
+    return easel_text_buffer_apply (b, op->field, op->value, caret_at_line_start (b));
+  if (op->runs != NULL)
+    return easel_text_buffer_insert_runs (b, op->text, op->len, op->runs, op->n_runs, op->kind);
+  if (op->text == NULL)
+    return easel_text_buffer_delete (b, op->from, op->to, op->kind);
+  style_at_caret_of (b, &st);                         /* typed text takes the style at the caret (REQ-0017-12) */
+  return easel_text_buffer_insert (b, op->text, op->len, &st, op->kind);
+}
+
+/* An edit tried on a copy first: refused with the error bell, nothing of it done, if the text would pass the picture's bottom edge (the
+   first line always allowed) or its pixels cannot get their memory; a box whose first text cannot be shown closes, nothing put down,
+   and the window says why once (REQ-0017-07). Otherwise made on the box, with the copy's layout and pixels. */
+static gboolean
+text_try (EaselCanvas *self, const TextOp *op)
+{
+  EaselTextBuffer *copy = easel_text_buffer_copy (self->text_buf);
+  PangoLayout *layout = NULL;
+  EaselTextInk ink = { 0 };
+  int h;
+  size_t len;
+  gboolean ok = copy != NULL && apply_op (copy, op), no_memory = !ok;   /* an edit fails only for memory (REQ-0017-08) */
+
+  if (ok)
+    {
+      layout = easel_text_render_layout (copy, self->tb_w);
+      h = easel_text_render_height (layout);
+      if (pango_layout_get_line_count (layout) > 1 && self->tb_y + MAX (h, self->tb_set_h) > self->img->height)
+        ok = FALSE;                                   /* past the bottom edge */
+      else if (!easel_text_render_ink (layout, copy, self->tb_x, self->tb_y, self->text_show_max, &ink))
+        ok = FALSE, no_memory = TRUE;
+    }
+  if (ok && !apply_op (self->text_buf, op))
+    ok = FALSE, no_memory = TRUE;
+  easel_text_buffer_free (copy);
+  if (!ok)
+    {
+      g_clear_object (&layout);
+      g_free ((uint32_t *) ink.color);
+      g_free ((uint8_t *) ink.mask);
+      easel_text_buffer_text (self->text_buf, &len);
+      if (no_memory && len == 0)
+        {
+          /* the first text cannot be had or shown: the box goes, nothing put down (REQ-0017-07, REQ-0017-08) */
+          text_close (self);
+          g_signal_emit (self, signals[SIGNAL_TEXT_FAILED], 0, 0);
+          return FALSE;
+        }
+      error_bell (self);
+      return FALSE;
+    }
+  g_clear_object (&self->text_layout);
+  self->text_layout = layout;
+  self->text_h = h;
+  text_free_ink (self);
+  self->text_ink = ink;
+  caret_restart (self);
+  g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);
+  gtk_widget_queue_draw (GTK_WIDGET (self));
+  return TRUE;
+}
+
+gboolean
+easel_canvas_text_apply (EaselCanvas *self, EaselTextField field, const EaselTextStyle *value)
+{
+  EaselTextStyle v = *value;
+  TextOp op = { NULL, 0, 0, 0, EASEL_TEXT_EDIT_FORMAT, field, &v };
+
+  if (!self->text_open)
+    return FALSE;
+  /* The box's own copy of a family's name (the style's names are the buffer's) */
+  if (field == EASEL_TEXT_FAMILY && (v.family = easel_text_buffer_intern (self->text_buf, value->family)) == NULL)
+    {
+      error_bell (self);
+      return FALSE;
+    }
+  return text_try (self, &op);
+}
+
+gboolean
+easel_canvas_text_step_size (EaselCanvas *self, int delta)
+{
+  TextOp op = { .kind = EASEL_TEXT_EDIT_FORMAT, .step = delta };
+
+  return self->text_open && text_try (self, &op);
+}
+
+void
+easel_canvas_text_toggle (EaselCanvas *self, guint8 flag)
+{
+  /* on unless all the selected text (or the caret's style) has it (REQ-0017-12) */
+  EaselTextField field = flag == EASEL_TEXT_BOLD ? EASEL_TEXT_FLAG_BOLD : flag == EASEL_TEXT_ITALIC ? EASEL_TEXT_FLAG_ITALIC
+                         : flag == EASEL_TEXT_UNDERLINE ? EASEL_TEXT_FLAG_UNDERLINE : EASEL_TEXT_FLAG_STRIKE;
+  EaselTextStyle st = { 0 }, v = { 0 };
+  unsigned mixed;
+
+  if (!self->text_open)
+    return;
+  easel_canvas_text_selection_style (self, &st, &mixed);
+  v.flags = (st.flags & flag) && !(mixed & field) ? 0 : flag;
+  easel_canvas_text_apply (self, field, &v);
+}
+
+gboolean
+easel_canvas_text_delete_selection (EaselCanvas *self, EaselTextEditKind kind)
+{
+  size_t from, to;
+  TextOp op = { NULL, 0, 0, 0, kind, 0, NULL, NULL, 0 };
+
+  if (!self->text_open || !easel_text_buffer_selection (self->text_buf, &from, &to))
+    return FALSE;
+  op.from = from;
+  op.to = to;
+  return text_try (self, &op);
+}
+
+gboolean
+easel_canvas_text_paste (EaselCanvas *self, const char *text, size_t len, const EaselRichRun *rich, size_t n_rich)
+{
+  g_autofree char *out = NULL;
+  g_autofree size_t *at = NULL;
+  g_autofree EaselTextRun *runs = NULL;
+  EaselTextStyle caret;
+  size_t n = 0, k = 0;
+  TextOp op = { NULL, 0, 0, 0, EASEL_TEXT_EDIT_PASTE, 0, NULL, NULL, 0 };
+
+  if (!self->text_open)
+    return FALSE;
+  out = g_try_malloc (len + 1);
+  at = g_try_new (size_t, len + 1);
+  runs = g_try_new (EaselTextRun, MAX (n_rich, 1));
+  if (out == NULL || at == NULL || runs == NULL)
+    {
+      error_bell (self);
+      return FALSE;
+    }
+  /* Line breaks of any kind become new lines, a tab a space, other control characters go (REQ-0017-20); at[i] is where byte i went */
+  for (size_t i = 0; i < len; i++)
+    {
+      unsigned char c = (unsigned char) text[i];
+
+      at[i] = k;
+      if (c == '\r')
+        {
+          out[k++] = '\n';
+          if (i + 1 < len && text[i + 1] == '\n')
+            at[++i] = k - 1;                          /* "\r\n": one new line */
+        }
+      else if (c == '\t')
+        out[k++] = ' ';
+      else if (c >= 0x20 || c == '\n')
+        out[k++] = (char) c;
+    }
+  at[len] = k;
+  out[k] = '\0';
+  style_at_caret_of (self->text_buf, &caret);
+  /* Each part's own style; what a part does not give, and a family not installed, is the caret's (REQ-0017-20) */
+  for (size_t r = 0; r < n_rich || (r == 0 && n_rich == 0); r++)
+    {
+      EaselTextStyle st = caret;
+      size_t start = rich != NULL && r < n_rich ? at[MIN (rich[r].start, len)] : 0;
+
+      if (rich != NULL && r < n_rich)
+        {
+          const char *family = rich[r].family != NULL ? easel_text_render_find_family (rich[r].family) : NULL;
+
+          if (family != NULL && (st.family = easel_text_buffer_intern (self->text_buf, family)) == NULL)
+            st.family = caret.family;
+          if (rich[r].size_pt > 0)
+            st.size_pt = rich[r].size_pt;
+          st.flags = rich[r].flags;
+          if (rich[r].has_color)
+            st.color = rich[r].color;
+        }
+      if (n > 0 && start <= runs[n - 1].start)
+        runs[n - 1].style = st;                     /* an empty part: the later one's style */
+      else
+        runs[n++] = (EaselTextRun) { start, st };
+      if (rich == NULL)
+        break;
+    }
+  if (k == 0)
+    return TRUE;                                    /* nothing to put in */
+  runs[0].start = 0;
+  op.text = out;
+  op.len = k;
+  op.runs = runs;
+  op.n_runs = n;
+  return text_try (self, &op);
+}
+
+void
+easel_canvas_text_commit (EaselCanvas *self, const char *utf8)
+{
+  TextOp op = { utf8, strlen (utf8), 0, 0, EASEL_TEXT_EDIT_TYPING };
+
+  if (self->text_open && utf8[0] != '\0')
+    text_try (self, &op);
+}
+
+/* The caret moved to `caret`, the selection kept from its anchor with Shift (`extend`), else none. */
+static void
+text_move (EaselCanvas *self, size_t caret, gboolean extend)
+{
+  size_t from, to, anchor = caret;
+
+  if (extend)
+    {
+      easel_text_buffer_selection (self->text_buf, &from, &to);
+      anchor = easel_text_buffer_caret (self->text_buf) == to ? from : to;
+    }
+  easel_text_buffer_select (self->text_buf, anchor, caret);
+  caret_restart (self);
+  g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);
+  gtk_widget_queue_draw (GTK_WIDGET (self));
+}
+
+/* The byte index of the character offset `chars` of the text. */
+static size_t
+index_of_offset (const char *text, size_t len, int chars)
+{
+  const char *p = text;
+
+  for (int i = 0; i < chars && (size_t) (p - text) < len; i++)
+    p = g_utf8_next_char (p);
+  return (size_t) (p - text);
+}
+
+/* The start of the word before `caret` (dir -1), or the end of the word after it (+1), from Pango's word boundaries. */
+static size_t
+word_edge (EaselCanvas *self, size_t caret, int dir)
+{
+  size_t len;
+  const char *text = easel_text_buffer_text (self->text_buf, &len);
+  int n = 0, at = (int) g_utf8_pointer_to_offset (text, text + caret);
+  const PangoLogAttr *attrs = pango_layout_get_log_attrs_readonly (self->text_layout, &n);
+
+  if (dir < 0)
+    {
+      for (at--; at > 0 && !attrs[at].is_word_start; at--)
+        ;
+      at = MAX (at, 0);
+    }
+  else
+    {
+      for (at++; at < n - 1 && !attrs[at].is_word_end; at++)
+        ;
+      at = MIN (at, n - 1);
+    }
+  return index_of_offset (text, len, at);
+}
+
+gboolean
+easel_canvas_text_key (EaselCanvas *self, guint keyval, GdkModifierType state)
+{
+  size_t len, caret, from, to;
+  const char *text;
+  gboolean shift = (state & GDK_SHIFT_MASK) != 0, ctrl = (state & GDK_CONTROL_MASK) != 0;
+  guint32 c;
+
+  if (!self->text_open || self->text_layout == NULL || easel_canvas_is_stroking (self))
+    return FALSE;
+  text = easel_text_buffer_text (self->text_buf, &len);
+  caret = easel_text_buffer_caret (self->text_buf);
+  if (ctrl && !shift && (keyval == GDK_KEY_b || keyval == GDK_KEY_i || keyval == GDK_KEY_u))
+    {
+      /* Bold, Italic and Underline toggled (REQ-0017-12) */
+      easel_canvas_text_toggle (self, keyval == GDK_KEY_b ? EASEL_TEXT_BOLD : keyval == GDK_KEY_i ? EASEL_TEXT_ITALIC : EASEL_TEXT_UNDERLINE);
+      return TRUE;
+    }
+  if (ctrl && !(state & GDK_ALT_MASK) && (keyval == GDK_KEY_bracketright || keyval == GDK_KEY_bracketleft))
+    {
+      /* the size 1 point larger or smaller; a press that changes no size does nothing (REQ-0017-12); a bracket typed with AltGr
+         (reported as Ctrl+Alt on some setups) is not this key */
+      easel_canvas_text_step_size (self, keyval == GDK_KEY_bracketright ? 1 : -1);
+      return TRUE;
+    }
+  switch (keyval)
+    {
+    case GDK_KEY_Return:
+    case GDK_KEY_KP_Enter:
+      easel_canvas_text_commit (self, "\n");          /* a new line (REQ-0017-06) */
+      return TRUE;
+    case GDK_KEY_BackSpace:
+    case GDK_KEY_Delete:
+    case GDK_KEY_KP_Delete:
+      {
+        TextOp op = { NULL, 0, 0, 0, keyval == GDK_KEY_BackSpace ? EASEL_TEXT_EDIT_BACKSPACE : EASEL_TEXT_EDIT_DELETE };
+
+        if (easel_text_buffer_selection (self->text_buf, &from, &to))
+          op.from = from, op.to = to;
+        else if (keyval == GDK_KEY_BackSpace && caret > 0)
+          op.from = (size_t) (g_utf8_find_prev_char (text, text + caret) - text), op.to = caret;
+        else if (keyval != GDK_KEY_BackSpace && caret < len)
+          op.from = caret, op.to = (size_t) (g_utf8_next_char (text + caret) - text);
+        else
+          return TRUE;
+        text_try (self, &op);
+        return TRUE;
+      }
+    case GDK_KEY_Left:
+    case GDK_KEY_Right:
+    case GDK_KEY_KP_Left:
+    case GDK_KEY_KP_Right:
+      {
+        int dir = keyval == GDK_KEY_Left || keyval == GDK_KEY_KP_Left ? -1 : 1, index, trailing;
+
+        if (!shift && !ctrl && easel_text_buffer_selection (self->text_buf, &from, &to))
+          {
+            text_move (self, dir < 0 ? from : to, FALSE);
+            return TRUE;
+          }
+        if (ctrl)
+          {
+            text_move (self, word_edge (self, caret, dir), shift);
+            return TRUE;
+          }
+        /* visually, as Pango lays the line out (right-to-left text too) */
+        pango_layout_move_cursor_visually (self->text_layout, TRUE, (int) caret, 0, dir, &index, &trailing);
+        if (index < 0)
+          index = 0;
+        else if (index == G_MAXINT || (size_t) index > len)
+          index = (int) len;
+        else
+          index = (int) index_of_offset (text + index, len - (size_t) index, trailing) + index;
+        text_move (self, (size_t) index, shift);
+        return TRUE;
+      }
+    case GDK_KEY_Up:
+    case GDK_KEY_Down:
+    case GDK_KEY_KP_Up:
+    case GDK_KEY_KP_Down:
+    case GDK_KEY_Home:
+    case GDK_KEY_End:
+    case GDK_KEY_KP_Home:
+    case GDK_KEY_KP_End:
+      {
+        int line_no = 0, x = 0, index = 0, trailing = 0;
+        gboolean up = keyval == GDK_KEY_Up || keyval == GDK_KEY_KP_Up, home = keyval == GDK_KEY_Home || keyval == GDK_KEY_KP_Home;
+        gboolean end = keyval == GDK_KEY_End || keyval == GDK_KEY_KP_End;
+        PangoLayoutLine *line;
+
+        if (ctrl && (home || end))
+          {
+            text_move (self, home ? 0 : len, shift);
+            return TRUE;
+          }
+        pango_layout_index_to_line_x (self->text_layout, (int) caret, FALSE, &line_no, &x);
+        if (home || end)
+          {
+            line = pango_layout_get_line_readonly (self->text_layout, line_no);
+            index = home ? line->start_index : line->start_index + line->length;
+            if (end && index > line->start_index && (size_t) index <= len && text[index - 1] == '\n')
+              index--;
+            text_move (self, (size_t) index, shift);
+            return TRUE;
+          }
+        line_no += up ? -1 : 1;
+        if (line_no < 0 || line_no >= pango_layout_get_line_count (self->text_layout))
+          {
+            text_move (self, up ? 0 : len, shift);
+            return TRUE;
+          }
+        line = pango_layout_get_line_readonly (self->text_layout, line_no);
+        pango_layout_line_x_to_index (line, x, &index, &trailing);
+        text_move (self, index_of_offset (text + index, len - (size_t) index, trailing) + (size_t) index, shift);
+        return TRUE;
+      }
+    default:
+      break;
+    }
+  if (ctrl || (state & GDK_ALT_MASK) != 0)
+    return FALSE;
+  c = gdk_keyval_to_unicode (keyval);
+  if (c != 0 && c != '\t' && g_unichar_isprint (c))
+    {
+      char utf8[7] = { 0 };
+
+      g_unichar_to_utf8 (c, utf8);
+      easel_canvas_text_commit (self, utf8);        /* the key's character, where no input method took it (REQ-0017-06) */
+      return TRUE;
+    }
+  return FALSE;
+}
+
+gboolean
+easel_canvas_text_filter (EaselCanvas *self, GdkEvent *event)
+{
+  return self->text_open && self->im != NULL && event != NULL && gtk_im_context_filter_keypress (self->im, event);
+}
+
+static void
+on_im_commit (GtkIMContext *im, const char *text, EaselCanvas *self)
+{
+  easel_canvas_text_commit (self, text);
+}
+
+/* The picture point (canvas coordinates) of the character at byte `index`: the middle of its caret's line, just after the caret. */
+void
+easel_canvas_text_point (EaselCanvas *self, size_t index, double *x, double *y)
+{
+  PangoRectangle strong;
+  double l = logical_per_pixel (self);
+
+  *x = *y = 0;
+  if (!self->text_open || self->text_layout == NULL)
+    return;
+  pango_layout_get_cursor_pos (self->text_layout, (int) index, &strong, NULL);
+  *x = (self->tb_x + (double) strong.x / PANGO_SCALE + 0.5) * l;
+  *y = (self->tb_y + ((double) strong.y + strong.height / 2.0) / PANGO_SCALE) * l;
+}
+
+/* The byte index of the text under the canvas point (x, y). */
+static size_t
+text_index_at (EaselCanvas *self, double x, double y)
+{
+  double l = logical_per_pixel (self);
+  int index = 0, trailing = 0;
+  size_t len;
+  const char *text = easel_text_buffer_text (self->text_buf, &len);
+
+  int px = (int) ((x / l - self->tb_x) * PANGO_SCALE), line_no = 0;
+  PangoLayoutLine *line;
+
+  pango_layout_xy_to_index (self->text_layout, px, (int) ((y / l - self->tb_y) * PANGO_SCALE), &index, &trailing);
+  pango_layout_index_to_line_x (self->text_layout, index, FALSE, &line_no, NULL);
+  line = pango_layout_get_line_readonly (self->text_layout, line_no);
+  if (trailing == 0 && line_no + 1 < pango_layout_get_line_count (self->text_layout) && line->length > 0
+      && index == (int) (g_utf8_prev_char (text + line->start_index + line->length) - text))
+    {
+      /* Pango never puts the point after a wrapped line's last character (it is also the next line's start): past that character's
+         middle, it is the line's end, so that the character can be selected (REQ-0017-06) */
+      PangoRectangle pos;
+
+      pango_layout_index_to_pos (self->text_layout, index, &pos);
+      if (px >= pos.x + pos.width / 2)
+        return (size_t) (line->start_index + line->length);
+    }
+  return index_of_offset (text + index, len - (size_t) index, trailing) + (size_t) index;
+}
+
+/* A primary press inside the box: the caret there; a double-click selects the word; a drag selects (REQ-0017-06). */
+static void
+text_press (EaselCanvas *self, double x, double y)
+{
+  size_t at = text_index_at (self, x, y);
+
+  if (self->click_count == 2)
+    {
+      size_t len;
+      const char *text = easel_text_buffer_text (self->text_buf, &len);
+      int n = 0, off = (int) g_utf8_pointer_to_offset (text, text + at), a = off, z = off;
+      const PangoLogAttr *attrs = pango_layout_get_log_attrs_readonly (self->text_layout, &n);
+
+      while (a > 0 && !attrs[a].is_word_start)
+        a--;
+      while (z < n - 1 && !attrs[z].is_word_end)
+        z++;
+      easel_text_buffer_select (self->text_buf, index_of_offset (text, len, a), index_of_offset (text, len, z));
+      caret_restart (self);
+      g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);   /* the card shows the word's style (REQ-0017-14) */
+      gtk_widget_queue_draw (GTK_WIDGET (self));
+      return;
+    }
+  self->text_selecting = TRUE;
+  self->text_anchor = at;
+  text_move (self, at, FALSE);
+}
+
+void
+easel_canvas_set_text_start_style (EaselCanvas *self, const char *family, int size_pt, guint8 flags)
+{
+  g_free (self->text_family);
+  self->text_family = g_strdup (family);
+  self->text_size = size_pt;
+  self->text_flags = flags;
+}
+
+static EaselTextStyle
+text_start_style (EaselCanvas *self)
+{
+  return (EaselTextStyle) { self->text_family != NULL ? self->text_family : "Sans", self->text_size > 0 ? self->text_size : 12,
+                            self->text_flags, self->foreground };
+}
+
+/* Closes the open box. With text, the put-down writes it first (T013); an empty box puts nothing down (REQ-0017-16). */
+static void
+text_free_ink (EaselCanvas *self)
+{
+  g_free ((uint32_t *) self->text_ink.color);
+  g_free ((uint8_t *) self->text_ink.mask);
+  self->text_ink = (EaselTextInk) { 0 };
+}
+
+static void
+text_close (EaselCanvas *self)
+{
+  if (!self->text_open)
+    return;
+  self->text_open = FALSE;
+  self->text_selecting = FALSE;
+  if (self->im != NULL)
+    gtk_im_context_focus_out (self->im);
+  self->hover_text = 0;
+  g_clear_handle_id (&self->caret_blink, g_source_remove);
+  g_clear_object (&self->text_layout);
+  text_free_ink (self);
+  self->text_h = 0;
+  {
+    /* The next box starts in the style at this one's caret (REQ-0017-12), its color excepted (the foreground's at its making) */
+    EaselTextStyle st;
+
+    style_at_caret_of (self->text_buf, &st);
+    easel_canvas_set_text_start_style (self, st.family, st.size_pt, st.flags);
+  }
+  g_clear_pointer (&self->text_buf, easel_text_buffer_free);
+  g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);
+  gtk_widget_queue_draw (GTK_WIDGET (self));
+}
+
+/* Puts the open box down (REQ-0017-16): its text written into the picture, on the background in Opaque mode, as one step; the box
+   closes. Without the memory for the step the picture stays as it was, the box stays open with its text and the dialog is asked for
+   (REQ-0017-18): FALSE, and the caller does not go on. TRUE with no box. */
+static gboolean
+text_put_down (EaselCanvas *self)
+{
+  EaselSelectionResult r;
+  int x, y, w, h;
+  size_t len;
+
+  if (!easel_canvas_text_box (self, &x, &y, &w, &h))
+    return TRUE;
+  if (easel_text_buffer_text (self->text_buf, &len) != NULL && len == 0)
+    {
+      text_close (self);                              /* no characters: nothing put down in either mode, no step (REQ-0017-16) */
+      return TRUE;
+    }
+  r = easel_text_put_down (self->img, self->history, x, y, w, h, &self->text_ink, self->text_opaque, self->background, self->text_step_max);
+  if (r == EASEL_SELECTION_NO_MEMORY)
+    {
+      g_signal_emit (self, signals[SIGNAL_TEXT_FAILED], 0, 1);
+      return FALSE;
+    }
+  text_close (self);                              /* the window syncs Undo, Redo and the title on its selection-changed */
+  if (r == EASEL_SELECTION_DONE)
+    easel_canvas_update (self);
+  return TRUE;
+}
+
+/* Opens a box at the end of its drag (REQ-0017-03): the rectangle dragged out, or for a click twenty widths of "0" from the click; at
+   least one line high, moved toward smaller y as far as the picture's bottom edge requires, never taller than the picture. */
+static void
+text_open_from_drag (EaselCanvas *self, gboolean click)
+{
+  EaselTextStyle start = text_start_style (self);
+  int line_h, twenty, x, y, w, h;
+
+  easel_text_render_metrics (&start, &line_h, &twenty);
+  if (click)
+    {
+      x = self->sel_px0;
+      y = self->sel_py0;
+      w = MIN (twenty, self->img->width - x);
+      h = line_h;
+    }
+  else if (!drag_rect (self, &x, &y, &w, &h))
+    return;
+  h = MAX (h, line_h);
+  if (h >= self->img->height)
+    {
+      y = 0;
+      h = self->img->height;
+    }
+  else if (y + h > self->img->height)
+    y = self->img->height - h;
+  self->text_buf = easel_text_buffer_new (&start);
+  if (self->text_buf == NULL)
+    return;
+  self->text_open = TRUE;
+  self->tb_x = x;
+  self->tb_y = y;
+  self->tb_w = MAX (w, 1);
+  self->tb_set_h = h;
+  text_relayout (self);
+  caret_restart (self);
+  if (self->im != NULL)
+    gtk_im_context_focus_in (self->im);
+}
+
+/* Where (x, y) of the canvas is for the open box: 1 inside, 2 on its move band (4 logical pixels outside it, less the handles' hit
+   areas, which come first), 3 on a handle; 0 elsewhere or with no box (REQ-0017-09). */
+static int
+text_hit (EaselCanvas *self, double x, double y)
+{
+  double l = logical_per_pixel (self), bx, by, bw, bh;
+
+  if (!self->text_open || self->img == NULL)
+    return 0;
+  {
+    int x0, y0, w0, h0;
+
+    easel_canvas_text_box (self, &x0, &y0, &w0, &h0);  /* the box as shown: at least its text's height */
+    bx = x0 * l;
+    by = y0 * l;
+    bw = w0 * l;
+    bh = h0 * l;
+  }
+  if (x >= bx && x < bx + bw && y >= by && y < by + bh)
+    return 1;
+  if (easel_canvas_selection_handle_at (self, x, y) >= 0)
+    return 3;
+  if (x >= bx - TEXT_BAND && x < bx + bw + TEXT_BAND && y >= by - TEXT_BAND && y < by + bh + TEXT_BAND)
+    return 2;
+  return 0;
+}
+
+/* Whether the box's text laid out at width `w` from y `y` stays above the picture's bottom edge (its first line always does, REQ-0017-07). */
+static gboolean
+text_fits (EaselCanvas *self, int y, int w)
+{
+  PangoLayout *layout = easel_text_render_layout (self->text_buf, w);
+  gboolean fits = pango_layout_get_line_count (layout) <= 1 || y + easel_text_render_height (layout) <= self->img->height;
+
+  g_object_unref (layout);
+  return fits;
+}
+
+/* The box set to (x, y, w, set_h) during a drag: a move shifts its pixels; a new width lays its text out again, taken only if the text
+   stays above the picture's bottom edge and its pixels can be had (REQ-0017-07, REQ-0017-10). FALSE, the box as it was, if not taken. */
+static gboolean
+text_set_rect (EaselCanvas *self, int x, int y, int w, int set_h)
+{
+  PangoLayout *layout;
+  EaselTextInk ink;
+
+  if (w != self->tb_w)
+    {
+      if (!text_fits (self, y, w))
+        return FALSE;
+      layout = easel_text_render_layout (self->text_buf, w);
+      if (!easel_text_render_ink (layout, self->text_buf, x, y, self->text_show_max, &ink))
+        {
+          g_object_unref (layout);
+          return FALSE;
+        }
+      g_clear_object (&self->text_layout);
+      self->text_layout = layout;
+      self->text_h = easel_text_render_height (layout);
+      text_free_ink (self);
+      self->text_ink = ink;
+    }
+  else
+    {
+      self->text_ink.x += x - self->tb_x;               /* the same lines, elsewhere */
+      self->text_ink.y += y - self->tb_y;
+    }
+  self->tb_x = x;
+  self->tb_y = y;
+  self->tb_w = w;
+  self->tb_set_h = set_h;
+  return TRUE;
+}
+
+/* A primary press on the box's band (handle < 0: a move) or on one of its handles (a resize) (REQ-0017-09, REQ-0017-10). */
+static void
+text_drag_begin (EaselCanvas *self, int handle, double x, double y)
+{
+  double l = logical_per_pixel (self);
+  int bx, by, bw, bh;
+
+  easel_canvas_text_box (self, &bx, &by, &bw, &bh);
+  self->text_drag = handle < 0 ? 1 : 2;
+  self->text_drag_handle = handle;
+  self->sel_button = GDK_BUTTON_PRIMARY;
+  self->text_drag_x0 = x / l;
+  self->text_drag_y0 = y / l;
+  self->text_drag_old[0] = self->tb_x;
+  self->text_drag_old[1] = self->tb_y;
+  self->text_drag_old[2] = self->tb_w;
+  self->text_drag_old[3] = self->tb_set_h;
+  self->text_drag_shown_h = bh;
+  self->text_selecting = FALSE;
+  g_signal_emit (self, signals[SIGNAL_STROKING_CHANGED], 0, TRUE);
+}
+
+/* The pointer at (x, y) during a drag of the box: a move keeps the grab point on the box and the box wholly inside the picture; a resize
+   changes the sides its handle stands for as a selection's does (REQ-0015-03), inside the picture and at least 1 pixel, the text wrapped
+   at the new width, and stops at the last width whose text stays above the bottom edge (REQ-0017-09, REQ-0017-10). */
+static void
+text_drag_to (EaselCanvas *self, double x, double y)
+{
+  double l = logical_per_pixel (self);
+  const int *o = self->text_drag_old;
+  int dx = (int) floor (x / l - self->text_drag_x0 + 0.5), dy = (int) floor (y / l - self->text_drag_y0 + 0.5);
+  int pw = self->img->width, ph = self->img->height;
+
+  if (self->text_drag == 1)
+    text_set_rect (self, CLAMP (o[0] + dx, 0, MAX (pw - o[2], 0)), CLAMP (o[1] + dy, 0, MAX (ph - self->text_drag_shown_h, 0)), o[2],
+                   o[3]);
+  else
+    {
+      int nx, ny, nw, nh;
+      EaselSelHandle handle = (EaselSelHandle) self->text_drag_handle;
+      gboolean left = handle == EASEL_SEL_HANDLE_L || handle == EASEL_SEL_HANDLE_TL || handle == EASEL_SEL_HANDLE_BL;
+
+      easel_stretch_rect (handle, o[0], o[1], o[2], self->text_drag_shown_h, dx, dy, false, &nx, &ny, &nw, &nh);
+      if (nx < 0)
+        nw += nx, nx = 0;
+      if (ny < 0)
+        nh += ny, ny = 0;
+      nw = CLAMP (nw, 1, pw - nx);
+      nh = CLAMP (nh, 1, ph - ny);
+      if (!text_set_rect (self, nx, ny, nw, nh) && nw < self->tb_w && text_fits (self, ny, self->tb_w))
+        {
+          /* Too narrow for the text to stay above the bottom edge: the narrowest width between that fits */
+          int lo = nw, hi = self->tb_w, right = nx + nw;
+
+          while (hi - lo > 1)
+            {
+              int mid = lo + (hi - lo) / 2;
+
+              if (text_fits (self, ny, mid))
+                hi = mid;
+              else
+                lo = mid;
+            }
+          text_set_rect (self, left ? right - hi : nx, ny, hi, nh);
+        }
+    }
+  g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);
+  gtk_widget_queue_draw (GTK_WIDGET (self));
+}
+
+/* The end of a drag of the box: at the release a changed box is one edit (REQ-0017-11); cancelled (the other button, Esc, Undo), or
+   without the memory for the edit, the box is back as at the press. */
+static void
+text_drag_end (EaselCanvas *self, gboolean cancel)
+{
+  const int *o = self->text_drag_old;
+  int now[4] = { self->tb_x, self->tb_y, self->tb_w, self->tb_set_h };
+  gboolean changed = memcmp (now, o, sizeof now) != 0;
+
+  self->text_drag = 0;
+  if (changed && (cancel || !easel_text_buffer_push_geometry (self->text_buf, o, now)))
+    {
+      if (!cancel)
+        error_bell (self);                                 /* no memory for the edit: refused (REQ-0017-08) */
+      self->tb_x = o[0];
+      self->tb_y = o[1];
+      self->tb_w = o[2];
+      self->tb_set_h = o[3];
+      text_relayout (self);
+    }
+  if (cancel)
+    self->cancelled_button = self->sel_button;
+  g_signal_emit (self, signals[SIGNAL_STROKING_CHANGED], 0, FALSE);
+  g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);
+  gtk_widget_queue_draw (GTK_WIDGET (self));
+}
+
+/* The open box as the pixels its put-down will write (REQ-0017-05, REQ-0017-16): the picture's pixels under it, the background over the
+   box in Opaque mode, the ink's masked pixels; the selected text's accent behind the letters, at 35 %. One texture over the tiles,
+   drawn with their filter, so that it is the picture's look at every zoom (the Plan). */
+static void
+append_text_box (EaselCanvas *self, GtkSnapshot *snapshot, double l)
+{
+  const EaselTextInk *ink = &self->text_ink;
+  int bx, by, bw, bh, x0, y0, x1, y1, rw, rh;
+  uint32_t *px;
+  size_t from = 0, to = 0;
+  g_autoptr (GBytes) data = NULL;
+  g_autoptr (GdkTexture) texture = NULL;
+  g_autoptr (GdkRGBA) accent = NULL;
+  uint8_t *selected = NULL;
+
+  if (self->tool != EASEL_TOOL_TEXT || !easel_canvas_text_box (self, &bx, &by, &bw, &bh))
+    return;
+  x0 = bx;
+  y0 = by;
+  x1 = bx + bw;
+  y1 = by + bh;
+  if (ink->mask != NULL)
+    {
+      x0 = MIN (x0, ink->x);
+      y0 = MIN (y0, ink->y);
+      x1 = MAX (x1, ink->x + ink->w);
+      y1 = MAX (y1, ink->y + ink->h);
+    }
+  x0 = MAX (x0, 0);
+  y0 = MAX (y0, 0);
+  x1 = MIN (x1, self->img->width);
+  y1 = MIN (y1, self->img->height);
+  {
+    /* Only the part in view is composed, so that a frame costs the view's size, not the box's (T010: an 8000-wide box took two frames,
+       most of them composing pixels out of view) */
+    graphene_rect_t seen;
+
+    if (gtk_widget_compute_bounds (gtk_widget_get_parent (GTK_WIDGET (self)), GTK_WIDGET (self), &seen))
+      {
+        x0 = MAX (x0, (int) floor (seen.origin.x / l) - 1);
+        y0 = MAX (y0, (int) floor (seen.origin.y / l) - 1);
+        x1 = MIN (x1, (int) ceil ((seen.origin.x + seen.size.width) / l) + 1);
+        y1 = MIN (y1, (int) ceil ((seen.origin.y + seen.size.height) / l) + 1);
+      }
+  }
+  if (x0 >= x1 || y0 >= y1)
+    return;
+  rw = x1 - x0;
+  rh = y1 - y0;
+  px = g_try_malloc ((gsize) rw * rh * sizeof *px);
+  if (px == NULL)
+    return;
+  /* The selected text's area, from the layout's lines (REQ-0017-05) */
+  if (easel_text_buffer_selection (self->text_buf, &from, &to) && self->text_layout != NULL)
+    {
+      PangoLayoutIter *it = pango_layout_get_iter (self->text_layout);
+
+      selected = g_try_malloc0 ((gsize) rw * rh);
+      do
+        {
+          PangoLayoutLine *line = pango_layout_iter_get_line_readonly (it);
+          PangoRectangle lr;
+          int *ranges = NULL, n = 0;
+          int a = MAX ((int) from, line->start_index), z = MIN ((int) to, line->start_index + line->length);
+
+          if (selected == NULL || a >= z)
+            continue;
+          pango_layout_iter_get_line_extents (it, NULL, &lr);
+          pango_layout_line_get_x_ranges (line, a, z, &ranges, &n);
+          for (int k = 0; k < n; k++)
+            for (int yy = by + (int) floor ((double) lr.y / PANGO_SCALE); yy < by + (int) ceil ((double) (lr.y + lr.height) / PANGO_SCALE); yy++)
+              for (int xx = bx + (int) floor ((double) ranges[2 * k] / PANGO_SCALE);
+                   xx < bx + (int) ceil ((double) ranges[2 * k + 1] / PANGO_SCALE); xx++)
+                if (xx >= x0 && xx < x1 && yy >= y0 && yy < y1)
+                  selected[(gsize) (yy - y0) * rw + (xx - x0)] = 1;
+          g_free (ranges);
+        }
+      while (pango_layout_iter_next_line (it));
+      pango_layout_iter_free (it);
+      accent = adw_style_manager_get_accent_color_rgba (adw_style_manager_get_default ());
+    }
+  for (int j = 0; j < rh; j++)
+    for (int i = 0; i < rw; i++)
+      {
+        int x = x0 + i, y = y0 + j;
+        uint32_t c = easel_image_get (self->img, x, y);
+        gboolean inked = FALSE;
+
+        if (self->text_opaque && x >= bx && x < bx + bw && y >= by && y < by + bh)
+          c = self->background;
+        if (ink->mask != NULL && x >= ink->x && x < ink->x + ink->w && y >= ink->y && y < ink->y + ink->h
+            && ink->mask[(size_t) (y - ink->y) * ink->w + (x - ink->x)])
+          {
+            c = ink->color[(size_t) (y - ink->y) * ink->w + (x - ink->x)];
+            inked = TRUE;
+          }
+        if (!inked && selected != NULL && selected[(gsize) j * rw + i])
+          {
+            /* the accent at 35 % over what is under it, opaque where the picture is */
+            double a = 0.35;
+            unsigned r = (unsigned) lround (((c >> 16) & 255) * (1 - a) + accent->red * 255 * a);
+            unsigned g = (unsigned) lround (((c >> 8) & 255) * (1 - a) + accent->green * 255 * a);
+            unsigned b = (unsigned) lround ((c & 255) * (1 - a) + accent->blue * 255 * a);
+            unsigned al = (unsigned) lround ((c >> 24) * (1 - a) + 255 * a);
+
+            c = al << 24 | r << 16 | g << 8 | b;
+          }
+        px[(gsize) j * rw + i] = c;
+      }
+  g_free (selected);
+  data = g_bytes_new_take (px, (gsize) rw * rh * sizeof *px);
+  texture = gdk_memory_texture_new (rw, rh, PICTURE_FORMAT, data, (gsize) rw * sizeof *px);
+  gtk_snapshot_append_scaled_texture (snapshot, texture, GSK_SCALING_FILTER_NEAREST,
+                                      &GRAPHENE_RECT_INIT ((float) (x0 * l), (float) (y0 * l), (float) (rw * l), (float) (rh * l)));
+}
+
+/* The caret at the place of the next character, in the color of the style at the caret, as tall as its line's text, 1 logical pixel
+   wide below 400 % and 2 from 400 % (REQ-0017-05). */
+static void
+append_text_caret (EaselCanvas *self, GtkSnapshot *snapshot, double l)
+{
+  PangoRectangle strong;
+  EaselTextStyle st;
+  GdkRGBA c;
+  double w;
+
+  if (self->tool != EASEL_TOOL_TEXT || !self->text_open || self->text_layout == NULL || !self->caret_on || self->guides_hidden)
+    return;
+  pango_layout_get_cursor_pos (self->text_layout, (int) easel_text_buffer_caret (self->text_buf), &strong, NULL);
+  easel_canvas_text_style_at_caret (self, &st);
+  c = (GdkRGBA) { ((st.color >> 16) & 255) / 255.0f, ((st.color >> 8) & 255) / 255.0f, (st.color & 255) / 255.0f, 1.0f };
+  w = self->zoom >= 400 ? 2 : 1;
+  gtk_snapshot_append_color (snapshot, &c,
+                             &GRAPHENE_RECT_INIT ((float) ((self->tb_x + (double) strong.x / PANGO_SCALE) * l),
+                                                  (float) ((self->tb_y + (double) strong.y / PANGO_SCALE) * l), (float) w,
+                                                  (float) ((double) strong.height / PANGO_SCALE * l)));
 }
 
 /* The part of a floating selection outside the picture, drawn over the canvas area so that the user sees what they move
@@ -981,7 +2148,9 @@ append_selection_outline (EaselCanvas *self, GtkSnapshot *snapshot)
                         self->sel_y - self->sel_path_y, TRUE, ants_phase (self, 8 * line_thickness (self)));
       return;
     }
-  if (self->selecting ? !drag_rect (self, &x, &y, &w, &h) : !easel_canvas_get_selection (self, &x, &y, &w, &h, &floating))
+  if (self->selecting ? !drag_rect (self, &x, &y, &w, &h)
+      : self->tool == EASEL_TOOL_TEXT ? !easel_canvas_text_box (self, &x, &y, &w, &h)
+                                      : !easel_canvas_get_selection (self, &x, &y, &w, &h, &floating))
     return;
   {
     double th = line_thickness (self), d = 4 * th, X0 = x * l, Y0 = y * l, X1 = (x + w) * l, Y1 = (y + h) * l;
@@ -996,7 +2165,8 @@ append_selection_outline (EaselCanvas *self, GtkSnapshot *snapshot)
     for (int i = 0; i < 4; i++)
       gtk_snapshot_append_color (snapshot, &white, &GRAPHENE_RECT_INIT ((float) ring[i].x, (float) ring[i].y, (float) ring[i].w, (float) ring[i].h));
     {
-      double phase = ants_phase (self, 2 * d);
+      /* A text box's line stands still (REQ-0017-05) */
+      double phase = self->tool == EASEL_TOOL_TEXT ? 0 : ants_phase (self, 2 * d);
 
       for (int i = 0; i < 4; i++)
         ring_dashes (&ring[i], d, phase, snapshot);
@@ -1320,6 +2490,7 @@ cancel_selection_drag (EaselCanvas *self)
   if (self->selecting)
     {
       self->selecting = FALSE;
+      self->sel_for_text = FALSE;
       self->sel_state = 0;
       self->cancelled_button = self->sel_button;
     }
@@ -1717,10 +2888,20 @@ static void
 end_select (EaselCanvas *self)
 {
   int x, y, w, h;
-  gboolean click = self->sel_px1 == self->sel_px0 && self->sel_py1 == self->sel_py0;
+  gboolean click = self->sel_for_text ? !self->text_dragged : self->sel_px1 == self->sel_px0 && self->sel_py1 == self->sel_py0;
 
   self->selecting = FALSE;
   shape_free (self);
+  if (self->sel_for_text)
+    {
+      self->sel_state = 0;
+      text_open_from_drag (self, click);           /* while sel_for_text holds: no Shift for a box (drag_rect) */
+      self->sel_for_text = FALSE;
+      g_signal_emit (self, signals[SIGNAL_STROKING_CHANGED], 0, FALSE);
+      g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);
+      gtk_widget_queue_draw (GTK_WIDGET (self));
+      return;
+    }
   if (!click && drag_rect (self, &x, &y, &w, &h))
     {
       self->sel_state = 1;
@@ -1885,7 +3066,11 @@ easel_canvas_get_selection_handle_rect (EaselCanvas *self, EaselSelHandle handle
   int sx, sy, sw, sh;
   gboolean floating;
 
-  if (self->img == NULL || !easel_canvas_get_selection (self, &sx, &sy, &sw, &sh, &floating))
+  /* The handles of an open text box with Text, else the selection's (REQ-0017-05, REQ-0015-01). */
+  if (self->img == NULL)
+    return FALSE;
+  if (self->tool == EASEL_TOOL_TEXT ? !easel_canvas_text_box (self, &sx, &sy, &sw, &sh)
+                                    : !easel_canvas_get_selection (self, &sx, &sy, &sw, &sh, &floating))
     return FALSE;
   rx = sx * l;
   ry = sy * l;
@@ -1930,7 +3115,16 @@ easel_canvas_selection_handle_at (EaselCanvas *self, double x, double y)
   int sx, sy, sw, sh;
   gboolean floating;
 
-  if (self->img == NULL || !easel_tool_selects (self->tool) || !easel_canvas_get_selection (self, &sx, &sy, &sw, &sh, &floating))
+  if (self->img == NULL)
+    return -1;
+  if (self->tool == EASEL_TOOL_TEXT)
+    {
+      /* A box's handles: inside the box a press is always the text's, also where a picture handle's area reaches in (REQ-0017-09). */
+      if (!easel_canvas_text_box (self, &sx, &sy, &sw, &sh)
+          || (x >= sx * l && x < (sx + sw) * l && y >= sy * l && y < (sy + sh) * l))
+        return -1;
+    }
+  else if (!easel_tool_selects (self->tool) || !easel_canvas_get_selection (self, &sx, &sy, &sw, &sh, &floating))
     return -1;
   for (guint i = 0; i < G_N_ELEMENTS (order); i++)
     if (easel_canvas_get_selection_handle_rect (self, order[i], &r) && x >= r.origin.x && x < r.origin.x + r.size.width
@@ -1986,7 +3180,7 @@ append_selection_handles (EaselCanvas *self, GtkSnapshot *snapshot)
   static const GdkRGBA navy = { 0.0f, 0.0f, 0.5f, 1.0f };
   graphene_rect_t r;
 
-  if (self->guides_hidden || self->no_sel_handles || !easel_tool_selects (self->tool))
+  if (self->guides_hidden || self->no_sel_handles || !(easel_tool_selects (self->tool) || self->tool == EASEL_TOOL_TEXT))
     return;
   for (guint i = 0; i < G_N_ELEMENTS (order); i++)
     if (easel_canvas_get_selection_handle_rect (self, order[i], &r))
@@ -2671,12 +3865,14 @@ easel_canvas_snapshot (GtkWidget *widget, GtkSnapshot *snapshot)
     append_grid (self, snapshot);
   append_gradient_markers (self, snapshot);
   append_handles (self, snapshot);                /* the picture's handles lie under the selection's pixels and tint (REQ-0015-01) */
+  append_text_box (self, snapshot, l);
   append_float_outside (self, snapshot, l);
   if (!self->probe_no_tint)
     append_selection_tint (self, snapshot);
   if (!self->probe_no_line)
     append_selection_outline (self, snapshot);
   append_selection_handles (self, snapshot);
+  append_text_caret (self, snapshot, l);
   append_magnifier_box (self, snapshot);
 }
 
@@ -2768,6 +3964,8 @@ update_cursor (EaselCanvas *self)
     cursor = gdk_cursor_new_from_name ("wait", NULL);
   else if (self->hover_sel_handle >= 0)
     cursor = gdk_cursor_new_from_name (selection_handle_cursor (self->hover_sel_handle), NULL);    /* REQ-0015-02: before the picture's */
+  else if (self->tool == EASEL_TOOL_TEXT && self->hover_text != 0)
+    cursor = gdk_cursor_new_from_name (self->hover_text == 1 ? "text" : "move", NULL);   /* REQ-0017-01, before the picture's handles */
   else if (handle != EASEL_HANDLE_NONE)
     cursor = gdk_cursor_new_from_name (handle == EASEL_HANDLE_RIGHT ? "ew-resize"
                                        : handle == EASEL_HANDLE_BOTTOM ? "ns-resize" : "nwse-resize", NULL);
@@ -2791,7 +3989,8 @@ update_cursor (EaselCanvas *self)
 
       cursor = g_object_ref (texture_cursor (&dropper, "pick.svg", 2, 30));
     }
-  else if (easel_tool_draws_shape (self->tool) || easel_tool_draws_pending (self->tool) || easel_tool_selects (self->tool))
+  else if (easel_tool_draws_shape (self->tool) || easel_tool_draws_pending (self->tool) || easel_tool_selects (self->tool)
+           || self->tool == EASEL_TOOL_TEXT)
     {
       /* The crosshair: its center is the pixel a shape would start from (REQ-0010-15, REQ-0011-03). */
       cursor = gdk_cursor_new_from_name ("crosshair", NULL);
@@ -2906,7 +4105,7 @@ gboolean
 easel_canvas_is_stroking (EaselCanvas *self)
 {
   return self->stroke != NULL || self->picking || self->shaping || self->pend_held || self->selecting || self->sel_moving
-         || self->lassoing || self->stretching;
+         || self->lassoing || self->stretching || self->text_drag != 0;
 }
 
 static GtkAdjustment *
@@ -3126,7 +4325,11 @@ end_pending_stage (EaselCanvas *self)
 gboolean
 easel_canvas_put_down_keeping_marked (EaselCanvas *self)
 {
-  gboolean ok = finish_selection (self, TRUE);
+  gboolean ok;
+
+  if (!text_put_down (self))
+    return FALSE;                               /* the box first; the box stays open (REQ-0017-18) */
+  ok = finish_selection (self, TRUE);
 
   if (self->pending)
     put_down_pending (self);
@@ -3136,7 +4339,11 @@ easel_canvas_put_down_keeping_marked (EaselCanvas *self)
 gboolean
 easel_canvas_put_down (EaselCanvas *self)
 {
-  gboolean ok = finish_selection (self, FALSE);
+  gboolean ok;
+
+  if (!text_put_down (self))
+    return FALSE;                               /* the box first; the box stays open (REQ-0017-18) */
+  ok = finish_selection (self, FALSE);
 
   if (self->pending)
     put_down_pending (self);
@@ -3191,6 +4398,11 @@ easel_canvas_drop (EaselCanvas *self)
 void
 easel_canvas_cancel_stroke (EaselCanvas *self)
 {
+  if (self->text_drag != 0)
+    {
+      text_drag_end (self, TRUE);                 /* the other button, Esc or Undo: the box as at the press (REQ-0017-11) */
+      return;
+    }
   if (cancel_selection_drag (self))
     return;
   if (self->picking)
@@ -3229,6 +4441,7 @@ easel_canvas_buttons_released (EaselCanvas *self)
 {
   /* What a release would have done, for each press the canvas still holds (REQ-0007-18). */
   self->action_button = 0;
+  self->text_selecting = FALSE;
   if (self->stroke != NULL || self->picking || self->shaping || self->pend_held || self->selecting || self->sel_moving
       || self->lassoing || self->stretching)
     easel_canvas_end_stroke (self);
@@ -3480,6 +4693,39 @@ easel_canvas_press_timed (EaselCanvas *self, guint button, double x, double y, g
         easel_canvas_cancel_stroke (self);
       return;
     }
+  if (self->text_drag != 0)
+    {
+      /* The other button cancels a move or a resize of the box (REQ-0017-11). */
+      if (button != self->sel_button)
+        text_drag_end (self, TRUE);
+      return;
+    }
+  if (self->tool == EASEL_TOOL_TEXT && self->text_open)
+    {
+      /* Inside the box a press goes to the text, also where a picture handle's hit area reaches in; outside it, to a box handle, then
+         to the band, before the picture's handles (REQ-0017-09); only the primary button moves or resizes it (REQ-0017-10). */
+      int hit;
+
+      /* A text field that has the focus (the font card's) loses it first, and applies its value before the press acts (REQ-0017-14) */
+      if (gtk_widget_get_root (GTK_WIDGET (self)) != NULL && GTK_IS_TEXT (gtk_root_get_focus (gtk_widget_get_root (GTK_WIDGET (self)))))
+        gtk_root_set_focus (gtk_widget_get_root (GTK_WIDGET (self)), NULL);
+      hit = text_hit (self, x, y);
+      if (hit == 1 && button == GDK_BUTTON_PRIMARY)
+        text_press (self, x, y);
+      else if ((hit == 1 || hit == 2) && button == GDK_BUTTON_SECONDARY)
+        {
+          /* The box's menu (REQ-0017-22): on text that is not selected the caret goes there first; on the selection it stays */
+          size_t at = hit == 1 ? text_index_at (self, x, y) : 0, from, to;
+
+          if (hit == 1 && !(easel_text_buffer_selection (self->text_buf, &from, &to) && at >= from && at <= to))
+            text_move (self, at, FALSE);
+          g_signal_emit (self, signals[SIGNAL_CONTEXT_MENU], 0, x, y);
+        }
+      else if (hit != 1 && hit != 0 && button == GDK_BUTTON_PRIMARY)
+        text_drag_begin (self, hit == 3 ? easel_canvas_selection_handle_at (self, x, y) : -1, x, y);
+      if (hit != 0)
+        return;
+    }
   {
     int handle = easel_canvas_selection_handle_at (self, x, y);
 
@@ -3579,6 +4825,8 @@ easel_canvas_press_timed (EaselCanvas *self, guint button, double x, double y, g
              press puts a floating selection down first (REQ-0013-11). */
           if (button == GDK_BUTTON_PRIMARY)
             {
+              if (!text_put_down (self))
+                return;                               /* a box that could not be put down: no resize (REQ-0017-18) */
               finish_selection (self, FALSE);
               self->resizing = handle;
               self->resize_button = button;
@@ -3677,6 +4925,32 @@ easel_canvas_press_timed (EaselCanvas *self, guint button, double x, double y, g
         to_corner (self, x, y, &cx, &cy);
         lasso_begin (self, button, cx, cy);
       }
+      return;
+    }
+  if (self->tool == EASEL_TOOL_TEXT)
+    {
+      if (self->text_open)
+        {
+          /* Inside the box, on its band or a handle: the text, a move, a resize or the menu (T011, T014, T017). Elsewhere the
+             primary and the secondary button put the box down and make no new box (REQ-0017-17). */
+          if (button == GDK_BUTTON_PRIMARY || button == GDK_BUTTON_SECONDARY)
+            text_put_down (self);
+          return;
+        }
+      if (button != GDK_BUTTON_PRIMARY)
+        return;                                   /* no box: the other buttons do nothing (REQ-0017-04, REQ-0017-22) */
+      /* A rectangle dragged out from the pixel under the press, inside the picture (REQ-0017-03). */
+      self->selecting = TRUE;
+      self->sel_for_text = TRUE;
+      self->text_dragged = FALSE;
+      self->text_press_x = x;
+      self->text_press_y = y;
+      self->sel_button = button;
+      self->sel_px0 = self->sel_px1 = CLAMP (px, 0, self->img->width - 1);
+      self->sel_py0 = self->sel_py1 = CLAMP (py, 0, self->img->height - 1);
+      g_signal_emit (self, signals[SIGNAL_STROKING_CHANGED], 0, TRUE);
+      g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);
+      gtk_widget_queue_draw (GTK_WIDGET (self));
       return;
     }
   if (self->tool == EASEL_TOOL_SELECT)
@@ -3819,6 +5093,11 @@ easel_canvas_motion (EaselCanvas *self, double x, double y)
       resize_to (self, x, y);
       return;
     }
+  if (self->text_drag != 0)
+    {
+      text_drag_to (self, x, y);
+      return;
+    }
   if (self->stretching)
     {
       self->stretch_lx = x / logical_per_pixel (self);
@@ -3905,6 +5184,14 @@ easel_canvas_motion (EaselCanvas *self, double x, double y)
       gtk_widget_queue_draw (GTK_WIDGET (self));
       return;
     }
+  if (self->text_selecting && self->text_open)
+    {
+      easel_text_buffer_select (self->text_buf, self->text_anchor, text_index_at (self, x, y));
+      caret_restart (self);
+      g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);   /* the card shows the selection's style (REQ-0017-14) */
+      gtk_widget_queue_draw (GTK_WIDGET (self));
+      return;
+    }
   if (self->lassoing)
     {
       to_corner (self, x, y, &px, &py);
@@ -3914,6 +5201,19 @@ easel_canvas_motion (EaselCanvas *self, double x, double y)
   if (self->selecting)
     {
       to_pixel (self, x, y, &px, &py);
+      if (self->sel_for_text)
+        {
+          /* A drag starts when the pointer goes beyond the desktop's drag threshold (in screen pixels) and lasts to the release; its
+             rectangle stays inside the picture, a pointer outside counting as the edge's nearest pixel (drag_rect) (REQ-0017-03). */
+          if (!self->text_dragged
+              && gtk_drag_check_threshold (GTK_WIDGET (self), (int) floor (self->text_press_x + 0.5), (int) floor (self->text_press_y + 0.5),
+                                           (int) floor (x + 0.5), (int) floor (y + 0.5)))
+            {
+              self->text_dragged = TRUE;
+              g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);
+              gtk_widget_queue_draw (GTK_WIDGET (self));
+            }
+        }
       if (px != self->sel_px1 || py != self->sel_py1)
         {
           self->sel_px1 = px;
@@ -3995,6 +5295,10 @@ easel_canvas_release (EaselCanvas *self, guint button)
       self->panning = FALSE;
       update_cursor (self);
     }
+  if (button == GDK_BUTTON_PRIMARY)
+    self->text_selecting = FALSE;
+  if (self->text_drag != 0 && button == self->sel_button)
+    text_drag_end (self, FALSE);
   if (self->selecting && button == self->sel_button)
     end_select (self);
   if (self->lassoing && button == self->sel_button)
@@ -4157,8 +5461,9 @@ easel_canvas_pointer_at (EaselCanvas *self, double x, double y)
     return;
   hover = easel_canvas_handle_at (self, x, y);
   if (hover != self->hover || marker_hit (self, x, y) != self->hover_marker || on_selection (self, x, y) != self->hover_sel
-      || easel_canvas_selection_handle_at (self, x, y) != self->hover_sel_handle)
+      || easel_canvas_selection_handle_at (self, x, y) != self->hover_sel_handle || text_hit (self, x, y) % 3 != self->hover_text)
     {
+      self->hover_text = text_hit (self, x, y) % 3;     /* 1 inside, 2 the band; a handle is hover_sel_handle's */
       self->hover = hover;
       self->hover_marker = marker_hit (self, x, y);
       self->hover_sel = on_selection (self, x, y);
@@ -4393,6 +5698,7 @@ easel_canvas_realize (GtkWidget *widget)
   GTK_WIDGET_CLASS (easel_canvas_parent_class)->realize (widget);
   self->surface = gtk_native_get_surface (gtk_widget_get_native (widget));
   g_signal_connect_object (self->surface, "notify::scale", G_CALLBACK (on_scale_changed), self, G_CONNECT_SWAPPED);
+  gtk_im_context_set_client_widget (self->im, widget);
   gtk_widget_queue_resize (widget);
 }
 
@@ -4403,6 +5709,10 @@ easel_canvas_unrealize (GtkWidget *widget)
 
   g_signal_handlers_disconnect_by_func (self->surface, on_scale_changed, self);
   self->surface = NULL;
+  /* The input method holds its client widget: only while the canvas is in a window, else it would keep a canvas whose window is gone
+     (and the canvas it) and place its cursor relative to no window */
+  gtk_im_context_focus_out (self->im);
+  gtk_im_context_set_client_widget (self->im, NULL);
   GTK_WIDGET_CLASS (easel_canvas_parent_class)->unrealize (widget);
 }
 
@@ -4477,6 +5787,14 @@ easel_canvas_dispose (GObject *object)
   drop_float (self);
   shape_free (self);
   lasso_free (self);
+  g_clear_handle_id (&self->caret_blink, g_source_remove);
+  g_clear_object (&self->text_layout);
+  text_free_ink (self);
+  g_clear_pointer (&self->text_buf, easel_text_buffer_free);
+  g_clear_pointer (&self->text_family, g_free);
+  if (self->im != NULL)
+    gtk_im_context_set_client_widget (self->im, NULL);
+  g_clear_object (&self->im);
   G_OBJECT_CLASS (easel_canvas_parent_class)->dispose (object);
 }
 
@@ -4515,6 +5833,9 @@ easel_canvas_class_init (EaselCanvasClass *klass)
                                                    NULL, NULL, G_TYPE_NONE, 0);
   signals[SIGNAL_SELECTION_FAILED] = g_signal_new ("selection-failed", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST, 0, NULL, NULL,
                                                   NULL, G_TYPE_NONE, 1, G_TYPE_INT);
+  /* A box's first text could not be shown: the box closed (REQ-0017-07); the window shows the dialog. */
+  signals[SIGNAL_TEXT_FAILED] = g_signal_new ("text-failed", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST, 0, NULL, NULL, NULL,
+                                             G_TYPE_NONE, 1, G_TYPE_INT);
   signals[SIGNAL_CONTEXT_MENU] = g_signal_new ("context-menu", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST, 0, NULL, NULL,
                                                NULL, G_TYPE_NONE, 2, G_TYPE_DOUBLE, G_TYPE_DOUBLE);
   /* The picture's pixels were replaced by the canvas (a paste grew it, or its growth was undone): its size may differ (REQ-0016-07). */
@@ -4535,6 +5856,9 @@ static void
 easel_canvas_init (EaselCanvas *self)
 {
   self->zoom = 100;
+  /* Input methods, compose and dead keys for the text box (REQ-0017-06): their text arrives by "commit" */
+  self->im = gtk_im_multicontext_new ();                   /* its client widget is set while the canvas is realized */
+  g_signal_connect (self->im, "commit", G_CALLBACK (on_im_commit), self);
   /* The tint of a selection is the system's accent: drawn again when the user changes it (REQ-0014-17 b). */
   g_signal_connect_object (adw_style_manager_get_default (), "notify::accent-color", G_CALLBACK (gtk_widget_queue_draw), self,
                            G_CONNECT_SWAPPED);

@@ -17,11 +17,11 @@ belongs to (see `docs/specs/INDEX.md`). Behavior only.
 - Undo and redo have no fixed step limit; they are bounded only by a memory budget the user sets. Redo is Ctrl+Y or Ctrl+Shift+Z.
 - Pasting a picture larger than the canvas asks: Resize Canvas to Picture (the canvas grows to the picture's size where the picture is bigger, never shrinking: 0016), Fit Picture to Canvas (the picture is resized to fit, keeping its aspect ratio), or Cancel. Paste also accepts copied picture files from the clipboard. After any paste the app switches to the Select tool with the pasted picture selected (for an oversize picture: already resized to fit the canvas with its aspect ratio kept, or with the canvas already resized to the picture's size, according to the choice made in the popup), so it can be moved before it is put down. A picture that is not larger than the canvas is inserted with its top-left corner at the top-left picture pixel in view (the canvas's top-left corner when it is in view: 0016), as a selection that can be dragged to the right place and resized, like any selection.
 - Stretch and Skew accept percent or exact pixels, with a Keep aspect ratio option.
-- Right-click menus: on a selection (selection menu), on a text box (Cut, Copy, Paste, Font for Selection), and with a select tool outside any selection (Paste menu and canvas actions).
+- Right-click menus: on a selection (selection menu), on a text box (Cut, Copy, Paste, Paste as Plain Text, Select All), and with a select tool outside any selection (Paste menu and canvas actions).
 - Ctrl+Shift+X swaps the foreground and background colors.
 
 ## Text
-- Font dialog: font list, live preview, size, text color and Bold / Italic / Underline / Strikethrough in one place.
+- Font controls: a card over the canvas, next to the text box, holds the font family, size and Bold / Italic / Underline / Strikethrough in one row; there is no separate dialog, and the text color is the foreground color picked on the palette: a palette color colors the selected text, or the text typed next; to color all of a box's text, select all (Ctrl+A) first.
 - Formatting can differ within one text box: select part of the text and change font, size, color and styles for just that part.
 - Copying or cutting text from a box keeps its formatting: the clipboard gets rich text as well as plain text, and pasting rich text into a box keeps each part's font, size, color and styles; plain text takes the style of the box at the caret.
 - Default text size is 12. Esc closes the Font and Thumbnail windows.
@@ -35,7 +35,7 @@ belongs to (see `docs/specs/INDEX.md`). Behavior only.
 - Frame Time display, switchable from View and Preferences.
 - Keyboard shortcuts window (Ctrl+? or Ctrl+F1); Help (F1) opens as a readable page in the default browser.
 - Pictures can be opened from the command line.
-- About with acknowledgements (XP Paint, JS Paint). Nine UI languages, screen-reader labels and announcements, and keyboard-only drawing: covered by features Window Extras, Accessibility and i18n.
+- About with acknowledgements (XP Paint, JS Paint). Twelve UI languages, screen-reader labels and announcements, and keyboard-only drawing: covered by features Window Extras, Accessibility and i18n.
 
 ## Phase 2 (after the core scope)
 Optional; it starts only after the core XP scope is delivered.

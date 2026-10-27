@@ -6,6 +6,7 @@
 #include "clipboard.h"
 
 #include "canvas.h"
+#include "font-card.h"
 #include "palette-bar.h"
 #include "status-bar.h"
 #include "tool-options.h"
@@ -31,8 +32,12 @@ uint32_t easel_window_get_foreground (EaselWindow *self);
 uint32_t easel_window_get_background (EaselWindow *self);
 gboolean easel_window_get_modified (EaselWindow *self);
 EaselCanvas *easel_window_get_canvas (EaselWindow *self);
+/* The font card over the view (tests). */
+EaselFontCard *easel_window_get_font_card (EaselWindow *self);
 EaselPaletteBar *easel_window_get_palette_bar (EaselWindow *self);
 EaselToolOptions *easel_window_get_tool_options (EaselWindow *self);
+/* The Text tool's mode: TRUE for Opaque (REQ-0017-02). */
+gboolean easel_window_get_text_opaque (EaselWindow *self);
 EaselStatusBar *easel_window_get_status_bar (EaselWindow *self);
 
 GtkMenuButton *easel_window_get_main_menu_button (EaselWindow *self);
@@ -41,10 +46,15 @@ GtkMenuButton *easel_window_get_view_button (EaselWindow *self);
 /* The selection's context menu (REQ-0013-17), for tests: shown while it is open. */
 GtkPopoverMenu *easel_window_get_selection_menu (EaselWindow *self);
 GtkPopoverMenu *easel_window_get_canvas_menu (EaselWindow *self);
+/* The text box's menu (REQ-0017-22; tests). */
+GtkPopoverMenu *easel_window_get_text_menu (EaselWindow *self);
 /* The clipboard the window uses (0016): NULL for the desktop's; the ui tests give theirs (the isolated session holds none). */
 void easel_window_set_clipboard (EaselWindow *self, EaselClipboard *clipboard);
 /* The limit of the wait for the clipboard's content, in ms (REQ-0016-15): 5000 unless a test sets it. */
 void easel_window_set_clipboard_timeout (EaselWindow *self, guint ms);
+/* Tests only (REQ-0017-19, REQ-0017-20): rich text (HTML) written for Copy or read for Paste that is longer than `bytes` fails as when
+   its memory cannot be had. G_MAXSIZE, the start, is off: the production path is unchanged. */
+void easel_window_set_rich_text_limit (EaselWindow *self, gsize bytes);
 /* The zoom as the View menu's row shows it, for example "100%" (REQ-0004-01). */
 const char *easel_window_get_zoom_text (EaselWindow *self);
 

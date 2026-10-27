@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 
 #include <glib/gstdio.h>
+#include <math.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -17,7 +18,11 @@
 #include "settings-file.h"
 #include "tool-options.h"
 #include "view.h"
+#include "text-render.h"
 #include "window.h"
+
+#include "font-card.h"
+#include "rich-text.h"
 
 struct _EaselWindow
 {
@@ -25,6 +30,12 @@ struct _EaselWindow
 
   EaselClipboard *clipboard;  /* the desktop's, or a test's (Plan of 0016, "The clipboard seam") */
   GtkScrolledWindow *scroller;
+  GtkOverlay *canvas_overlay;
+  EaselFontCard *font_card;                     /* over the view while a text box is open (REQ-0017-14) */
+  guint card_idle;
+  guint card_focus_idle;
+  gint64 tab_time;                              /* when Tab or Shift+Tab was last pressed: keyboard navigation */
+  gsize rich_limit;                             /* tests: rich text longer than this fails as for memory; G_MAXSIZE is off */
   EaselCanvas *canvas;
   EaselPaletteBar *palette_bar;
   EaselStatusBar *status_bar;
@@ -39,6 +50,8 @@ struct _EaselWindow
   GtkWidget *selection_menu;          /* its popover, parented to the canvas */
   GMenuModel *canvas_menu_model;      /* the template's canvas_menu (REQ-0016-14) */
   GtkWidget *canvas_menu;             /* its popover, parented to the canvas */
+  GMenuModel *text_menu_model;        /* the template's text_menu (REQ-0017-22) */
+  GtkWidget *text_menu;               /* its popover, parented to the canvas */
   GtkMenuButton *image_button;
   GtkMenuButton *view_button;
   GtkLabel *zoom_label;       /* the View menu's zoom row, created in code */
@@ -211,6 +224,131 @@ update_title (EaselWindow *self)
   gtk_window_set_title (GTK_WINDOW (self), title);
 }
 
+/* The card's text field that has the focus (the size, the family's search), or NULL. */
+static GtkWidget *
+card_field_focus (EaselWindow *self)
+{
+  GtkWidget *focus = gtk_root_get_focus (GTK_ROOT (self));
+
+  return focus != NULL && GTK_IS_TEXT (focus) && gtk_widget_is_ancestor (focus, GTK_WIDGET (self->font_card)) ? focus : NULL;
+}
+
+/* While a field of the card has the focus, Undo, Redo, Select All, Cut, Copy and Paste act on that field (REQ-0017-14): TRUE if one
+   took the action. */
+static gboolean
+card_field_action (EaselWindow *self, const char *action)
+{
+  GtkWidget *field = card_field_focus (self);
+
+  return field != NULL && gtk_widget_activate_action (field, action, NULL);
+}
+
+/* The card's place in the overlay (REQ-0017-14): above the box with a gap of 8 logical pixels, else below it, else at the view's top
+   edge; shifted sideways to stay in the view. FALSE with no box; `in_view` FALSE when the box is wholly out of the view. */
+static gboolean
+card_place (EaselWindow *self, GdkRectangle *place, gboolean *in_view)
+{
+  GtkWidget *card = GTK_WIDGET (self->font_card), *overlay = GTK_WIDGET (self->canvas_overlay);
+  double l = easel_window_get_zoom (self) / 100.0 / easel_canvas_get_scale (self->canvas);
+  graphene_rect_t view;
+  graphene_point_t a, b;
+  int x, y, w, h, cw, ch;
+  double cx, cy, above, below;
+
+  if (!easel_canvas_text_box (self->canvas, &x, &y, &w, &h)
+      || !gtk_widget_compute_bounds (GTK_WIDGET (self->scroller), overlay, &view)
+      || !gtk_widget_compute_point (GTK_WIDGET (self->canvas), overlay, &GRAPHENE_POINT_INIT ((float) (x * l), (float) (y * l)), &a)
+      || !gtk_widget_compute_point (GTK_WIDGET (self->canvas), overlay,
+                                    &GRAPHENE_POINT_INIT ((float) ((x + w) * l), (float) ((y + h) * l)), &b))
+    return FALSE;
+  gtk_widget_measure (card, GTK_ORIENTATION_HORIZONTAL, -1, NULL, &cw, NULL, NULL);
+  gtk_widget_measure (card, GTK_ORIENTATION_VERTICAL, cw, NULL, &ch, NULL, NULL);
+  *in_view = b.x > view.origin.x && a.x < view.origin.x + view.size.width && b.y > view.origin.y
+             && a.y < view.origin.y + view.size.height;
+  cx = MAX (MIN (a.x, view.origin.x + view.size.width - cw), view.origin.x);
+  above = a.y - 8 - ch;
+  below = b.y + 8;
+  cy = above >= view.origin.y ? above : below + ch <= view.origin.y + view.size.height ? below : view.origin.y;
+  *place = (GdkRectangle) { (int) floor (cx + 0.5), (int) floor (cy + 0.5), cw, ch };
+  return TRUE;
+}
+
+static gboolean
+on_card_position (GtkOverlay *overlay, GtkWidget *widget, GdkRectangle *allocation, EaselWindow *self)
+{
+  gboolean in_view;
+
+  return widget == GTK_WIDGET (self->font_card) && card_place (self, allocation, &in_view);
+}
+
+/* Whether the focus is in the font card where the keys must not stay (REQ-0017-14; JOD, 2026-10-27: the card's controls take no
+   focus): on a control that is not a text field, or on a text field it reached by Tab, with the family popover closed. A text field the
+   user clicked into keeps it while the user types there. */
+static gboolean
+focus_stuck_in_card (EaselWindow *self)
+{
+  GtkWidget *focus = gtk_root_get_focus (GTK_ROOT (self));
+  gboolean by_tab = g_get_monotonic_time () - self->tab_time < G_USEC_PER_SEC / 2;
+
+  return focus != NULL && gtk_widget_is_ancestor (focus, GTK_WIDGET (self->font_card)) && (!GTK_IS_TEXT (focus) || by_tab)
+         && !easel_font_card_family_is_open (self->font_card);
+}
+
+static gboolean
+card_focus_off (gpointer data)
+{
+  EaselWindow *self = data;
+
+  self->card_focus_idle = 0;
+  if (focus_stuck_in_card (self))
+    gtk_root_set_focus (GTK_ROOT (self), NULL);
+  return G_SOURCE_REMOVE;
+}
+
+/* The focus came where it must not stay in the card: GTK gives it back to the family button's side when the popover closes, and on the
+   desktop also later, when the window gets the keys back from the popover, and Tab can carry it in; then the keys go to the box again and
+   no control keeps a focus ring (REQ-0017-14; JOD's M1 recording, 2026-10-27). */
+static void
+on_focus_widget_changed (EaselWindow *self)
+{
+  if (focus_stuck_in_card (self) && self->card_focus_idle == 0)
+    self->card_focus_idle = g_idle_add (card_focus_off, self);
+}
+
+/* After the layout: the card shown only while the box is open and in the view (REQ-0017-14), and placed again. */
+static gboolean
+card_after_layout (gpointer data)
+{
+  EaselWindow *self = data;
+  GdkRectangle place;
+  gboolean in_view = FALSE;
+
+  self->card_idle = 0;
+  gtk_widget_set_child_visible (GTK_WIDGET (self->font_card), card_place (self, &place, &in_view) && in_view);
+  gtk_widget_queue_allocate (GTK_WIDGET (self->canvas_overlay));
+  return G_SOURCE_REMOVE;
+}
+
+/* The card follows the box: its style, and its place after the layout (a scroll, a zoom, a move or a resize of the box). */
+static void
+update_card (EaselWindow *self)
+{
+  int x, y, w, h;
+  gboolean open = self->tool == EASEL_TOOL_TEXT && easel_canvas_text_box (self->canvas, &x, &y, &w, &h);
+
+  gtk_widget_set_visible (GTK_WIDGET (self->font_card), open);
+  if (open)
+    {
+      EaselTextStyle st = { 0 };
+      unsigned mixed = 0;
+
+      easel_canvas_text_selection_style (self->canvas, &st, &mixed);
+      easel_font_card_show_style (self->font_card, &st, mixed);
+    }
+  if (self->card_idle == 0)
+    self->card_idle = g_idle_add (card_after_layout, self);
+}
+
 /* The title and the Undo and Redo actions follow the history (REQ-0002-06, REQ-0002-07, REQ-0002-12). */
 static void
 sync_history_ui (EaselWindow *self)
@@ -218,13 +356,29 @@ sync_history_ui (EaselWindow *self)
   GAction *undo = g_action_map_lookup_action (G_ACTION_MAP (self), "undo");
   GAction *redo = g_action_map_lookup_action (G_ACTION_MAP (self), "redo");
   gboolean pending = easel_canvas_is_pending (self->canvas);
+  int x, y, w, h;
+  gboolean box = easel_canvas_text_box (self->canvas, &x, &y, &w, &h);
 
-  /* While a curve or polygon is pending, Undo is there to drop it, even with nothing to undo, and Redo is not (REQ-0011-11). */
+  /* While a curve or polygon is pending, Undo is there to drop it, even with nothing to undo, and Redo is not (REQ-0011-11).
+     While a text box is open, Undo takes back its edits or closes it, and Redo redoes its edits only (REQ-0017-08). */
   if (undo != NULL)
-    g_simple_action_set_enabled (G_SIMPLE_ACTION (undo), pending || easel_history_can_undo (self->history));
+    g_simple_action_set_enabled (G_SIMPLE_ACTION (undo), pending || box || easel_history_can_undo (self->history));
   if (redo != NULL)
-    g_simple_action_set_enabled (G_SIMPLE_ACTION (redo), !pending && easel_history_can_redo (self->history));
+    g_simple_action_set_enabled (G_SIMPLE_ACTION (redo),
+                                 box ? easel_canvas_text_can_redo (self->canvas) : !pending && easel_history_can_redo (self->history));
   update_title (self);
+}
+
+/* Puts down what is open (a text box, a floating selection, a pending curve or polygon). FALSE only when a text box could not be put
+   down: it stays open and the action that asked for it is not done (REQ-0017-18); a selection that could not be put down lets the
+   action go on (REQ-0013-19). */
+static gboolean
+put_down_for_action (EaselWindow *self, gboolean keep_marked)
+{
+  int x, y, w, h;
+  gboolean ok = keep_marked ? easel_canvas_put_down_keeping_marked (self->canvas) : easel_canvas_put_down (self->canvas);
+
+  return ok || !easel_canvas_text_box (self->canvas, &x, &y, &w, &h);
 }
 
 static void
@@ -771,10 +925,8 @@ file_action_allowed_keeping (EaselWindow *self, gboolean keep_marked)
     return FALSE;
   easel_canvas_end_stroke (self->canvas);
   /* A pending curve or polygon too (REQ-0011-12); Save and Save As keep a marked selection (REQ-0013-12). */
-  if (keep_marked)
-    easel_canvas_put_down_keeping_marked (self->canvas);
-  else
-    easel_canvas_put_down (self->canvas);
+  if (!put_down_for_action (self, keep_marked))
+    return FALSE;                               /* a text box that could not be put down: no dialog, no prompt (REQ-0017-18) */
   easel_canvas_cancel_resize (self->canvas);
   return TRUE;
 }
@@ -1082,6 +1234,19 @@ set_colors (EaselWindow *self, uint32_t foreground, uint32_t background)
 
 static void open_chooser (EaselWindow *self, int target, uint32_t color);
 
+/* A color pick (REQ-0017-13): the foreground color, and with a text box open the color of its selected text (one edit), or with nothing
+   selected of the text typed next at its caret. A swap or a background change is not a pick. */
+static void
+pick_foreground (EaselWindow *self, uint32_t color)
+{
+  EaselTextStyle v = { 0 };
+
+  set_colors (self, color, self->background);
+  v.color = color;
+  if (self->tool == EASEL_TOOL_TEXT)
+    easel_canvas_text_apply (self->canvas, EASEL_TEXT_COLOR, &v);
+}
+
 static uint32_t
 from_rgba (const GdkRGBA *c)
 {
@@ -1112,7 +1277,7 @@ easel_window_finish_color_choice (EaselWindow *self, const GdkRGBA *rgba)
 
   color = from_rgba (rgba);
   if (self->chooser_target == CHOOSE_FOREGROUND)
-    set_colors (self, color, self->background);
+    pick_foreground (self, color);
   else if (self->chooser_target == CHOOSE_BACKGROUND)
     set_colors (self, self->foreground, color);
   else
@@ -1122,7 +1287,7 @@ easel_window_finish_color_choice (EaselWindow *self, const GdkRGBA *rgba)
 
       self->palette.colors[self->chooser_target - 1] = color;
       easel_palette_bar_set_swatch (self->palette_bar, self->chooser_target, color);
-      set_colors (self, color, self->background);
+      pick_foreground (self, color);
       /* Remembered at once; if writing fails the swatch still changes for this run, silently (REQ-0003-15,
          REQ-0003-16). */
       easel_palette_file_save (path, &self->palette);
@@ -1172,7 +1337,7 @@ on_swatch_pressed (EaselWindow *self, int n, guint button, int n_press)
   if (dialog_is_open (self))
     return;
   if (button == GDK_BUTTON_PRIMARY)
-    set_colors (self, color, self->background);
+    pick_foreground (self, color);
   else
     set_colors (self, self->foreground, color);
 
@@ -1206,6 +1371,49 @@ swap_colors_activated (GSimpleAction *action, GVariant *parameter, gpointer user
   if (dialog_is_open (self))
     return;
   set_colors (self, self->background, self->foreground);
+}
+
+/* ---- the Text tool's starting style (REQ-0017-24) ---- */
+
+/* The family of the desktop's interface font (`auto`, REQ-0017-24), or NULL where the desktop has none. */
+static char *
+desktop_interface_family (void)
+{
+  GSettingsSchema *schema = g_settings_schema_source_lookup (g_settings_schema_source_get_default (), "org.gnome.desktop.interface", TRUE);
+  g_autoptr (GSettings) settings = NULL;
+  g_autofree char *name = NULL;
+  PangoFontDescription *fd;
+  char *family;
+
+  if (schema == NULL || !g_settings_schema_has_key (schema, "font-name"))
+    {
+      g_clear_pointer (&schema, g_settings_schema_unref);
+      return NULL;
+    }
+  g_settings_schema_unref (schema);
+  settings = g_settings_new ("org.gnome.desktop.interface");
+  name = g_settings_get_string (settings, "font-name");
+  fd = pango_font_description_from_string (name);
+  family = g_strdup (pango_font_description_get_family (fd));
+  pango_font_description_free (fd);
+  return family;
+}
+
+/* `[text]` as the canvas's starting style: the family the settings name if it is installed (matched without regard to case), else the
+   desktop's interface font; the size and the styles as read (REQ-0017-24). */
+static void
+apply_text_settings (EaselWindow *self)
+{
+  const char *family = self->settings.text_font[0] != '\0' ? easel_text_render_find_family (self->settings.text_font) : NULL;
+  g_autofree char *desktop = family == NULL ? desktop_interface_family () : NULL;
+  guint8 flags = (guint8) ((self->settings.text_bold ? EASEL_TEXT_BOLD : 0) | (self->settings.text_italic ? EASEL_TEXT_ITALIC : 0)
+                           | (self->settings.text_underline ? EASEL_TEXT_UNDERLINE : 0)
+                           | (self->settings.text_strike ? EASEL_TEXT_STRIKE : 0));
+
+  /* a generic name, in the settings or from the desktop, becomes the installed family it stands for (REQ-0017-24) */
+  easel_canvas_set_text_start_style (self->canvas,
+                                     easel_text_render_resolve_family (family != NULL ? family : desktop != NULL ? desktop : "Sans"),
+                                     self->settings.text_size, flags);
 }
 
 /* ---- the status bar (REQ-0004-09..11) ---- */
@@ -1248,6 +1456,8 @@ tool_hint (EaselTool tool, gboolean transparent)
       return "Picks up a color from the picture for drawing.";
     case EASEL_TOOL_FILL:
       return "Fills an area with the current drawing color.";
+    case EASEL_TOOL_TEXT:
+      return "Inserts text into the picture.";
     default:
       return "Drag to pan. Ctrl+wheel zooms.";
     }
@@ -1405,8 +1615,23 @@ easel_window_get_selection_menu (EaselWindow *self)
 static void
 on_context_menu (EaselWindow *self, double x, double y)
 {
-  gtk_popover_set_pointing_to (GTK_POPOVER (self->selection_menu), &(GdkRectangle) { (int) x, (int) y, 1, 1 });
-  gtk_popover_popup (GTK_POPOVER (self->selection_menu));
+  /* With Text, the box's menu (REQ-0017-22); else the selection's */
+  GtkWidget *menu = self->tool == EASEL_TOOL_TEXT ? self->text_menu : self->selection_menu;
+
+  gtk_popover_set_pointing_to (GTK_POPOVER (menu), &(GdkRectangle) { (int) x, (int) y, 1, 1 });
+  gtk_popover_popup (GTK_POPOVER (menu));
+}
+
+GtkPopoverMenu *
+easel_window_get_text_menu (EaselWindow *self)
+{
+  return GTK_POPOVER_MENU (self->text_menu);
+}
+
+void
+easel_window_set_rich_text_limit (EaselWindow *self, gsize bytes)
+{
+  self->rich_limit = bytes;
 }
 
 /* A secondary press with a select tool not on the selection: the canvas menu at the pointer (REQ-0016-14). */
@@ -1430,6 +1655,8 @@ menu_is_open (EaselWindow *self)
   GtkMenuButton *buttons[] = { self->main_menu_button, self->image_button, self->view_button };
 
   if (self->selection_menu != NULL && gtk_widget_get_visible (self->selection_menu))
+    return TRUE;
+  if (self->text_menu != NULL && gtk_widget_get_visible (self->text_menu))
     return TRUE;
   if (self->canvas_menu != NULL && gtk_widget_get_visible (self->canvas_menu))
     return TRUE;
@@ -1709,7 +1936,9 @@ attributes_activated (GSimpleAction *action, GVariant *parameter, gpointer user_
 
   if (!view_actions_allowed (self))
     return;
-  easel_canvas_put_down (self->canvas);                    /* an Image action puts a pending curve or polygon down (REQ-0011-12) */
+  /* an Image action puts a pending curve or polygon down (REQ-0011-12), and a text box, or is not done (REQ-0017-18) */
+  if (!put_down_for_action (self, FALSE))
+    return;
   canvas_area_device (self, &area_w, &area_h);
   easel_settings_resolve_size (&self->settings, area_w, area_h, &default_w, &default_h);
   easel_attributes_dialog_present (GTK_WIDGET (self), self->picture->width, self->picture->height, default_w, default_h,
@@ -1742,6 +1971,10 @@ step_history (EaselWindow *self, gboolean undo)
     }
   if (easel_canvas_is_waiting_for_release (self->canvas))
     return;
+  /* An open text box: Undo and Redo act on its edits, not on the picture's steps (REQ-0017-08); the box's change syncs the
+     actions through selection-changed. */
+  if (easel_canvas_text_step (self->canvas, undo))
+    return;
   old_w = self->picture->width;
   old_h = self->picture->height;
   if (!(undo ? easel_history_undo (self->history, self->picture) : easel_history_redo (self->history, self->picture)))
@@ -1764,13 +1997,15 @@ step_history (EaselWindow *self, gboolean undo)
 static void
 undo_activated (GSimpleAction *action, GVariant *parameter, gpointer user_data)
 {
-  step_history (EASEL_WINDOW (user_data), TRUE);
+  if (!card_field_action (EASEL_WINDOW (user_data), "text.undo"))
+    step_history (EASEL_WINDOW (user_data), TRUE);
 }
 
 static void
 redo_activated (GSimpleAction *action, GVariant *parameter, gpointer user_data)
 {
-  step_history (EASEL_WINDOW (user_data), FALSE);
+  if (!card_field_action (EASEL_WINDOW (user_data), "text.redo"))
+    step_history (EASEL_WINDOW (user_data), FALSE);
 }
 
 /* A handle drag ended on a new size (REQ-0004-18). */
@@ -1780,12 +2015,84 @@ on_resize_requested (EaselWindow *self, int width, int height)
   easel_window_resize_picture (self, width, height);
 }
 
+/* The wheel over the card's size field: with the focus in the field, the field's own (a step of the size, REQ-0017-25); without it,
+   the view's, as anywhere over the canvas area. The card is the scrolled window's sibling in the overlay, so the wheel would not reach
+   it: the window scrolls the view as GTK's scrolled window does (Shift for across). With a box open the tool is Text, where Ctrl+wheel
+   does not zoom (REQ-0001-17), so a scroll is all the canvas area would do. */
+static gboolean
+on_card_size_scroll (GtkEventControllerScroll *controller, double dx, double dy, EaselWindow *self)
+{
+  GtkWidget *field = gtk_event_controller_get_widget (GTK_EVENT_CONTROLLER (controller));
+  GtkWidget *focus = gtk_root_get_focus (GTK_ROOT (self));
+  GdkModifierType state = gtk_event_controller_get_current_event_state (GTK_EVENT_CONTROLLER (controller));
+  gboolean across = (state & GDK_SHIFT_MASK) || (dy == 0 && dx != 0);
+  GtkAdjustment *adj = across ? gtk_scrolled_window_get_hadjustment (self->scroller) : gtk_scrolled_window_get_vadjustment (self->scroller);
+  double d = across ? (dx != 0 ? dx : dy) : dy;
+
+  if (focus != NULL && (focus == field || gtk_widget_is_ancestor (focus, field)))
+    return GDK_EVENT_PROPAGATE;
+  if (gtk_event_controller_scroll_get_unit (controller) == GDK_SCROLL_UNIT_WHEEL)
+    d *= pow (gtk_adjustment_get_page_size (adj), 2.0 / 3.0);
+  gtk_adjustment_set_value (adj, gtk_adjustment_get_value (adj) + d);
+  return GDK_EVENT_STOP;
+}
+
+/* The open box's keys that the window owns (REQ-0017-12, REQ-0017-14): Ctrl+Shift+5 toggles Strikethrough, matched by the key that
+   writes 5, whatever Shift makes it report ("%" on a US or Polish layout); Ctrl+Shift+F opens the font card's family popover, the keys
+   in its search. */
+static gboolean
+format_key (EaselWindow *self, guint keyval, guint keycode, GdkModifierType state)
+{
+  g_autofree GdkKeymapKey *keys = NULL;
+  int n = 0;
+
+  if ((state & (GDK_CONTROL_MASK | GDK_SHIFT_MASK | GDK_ALT_MASK)) != (GDK_CONTROL_MASK | GDK_SHIFT_MASK))
+    return FALSE;
+  if (keyval == GDK_KEY_F || keyval == GDK_KEY_f)
+    {
+      easel_font_card_open_family (self->font_card);
+      return TRUE;
+    }
+  if (keycode != 0 && gdk_display_map_keyval (gtk_widget_get_display (GTK_WIDGET (self)), GDK_KEY_5, &keys, &n))
+    for (int i = 0; i < n; i++)
+      if (keys[i].keycode == keycode)
+        {
+          easel_canvas_text_toggle (self->canvas, EASEL_TEXT_STRIKE);
+          return TRUE;
+        }
+  return FALSE;
+}
+
 /* Esc cancels a handle drag (REQ-0004-19); at any other time it is not ours. */
 static gboolean
 on_key_pressed (EaselWindow *self, guint keyval, guint keycode, GdkModifierType state, GtkEventControllerKey *controller)
 {
+  if (keyval == GDK_KEY_Tab || keyval == GDK_KEY_ISO_Left_Tab || keyval == GDK_KEY_KP_Tab)
+    self->tab_time = g_get_monotonic_time ();   /* a focus Tab carries into the card does not stay there (REQ-0017-14) */
   if (menu_is_open (self))
     return GDK_EVENT_PROPAGATE;                 /* a menu's keys are its own (REQ-0013-17) */
+  if (gtk_root_get_focus (GTK_ROOT (self)) != NULL
+      && gtk_widget_is_ancestor (gtk_root_get_focus (GTK_ROOT (self)), GTK_WIDGET (self->font_card)))
+    return GDK_EVENT_PROPAGATE;                 /* the card's fields and its family list take their own keys (REQ-0017-14) */
+  if (self->tool == EASEL_TOOL_TEXT && !dialog_is_open (self) && easel_canvas_text_buffer (self->canvas) != NULL)
+    {
+      GdkEvent *event = gtk_event_controller_get_current_event (GTK_EVENT_CONTROLLER (controller));
+      gboolean level3 = event != NULL && gdk_event_get_event_type (event) == GDK_KEY_PRESS && gdk_key_event_get_level (event) >= 2;
+      gboolean shortcut = !level3 && (state & (GDK_CONTROL_MASK | GDK_ALT_MASK)) != 0;
+
+      if (keyval == GDK_KEY_Escape && !easel_canvas_is_stroking (self->canvas))
+        {
+          easel_canvas_put_down (self->canvas);   /* Esc puts the box down, or the dialog says why not (REQ-0017-17, -18) */
+          return GDK_EVENT_STOP;
+        }
+      if (format_key (self, keyval, keycode, state))
+        return GDK_EVENT_STOP;
+      /* Keys go to the open box wherever the focus is in the window (REQ-0017-06): an input method first, then the box's own keys. A
+         key with Ctrl or Alt is a shortcut and goes to the box's keys only (JOD's M1, 2026-10-26: the input method typed Ctrl+B as "b"),
+         unless it is on the ISO Level 3 shift (AltGr, which some setups report as Ctrl+Alt): the Polish ą ć ę ł ń ó ś ź ż are typed so */
+      if ((!shortcut && easel_canvas_text_filter (self->canvas, event)) || easel_canvas_text_key (self->canvas, keyval, state))
+        return GDK_EVENT_STOP;
+    }
   if ((keyval == GDK_KEY_Delete || keyval == GDK_KEY_KP_Delete) && !dialog_is_open (self)
       && easel_canvas_clear_selection (self->canvas))
     return GDK_EVENT_STOP;                      /* Delete clears a selection wherever the focus is (REQ-0013-14) */
@@ -1803,10 +2110,10 @@ on_key_pressed (EaselWindow *self, guint keyval, guint keycode, GdkModifierType 
     }
   if (keyval == GDK_KEY_Escape && !dialog_is_open (self) && easel_canvas_finish_selection (self->canvas))
     return GDK_EVENT_STOP;                      /* Esc puts a selection down, or removes a marked one (REQ-0013-11) */
-  if (keyval == GDK_KEY_Escape && !dialog_is_open (self) && easel_tool_selects (self->tool)
+  if (keyval == GDK_KEY_Escape && !dialog_is_open (self) && (easel_tool_selects (self->tool) || self->tool == EASEL_TOOL_TEXT)
       && easel_canvas_is_stroking (self->canvas))
     {
-      easel_canvas_cancel_stroke (self->canvas);   /* Esc during a drag of Select cancels it (REQ-0013-18) */
+      easel_canvas_cancel_stroke (self->canvas);   /* Esc during a drag of Select or of a text box cancels it (REQ-0013-18, -0017-04) */
       return GDK_EVENT_STOP;
     }
   if (keyval == GDK_KEY_Escape && easel_canvas_is_pending (self->canvas) && !dialog_is_open (self))
@@ -1856,6 +2163,7 @@ sync_canvas_options (EaselWindow *self)
     easel_canvas_set_footprint (self->canvas, easel_tool_options_get_footprint (self->tool_options, self->tool));
   easel_canvas_set_eraser_transparent (self->canvas, easel_tool_options_get_transparent (self->tool_options));
   easel_canvas_set_selection_transparent (self->canvas, easel_tool_options_get_select_transparent (self->tool_options));
+  easel_canvas_set_text_opaque (self->canvas, !easel_tool_options_get_text_transparent (self->tool_options));
   easel_status_bar_set_hint (self->status_bar, tool_hint (self->tool, easel_tool_options_get_transparent (self->tool_options)));
 }
 
@@ -1959,6 +2267,15 @@ show_selection_error (gpointer data)
   return G_SOURCE_REMOVE;
 }
 
+/* A box's first text could not be shown: the box is gone, nothing put down (REQ-0017-07). */
+static void
+on_text_failed (EaselWindow *self, int kind)
+{
+  /* kind 0: the box's text could not be shown (REQ-0017-07); 1: the put-down's step could not be had (REQ-0017-18) */
+  show_save_error (self, "Could Not Add the Text",
+                   kind == 0 ? "There is not enough memory to show this text." : "There is not enough memory to add this text.");
+}
+
 static void
 on_selection_failed (EaselWindow *self, int kind)
 {
@@ -1985,19 +2302,58 @@ clipboard_has_picture (EaselClipboard *clipboard)
   return FALSE;
 }
 
+/* Whether the clipboard holds text a box's Paste takes (REQ-0017-20): plain or rich text, or copied files (their paths). */
+static gboolean
+clipboard_has_text (EaselClipboard *clipboard)
+{
+  GdkContentFormats *formats = easel_clipboard_get_formats (clipboard);
+
+  return gdk_content_formats_contain_gtype (formats, G_TYPE_STRING) || gdk_content_formats_contain_gtype (formats, GDK_TYPE_FILE_LIST)
+         || gdk_content_formats_contain_mime_type (formats, "text/html")
+         || gdk_content_formats_contain_mime_type (formats, "text/plain;charset=utf-8")
+         || gdk_content_formats_contain_mime_type (formats, "text/plain") || gdk_content_formats_contain_mime_type (formats, "UTF8_STRING");
+}
+
 /* The five clipboard commands' sensitivity (REQ-0016-02): Cut, Copy and Copy To… with a selection, Paste while the clipboard holds a
    picture or files, Paste From… while the picture exists; none while a button is held for a stroke or a drag. Kept up to date at every
    change of the selection, the clipboard, the picture and a held button. */
+static void
+set_action_enabled (EaselWindow *self, const char *name, gboolean enabled)
+{
+  GAction *action = g_action_map_lookup_action (G_ACTION_MAP (self), name);
+
+  if (action != NULL)
+    g_simple_action_set_enabled (G_SIMPLE_ACTION (action), enabled);
+}
+
 static void
 update_clipboard_actions (EaselWindow *self)
 {
   int x, y, w, h;
   gboolean floating;
   gboolean idle = self->picture != NULL && !easel_canvas_is_stroking (self->canvas) && !easel_canvas_is_resizing (self->canvas);
+  gboolean box = self->tool == EASEL_TOOL_TEXT && easel_canvas_text_box (self->canvas, &x, &y, &w, &h);
   gboolean selection = idle && easel_canvas_get_selection (self->canvas, &x, &y, &w, &h, &floating);
   gboolean picture = idle && self->clipboard != NULL && clipboard_has_picture (self->clipboard);
   static const char *selection_actions[] = { "cut", "copy", "copy-to" };
 
+  if (box)
+    {
+      /* A box open: Cut and Copy with text selected, Paste and Paste as Plain Text with text on the clipboard, no Copy To…
+         (REQ-0017-19, REQ-0017-20) */
+      size_t from, to;
+      gboolean text_selected = idle && easel_text_buffer_selection (easel_canvas_text_buffer (self->canvas), &from, &to);
+      gboolean text = idle && self->clipboard != NULL && clipboard_has_text (self->clipboard);
+
+      set_action_enabled (self, "cut", text_selected);
+      set_action_enabled (self, "copy", text_selected);
+      set_action_enabled (self, "copy-to", FALSE);
+      set_action_enabled (self, "paste", text);
+      set_action_enabled (self, "paste-plain", text);
+      set_action_enabled (self, "paste-from", idle);
+      return;
+    }
+  set_action_enabled (self, "paste-plain", FALSE);
   for (guint i = 0; i < G_N_ELEMENTS (selection_actions); i++)
     g_simple_action_set_enabled (G_SIMPLE_ACTION (g_action_map_lookup_action (G_ACTION_MAP (self), selection_actions[i])), selection);
   g_simple_action_set_enabled (G_SIMPLE_ACTION (g_action_map_lookup_action (G_ACTION_MAP (self), "paste")), picture);
@@ -2012,6 +2368,8 @@ on_selection_changed (EaselWindow *self)
   GAction *clear = g_action_map_lookup_action (G_ACTION_MAP (self), "clear-selection");
 
   easel_status_bar_set_selection (self->status_bar, exists, w, h);
+  sync_history_ui (self);                          /* a text box opened, edited or closed (REQ-0017-08) */
+  update_card (self);
   if (clear != NULL)
     g_simple_action_set_enabled (G_SIMPLE_ACTION (clear),
                                  easel_canvas_get_selection (self->canvas, &x, &y, &w, &h, &floating));
@@ -2026,9 +2384,13 @@ select_all_activated (GSimpleAction *action, GVariant *parameter, gpointer user_
 {
   EaselWindow *self = user_data;
 
+  if (card_field_action (self, "selection.select-all"))
+    return;
   if (self->picture == NULL || dialog_is_open (self) || easel_canvas_is_stroking (self->canvas)
       || easel_canvas_is_resizing (self->canvas))
     return;
+  if (self->tool == EASEL_TOOL_TEXT && easel_canvas_text_select_all (self->canvas))
+    return;                                     /* an open box: all its text selected, the box kept (REQ-0017-17) */
   g_action_group_change_action_state (G_ACTION_GROUP (self), "tool", g_variant_new_string ("select"));
   easel_canvas_select_all (self->canvas);
 }
@@ -2115,6 +2477,35 @@ wait_for_clipboard_result (ClipboardWait *wait, Answer *answer)
   return answer_take (answer);
 }
 
+/* The window waits on the spot for the clipboard (REQ-0016-15, REQ-0017-27): the busy cursor, input held, and the limit's timer. */
+static void
+clipboard_wait_begin (EaselWindow *self, ClipboardWait *wait)
+{
+  self->reading_clipboard = TRUE;
+  gtk_widget_set_cursor_from_name (GTK_WIDGET (self), "wait");
+  easel_canvas_set_busy (self->canvas, TRUE);
+  easel_canvas_set_input_blocked (self->canvas, TRUE);
+  wait->timer = g_timeout_add (self->clipboard_timeout_ms, on_clipboard_timeout, wait);
+}
+
+/* The wait is over: back to the tool's cursor and to taking input. TRUE when a quit request came meanwhile: the quit goes on (the window
+   may be gone after), and the caller drops what it read and touches the window no more. */
+static gboolean
+clipboard_wait_end (EaselWindow *self, ClipboardWait *wait)
+{
+  g_clear_handle_id (&wait->timer, g_source_remove);
+  g_object_unref (wait->cancellable);
+  self->reading_clipboard = FALSE;
+  gtk_widget_set_cursor (GTK_WIDGET (self), NULL);
+  easel_canvas_set_busy (self->canvas, FALSE);
+  easel_canvas_set_input_blocked (self->canvas, FALSE);
+  if (!self->close_after_reading)
+    return FALSE;
+  self->close_after_reading = FALSE;
+  gtk_window_close (GTK_WINDOW (self));
+  return TRUE;
+}
+
 /* A refusal of the paste: the error dialog and nothing changed (REQ-0016-10). name is the file's, for a file. */
 static void
 paste_error (EaselWindow *self, const char *name, EaselOpenResult why)
@@ -2178,11 +2569,7 @@ read_clipboard_picture (EaselWindow *self)
       return img;
     }
   /* From here the window waits on the spot: the busy cursor, input blocked, a quit request handled after (REQ-0016-15). */
-  self->reading_clipboard = TRUE;
-  gtk_widget_set_cursor_from_name (GTK_WIDGET (self), "wait");
-  easel_canvas_set_busy (self->canvas, TRUE);
-  easel_canvas_set_input_blocked (self->canvas, TRUE);
-  wait.timer = g_timeout_add (self->clipboard_timeout_ms, on_clipboard_timeout, &wait);
+  clipboard_wait_begin (self, &wait);
   types = gdk_content_formats_get_mime_types (formats, &n);
   for (gsize i = 0; i < n && !has_picture; i++)
     has_picture = g_str_has_prefix (types[i], "image/");
@@ -2235,21 +2622,20 @@ read_clipboard_picture (EaselWindow *self)
         paste_error (self, NULL, EASEL_OPEN_UNREADABLE);
       g_slist_free_full (files, g_object_unref);
     }
-  g_clear_handle_id (&wait.timer, g_source_remove);
-  g_object_unref (wait.cancellable);
-  /* Back to the tool's cursor and to taking input, a quit request that came meanwhile handled now. */
-  self->reading_clipboard = FALSE;
-  gtk_widget_set_cursor (GTK_WIDGET (self), NULL);
-  easel_canvas_set_busy (self->canvas, FALSE);
-  easel_canvas_set_input_blocked (self->canvas, FALSE);
-  if (self->close_after_reading)
-    {
-      /* A picture that arrives after a quit request is dropped, and nothing is pasted (REQ-0016-15): the quit may destroy the window. */
-      g_clear_pointer (&img, easel_image_free);
-      self->close_after_reading = FALSE;
-      gtk_window_close (GTK_WINDOW (self));
-    }
+  /* Back to the tool's cursor and to taking input, a quit request that came meanwhile handled now: a picture that arrives after it is
+     dropped, and nothing is pasted (REQ-0016-15). */
+  if (clipboard_wait_end (self, &wait))
+    g_clear_pointer (&img, easel_image_free);
   return img;
+}
+
+/* Select made the tool for a paste, as a tool change: FALSE when an open text box could not be put down, Text staying the tool; the
+   read picture is then dropped (REQ-0017-18). */
+static gboolean
+select_for_paste (EaselWindow *self)
+{
+  g_action_group_change_action_state (G_ACTION_GROUP (self), "tool", g_variant_new_string ("select"));
+  return self->tool == EASEL_TOOL_SELECT;
 }
 
 /* The view scrolled so the picture's top-left corner is in view, the zoom kept (REQ-0016-07). */
@@ -2284,8 +2670,9 @@ on_paste_prompt_answered (AdwAlertDialog *dialog, const char *answer, EaselWindo
         }
       else
         {
-          g_action_group_change_action_state (G_ACTION_GROUP (self), "tool", g_variant_new_string ("select"));
-          if (easel_canvas_paste_grown (self->canvas, pic, MAX (w, pic->width), MAX (h, pic->height), self->background))
+          if (!select_for_paste (self))
+            easel_image_free (pic);
+          else if (easel_canvas_paste_grown (self->canvas, pic, MAX (w, pic->width), MAX (h, pic->height), self->background))
             scroll_to_origin (self);
           else
             paste_error (self, NULL, EASEL_OPEN_NO_MEMORY);
@@ -2306,8 +2693,9 @@ on_paste_prompt_answered (AdwAlertDialog *dialog, const char *answer, EaselWindo
       if (fitted != NULL)
         {
           memcpy (fitted->px, px, (size_t) nw * (size_t) nh * sizeof *px);
-          g_action_group_change_action_state (G_ACTION_GROUP (self), "tool", g_variant_new_string ("select"));
-          if (easel_canvas_paste (self->canvas, fitted, 0, 0))
+          if (!select_for_paste (self))
+            easel_image_free (fitted);
+          else if (easel_canvas_paste (self->canvas, fitted, 0, 0))
             scroll_to_origin (self);
           else
             paste_error (self, NULL, EASEL_OPEN_NO_MEMORY);
@@ -2360,22 +2748,200 @@ paste_picture (EaselWindow *self, EaselImage *pic)
       paste_error (self, NULL, EASEL_OPEN_NO_MEMORY);          /* nothing changed, the tool included (REQ-0016-11) */
       return;
     }
-  g_action_group_change_action_state (G_ACTION_GROUP (self), "tool", g_variant_new_string ("select"));
+  if (!select_for_paste (self))
+    {
+      easel_image_free (pic);
+      return;
+    }
   easel_canvas_top_left_in_view (self->canvas, &x, &y);
   if (!easel_canvas_paste (self->canvas, pic, x, y))
     paste_error (self, NULL, EASEL_OPEN_NO_MEMORY);
 }
 
 /* Paste (REQ-0016-05): the clipboard's picture read first, then pasted. */
+/* The clipboard's text read as the picture is (REQ-0017-27: the busy cursor, input held, 5 seconds at most, a quit request after): its
+   HTML for a rich paste when offered, else its plain text, else the copied files' paths, one a line. NULL, with "Could Not Paste" shown,
+   if nothing arrived; NULL and the window closed if a quit came meanwhile. */
+static GBytes *
+read_clipboard_text (EaselWindow *self, gboolean rich, gboolean *is_html)
+{
+  static const char *html_types[] = { "text/html", NULL };
+  static const char *text_types[] = { "text/plain;charset=utf-8", "text/plain", "UTF8_STRING", NULL };
+  GdkContentFormats *formats = easel_clipboard_get_formats (self->clipboard);
+  ClipboardWait wait = { self, g_cancellable_new (), FALSE, 0 };
+  gboolean has_html = gdk_content_formats_contain_mime_type (formats, "text/html");
+  gboolean has_text = gdk_content_formats_contain_gtype (formats, G_TYPE_STRING)
+                      || gdk_content_formats_contain_mime_type (formats, "text/plain;charset=utf-8")
+                      || gdk_content_formats_contain_mime_type (formats, "text/plain")
+                      || gdk_content_formats_contain_mime_type (formats, "UTF8_STRING");
+  Answer *answer;
+  GAsyncResult *result = NULL;
+  GBytes *bytes = NULL;
+
+  *is_html = has_html && (rich || !has_text);
+  clipboard_wait_begin (self, &wait);
+  if (*is_html || has_text)
+    {
+      g_autoptr (GInputStream) stream = NULL;
+
+      answer = g_new0 (Answer, 1);
+      easel_clipboard_read_async (self->clipboard, *is_html ? html_types : text_types, wait.cancellable, on_answer, answer);
+      result = wait_for_clipboard_result (&wait, answer);
+      stream = result != NULL ? easel_clipboard_read_finish (self->clipboard, result, NULL, NULL) : NULL;
+      g_clear_object (&result);
+      if (stream != NULL)
+        {
+          /* Read whole, without blocking: an HTML of more than a pipe's 64 KiB too (engineering.md) */
+          g_autoptr (GOutputStream) sink = g_memory_output_stream_new_resizable ();
+
+          answer = g_new0 (Answer, 1);
+          g_output_stream_splice_async (sink, stream, G_OUTPUT_STREAM_SPLICE_CLOSE_SOURCE | G_OUTPUT_STREAM_SPLICE_CLOSE_TARGET,
+                                        G_PRIORITY_DEFAULT, wait.cancellable, on_answer, answer);
+          result = wait_for_clipboard_result (&wait, answer);
+          if (result != NULL && g_output_stream_splice_finish (sink, result, NULL) >= 0)
+            bytes = g_memory_output_stream_steal_as_bytes (G_MEMORY_OUTPUT_STREAM (sink));
+          g_clear_object (&result);
+        }
+    }
+  else
+    {
+      GSList *files = NULL;
+      GString *paths = g_string_new (NULL);
+
+      answer = g_new0 (Answer, 1);
+      easel_clipboard_read_files_async (self->clipboard, wait.cancellable, on_answer, answer);
+      result = wait_for_clipboard_result (&wait, answer);
+      if (result != NULL)
+        files = easel_clipboard_read_files_finish (self->clipboard, result, NULL);
+      g_clear_object (&result);
+      for (GSList *f = files; f != NULL; f = f->next)
+        {
+          g_autofree char *path = g_file_get_path (f->data);
+
+          if (path != NULL)
+            g_string_append_printf (paths, "%s%s", paths->len > 0 ? "\n" : "", path);
+        }
+      g_slist_free_full (files, g_object_unref);
+      bytes = files != NULL ? g_string_free_to_bytes (paths) : (g_string_free (paths, TRUE), NULL);
+    }
+  if (clipboard_wait_end (self, &wait))
+    {
+      g_clear_pointer (&bytes, g_bytes_unref);    /* text that arrives after a quit request is dropped, the quit gone on (REQ-0017-27) */
+      return NULL;
+    }
+  if (bytes == NULL)
+    show_save_error (self, "Could Not Paste", "The clipboard's text cannot be read.");
+  return bytes;
+}
+
+/* Paste and Paste as Plain Text with a box open (REQ-0017-20): rich text with each part's style, or the text alone in the style at the
+   caret, as one edit at the caret. */
+static void
+paste_box_text (EaselWindow *self, gboolean rich)
+{
+  gboolean is_html = FALSE;
+  g_autoptr (GBytes) bytes = read_clipboard_text (self, rich, &is_html);
+  gsize n = 0;
+  const char *data;
+
+  if (bytes == NULL)
+    return;
+  data = g_bytes_get_data (bytes, &n);
+  if (is_html)
+    {
+      EaselRichText rt;
+
+      if (n > self->rich_limit || !easel_rich_text_from_html (data != NULL ? data : "", n, &rt))
+        {
+          show_save_error (self, "Could Not Paste", "There is not enough memory to paste this text.");
+          return;
+        }
+      easel_canvas_text_paste (self->canvas, rt.text, rt.len, rich ? rt.runs : NULL, rich ? rt.n : 0);
+      easel_rich_text_free (&rt);
+    }
+  else
+    easel_canvas_text_paste (self->canvas, data != NULL ? data : "", n, NULL, 0);
+}
+
+/* Whether a box is open (with Text): the clipboard commands then act on its text (REQ-0017-19) */
+static gboolean
+box_is_open (EaselWindow *self)
+{
+  int x, y, w, h;
+
+  return self->tool == EASEL_TOOL_TEXT && easel_canvas_text_box (self->canvas, &x, &y, &w, &h);
+}
+
+/* Copy with a box open (REQ-0017-19): the selected text as plain text and as HTML with each part's style. FALSE with none selected. */
+static gboolean
+copy_box_text (EaselWindow *self)
+{
+  EaselTextBuffer *b = easel_canvas_text_buffer (self->canvas);
+  size_t from, to, len, n, k = 0, html_len = 0;
+  const char *text;
+  const EaselTextRun *runs;
+  g_autofree EaselTextRun *part = NULL;
+  g_autofree char *html = NULL;
+  g_autoptr (GBytes) html_bytes = NULL;
+  g_autofree char *plain = NULL;
+  GdkContentProvider *each[2];
+  g_autoptr (GdkContentProvider) provider = NULL;
+
+  if (b == NULL || !easel_text_buffer_selection (b, &from, &to))
+    return FALSE;
+  text = easel_text_buffer_text (b, &len);
+  runs = easel_text_buffer_runs (b, &n);
+  part = g_new (EaselTextRun, MAX (n, 1));
+  for (size_t i = 0; i < n; i++)
+    {
+      size_t end = i + 1 < n ? runs[i + 1].start : len;
+
+      if (end > from && runs[i].start < to)
+        part[k++] = (EaselTextRun) { MAX (runs[i].start, from) - from, runs[i].style };
+    }
+  html = easel_rich_text_to_html (text + from, to - from, part, k, &html_len);
+  if (html != NULL && html_len > self->rich_limit)
+    g_clear_pointer (&html, free);                /* the tests' switch: as if its memory could not be had */
+  plain = g_strndup (text + from, to - from);
+  if (html == NULL || plain == NULL)
+    {
+      show_save_error (self, "Could Not Copy the Text", "There is not enough memory to copy this text.");
+      return FALSE;
+    }
+  html_bytes = g_bytes_new_take (g_steal_pointer (&html), html_len);
+  each[0] = gdk_content_provider_new_for_bytes ("text/html", html_bytes);
+  each[1] = gdk_content_provider_new_typed (G_TYPE_STRING, plain);
+  provider = gdk_content_provider_new_union (each, 2);
+  easel_clipboard_set_content (self->clipboard, provider);
+  return TRUE;
+}
+
+static void
+paste_plain_activated (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+  EaselWindow *self = user_data;
+
+  if (self->picture == NULL || dialog_is_open (self) || easel_canvas_is_stroking (self->canvas) || !box_is_open (self))
+    return;
+  paste_box_text (self, FALSE);
+}
+
 static void
 paste_activated (GSimpleAction *action, GVariant *parameter, gpointer user_data)
 {
   EaselWindow *self = user_data;
   EaselImage *pic;
 
+  if (card_field_action (self, "clipboard.paste"))
+    return;
   if (self->picture == NULL || dialog_is_open (self) || easel_canvas_is_stroking (self->canvas)
       || easel_canvas_is_resizing (self->canvas))
     return;
+  if (box_is_open (self))
+    {
+      paste_box_text (self, TRUE);                 /* a box open: its text (REQ-0017-20) */
+      return;
+    }
   pic = read_clipboard_picture (self);
   if (pic != NULL)
     paste_picture (self, pic);
@@ -2430,7 +2996,12 @@ paste_from_activated (GSimpleAction *action, GVariant *parameter, gpointer user_
 static void
 copy_activated (GSimpleAction *action, GVariant *parameter, gpointer user_data)
 {
-  copy_selection (user_data);
+  if (card_field_action (user_data, "clipboard.copy"))
+    return;
+  if (box_is_open (user_data))
+    copy_box_text (user_data);                     /* a box open: its selected text (REQ-0017-19) */
+  else
+    copy_selection (user_data);
 }
 
 /* Cut (REQ-0016-04): the copy, then Clear Selection's own clear; if the copy fails nothing is cleared. */
@@ -2439,6 +3010,14 @@ cut_activated (GSimpleAction *action, GVariant *parameter, gpointer user_data)
 {
   EaselWindow *self = user_data;
 
+  if (card_field_action (self, "clipboard.cut"))
+    return;
+  if (box_is_open (self))
+    {
+      if (copy_box_text (self))
+        easel_canvas_text_delete_selection (self->canvas, EASEL_TEXT_EDIT_CUT);   /* one edit (REQ-0017-19) */
+      return;
+    }
   if (copy_selection (self))
     easel_canvas_clear_selection (self->canvas);
 }
@@ -2455,8 +3034,8 @@ change_tool_state (GSimpleAction *action, GVariant *value, gpointer user_data)
   if (!easel_tool_from_name (g_variant_get_string (value, NULL), &tool))
     return;
   /* Another tool puts a pending curve or polygon down; the same tool keeps it (REQ-0011-12). */
-  if (tool != self->tool)
-    easel_canvas_put_down (self->canvas);
+  if (tool != self->tool && !put_down_for_action (self, FALSE))
+    return;                                     /* a text box that could not be put down: Text stays the tool (REQ-0017-18) */
   if (tool == EASEL_TOOL_PICK && self->tool != EASEL_TOOL_PICK)
     self->pick_return_tool = self->tool;
   self->tool = tool;
@@ -2464,6 +3043,7 @@ change_tool_state (GSimpleAction *action, GVariant *value, gpointer user_data)
   easel_status_bar_set_hint (self->status_bar, tool_hint (tool, easel_tool_options_get_transparent (self->tool_options)));
   easel_tool_options_show_tool (self->tool_options, tool);
   sync_canvas_options (self);
+  update_card (self);
   g_simple_action_set_state (action, value);
 }
 
@@ -2530,9 +3110,16 @@ static const GActionEntry win_actions[] = {
   { .name = "cut", .activate = cut_activated },
   { .name = "copy", .activate = copy_activated },
   { .name = "paste", .activate = paste_activated },
+  { .name = "paste-plain", .activate = paste_plain_activated },
   { .name = "copy-to", .activate = copy_to_activated },
   { .name = "paste-from", .activate = paste_from_activated },
 };
+
+gboolean
+easel_window_get_text_opaque (EaselWindow *self)
+{
+  return !easel_tool_options_get_text_transparent (self->tool_options);
+}
 
 EaselToolOptions *
 easel_window_get_tool_options (EaselWindow *self)
@@ -2576,6 +3163,12 @@ easel_window_get_modified (EaselWindow *self)
   return easel_history_is_modified (self->history);
 }
 
+EaselFontCard *
+easel_window_get_font_card (EaselWindow *self)
+{
+  return self->font_card;
+}
+
 EaselCanvas *
 easel_window_get_canvas (EaselWindow *self)
 {
@@ -2599,10 +3192,19 @@ easel_window_dispose (GObject *object)
 {
   EaselWindow *self = EASEL_WINDOW (object);
 
+  g_clear_handle_id (&self->card_idle, g_source_remove);
+  g_clear_handle_id (&self->card_focus_idle, g_source_remove);
+  if (self->font_card != NULL)
+    easel_font_card_set_canvas (self->font_card, NULL);   /* a field left with a typed value applies nothing while the window goes */
   if (self->selection_menu != NULL)
     {
       gtk_widget_unparent (self->selection_menu);
       self->selection_menu = NULL;
+    }
+  if (self->text_menu != NULL)
+    {
+      gtk_widget_unparent (self->text_menu);
+      self->text_menu = NULL;
     }
   if (self->canvas_menu != NULL)
     {
@@ -2703,8 +3305,11 @@ easel_window_class_init (EaselWindowClass *klass)
   g_type_ensure (EASEL_TYPE_CANVAS);
   g_type_ensure (EASEL_TYPE_PALETTE_BAR);
   g_type_ensure (EASEL_TYPE_STATUS_BAR);
+  g_type_ensure (EASEL_TYPE_FONT_CARD);
   gtk_widget_class_set_template_from_resource (widget_class, RESOURCE_PATH "/window.ui");
   gtk_widget_class_bind_template_child (widget_class, EaselWindow, scroller);
+  gtk_widget_class_bind_template_child (widget_class, EaselWindow, canvas_overlay);
+  gtk_widget_class_bind_template_child (widget_class, EaselWindow, font_card);
   gtk_widget_class_bind_template_child (widget_class, EaselWindow, canvas);
   gtk_widget_class_bind_template_child (widget_class, EaselWindow, palette_bar);
   gtk_widget_class_bind_template_child (widget_class, EaselWindow, status_bar);
@@ -2715,6 +3320,7 @@ easel_window_class_init (EaselWindowClass *klass)
   gtk_widget_class_bind_template_child_full (widget_class, "selection_menu", FALSE,
                                             G_STRUCT_OFFSET (EaselWindow, selection_menu_model));
   gtk_widget_class_bind_template_child_full (widget_class, "canvas_menu", FALSE, G_STRUCT_OFFSET (EaselWindow, canvas_menu_model));
+  gtk_widget_class_bind_template_child_full (widget_class, "text_menu", FALSE, G_STRUCT_OFFSET (EaselWindow, text_menu_model));
   gtk_widget_class_bind_template_child (widget_class, EaselWindow, view_button);
 }
 
@@ -2726,6 +3332,7 @@ easel_window_init (EaselWindow *self)
   gtk_widget_init_template (GTK_WIDGET (self));
 
   self->clipboard_timeout_ms = 5000;
+  self->rich_limit = G_MAXSIZE;
   easel_settings_file_load (settings_path, &self->settings);
   self->tool = EASEL_TOOL_PAN;
   self->foreground = 0xFF000000u;
@@ -2743,6 +3350,25 @@ easel_window_init (EaselWindow *self)
                                       g_variant_new_int32 (easel_magnifier_levels[EASEL_MAGNIFIER_DEFAULT]));
   gtk_popover_menu_add_child (GTK_POPOVER_MENU (gtk_menu_button_get_popover (self->view_button)), make_zoom_row (self),
                               "zoom");
+  easel_font_card_set_canvas (self->font_card, self->canvas);
+  {
+    /* Before the size field's own wheel: without the focus in it, the wheel goes to the view (REQ-0017-25) */
+    GtkEventController *wheel = gtk_event_controller_scroll_new (GTK_EVENT_CONTROLLER_SCROLL_BOTH_AXES);
+
+    gtk_event_controller_set_propagation_phase (wheel, GTK_PHASE_CAPTURE);
+    g_signal_connect_object (wheel, "scroll", G_CALLBACK (on_card_size_scroll), self, G_CONNECT_DEFAULT);
+    gtk_widget_add_controller (GTK_WIDGET (easel_font_card_get_size (self->font_card)), wheel);
+  }
+  g_signal_connect (self, "notify::focus-widget", G_CALLBACK (on_focus_widget_changed), NULL);
+  g_signal_connect_object (self->canvas_overlay, "get-child-position", G_CALLBACK (on_card_position), self, 0);
+  g_signal_connect_object (gtk_scrolled_window_get_hadjustment (self->scroller), "value-changed", G_CALLBACK (update_card), self,
+                           G_CONNECT_SWAPPED);
+  g_signal_connect_object (gtk_scrolled_window_get_vadjustment (self->scroller), "value-changed", G_CALLBACK (update_card), self,
+                           G_CONNECT_SWAPPED);
+  g_signal_connect_object (gtk_scrolled_window_get_hadjustment (self->scroller), "changed", G_CALLBACK (update_card), self,
+                           G_CONNECT_SWAPPED);
+  g_signal_connect_object (gtk_scrolled_window_get_vadjustment (self->scroller), "changed", G_CALLBACK (update_card), self,
+                           G_CONNECT_SWAPPED);
   g_signal_connect_object (self->canvas, "zoom-changed", G_CALLBACK (on_zoom_changed), self, G_CONNECT_SWAPPED);
   g_signal_connect_object (self->canvas, "pointer-moved", G_CALLBACK (on_pointer_moved), self, G_CONNECT_SWAPPED);
   g_signal_connect_object (self->canvas, "pointer-left", G_CALLBACK (on_pointer_left), self, G_CONNECT_SWAPPED);
@@ -2761,6 +3387,7 @@ easel_window_init (EaselWindow *self)
   easel_palette_bar_set_palette (self->palette_bar, &self->palette);
   /* The grid and the panels start as the settings file says (REQ-0004-15, REQ-0004-27). */
   easel_canvas_set_grid (self->canvas, self->settings.grid, self->settings.grid_size, self->settings.grid_axonometric);
+  apply_text_settings (self);
   g_simple_action_set_state (G_SIMPLE_ACTION (g_action_map_lookup_action (G_ACTION_MAP (self), "grid")),
                              g_variant_new_boolean (self->settings.grid));
   /* The options panel sits below the tool buttons and shows only for the tools that have options. */
@@ -2795,6 +3422,7 @@ easel_window_init (EaselWindow *self)
   g_signal_connect_object (self->canvas, "selection-changed", G_CALLBACK (on_selection_changed), self, G_CONNECT_SWAPPED);
   g_signal_connect_object (self->canvas, "context-menu", G_CALLBACK (on_context_menu), self, G_CONNECT_SWAPPED);
   g_signal_connect_object (self->canvas, "selection-failed", G_CALLBACK (on_selection_failed), self, G_CONNECT_SWAPPED);
+  g_signal_connect_object (self->canvas, "text-failed", G_CALLBACK (on_text_failed), self, G_CONNECT_SWAPPED);
   self->selection_menu = gtk_popover_menu_new_from_model (self->selection_menu_model);
   gtk_popover_set_has_arrow (GTK_POPOVER (self->selection_menu), FALSE);
   gtk_widget_set_halign (self->selection_menu, GTK_ALIGN_START);
@@ -2805,6 +3433,10 @@ easel_window_init (EaselWindow *self)
   gtk_popover_set_has_arrow (GTK_POPOVER (self->canvas_menu), FALSE);
   gtk_widget_set_halign (self->canvas_menu, GTK_ALIGN_START);
   gtk_widget_set_parent (self->canvas_menu, GTK_WIDGET (self->canvas));
+  self->text_menu = gtk_popover_menu_new_from_model (self->text_menu_model);
+  gtk_popover_set_has_arrow (GTK_POPOVER (self->text_menu), FALSE);
+  gtk_widget_set_halign (self->text_menu, GTK_ALIGN_START);
+  gtk_widget_set_parent (self->text_menu, GTK_WIDGET (self->canvas));
   g_signal_connect_object (self->canvas, "pending-changed", G_CALLBACK (sync_history_ui), self, G_CONNECT_SWAPPED);
   g_signal_connect_object (self->canvas, "stroke-finished", G_CALLBACK (on_stroke_finished), self, G_CONNECT_SWAPPED);
   g_signal_connect (self, "notify::is-active", G_CALLBACK (on_active_changed), NULL);

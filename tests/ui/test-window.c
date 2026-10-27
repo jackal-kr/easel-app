@@ -24,6 +24,11 @@
 #include "settings-file.h"
 #include "settings.h"
 #include "view.h"
+#include "rich-text.h"
+#include "text-buffer.h"
+#include "text-render.h"
+#include "text-put.h"
+#include "tool-options.h"
 #include "window.h"
 
 /* One application per process: GApplication cannot be registered twice. Tests close their windows. */
@@ -7537,6 +7542,32 @@ find_mapped_by_tooltip (GtkWidget *root, const char *text)
   return NULL;
 }
 
+/* The buttons on screen inside the options panel (any button, a toggle or not), counted from root. */
+static int
+count_mapped_buttons_in (GtkWidget *root, gboolean inside)
+{
+  int n = 0;
+
+  for (GtkWidget *child = gtk_widget_get_first_child (root); child; child = gtk_widget_get_next_sibling (child))
+    {
+      gboolean in = inside || EASEL_IS_TOOL_OPTIONS (child);
+
+      if (!gtk_widget_get_mapped (child))
+        continue;
+      if (in && GTK_IS_BUTTON (child))
+        n++;
+      else
+        n += count_mapped_buttons_in (child, in);
+    }
+  return n;
+}
+
+static int
+count_mapped_toggles_in_options (EaselWindow *win)
+{
+  return count_mapped_buttons_in (GTK_WIDGET (win), FALSE);
+}
+
 /* The state of a window action that holds an integer. */
 static int
 int_state (EaselWindow *win, const char *action)
@@ -7599,11 +7630,11 @@ as1_shape_tools_toolbox_hints (void)
     { "eraser", "Eraser", NULL, 0, 2, EASEL_TOOL_ERASER }, { "pick", "Pick Color", NULL, 1, 2, EASEL_TOOL_PICK },
     { "fill", "Fill", NULL, 0, 3, EASEL_TOOL_FILL }, { "pencil", "Pencil", NULL, 0, 4, EASEL_TOOL_PENCIL },
     { "brush", "Brush", NULL, 1, 4, EASEL_TOOL_BRUSH }, { "airbrush", "Airbrush", NULL, 0, 5, EASEL_TOOL_AIRBRUSH },
-    { "line", "Line", "Draws a straight line with the selected line width.", 1, 5, EASEL_TOOL_LINE },
-    { "rectangle", "Rectangle", "Draws a rectangle with the selected fill style.", 1, 6, EASEL_TOOL_RECTANGLE },
-    { "rounded-rectangle", "Rounded Rectangle", "Draws a rounded rectangle with the selected fill style.", 0, 7,
+    { "line", "Line", "Draws a straight line with the selected line width.", 0, 6, EASEL_TOOL_LINE },
+    { "rectangle", "Rectangle", "Draws a rectangle with the selected fill style.", 0, 7, EASEL_TOOL_RECTANGLE },
+    { "rounded-rectangle", "Rounded Rectangle", "Draws a rounded rectangle with the selected fill style.", 1, 7,
       EASEL_TOOL_ROUNDED_RECTANGLE },
-    { "ellipse", "Ellipse", "Draws an ellipse with the selected fill style.", 1, 7, EASEL_TOOL_ELLIPSE },
+    { "ellipse", "Ellipse", "Draws an ellipse with the selected fill style.", 0, 8, EASEL_TOOL_ELLIPSE },
   };
   EaselWindow *win = start_window ();
   EaselStatusBar *bar = easel_window_get_status_bar (win);
@@ -8362,12 +8393,12 @@ as1_curve_polygon_toolbox_hints (void)
     { "eraser", "Eraser", NULL, 0, 2, EASEL_TOOL_ERASER }, { "pick", "Pick Color", NULL, 1, 2, EASEL_TOOL_PICK },
     { "fill", "Fill", NULL, 0, 3, EASEL_TOOL_FILL }, { "pencil", "Pencil", NULL, 0, 4, EASEL_TOOL_PENCIL },
     { "brush", "Brush", NULL, 1, 4, EASEL_TOOL_BRUSH }, { "airbrush", "Airbrush", NULL, 0, 5, EASEL_TOOL_AIRBRUSH },
-    { "line", "Line", NULL, 1, 5, EASEL_TOOL_LINE },
-    { "curve", "Curve", "Draws a curved line with the selected line width.", 0, 6, EASEL_TOOL_CURVE },
-    { "rectangle", "Rectangle", NULL, 1, 6, EASEL_TOOL_RECTANGLE },
-    { "rounded-rectangle", "Rounded Rectangle", NULL, 0, 7, EASEL_TOOL_ROUNDED_RECTANGLE },
-    { "ellipse", "Ellipse", NULL, 1, 7, EASEL_TOOL_ELLIPSE },
-    { "polygon", "Polygon", "Draws a polygon with the selected fill style.", 0, 8, EASEL_TOOL_POLYGON },
+    { "line", "Line", NULL, 0, 6, EASEL_TOOL_LINE },
+    { "curve", "Curve", "Draws a curved line with the selected line width.", 1, 6, EASEL_TOOL_CURVE },
+    { "rectangle", "Rectangle", NULL, 0, 7, EASEL_TOOL_RECTANGLE },
+    { "rounded-rectangle", "Rounded Rectangle", NULL, 1, 7, EASEL_TOOL_ROUNDED_RECTANGLE },
+    { "ellipse", "Ellipse", NULL, 0, 8, EASEL_TOOL_ELLIPSE },
+    { "polygon", "Polygon", "Draws a polygon with the selected fill style.", 1, 8, EASEL_TOOL_POLYGON },
   };
   EaselWindow *win = start_window ();
   EaselStatusBar *bar = easel_window_get_status_bar (win);
@@ -9446,11 +9477,11 @@ as1_gradient_toolbox_hints (void)
     { "eraser", "Eraser", 0, 2, EASEL_TOOL_ERASER }, { "pick", "Pick Color", 1, 2, EASEL_TOOL_PICK },
     { "fill", "Fill", 0, 3, EASEL_TOOL_FILL }, { "gradient", "Gradient", 1, 3, EASEL_TOOL_GRADIENT },
     { "pencil", "Pencil", 0, 4, EASEL_TOOL_PENCIL }, { "brush", "Brush", 1, 4, EASEL_TOOL_BRUSH },
-    { "airbrush", "Airbrush", 0, 5, EASEL_TOOL_AIRBRUSH }, { "line", "Line", 1, 5, EASEL_TOOL_LINE },
-    { "curve", "Curve", 0, 6, EASEL_TOOL_CURVE }, { "rectangle", "Rectangle", 1, 6, EASEL_TOOL_RECTANGLE },
-    { "rounded-rectangle", "Rounded Rectangle", 0, 7, EASEL_TOOL_ROUNDED_RECTANGLE },
-    { "ellipse", "Ellipse", 1, 7, EASEL_TOOL_ELLIPSE },
-    { "polygon", "Polygon", 0, 8, EASEL_TOOL_POLYGON },
+    { "airbrush", "Airbrush", 0, 5, EASEL_TOOL_AIRBRUSH }, { "line", "Line", 0, 6, EASEL_TOOL_LINE },
+    { "curve", "Curve", 1, 6, EASEL_TOOL_CURVE }, { "rectangle", "Rectangle", 0, 7, EASEL_TOOL_RECTANGLE },
+    { "rounded-rectangle", "Rounded Rectangle", 1, 7, EASEL_TOOL_ROUNDED_RECTANGLE },
+    { "ellipse", "Ellipse", 0, 8, EASEL_TOOL_ELLIPSE },
+    { "polygon", "Polygon", 1, 8, EASEL_TOOL_POLYGON },
   };
   EaselWindow *win = start_window ();
   EaselStatusBar *bar = easel_window_get_status_bar (win);
@@ -11166,10 +11197,10 @@ as1_select_toolbox_options (void)
     { "pick", "Pick Color", 1, 2, EASEL_TOOL_PICK }, { "fill", "Fill", 0, 3, EASEL_TOOL_FILL },
     { "gradient", "Gradient", 1, 3, EASEL_TOOL_GRADIENT }, { "pencil", "Pencil", 0, 4, EASEL_TOOL_PENCIL },
     { "brush", "Brush", 1, 4, EASEL_TOOL_BRUSH }, { "airbrush", "Airbrush", 0, 5, EASEL_TOOL_AIRBRUSH },
-    { "line", "Line", 1, 5, EASEL_TOOL_LINE }, { "curve", "Curve", 0, 6, EASEL_TOOL_CURVE },
-    { "rectangle", "Rectangle", 1, 6, EASEL_TOOL_RECTANGLE },
-    { "rounded-rectangle", "Rounded Rectangle", 0, 7, EASEL_TOOL_ROUNDED_RECTANGLE },
-    { "ellipse", "Ellipse", 1, 7, EASEL_TOOL_ELLIPSE }, { "polygon", "Polygon", 0, 8, EASEL_TOOL_POLYGON },
+    { "line", "Line", 0, 6, EASEL_TOOL_LINE }, { "curve", "Curve", 1, 6, EASEL_TOOL_CURVE },
+    { "rectangle", "Rectangle", 0, 7, EASEL_TOOL_RECTANGLE },
+    { "rounded-rectangle", "Rounded Rectangle", 1, 7, EASEL_TOOL_ROUNDED_RECTANGLE },
+    { "ellipse", "Ellipse", 0, 8, EASEL_TOOL_ELLIPSE }, { "polygon", "Polygon", 1, 8, EASEL_TOOL_POLYGON },
   };
   EaselWindow *win = start_window ();
   EaselCanvas *canvas = easel_window_get_canvas (win);
@@ -12811,6 +12842,7 @@ as13_selection_dialogs (void)
   assert_same_picture (img, start);
   g_assert_true (easel_window_save_to (win, path));
   float_as3 (win);
+  g_assert_cmpint (g_unlink (path), ==, 0);                            /* so that only this Save can write it */
   g_action_group_activate_action (G_ACTION_GROUP (win), "save", NULL);
   assert_alert (win, MOVE_HEADING, MOVE_BODY);
   g_assert_cmphex (saved_rgb (path, 13, 5), ==, 0xFFFF00u);          /* the picture as before the lift, without the move */
@@ -13002,10 +13034,10 @@ as1_free_select_toolbox_options (void)
     { "eraser", "Eraser", 0, 2, EASEL_TOOL_ERASER }, { "pick", "Pick Color", 1, 2, EASEL_TOOL_PICK },
     { "fill", "Fill", 0, 3, EASEL_TOOL_FILL }, { "gradient", "Gradient", 1, 3, EASEL_TOOL_GRADIENT },
     { "pencil", "Pencil", 0, 4, EASEL_TOOL_PENCIL }, { "brush", "Brush", 1, 4, EASEL_TOOL_BRUSH },
-    { "airbrush", "Airbrush", 0, 5, EASEL_TOOL_AIRBRUSH }, { "line", "Line", 1, 5, EASEL_TOOL_LINE },
-    { "curve", "Curve", 0, 6, EASEL_TOOL_CURVE }, { "rectangle", "Rectangle", 1, 6, EASEL_TOOL_RECTANGLE },
-    { "rounded-rectangle", "Rounded Rectangle", 0, 7, EASEL_TOOL_ROUNDED_RECTANGLE },
-    { "ellipse", "Ellipse", 1, 7, EASEL_TOOL_ELLIPSE }, { "polygon", "Polygon", 0, 8, EASEL_TOOL_POLYGON },
+    { "airbrush", "Airbrush", 0, 5, EASEL_TOOL_AIRBRUSH }, { "line", "Line", 0, 6, EASEL_TOOL_LINE },
+    { "curve", "Curve", 1, 6, EASEL_TOOL_CURVE }, { "rectangle", "Rectangle", 0, 7, EASEL_TOOL_RECTANGLE },
+    { "rounded-rectangle", "Rounded Rectangle", 1, 7, EASEL_TOOL_ROUNDED_RECTANGLE },
+    { "ellipse", "Ellipse", 0, 8, EASEL_TOOL_ELLIPSE }, { "polygon", "Polygon", 1, 8, EASEL_TOOL_POLYGON },
   };
   EaselWindow *win = start_window ();
   EaselCanvas *canvas = easel_window_get_canvas (win);
@@ -18016,6 +18048,3358 @@ store_at_quit (void)
     }
 }
 
+/* ---- 0017: text ---- */
+
+#define TEXT_SETTINGS "[new-picture]\nwidth=300\nheight=200\ncanvas-color=#FFFFFF\n\n[text]\nfont=DejaVu Sans\nsize=12\n"
+
+/* The line height and twenty widths of "0" of DejaVu Sans 12 at picture scale (96 dpi, hinting off, as the Plan lays text out),
+   measured here with a layout of the test's own. */
+static double text_line_exact;          /* the unrounded line height text_metrics measured */
+
+static void text_metrics (int *line_h, int *twenty_zeros);
+
+/* The height of n lines of DejaVu Sans 12 as a layout rounds it: up, once, from n unrounded lines (measured first if no case has). */
+static int
+lines_h (int n)
+{
+  if (text_line_exact == 0)
+    {
+      int line_h, twenty;
+
+      text_metrics (&line_h, &twenty);
+    }
+  return (int) ceil (n * text_line_exact);
+}
+
+static void
+text_metrics (int *line_h, int *twenty_zeros)
+{
+  PangoFontMap *map = pango_cairo_font_map_get_default ();
+  PangoContext *ctx = pango_font_map_create_context (map);
+  cairo_font_options_t *fo = cairo_font_options_create ();
+  g_autoptr (PangoLayout) layout = NULL;
+  PangoFontDescription *fd = pango_font_description_from_string ("DejaVu Sans 12");
+  PangoRectangle logical;
+
+  cairo_font_options_set_hint_style (fo, CAIRO_HINT_STYLE_NONE);
+  cairo_font_options_set_hint_metrics (fo, CAIRO_HINT_METRICS_OFF);
+  pango_cairo_context_set_font_options (ctx, fo);
+  pango_cairo_context_set_resolution (ctx, 96);
+  pango_context_set_round_glyph_positions (ctx, FALSE);
+  layout = pango_layout_new (ctx);
+  pango_layout_set_font_description (layout, fd);
+  pango_layout_set_text (layout, "0", -1);
+  pango_layout_get_extents (layout, NULL, &logical);
+  *line_h = (int) ceil ((double) logical.height / PANGO_SCALE);
+  *twenty_zeros = (int) ceil (20.0 * logical.width / PANGO_SCALE);
+  text_line_exact = (double) logical.height / PANGO_SCALE;
+  pango_font_description_free (fd);
+  cairo_font_options_destroy (fo);
+  g_clear_object (&layout);
+  g_object_unref (ctx);
+  /* DejaVu Sans 12 points (16 pixels to the em): a line of about 19 pixels, a "0" about 10 */
+  g_assert_cmpint (*line_h, >=, 16);
+  g_assert_cmpint (*line_h, <=, 22);
+  g_assert_cmpint (*twenty_zeros, >=, 180);
+  g_assert_cmpint (*twenty_zeros, <=, 230);
+}
+
+static gboolean
+box_is (EaselWindow *win, int x, int y, int w, int h)
+{
+  int bx, by, bw, bh;
+
+  if (!easel_canvas_text_box (easel_window_get_canvas (win), &bx, &by, &bw, &bh))
+    return FALSE;
+  if (bx != x || by != y || bw != w || bh != h)
+    g_printerr ("box (%d, %d, %d, %d), wanted (%d, %d, %d, %d)\n", bx, by, bw, bh, x, y, w, h);
+  return bx == x && by == y && bw == w && bh == h;
+}
+
+static gboolean
+no_box (EaselWindow *win)
+{
+  int bx, by, bw, bh;
+
+  return !easel_canvas_text_box (easel_window_get_canvas (win), &bx, &by, &bw, &bh);
+}
+
+/* AS-2 (REQ-0017-03, REQ-0017-01): a drag from (10, 10) to (110, 50) opens the box (10, 10, 101, 41), its size in the status bar; dragged
+   the other way, the same box; dragged past the picture, the box stops at its edges. (The outline, handles, caret and card: T009 and
+   T016.) */
+static void
+as2_drag_box (void)
+{
+  EaselWindow *win;
+  EaselStatusBar *bar;
+
+  write_settings (TEXT_SETTINGS);
+  win = start_window ();
+  bar = easel_window_get_status_bar (win);
+  use_tool (win, "text");
+  g_assert_cmpint (easel_window_get_tool (win), ==, EASEL_TOOL_TEXT);
+  shape_press_move (win, 1, 10, 10, 110, 50);
+  g_assert_true (no_box (win));                                                  /* only at the release */
+  g_assert_cmpstr (easel_status_bar_get_text (bar, EASEL_STATUS_SELECTION), ==, "101 × 41");
+  shape_release (win, 1);
+  g_assert_true (box_is (win, 10, 10, 101, 41));
+  g_assert_cmpstr (easel_status_bar_get_text (bar, EASEL_STATUS_SELECTION), ==, "101 × 41");
+  /* a press outside the open box closes it and makes no new box */
+  shape_press_move (win, 1, 200, 150, 200, 150);
+  shape_release (win, 1);
+  g_assert_true (no_box (win));
+  g_assert_cmpstr (easel_status_bar_get_text (bar, EASEL_STATUS_SELECTION), ==, "");
+  shape_press_move (win, 1, 110, 50, 10, 10);
+  shape_release (win, 1);
+  g_assert_true (box_is (win, 10, 10, 101, 41));
+  shape_press_move (win, 1, 250, 150, 250, 150);
+  shape_release (win, 1);
+  shape_press_move (win, 1, 10, 10, 400, 300);
+  shape_release (win, 1);
+  g_assert_true (box_is (win, 10, 10, 290, 190));
+  /* Shift does not square a box (the spec gives it no such rule); the box is closed by a press left of it, clear of its band */
+  shape_press_move (win, 1, 1, 50, 1, 50);
+  shape_release (win, 1);
+  g_assert_true (no_box (win));
+  easel_canvas_set_shift (easel_window_get_canvas (win), TRUE);
+  shape_press_move (win, 1, 10, 10, 110, 50);
+  shape_release (win, 1);
+  easel_canvas_set_shift (easel_window_get_canvas (win), FALSE);
+  g_assert_true (box_is (win, 10, 10, 101, 41));
+  close_windows ();
+}
+
+/* AS-2 (REQ-0017-01): over an open box (10, 10, 101, 41) at 100 %, the cursor is the text cursor inside, the move cursor on the band
+   (2 logical pixels above the top edge at x 30: between the top-left corner's hit area, which ends at x 14, and the top handle's, from
+   56), the resize cursor on a handle, the crosshair elsewhere. */
+static void
+as2_box_cursors (void)
+{
+  EaselWindow *win;
+  EaselCanvas *canvas;
+
+  write_settings (TEXT_SETTINGS);
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  use_tool (win, "text");
+  shape_press_move (win, 1, 10, 10, 110, 50);
+  shape_release (win, 1);
+  g_assert_true (box_is (win, 10, 10, 101, 41));
+  easel_canvas_pointer_at (canvas, 60.5, 30.5);
+  g_assert_cmpstr (gdk_cursor_get_name (gtk_widget_get_cursor (GTK_WIDGET (canvas))), ==, "text");
+  easel_canvas_pointer_at (canvas, 30.5, 8.5);
+  g_assert_cmpstr (gdk_cursor_get_name (gtk_widget_get_cursor (GTK_WIDGET (canvas))), ==, "move");
+  easel_canvas_pointer_at (canvas, 7.5, 7.5);
+  g_assert_cmpstr (gdk_cursor_get_name (gtk_widget_get_cursor (GTK_WIDGET (canvas))), ==, "nwse-resize");
+  easel_canvas_pointer_at (canvas, 200.5, 150.5);
+  g_assert_cmpstr (gdk_cursor_get_name (gtk_widget_get_cursor (GTK_WIDGET (canvas))), ==, "crosshair");
+  easel_canvas_pointer_at (canvas, 30.5, 4.5);                                  /* past the band: 6 pixels above the edge */
+  g_assert_cmpstr (gdk_cursor_get_name (gtk_widget_get_cursor (GTK_WIDGET (canvas))), ==, "crosshair");
+  close_windows ();
+}
+
+/* AS-3 (REQ-0017-03): a click makes a box at the click, one line high and twenty widths of "0" wide; near the bottom-right corner its
+   width is cut at the right edge and it moves up to stay one line high; a short drag grows to one line; on a picture shorter than a
+   line the box is as tall as the picture. */
+static void
+as3_click_box (void)
+{
+  EaselWindow *win;
+  int line_h, twenty;
+
+  text_metrics (&line_h, &twenty);
+  write_settings (TEXT_SETTINGS);
+  win = start_window ();
+  use_tool (win, "text");
+  shape_press_move (win, 1, 20, 30, 20, 30);
+  shape_release (win, 1);
+  g_assert_true (box_is (win, 20, 30, twenty, line_h));
+  shape_press_move (win, 1, 250, 150, 250, 150);                                /* closes it */
+  shape_release (win, 1);
+  shape_press_move (win, 1, 295, 195, 295, 195);
+  shape_release (win, 1);
+  g_assert_true (box_is (win, 295, 200 - line_h, 5, line_h));
+  shape_press_move (win, 1, 100, 100, 100, 100);
+  shape_release (win, 1);
+  shape_press_move (win, 1, 10, 10, 60, 12);
+  shape_release (win, 1);
+  g_assert_true (box_is (win, 10, 10, 51, line_h));
+  /* a click whose pointer moved a little (within the drag threshold): the click's box at the press (JOD's M1, 2026-10-26) */
+  shape_press_move (win, 1, 250, 150, 250, 150);
+  shape_release (win, 1);
+  shape_press_move (win, 1, 20, 30, 22, 31);
+  {
+    int sw, sh;
+
+    g_assert_false (easel_canvas_get_selection_size (easel_window_get_canvas (win), &sw, &sh));   /* no rectangle while within it */
+  }
+  shape_release (win, 1);
+  g_assert_true (box_is (win, 20, 30, twenty, line_h));
+  /* beyond the threshold and back within one pixel of the press: still a drag */
+  shape_press_move (win, 1, 250, 150, 250, 150);
+  shape_release (win, 1);
+  {
+    double x, y;
+
+    shape_press_move (win, 1, 20, 30, 40, 45);
+    canvas_point (win, 21.5, 30.5, &x, &y);
+    easel_canvas_motion (easel_window_get_canvas (win), x, y);
+    shape_release (win, 1);
+    g_assert_true (box_is (win, 20, 30, 2, line_h));
+  }
+  /* a short drag near the bottom edge: one line high, moved toward smaller y as far as the edge requires */
+  shape_press_move (win, 1, 250, 150, 250, 150);
+  shape_release (win, 1);
+  shape_press_move (win, 1, 10, 195, 60, 197);
+  shape_release (win, 1);
+  g_assert_true (box_is (win, 10, 200 - line_h, 51, line_h));
+  /* a click outside the picture counts as the nearest pixel of its edge */
+  shape_press_move (win, 1, 250, 150, 250, 150);
+  shape_release (win, 1);
+  shape_press_move (win, 1, -20, -20, -20, -20);
+  shape_release (win, 1);
+  g_assert_true (box_is (win, 0, 0, twenty, line_h));
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=10\n\n[text]\nfont=DejaVu Sans\nsize=12\n");
+  win = start_window ();
+  use_tool (win, "text");
+  shape_press_move (win, 1, 5, 2, 5, 2);
+  shape_release (win, 1);
+  g_assert_true (box_is (win, 5, 0, twenty, 10));
+  close_windows ();
+}
+
+/* AS-4 (REQ-0017-04): a box being dragged out is cancelled by the other button, Esc or Undo (no box; a later release does nothing);
+   Enter, Delete, Ctrl+A, Redo, an arrow key and a letter do nothing during the drag; a release that never arrives, or a lost focus,
+   ends the drag as last shown; scrolling during the drag does not change the rectangle; the middle button does nothing; with the
+   color chooser open a press is ignored. */
+static void
+as4_box_drag_cancel (void)
+{
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  EaselPaletteBar *pal;
+
+  write_settings (TEXT_SETTINGS);
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  pal = easel_window_get_palette_bar (win);
+  use_tool (win, "text");
+  shape_press_move (win, 1, 10, 10, 110, 50);
+  easel_canvas_press (canvas, 3, 60.5, 60.5);
+  easel_canvas_release (canvas, 3);
+  shape_release (win, 1);
+  g_assert_true (no_box (win));
+  shape_press_move (win, 1, 10, 10, 110, 50);
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+  shape_release (win, 1);
+  g_assert_true (no_box (win));
+  /* Undo (sensitive: a Pencil step first) cancels the drag and undoes nothing else (REQ-0002-09) */
+  use_pencil (win);
+  A_STROKE (win);
+  use_tool (win, "text");
+  g_assert_true (action_enabled (win, "undo"));
+  shape_press_move (win, 1, 10, 10, 110, 50);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  shape_release (win, 1);
+  g_assert_true (no_box (win));
+  g_assert_true (action_enabled (win, "undo"));                                 /* the Pencil's step is still there */
+  /* keys that do nothing during the drag; then the release makes the box */
+  shape_press_move (win, 1, 10, 10, 110, 50);
+  key_taken (win, GDK_KEY_Return, 0);
+  key_taken (win, GDK_KEY_Delete, 0);
+  key_taken (win, GDK_KEY_a, GDK_CONTROL_MASK);
+  key_taken (win, GDK_KEY_Left, 0);
+  key_taken (win, GDK_KEY_x, 0);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "redo", NULL);
+  g_assert_cmpint (easel_window_get_tool (win), ==, EASEL_TOOL_TEXT);
+  shape_release (win, 1);
+  g_assert_true (box_is (win, 10, 10, 101, 41));
+  shape_press_move (win, 1, 250, 150, 250, 150);
+  shape_release (win, 1);
+  g_assert_true (no_box (win));
+  /* a lost release: the drag ends as last shown */
+  shape_press_move (win, 1, 20, 20, 70, 60);
+  easel_canvas_buttons_released (canvas);
+  g_assert_true (box_is (win, 20, 20, 51, 41));
+  shape_press_move (win, 1, 250, 150, 250, 150);
+  shape_release (win, 1);
+  /* the middle button does nothing */
+  easel_canvas_press (canvas, 2, 30.5, 30.5);
+  easel_canvas_release (canvas, 2);
+  g_assert_true (no_box (win));
+  /* the secondary button with no box open does nothing either (REQ-0017-22) */
+  easel_canvas_press (canvas, 3, 30.5, 30.5);
+  easel_canvas_motion (canvas, 60.5, 60.5);
+  easel_canvas_release (canvas, 3);
+  g_assert_true (no_box (win));
+  /* with the color chooser open a press is ignored */
+  easel_palette_bar_press (pal, 17, 1, 1);
+  easel_palette_bar_press (pal, 17, 1, 2);
+  g_assert_true (easel_window_is_choosing_color (win));
+  shape_press_move (win, 1, 30, 30, 80, 80);
+  shape_release (win, 1);
+  g_assert_true (no_box (win));
+  easel_window_finish_color_choice (win, NULL);                                  /* the chooser closed: none left for the next case */
+  close_windows ();
+}
+
+static uint32_t *render_as_is (EaselWindow *win, int *w, int *h, int *cx, int *cy);
+
+/* The caret's blinking off for a render, as the desktop may turn it on; set back to the program's start value after. */
+static gboolean blink_at_start;
+
+static void
+caret_blink (gboolean on)
+{
+  g_object_set (gtk_settings_get_default (), "gtk-cursor-blink", on, NULL);
+}
+
+/* `text` added at the end of the open box's text in the style at the caret, the caret after it, as typing would leave it (the typing
+   itself: T011). */
+static void
+box_text (EaselWindow *win, const char *text)
+{
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  EaselTextBuffer *b = easel_canvas_text_buffer (canvas);
+  EaselTextStyle st;
+  size_t n;
+
+  g_assert_nonnull (b);
+  easel_text_buffer_text (b, &n);
+  easel_text_buffer_select (b, n, n);
+  easel_canvas_text_style_at_caret (canvas, &st);
+  g_assert_true (easel_text_buffer_insert (b, text, strlen (text), &st, EASEL_TEXT_EDIT_TYPING));
+  easel_canvas_text_edited (canvas);
+}
+
+/* AS-5 (REQ-0017-06, REQ-0017-26), the layout: in a box 60 wide and 20 high "hello world" wraps after "hello " and the box grows toward
+   larger y to its two lines; with "world" gone it shrinks back to its set height, never below it; a box 1 pixel wide holds one character
+   a line. */
+static void
+as5_wrap_grow_shrink (void)
+{
+  EaselWindow *win;
+  EaselTextBuffer *b;
+  int line_h, twenty, x, y, w, h;
+
+  text_metrics (&line_h, &twenty);
+  write_settings (TEXT_SETTINGS);
+  win = start_window ();
+  use_tool (win, "text");
+  shape_press_move (win, 1, 10, 10, 69, 29);
+  shape_release (win, 1);
+  g_assert_true (box_is (win, 10, 10, 60, 20));
+  box_text (win, "hello world");
+  g_assert_true (easel_canvas_text_box (easel_window_get_canvas (win), &x, &y, &w, &h));
+  g_assert_cmpint (x, ==, 10);
+  g_assert_cmpint (y, ==, 10);
+  g_assert_cmpint (w, ==, 60);
+  g_assert_cmpint (h, ==, lines_h (2));                                          /* two lines: taller than the set 20 */
+  b = easel_canvas_text_buffer (easel_window_get_canvas (win));
+  g_assert_true (easel_text_buffer_delete (b, 5, 11, EASEL_TEXT_EDIT_DELETE));   /* " world" */
+  easel_canvas_text_edited (easel_window_get_canvas (win));
+  g_assert_true (box_is (win, 10, 10, 60, 20));                                  /* one line, 19 high: the set height */
+  shape_press_move (win, 1, 200, 150, 200, 150);
+  shape_release (win, 1);
+  shape_press_move (win, 1, 10, 10, 10, 40);                                     /* 1 pixel wide */
+  shape_release (win, 1);
+  g_assert_true (box_is (win, 10, 10, 1, 31));
+  box_text (win, "ab");
+  g_assert_true (box_is (win, 10, 10, 1, lines_h (2)));                          /* a, then b on the next line */
+  close_windows ();
+}
+
+/* AS-16 (REQ-0017-05, REQ-0017-16), the box on screen: black "Hi" in DejaVu Sans 24 in a box on a white picture is shown as exactly the
+   pixels its ink says (black where a character covers half a pixel or more, the picture's own white elsewhere; no other color, no
+   tint), at 100 %, at 800 % and in a scrolled view; the outline round the box; eight navy handles; the caret black at the box's left,
+   1 pixel wide at 100 % and 2 at 800 %. */
+static void
+as16_box_shows_put_down_pixels (void)
+{
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  EaselTextInk ink;
+  g_autofree uint32_t *px = NULL;
+  int w, h, cx, cy, bx, by, bw, bh, black = 0;
+
+  g_object_get (gtk_settings_get_default (), "gtk-cursor-blink", &blink_at_start, NULL);
+  caret_blink (FALSE);
+  write_settings ("[new-picture]\nwidth=300\nheight=200\ncanvas-color=#FFFFFF\n\n[text]\nfont=DejaVu Sans\nsize=24\n");
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  use_tool (win, "text");
+  shape_press_move (win, 1, 10, 10, 110, 50);
+  shape_release (win, 1);
+  box_text (win, "Hi");
+  easel_text_buffer_select (easel_canvas_text_buffer (canvas), 0, 0);           /* the caret at the box's left */
+  easel_canvas_text_edited (canvas);
+  g_assert_true (easel_canvas_text_box (canvas, &bx, &by, &bw, &bh));
+  g_assert_true (easel_canvas_text_ink (canvas, &ink));
+  wait_for_next_frame (win);
+  px = render_pixels (win, &w, &h, &cx, &cy);
+  for (int y = by; y < by + bh; y++)
+    for (int x = bx + 1; x < bx + bw; x++)                                       /* the caret's column (bx) apart */
+      {
+        uint32_t want = 0xFFFFFFFFu, got = rendered_pixel (px, w, cx, cy, x, y);
+
+        if (x >= ink.x && x < ink.x + ink.w && y >= ink.y && y < ink.y + ink.h && ink.mask[(y - ink.y) * ink.w + (x - ink.x)])
+          want = ink.color[(y - ink.y) * ink.w + (x - ink.x)];
+        g_assert_cmphex (got, ==, want);
+        black += got == 0xFF000000u;
+      }
+  g_assert_cmpint (black, >, 50);                                                /* "Hi" is there */
+  for (int y = by + 2; y < by + 20; y++)
+    g_assert_cmphex (rendered_pixel (px, w, cx, cy, bx, y), ==, 0xFF000000u);    /* the caret, 1 pixel wide */
+  {
+    /* the outline: black and white dashes on the row just above the box (between the corner handles) */
+    int dash_black = 0, dash_white = 0;
+
+    for (int x = bx + 6; x < bx + bw - 6; x++)
+      {
+        uint32_t got = rendered_pixel (px, w, cx, cy, x, by - 1);
+
+        dash_black += got == 0xFF000000u;
+        dash_white += got == 0xFFFFFFFFu;
+      }
+    g_assert_cmpint (dash_black, >, 10);
+    g_assert_cmpint (dash_white, >, 10);
+  }
+  g_assert_cmpint (navy_near (win, bx - 6, by - 6, 6, 6), >, 0);               /* the top-left handle */
+  g_assert_cmpint (navy_near (win, bx + bw, by + bh, 6, 6), >, 0);             /* the bottom-right handle */
+  /* 800 %: each picture pixel is 8 device pixels, its center sampled; scrolled so that the box is in view */
+  easel_canvas_set_zoom (canvas, 800);
+  wait_for_layout (win);
+  {
+    GtkScrolledWindow *scroller = GTK_SCROLLED_WINDOW (gtk_widget_get_ancestor (GTK_WIDGET (canvas), GTK_TYPE_SCROLLED_WINDOW));
+
+    gtk_adjustment_set_value (gtk_scrolled_window_get_hadjustment (scroller), (bx - 2) * 8);
+    gtk_adjustment_set_value (gtk_scrolled_window_get_vadjustment (scroller), (by - 2) * 8);
+  }
+  g_clear_pointer (&px, g_free);
+  wait_for_next_frame (win);
+  px = render_pixels (win, &w, &h, &cx, &cy);
+  for (int y = by; y < by + bh; y++)
+    for (int x = bx + 1; x < bx + bw; x++)
+      {
+        int sx = cx + x * 8 + 4, sy = cy + y * 8 + 4;
+        uint32_t want = 0xFFFFFFFFu;
+
+        if (sx < 0 || sy < 0 || sx >= w || sy >= h)
+          continue;
+        if (x >= ink.x && x < ink.x + ink.w && y >= ink.y && y < ink.y + ink.h && ink.mask[(y - ink.y) * ink.w + (x - ink.x)])
+          want = ink.color[(y - ink.y) * ink.w + (x - ink.x)];
+        g_assert_cmphex (px[(gsize) sy * w + sx], ==, want);
+      }
+  /* scrolled on by 40 picture pixels, rendered with no redraw asked for: the part of the box now in view is drawn too (only the part in
+     view is composed, T010) */
+  {
+    GtkScrolledWindow *scroller = GTK_SCROLLED_WINDOW (gtk_widget_get_ancestor (GTK_WIDGET (canvas), GTK_TYPE_SCROLLED_WINDOW));
+    GtkAdjustment *ha = gtk_scrolled_window_get_hadjustment (scroller);
+    int compared = 0;
+
+    graphene_rect_t view;
+
+    int inked_seen = 0;
+
+    /* drawn with "Hi" out of view (the redraw asked for), then scrolled back so that "Hi" comes into view: rendered with no redraw asked
+       for, "Hi" is there only if the canvas drew itself again on the scroll */
+    gtk_adjustment_set_value (ha, gtk_adjustment_get_value (ha) + 40 * 8);
+    g_clear_pointer (&px, g_free);
+    wait_for_next_frame (win);
+    px = render_pixels (win, &w, &h, &cx, &cy);
+    gtk_adjustment_set_value (ha, gtk_adjustment_get_value (ha) - 40 * 8);
+    g_clear_pointer (&px, g_free);
+    px = render_as_is (win, &w, &h, &cx, &cy);
+    g_assert_true (gtk_widget_compute_bounds (GTK_WIDGET (scroller), GTK_WIDGET (win), &view));
+    for (int y = by; y < by + bh; y++)
+      for (int x = bx + 1; x < bx + bw; x++)
+        {
+          int sx = cx + x * 8 + 4, sy = cy + y * 8 + 4;
+          uint32_t want = 0xFFFFFFFFu;
+
+          if (sx < view.origin.x || sy < view.origin.y || sx >= view.origin.x + view.size.width || sy >= view.origin.y + view.size.height)
+            continue;                                                            /* the part in the view only */
+          if (x >= ink.x && x < ink.x + ink.w && y >= ink.y && y < ink.y + ink.h && ink.mask[(y - ink.y) * ink.w + (x - ink.x)])
+            want = ink.color[(y - ink.y) * ink.w + (x - ink.x)];
+          g_assert_cmphex (px[(gsize) sy * w + sx], ==, want);
+          compared++;
+          inked_seen += want != 0xFFFFFFFFu;
+        }
+    g_assert_cmpint (compared, >, 100);
+    g_assert_cmpint (inked_seen, >, 20);                                         /* "Hi" came into view and was drawn */
+  }
+  /* the caret 2 device pixels wide at 800 %, at the box's left */
+  g_assert_cmphex (px[(gsize) (cy + (by + 3) * 8) * w + cx + bx * 8], ==, 0xFF000000u);
+  g_assert_cmphex (px[(gsize) (cy + (by + 3) * 8) * w + cx + bx * 8 + 1], ==, 0xFF000000u);
+  g_assert_cmphex (px[(gsize) (cy + (by + 3) * 8) * w + cx + bx * 8 + 3], ==, 0xFFFFFFFFu);
+  /* back at 100 %: the selected text has the accent behind it, its letters black; Opaque fills the box with the background color */
+  easel_canvas_set_zoom (canvas, 100);
+  easel_text_buffer_select (easel_canvas_text_buffer (canvas), 0, 2);           /* "Hi" */
+  easel_canvas_text_edited (canvas);
+  g_assert_true (easel_canvas_text_ink (canvas, &ink));                          /* made again by the edit: the old one is freed */
+  g_clear_pointer (&px, g_free);
+  wait_for_next_frame (win);
+  px = render_pixels (win, &w, &h, &cx, &cy);
+  {
+    g_autoptr (GdkRGBA) accent = adw_style_manager_get_accent_color_rgba (adw_style_manager_get_default ());
+    uint32_t tinted = 0xFF000000u | (uint32_t) lround (255 * 0.65 + accent->red * 255 * 0.35) << 16
+                      | (uint32_t) lround (255 * 0.65 + accent->green * 255 * 0.35) << 8
+                      | (uint32_t) lround (255 * 0.65 + accent->blue * 255 * 0.35);
+    int behind = 0, letters = 0;
+
+    for (int y = ink.y; y < ink.y + ink.h; y++)
+      for (int x = ink.x; x < ink.x + ink.w; x++)
+        {
+          uint32_t got = rendered_pixel (px, w, cx, cy, x, y);
+
+          if (ink.mask[(y - ink.y) * ink.w + (x - ink.x)])
+            letters += got == 0xFF000000u;
+          else
+            {
+              behind += got == tinted;
+
+            }
+        }
+    g_assert_cmpint (letters, >, 50);
+    g_assert_cmpint (behind, >, 50);
+  }
+  easel_text_buffer_select (easel_canvas_text_buffer (canvas), 0, 0);
+  easel_canvas_set_colors (canvas, 0xFF000000u, 0xFFFFFF00u);
+  easel_canvas_set_text_opaque (canvas, TRUE);
+  easel_canvas_text_edited (canvas);
+  g_clear_pointer (&px, g_free);
+  wait_for_next_frame (win);
+  px = render_pixels (win, &w, &h, &cx, &cy);
+  g_assert_cmphex (rendered_pixel (px, w, cx, cy, bx + bw - 2, by + bh - 2), ==, 0xFFFFFF00u);
+  g_assert_cmphex (rendered_pixel (px, w, cx, cy, bx - 2, by + 1), ==, 0xFFFFFFFFu);   /* outside the box (not under the card): the picture */
+  caret_blink (blink_at_start);
+  close_windows ();
+}
+
+/* The pixels a pass of DejaVu Sans 72 "_j" ("_" plain, "j" italic) covers at least half, with only the character `only` (0 or 1) shown:
+   the test's own layout at picture scale, drawn with its top-left at (margin, margin) of a w x h mask. */
+static guint8 *
+underscore_j_pass (int only, int margin, int w, int h)
+{
+  PangoContext *ctx = pango_font_map_create_context (pango_cairo_font_map_get_default ());
+  cairo_font_options_t *fo = cairo_font_options_create ();
+  PangoLayout *layout;
+  PangoFontDescription *fd = pango_font_description_from_string ("DejaVu Sans 72");
+  PangoAttrList *attrs = pango_attr_list_new ();
+  PangoAttribute *it = pango_attr_style_new (PANGO_STYLE_ITALIC), *a0 = pango_attr_foreground_alpha_new (only == 0 ? 65535 : 1),
+                 *a1 = pango_attr_foreground_alpha_new (only == 1 ? 65535 : 1);
+  cairo_surface_t *surface = cairo_image_surface_create (CAIRO_FORMAT_A8, w, h);
+  cairo_t *cr = cairo_create (surface);
+  guint8 *m = g_malloc0 ((gsize) w * h);
+  const guint8 *d;
+
+  cairo_font_options_set_antialias (fo, CAIRO_ANTIALIAS_GRAY);
+  cairo_font_options_set_hint_style (fo, CAIRO_HINT_STYLE_NONE);
+  cairo_font_options_set_hint_metrics (fo, CAIRO_HINT_METRICS_OFF);
+  pango_cairo_context_set_font_options (ctx, fo);
+  pango_cairo_context_set_resolution (ctx, 96);
+  pango_context_set_round_glyph_positions (ctx, FALSE);
+  layout = pango_layout_new (ctx);
+  pango_layout_set_font_description (layout, fd);
+  pango_layout_set_text (layout, "_j", -1);
+  it->start_index = 1, it->end_index = 2;
+  a0->start_index = 0, a0->end_index = 1;
+  a1->start_index = 1, a1->end_index = 2;
+  pango_attr_list_insert (attrs, it);
+  pango_attr_list_insert (attrs, a0);
+  pango_attr_list_insert (attrs, a1);
+  pango_layout_set_attributes (layout, attrs);
+  cairo_move_to (cr, margin, margin);
+  pango_cairo_show_layout (cr, layout);
+  cairo_surface_flush (surface);
+  d = cairo_image_surface_get_data (surface);
+  for (int y = 0; y < h; y++)
+    for (int x = 0; x < w; x++)
+      m[(gsize) y * w + x] = d[(gsize) y * cairo_image_surface_get_stride (surface) + x] >= 128;
+  cairo_destroy (cr);
+  cairo_surface_destroy (surface);
+  pango_attr_list_unref (attrs);
+  pango_font_description_free (fd);
+  cairo_font_options_destroy (fo);
+  g_object_unref (layout);
+  g_object_unref (ctx);
+  return m;
+}
+
+/* AS-16 (REQ-0017-16): where two characters cover the same pixel, the later one in the text wins: a red "_" and a blue italic "j" at
+   72 points share pixels (the j's descender crosses the underscore); there the box's ink is blue. */
+static void
+as16_later_character_wins (void)
+{
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  EaselTextBuffer *b;
+  EaselTextStyle v = { 0 };
+  EaselTextInk ink;
+  g_autofree guint8 *first = NULL, *second = NULL;
+  int shared = 0, margin = 20, w = 260, h = 160;
+
+  write_settings ("[new-picture]\nwidth=600\nheight=300\ncanvas-color=#FFFFFF\n\n[text]\nfont=DejaVu Sans\nsize=72\n");
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  use_tool (win, "text");
+  shape_press_move (win, 1, 40, 40, 400, 200);
+  shape_release (win, 1);
+  box_text (win, "_j");
+  b = easel_canvas_text_buffer (canvas);
+  easel_text_buffer_select (b, 0, 1);
+  v.color = 0xFFFF0000u;
+  g_assert_true (easel_text_buffer_apply (b, EASEL_TEXT_COLOR, &v, FALSE));
+  easel_text_buffer_select (b, 1, 2);
+  v.color = 0xFF0000FFu;
+  g_assert_true (easel_text_buffer_apply (b, EASEL_TEXT_COLOR, &v, FALSE));
+  v.flags = EASEL_TEXT_ITALIC;
+  g_assert_true (easel_text_buffer_apply (b, EASEL_TEXT_FLAG_ITALIC, &v, FALSE));
+  easel_canvas_text_edited (canvas);
+  g_assert_true (easel_canvas_text_ink (canvas, &ink));
+  first = underscore_j_pass (0, margin, w, h);
+  second = underscore_j_pass (1, margin, w, h);
+  for (int y = 0; y < h; y++)
+    for (int x = 0; x < w; x++)
+      if (first[(gsize) y * w + x] && second[(gsize) y * w + x])
+        {
+          int px = 40 + x - margin, py = 40 + y - margin;             /* the box's text starts at its top-left, (40, 40) */
+          size_t at = (size_t) (py - ink.y) * ink.w + (px - ink.x);
+
+          g_assert_true (px >= ink.x && px < ink.x + ink.w && py >= ink.y && py < ink.y + ink.h);
+          g_assert_true (ink.mask[at]);
+          g_assert_cmphex (ink.color[at], ==, 0xFF0000FFu);
+          shared++;
+        }
+  g_assert_cmpint (shared, >, 10);
+  /* and the mask is the union of the two passes: a pixel at least half covered by either character, and no other (REQ-0017-16) */
+  for (int y = 0; y < h; y++)
+    for (int x = 0; x < w; x++)
+      {
+        int px = 40 + x - margin, py = 40 + y - margin;
+        gboolean in = px >= ink.x && px < ink.x + ink.w && py >= ink.y && py < ink.y + ink.h;
+        gboolean m = in && ink.mask[(size_t) (py - ink.y) * ink.w + (px - ink.x)];
+
+        g_assert_true (m == (first[(gsize) y * w + x] || second[(gsize) y * w + x]));
+      }
+  close_windows ();
+}
+
+/* AS-25 (REQ-0017-26): "ab", Enter, "cd", Enter, "hello world" wrapped after "hello ", with "ab" black, "cd" red, "hello " blue and
+   "world" green: the style at the caret is black at the start of the text (from "a"), red after the Enter before "c" (from "c"), and
+   blue at the start of the wrapped line before "world" (from the space before it), not green. */
+static void
+as25_line_starts (void)
+{
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  EaselTextBuffer *b;
+  EaselTextStyle v = { 0 }, st;
+  int line_h, twenty, x, y, w, h;
+
+  text_metrics (&line_h, &twenty);
+  write_settings (TEXT_SETTINGS);
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  use_tool (win, "text");
+  shape_press_move (win, 1, 10, 10, 69, 29);                                     /* 60 wide: "hello world" wraps */
+  shape_release (win, 1);
+  box_text (win, "ab\ncd\nhello world");
+  b = easel_canvas_text_buffer (canvas);
+  easel_text_buffer_select (b, 3, 5);
+  v.color = 0xFFFF0000u;
+  g_assert_true (easel_text_buffer_apply (b, EASEL_TEXT_COLOR, &v, FALSE));
+  easel_text_buffer_select (b, 6, 12);
+  v.color = 0xFF0000FFu;
+  g_assert_true (easel_text_buffer_apply (b, EASEL_TEXT_COLOR, &v, FALSE));
+  easel_text_buffer_select (b, 12, 17);
+  v.color = 0xFF00FF00u;
+  g_assert_true (easel_text_buffer_apply (b, EASEL_TEXT_COLOR, &v, FALSE));
+  easel_canvas_text_edited (canvas);
+  g_assert_true (easel_canvas_text_box (canvas, &x, &y, &w, &h));
+  g_assert_cmpint (h, ==, lines_h (4));                                          /* "ab", "cd", "hello ", "world" */
+  easel_text_buffer_select (b, 0, 0);
+  easel_canvas_text_style_at_caret (canvas, &st);
+  g_assert_cmphex (st.color, ==, 0xFF000000u);
+  easel_text_buffer_select (b, 3, 3);
+  easel_canvas_text_style_at_caret (canvas, &st);
+  g_assert_cmphex (st.color, ==, 0xFFFF0000u);
+  easel_text_buffer_select (b, 12, 12);
+  easel_canvas_text_style_at_caret (canvas, &st);
+  g_assert_cmphex (st.color, ==, 0xFF0000FFu);
+  close_windows ();
+}
+
+static gboolean
+box_text_is (EaselWindow *win, const char *want)
+{
+  EaselTextBuffer *b = easel_canvas_text_buffer (easel_window_get_canvas (win));
+  size_t n;
+  const char *t;
+
+  if (b == NULL)
+    return FALSE;
+  t = easel_text_buffer_text (b, &n);
+  if (n != strlen (want) || memcmp (t, want, n) != 0)
+    g_printerr ("box text \"%.*s\", wanted \"%s\"\n", (int) n, t, want);
+  return n == strlen (want) && memcmp (t, want, n) == 0;
+}
+
+/* Types the characters of `s` as keys (no input method in the tests: the key's character, REQ-0017-06). */
+static void
+type_keys (EaselWindow *win, const char *s)
+{
+  for (const char *p = s; *p != '\0'; p++)
+    g_assert_true (key_taken (win, *p == '\n' ? GDK_KEY_Return : *p == ' ' ? GDK_KEY_space : gdk_unicode_to_keyval ((guint32) *p), 0));
+}
+
+/* AS-5 (REQ-0017-07): in a box (10, 150, 60, 20) of a 300 x 200 picture, "a", Enter: two lines (38 high) fit above the bottom edge
+   (50 left); the next Enter would make three (56) and is refused with the error bell, the text as before; so is a letter that wraps onto
+   a third line; on a picture shorter than a line, the first line is allowed and an Enter refused. */
+static void
+as5_refused_past_bottom (void)
+{
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  guint bells;
+
+  write_settings (TEXT_SETTINGS);
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  use_tool (win, "text");
+  shape_press_move (win, 1, 10, 150, 69, 169);
+  shape_release (win, 1);
+  type_keys (win, "a\n");
+  g_assert_true (box_text_is (win, "a\n"));
+  bells = easel_canvas_get_error_bells (canvas);
+  g_assert_true (key_taken (win, GDK_KEY_Return, 0));                            /* taken, and refused */
+  g_assert_true (box_text_is (win, "a\n"));
+  g_assert_cmpuint (easel_canvas_get_error_bells (canvas), ==, bells + 1);
+  type_keys (win, "bbbbb");                                                      /* fits on line two */
+  g_assert_true (box_text_is (win, "a\nbbbbb"));
+  for (int i = 0; i < 20; i++)
+    key_taken (win, GDK_KEY_b, 0);                                               /* line two fills; the wrap is refused */
+  g_assert_cmpuint (easel_canvas_get_error_bells (canvas), >, bells + 1);
+  {
+    int x, y, w, h;
+
+    g_assert_true (easel_canvas_text_box (canvas, &x, &y, &w, &h));
+    g_assert_cmpint (y + h, <=, 200);
+    g_assert_cmpint (h, ==, lines_h (2));
+  }
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=10\n\n[text]\nfont=DejaVu Sans\nsize=12\n");
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  use_tool (win, "text");
+  shape_press_move (win, 1, 5, 2, 5, 2);
+  shape_release (win, 1);
+  type_keys (win, "ab");
+  g_assert_true (box_text_is (win, "ab"));                                       /* the first line, taller than the picture */
+  bells = easel_canvas_get_error_bells (canvas);
+  key_taken (win, GDK_KEY_Return, 0);
+  g_assert_true (box_text_is (win, "ab"));
+  g_assert_cmpuint (easel_canvas_get_error_bells (canvas), ==, bells + 1);
+  /* an empty box: Enter past the bottom edge is refused with the bell, and the box stays (only memory closes it, REQ-0017-07) */
+  use_tool (win, "pencil");                                                      /* the box with "ab" closed */
+  use_tool (win, "text");
+  shape_press_move (win, 1, 5, 2, 5, 2);
+  shape_release (win, 1);
+  g_assert_true (box_text_is (win, ""));
+  bells = easel_canvas_get_error_bells (canvas);
+  g_assert_true (key_taken (win, GDK_KEY_Return, 0));
+  g_assert_false (no_box (win));
+  g_assert_true (box_text_is (win, ""));
+  g_assert_cmpuint (easel_canvas_get_error_bells (canvas), ==, bells + 1);
+  close_windows ();
+}
+
+/* AS-7 (REQ-0017-06): with the Pencil's button focused, Space, Enter and the keypad's + and - go into the box (the tool and the line width
+   as they were); Home, Shift+End, Backspace, Ctrl+Left and Ctrl+End move and select as in a GNOME text field; a double-click on "world"
+   selects it, and Delete takes it away. */
+static void
+as7_keys_go_to_box (void)
+{
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  EaselTextBuffer *b;
+  size_t from, to;
+  double x, y;
+  int width;
+
+  write_settings (TEXT_SETTINGS);
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  use_tool (win, "text");
+  width = int_state (win, "line-width");
+  shape_press_move (win, 1, 10, 10, 209, 29);
+  shape_release (win, 1);
+  type_keys (win, "hello world");
+  gtk_widget_grab_focus (GTK_WIDGET (find_tool_button (GTK_WIDGET (win), "pencil")));
+  g_assert_true (key_taken (win, GDK_KEY_space, 0));
+  g_assert_true (key_taken (win, GDK_KEY_Return, 0));
+  g_assert_true (key_taken (win, GDK_KEY_KP_Add, 0));
+  g_assert_true (key_taken (win, GDK_KEY_KP_Subtract, 0));
+  g_assert_true (box_text_is (win, "hello world \n+-"));
+  g_assert_cmpint (easel_window_get_tool (win), ==, EASEL_TOOL_TEXT);
+  g_assert_cmpint (int_state (win, "line-width"), ==, width);
+  b = easel_canvas_text_buffer (canvas);
+  g_assert_true (key_taken (win, GDK_KEY_Home, 0));
+  g_assert_cmpuint (easel_text_buffer_caret (b), ==, 13);                         /* the start of the line "+-" */
+  g_assert_true (key_taken (win, GDK_KEY_End, GDK_SHIFT_MASK));
+  g_assert_true (easel_text_buffer_selection (b, &from, &to) && from == 13 && to == 15);
+  g_assert_true (key_taken (win, GDK_KEY_BackSpace, 0));
+  g_assert_true (box_text_is (win, "hello world \n"));
+  g_assert_true (key_taken (win, GDK_KEY_Left, GDK_CONTROL_MASK));
+  g_assert_cmpuint (easel_text_buffer_caret (b), ==, 6);                          /* the start of "world" */
+  g_assert_true (key_taken (win, GDK_KEY_Left, 0));
+  g_assert_cmpuint (easel_text_buffer_caret (b), ==, 5);
+  g_assert_true (key_taken (win, GDK_KEY_Right, GDK_SHIFT_MASK));
+  g_assert_true (easel_text_buffer_selection (b, &from, &to) && from == 5 && to == 6);
+  g_assert_true (key_taken (win, GDK_KEY_End, GDK_CONTROL_MASK));
+  g_assert_cmpuint (easel_text_buffer_caret (b), ==, 13);
+  g_assert_false (easel_text_buffer_selection (b, &from, &to));
+  /* a double-click inside "world" selects the word; Delete takes it away */
+  easel_canvas_text_point (canvas, 8, &x, &y);
+  easel_canvas_press_timed (canvas, 1, x, y, 1000);
+  easel_canvas_release (canvas, 1);
+  g_assert_cmpuint (easel_text_buffer_caret (b), ==, 8);                          /* a press places the caret */
+  easel_canvas_press_timed (canvas, 1, x, y, 1100);
+  easel_canvas_release (canvas, 1);
+  g_assert_true (easel_text_buffer_selection (b, &from, &to) && from == 6 && to == 11);
+  g_assert_true (key_taken (win, GDK_KEY_Delete, 0));
+  g_assert_true (box_text_is (win, "hello  \n"));
+  g_assert_true (key_taken (win, GDK_KEY_BackSpace, 0));                        /* no selection: the character before the caret */
+  g_assert_true (box_text_is (win, "hello \n"));
+  /* a drag inside the box selects */
+  easel_canvas_text_point (canvas, 0, &x, &y);
+  easel_canvas_press (canvas, 1, x + 0.5, y);
+  easel_canvas_text_point (canvas, 4, &x, &y);
+  easel_canvas_motion (canvas, x + 0.5, y);
+  easel_canvas_release (canvas, 1);
+  g_assert_true (easel_text_buffer_selection (b, &from, &to) && from == 0 && to == 4);
+  close_windows ();
+}
+
+/* AS-24 (REQ-0017-07): without the memory to show the text, a key is refused with the error bell and the box shows its text as it was; in
+   a new box, its first text: the box closes with nothing put down, no step, and "Could Not Add the Text" shows once. */
+static void
+as24_show_memory (void)
+{
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  guint bells;
+
+  write_settings (TEXT_SETTINGS);
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  use_tool (win, "text");
+  shape_press_move (win, 1, 10, 10, 110, 50);
+  shape_release (win, 1);
+  type_keys (win, "ab");
+  easel_canvas_set_text_show_limit (canvas, 10);
+  bells = easel_canvas_get_error_bells (canvas);
+  key_taken (win, GDK_KEY_c, 0);
+  g_assert_true (box_text_is (win, "ab"));
+  g_assert_cmpuint (easel_canvas_get_error_bells (canvas), ==, bells + 1);
+  g_assert_null (open_alert (win));
+  easel_canvas_set_text_show_limit (canvas, SIZE_MAX);
+  shape_press_move (win, 1, 200, 150, 200, 150);                                 /* puts the box down */
+  shape_release (win, 1);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);          /* and its step taken back: no step left */
+  g_assert_false (action_enabled (win, "undo"));
+  shape_press_move (win, 1, 10, 100, 110, 140);
+  shape_release (win, 1);
+  easel_canvas_set_text_show_limit (canvas, 10);
+  key_taken (win, GDK_KEY_a, 0);
+  g_assert_true (no_box (win));
+  g_assert_false (action_enabled (win, "undo"));
+  assert_alert (win, "Could Not Add the Text", "There is not enough memory to show this text.");
+  g_assert_null (open_alert (win));                                              /* once */
+  easel_canvas_set_text_show_limit (canvas, SIZE_MAX);
+  close_windows ();
+}
+
+/* The pixels of the picture's rectangle (10, 10, 101, 41) that are not white: the text a box there put down. */
+static int
+inked_in_box (EaselWindow *win)
+{
+  const EaselImage *img = easel_window_get_picture (win);
+  int n = 0;
+
+  for (int y = 10; y < 51 && y < img->height; y++)
+    for (int x = 10; x < 111 && x < img->width; x++)
+      n += easel_image_get (img, x, y) != 0xFFFFFFFFu;
+  return n;
+}
+
+/* A box (10, 10, 101, 41) with "Hi" typed, in black on the white picture. */
+static void
+box_with_hi (EaselWindow *win)
+{
+  use_tool (win, "text");
+  shape_press_move (win, 1, 10, 10, 110, 50);
+  shape_release (win, 1);
+  type_keys (win, "Hi");
+  g_assert_true (box_text_is (win, "Hi"));
+  g_assert_cmpint (inked_in_box (win), ==, 0);
+}
+
+/* The box was put down: no box, its text in the picture as one step (Undo takes it back whole). */
+static void
+assert_put_down_once (EaselWindow *win)
+{
+  g_assert_true (no_box (win));
+  g_assert_cmpint (inked_in_box (win), >, 0);
+  g_assert_true (easel_window_get_modified (win));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_cmpint (inked_in_box (win), ==, 0);
+  g_assert_false (action_enabled (win, "undo"));
+}
+
+/* AS-17 (REQ-0017-17): an open box with "Hi" is put down (no new box, the action goes on) by a primary and a secondary press outside
+   it, Esc, the Pencil, Save, Save As (its dialog then cancelled: still put down), New and Open (their prompts then cancelled), the
+   Attributes dialog, a primary press on a picture resize handle and Quit (put down, then "Save Changes?"), an Opaque box on the
+   background color; it stays open through a
+   cancelled Paste From, Enter, Select All (all its text selected), Text chosen again, a zoom, a scroll, a window resize and a lost
+   focus, and Esc while a field of the card has the focus (as with the family list open) is not the window's. */
+static void
+as17_put_down_events (void)
+{
+  g_autofree char *dir = g_dir_make_tmp ("easel-ui-XXXXXX", NULL);
+  g_autofree char *path = g_build_filename (dir, "a.png", NULL);
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  GtkAdjustment *v;
+  double hx, hy;
+  size_t from, to;
+  int zoom;
+
+  write_settings (TEXT_SETTINGS);
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  wait_for_layout (win);
+  /* a primary press outside: put down, no new box */
+  box_with_hi (win);
+  shape_press_move (win, 1, 200, 150, 200, 150);
+  shape_release (win, 1);
+  assert_put_down_once (win);
+  /* a secondary press outside */
+  box_with_hi (win);
+  shape_press_move (win, 3, 200, 150, 200, 150);
+  shape_release (win, 3);
+  assert_put_down_once (win);
+  /* Esc */
+  box_with_hi (win);
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+  assert_put_down_once (win);
+  /* the Pencil */
+  box_with_hi (win);
+  use_tool (win, "pencil");
+  g_assert_cmpint (easel_window_get_tool (win), ==, EASEL_TOOL_PENCIL);
+  assert_put_down_once (win);
+  /* Opaque: the box filled with the background color first (REQ-0017-16) */
+  box_with_hi (win);
+  easel_canvas_set_colors (canvas, 0xFF000000u, 0xFFFFFF00u);
+  easel_canvas_set_text_opaque (canvas, TRUE);
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+  g_assert_cmphex (easel_image_get (easel_window_get_picture (win), 109, 49), ==, 0xFFFFFF00u);   /* the box's corner */
+  g_assert_cmphex (easel_image_get (easel_window_get_picture (win), 111, 51), ==, 0xFFFFFFFFu);   /* past it */
+  easel_canvas_set_text_opaque (canvas, FALSE);
+  easel_canvas_set_colors (canvas, 0xFF000000u, 0xFFFFFFFFu);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_cmpint (inked_in_box (win), ==, 0);
+  /* an empty Opaque box: a press outside puts nothing down and adds no step (REQ-0017-16; JOD's M1, 2026-10-26: it left its fill) */
+  use_tool (win, "text");
+  shape_press_move (win, 1, 10, 10, 10, 10);                                     /* a click box, as JOD made it */
+  shape_release (win, 1);
+  g_assert_true (box_text_is (win, ""));
+  easel_canvas_set_colors (canvas, 0xFF000000u, 0xFFFFFF00u);
+  easel_canvas_set_text_opaque (canvas, TRUE);                                   /* after the tool, which syncs the mode */
+  shape_press_move (win, 1, 200, 150, 200, 150);
+  shape_release (win, 1);
+  g_assert_true (no_box (win));
+  g_assert_cmpint (inked_in_box (win), ==, 0);
+  g_assert_false (action_enabled (win, "undo"));
+  easel_canvas_set_text_opaque (canvas, FALSE);
+  easel_canvas_set_colors (canvas, 0xFF000000u, 0xFFFFFFFFu);
+  /* Attributes: put down, then its dialog */
+  box_with_hi (win);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "attributes", NULL);
+  g_assert_true (no_box (win));
+  wait_for_layout (win);
+  g_assert_nonnull (adw_application_window_get_visible_dialog (ADW_APPLICATION_WINDOW (win)));
+  adw_dialog_close (adw_application_window_get_visible_dialog (ADW_APPLICATION_WINDOW (win)));
+  wait_for_layout (win);
+  assert_put_down_once (win);
+  /* a primary press on the picture's corner handle: put down, and the resize starts */
+  box_with_hi (win);
+  handle_center (canvas, EASEL_HANDLE_CORNER, &hx, &hy);
+  easel_canvas_press (canvas, 1, hx, hy);
+  g_assert_true (easel_canvas_is_resizing (canvas));
+  g_assert_true (no_box (win));
+  easel_canvas_release (canvas, 1);
+  assert_put_down_once (win);
+  /* New and Open: put down, then the prompt (cancelled) */
+  box_with_hi (win);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "new", NULL);
+  wait_for_dialogs (win, 1);
+  assert_unsaved_prompt (win, "Untitled");
+  g_assert_true (no_box (win));
+  respond (win, "cancel");
+  assert_put_down_once (win);
+  box_with_hi (win);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "open", NULL);
+  wait_for_dialogs (win, 1);
+  g_assert_true (no_box (win));
+  respond (win, "cancel");
+  assert_put_down_once (win);
+  /* Save As: put down, then its dialog; cancelled, the text stays put down */
+  box_with_hi (win);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "save-as", NULL);
+  wait_for_layout (win);
+  g_assert_nonnull (other_toplevel (win));
+  gtk_window_close (other_toplevel (win));
+  wait_for_layout (win);
+  assert_put_down_once (win);
+  /* Save, to the picture's file: put down, then saved */
+  g_assert_true (easel_window_save_to (win, path));
+  box_with_hi (win);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "save", NULL);
+  g_assert_true (no_box (win));
+  g_assert_cmpint (inked_in_box (win), >, 0);
+  g_assert_false (easel_window_get_modified (win));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_cmpint (inked_in_box (win), ==, 0);
+  /* kept open: a cancelled Paste From, Enter, Select All, Text again, a zoom, a scroll, a window resize, a lost focus */
+  box_with_hi (win);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "paste-from", NULL);
+  for (gint64 deadline = g_get_monotonic_time () + 3 * G_USEC_PER_SEC; other_toplevel (win) == NULL && g_get_monotonic_time () < deadline;)
+    g_main_context_iteration (NULL, FALSE);
+  g_assert_nonnull (other_toplevel (win));
+  gtk_window_close (other_toplevel (win));
+  wait_for_layout (win);
+  g_assert_true (box_text_is (win, "Hi"));
+  g_assert_true (key_taken (win, GDK_KEY_Return, 0));
+  g_assert_true (box_text_is (win, "Hi\n"));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "select-all", NULL);
+  g_assert_cmpint (easel_window_get_tool (win), ==, EASEL_TOOL_TEXT);
+  g_assert_true (box_text_is (win, "Hi\n"));
+  g_assert_true (easel_text_buffer_selection (easel_canvas_text_buffer (canvas), &from, &to));
+  g_assert_cmpuint (from, ==, 0);
+  g_assert_cmpuint (to, ==, 3);
+  use_tool (win, "text");
+  zoom = easel_window_get_zoom (win);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-in", NULL);
+  wait_for_layout (win);
+  g_assert_cmpint (easel_window_get_zoom (win), >, zoom);
+  v = gtk_scrollable_get_vadjustment (GTK_SCROLLABLE (gtk_widget_get_parent (GTK_WIDGET (canvas))));
+  gtk_adjustment_set_value (v, gtk_adjustment_get_value (v) + 10);
+  gtk_window_set_default_size (GTK_WINDOW (win), 700, 500);
+  wait_for_layout (win);
+  gtk_widget_grab_focus (GTK_WIDGET (easel_window_get_tool_options (win)));
+  wait_for_layout (win);
+  g_assert_true (box_text_is (win, "Hi\n"));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-normal", NULL);
+  wait_for_layout (win);
+  /* Esc while a field of the card has the focus (the family's list likewise): the field's, not the window's; the box stays open */
+  gtk_widget_grab_focus (GTK_WIDGET (easel_font_card_get_size (easel_window_get_font_card (win))));
+  g_assert_false (key_taken (win, GDK_KEY_Escape, 0));
+  g_assert_true (box_text_is (win, "Hi\n"));
+  easel_font_card_cancel_field (easel_window_get_font_card (win));
+  /* Quit with the picture modified: put down, then "Save Changes?" */
+  gtk_window_close (GTK_WINDOW (win));
+  wait_for_dialogs (win, 1);
+  assert_unsaved_prompt (win, "a.png");
+  g_assert_true (no_box (win));
+  g_assert_cmpint (inked_in_box (win), >, 0);
+  respond (win, "cancel");
+  close_windows ();
+}
+
+#define TEXT_ADD_HEADING "Could Not Add the Text"
+#define TEXT_ADD_BODY "There is not enough memory to add this text."
+
+/* AS-18 (REQ-0017-18): without the memory for the put-down's step, a press outside, Esc, the Pencil, Save, a press on a resize handle,
+   Attributes, Paste From and Quit each show "Could Not Add the Text" with "There is not enough memory to add this text."; the picture is unchanged, the box open with its text, Text the
+   tool, no new box, nothing saved and the window still there. With the memory back, the box is put down. */
+static void
+as18_put_down_memory (void)
+{
+  g_autofree char *dir = g_dir_make_tmp ("easel-ui-XXXXXX", NULL);
+  g_autofree char *path = g_build_filename (dir, "a.png", NULL);
+  g_autofree char *saved = NULL;
+  gsize saved_len;
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  GWeakRef ref;
+
+  write_settings (TEXT_SETTINGS);
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  wait_for_layout (win);
+  g_assert_true (easel_window_save_to (win, path));
+  g_assert_true (g_file_get_contents (path, &saved, &saved_len, NULL));
+  box_with_hi (win);
+  easel_canvas_set_text_step_limit (canvas, 0);
+  /* a press outside: no new box */
+  shape_press_move (win, 1, 200, 150, 260, 190);
+  shape_release (win, 1);
+  assert_alert (win, TEXT_ADD_HEADING, TEXT_ADD_BODY);
+  g_assert_true (box_is (win, 10, 10, 101, 41));
+  g_assert_true (box_text_is (win, "Hi"));
+  g_assert_cmpint (inked_in_box (win), ==, 0);
+  /* Esc */
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+  assert_alert (win, TEXT_ADD_HEADING, TEXT_ADD_BODY);
+  g_assert_true (box_text_is (win, "Hi"));
+  /* the Pencil: Text stays the tool */
+  use_tool (win, "pencil");
+  assert_alert (win, TEXT_ADD_HEADING, TEXT_ADD_BODY);
+  g_assert_cmpint (easel_window_get_tool (win), ==, EASEL_TOOL_TEXT);
+  g_assert_true (box_text_is (win, "Hi"));
+  /* Save: nothing saved (the file removed first, so that a save would make it again) */
+  g_assert_cmpint (g_unlink (path), ==, 0);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "save", NULL);
+  assert_alert (win, TEXT_ADD_HEADING, TEXT_ADD_BODY);
+  g_assert_false (g_file_test (path, G_FILE_TEST_EXISTS));
+  g_assert_true (g_file_set_contents (path, saved, saved_len, NULL));
+  g_assert_true (box_text_is (win, "Hi"));
+  /* a press on the picture's corner handle: no resize */
+  {
+    double hx, hy;
+
+    handle_center (canvas, EASEL_HANDLE_CORNER, &hx, &hy);
+    easel_canvas_press (canvas, 1, hx, hy);
+    assert_alert (win, TEXT_ADD_HEADING, TEXT_ADD_BODY);
+    g_assert_false (easel_canvas_is_resizing (canvas));
+    easel_canvas_release (canvas, 1);
+  }
+  /* Attributes: not shown */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "attributes", NULL);
+  assert_alert (win, TEXT_ADD_HEADING, TEXT_ADD_BODY);
+  g_assert_null (adw_application_window_get_visible_dialog (ADW_APPLICATION_WINDOW (win)));
+  /* Paste From, once its file is read: the read picture dropped, Text still the tool */
+  {
+    g_autofree char *small = g_build_filename (dir, "small.png", NULL);
+    g_autoptr (EaselImage) pic = easel_image_new (4, 3, 0xFFFF0000u);
+    g_autoptr (GFile) file = g_file_new_for_path (small);
+    int x, y, w, h;
+    gboolean floating;
+
+    g_assert_true (easel_picture_save (pic, small, EASEL_FORMAT_PNG, 90, NULL));
+    easel_window_paste_from_file (win, file);
+    assert_alert (win, TEXT_ADD_HEADING, TEXT_ADD_BODY);
+    g_assert_cmpint (easel_window_get_tool (win), ==, EASEL_TOOL_TEXT);
+    g_assert_false (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+    g_assert_true (box_text_is (win, "Hi"));
+  }
+  /* Quit: no prompt, the window stays */
+  g_weak_ref_init (&ref, win);
+  gtk_window_close (GTK_WINDOW (win));
+  {
+    gpointer still = g_weak_ref_get (&ref);
+
+    g_assert_true (still == (gpointer) win);                                     /* the quit stopped: the window is still there */
+    g_object_unref (still);
+  }
+  g_weak_ref_clear (&ref);
+  assert_alert (win, TEXT_ADD_HEADING, TEXT_ADD_BODY);
+  g_assert_true (gtk_widget_get_visible (GTK_WIDGET (win)));
+  g_assert_true (box_text_is (win, "Hi"));
+  g_assert_cmpint (inked_in_box (win), ==, 0);
+  g_assert_false (easel_window_get_modified (win));
+  /* the memory back: put down */
+  easel_canvas_set_text_step_limit (canvas, SIZE_MAX);
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+  g_assert_true (no_box (win));
+  g_assert_cmpint (inked_in_box (win), >, 0);
+  close_windows ();
+}
+
+/* The height of `text` in DejaVu Sans 12 laid out at `width` picture pixels as the box lays it out (wrapping between words, inside a word
+   longer than the width), measured with a layout of the test's own. */
+static int
+text_height_at (const char *text, int width)
+{
+  PangoContext *ctx = pango_font_map_create_context (pango_cairo_font_map_get_default ());
+  cairo_font_options_t *fo = cairo_font_options_create ();
+  PangoLayout *layout;
+  PangoFontDescription *fd = pango_font_description_from_string ("DejaVu Sans 12");
+  PangoRectangle logical;
+
+  cairo_font_options_set_antialias (fo, CAIRO_ANTIALIAS_GRAY);
+  cairo_font_options_set_hint_style (fo, CAIRO_HINT_STYLE_NONE);
+  cairo_font_options_set_hint_metrics (fo, CAIRO_HINT_METRICS_OFF);
+  pango_cairo_context_set_font_options (ctx, fo);
+  pango_cairo_context_set_resolution (ctx, 96);
+  pango_context_set_round_glyph_positions (ctx, FALSE);
+  layout = pango_layout_new (ctx);
+  pango_layout_set_font_description (layout, fd);
+  pango_layout_set_text (layout, text, -1);
+  pango_layout_set_width (layout, width * PANGO_SCALE);
+  pango_layout_set_wrap (layout, PANGO_WRAP_WORD_CHAR);
+  pango_layout_get_extents (layout, NULL, &logical);
+  pango_font_description_free (fd);
+  cairo_font_options_destroy (fo);
+  g_object_unref (layout);
+  g_object_unref (ctx);
+  return (int) ceil ((double) logical.height / PANGO_SCALE);
+}
+
+/* The center of the open box's handle `handle`, in canvas coordinates. */
+static void
+box_handle_center (EaselWindow *win, EaselSelHandle handle, double *x, double *y)
+{
+  graphene_rect_t r;
+
+  g_assert_true (easel_canvas_get_selection_handle_rect (easel_window_get_canvas (win), handle, &r));
+  *x = r.origin.x + r.size.width / 2;
+  *y = r.origin.y + r.size.height / 2;
+}
+
+/* AS-9 (REQ-0017-09, REQ-0017-11): the box (50, 50, 100, 40) with "ab"; a press 2 logical pixels above its top edge at x 75 (the band)
+   dragged by (+30, +20) moves it to (80, 70, 100, 40), its text unchanged, as one edit (Undo takes it back, Redo again); dragged far
+   left it stops at x 0; the other button, Esc and Undo during a move put it back as at the press and add no edit; a press inside at
+   (75, 52) places the caret; the arrow keys move the caret and not the box. */
+static void
+as9_move_band (void)
+{
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  EaselTextBuffer *b;
+  double x, y, x1, y1;
+
+  write_settings (TEXT_SETTINGS);
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  use_tool (win, "text");
+  shape_press_move (win, 1, 50, 50, 149, 89);
+  shape_release (win, 1);
+  g_assert_true (box_is (win, 50, 50, 100, 40));
+  type_keys (win, "ab");
+  b = easel_canvas_text_buffer (canvas);
+  /* a move by the band */
+  canvas_point (win, 75.5, 50, &x, &y);
+  canvas_point (win, 105.5, 70, &x1, &y1);
+  easel_canvas_press (canvas, 1, x, y - 2);
+  g_assert_true (easel_canvas_is_stroking (canvas));
+  easel_canvas_motion (canvas, x1, y1 - 2);
+  g_assert_true (box_is (win, 80, 70, 100, 40));                                 /* it follows the pointer */
+  easel_canvas_release (canvas, 1);
+  g_assert_false (easel_canvas_is_stroking (canvas));
+  g_assert_true (box_is (win, 80, 70, 100, 40));
+  g_assert_true (box_text_is (win, "ab"));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_true (box_is (win, 50, 50, 100, 40));
+  g_assert_true (box_text_is (win, "ab"));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "redo", NULL);
+  g_assert_true (box_is (win, 80, 70, 100, 40));
+  /* far left: it stops at x 0 */
+  canvas_point (win, 105.5, 70, &x, &y);
+  canvas_point (win, -200, 70, &x1, &y1);
+  easel_canvas_press (canvas, 1, x, y - 2);
+  easel_canvas_motion (canvas, x1, y1 - 2);
+  easel_canvas_release (canvas, 1);
+  g_assert_true (box_is (win, 0, 70, 100, 40));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_true (box_is (win, 80, 70, 100, 40));
+  /* cancelled by the other button, Esc and Undo: back as at the press, no edit added */
+  for (int way = 0; way < 3; way++)
+    {
+      canvas_point (win, 105.5, 70, &x, &y);
+      canvas_point (win, 125.5, 90, &x1, &y1);
+      easel_canvas_press (canvas, 1, x, y - 2);
+      easel_canvas_motion (canvas, x1, y1 - 2);
+      g_assert_true (box_is (win, 100, 90, 100, 40));
+      if (way == 0)
+        easel_canvas_press (canvas, 3, x1, y1 - 2);
+      else if (way == 1)
+        g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+      else
+        g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+      g_assert_true (box_is (win, 80, 70, 100, 40));
+      easel_canvas_motion (canvas, x1 + 10, y1);
+      g_assert_true (box_is (win, 80, 70, 100, 40));                             /* the held button moves nothing more */
+      if (way == 0)
+        easel_canvas_release (canvas, 3);
+      easel_canvas_release (canvas, 1);
+      g_assert_true (box_is (win, 80, 70, 100, 40));
+      g_assert_true (box_text_is (win, "ab"));
+    }
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);          /* the move to (80, 70): the cancels added none */
+  g_assert_true (box_is (win, 50, 50, 100, 40));
+  /* a press inside places the caret; the arrows move the caret, not the box */
+  canvas_point (win, 51, 52.5, &x, &y);
+  easel_canvas_press (canvas, 1, x, y);
+  easel_canvas_release (canvas, 1);
+  g_assert_cmpuint (easel_text_buffer_caret (b), ==, 0);
+  g_assert_true (key_taken (win, GDK_KEY_Right, 0));
+  g_assert_cmpuint (easel_text_buffer_caret (b), ==, 1);
+  g_assert_true (key_taken (win, GDK_KEY_Down, 0));
+  g_assert_true (box_is (win, 50, 50, 100, 40));
+  close_windows ();
+}
+
+#define AS10_TEXT "ab ab ab ab ab ab"
+
+/* AS-10 (REQ-0017-10, REQ-0017-09): the box (50, 50, 100, 40) with a line of words; its right handle dragged by -50: 50 wide, the text
+   wrapped to more lines and the box grown to it toward larger y (the letters keep their size: the height is the layout's at 50); the
+   bottom handle dragged up past the text: the box keeps its text's height; one edit each; near the bottom edge the right handle dragged
+   far left stops at the last width whose text stays above y 200, and from the left handle with the right edge kept; a press in the part
+   of the box its text grew below the set height places the caret; the box (200, 80, 100, 40), its right handle where the picture's right
+   handle is: a press 2 logical pixels outside the picture takes the box's handle, a press at (299, 100) places the caret; a secondary
+   press on a box handle does nothing. */
+static void
+as10_box_handles (void)
+{
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  EaselTextBuffer *b;
+  double x, y;
+  int bx, by, bw, bh;
+
+  write_settings (TEXT_SETTINGS);
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  use_tool (win, "text");
+  shape_press_move (win, 1, 50, 50, 149, 89);
+  shape_release (win, 1);
+  type_keys (win, AS10_TEXT);
+  g_assert_cmpint (text_height_at (AS10_TEXT, 100), <=, 40);
+  g_assert_cmpint (text_height_at (AS10_TEXT, 50), >, 40);
+  g_assert_true (box_is (win, 50, 50, 100, 40));
+  /* the right handle by -50 */
+  box_handle_center (win, EASEL_SEL_HANDLE_R, &x, &y);
+  easel_canvas_press (canvas, 1, x, y);
+  g_assert_false (easel_canvas_is_resizing (canvas));
+  easel_canvas_motion (canvas, x - 50, y);
+  easel_canvas_release (canvas, 1);
+  g_assert_true (box_is (win, 50, 50, 50, text_height_at (AS10_TEXT, 50)));
+  g_assert_true (box_text_is (win, AS10_TEXT));
+  /* a press in the part the text grew below the set height is inside the box: it places the caret */
+  canvas_point (win, 51, 50 + text_height_at (AS10_TEXT, 50) - 3, &x, &y);
+  easel_canvas_press (canvas, 1, x, y);
+  easel_canvas_release (canvas, 1);
+  g_assert_true (box_is (win, 50, 50, 50, text_height_at (AS10_TEXT, 50)));
+  g_assert_cmpuint (easel_text_buffer_caret (easel_canvas_text_buffer (canvas)), >, 0);
+  /* the bottom handle up past the text: the box keeps the text's height */
+  box_handle_center (win, EASEL_SEL_HANDLE_B, &x, &y);
+  easel_canvas_press (canvas, 1, x, y);
+  easel_canvas_motion (canvas, x, y - 60);
+  easel_canvas_release (canvas, 1);
+  g_assert_true (box_is (win, 50, 50, 50, text_height_at (AS10_TEXT, 50)));
+  /* each was one edit */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_true (box_is (win, 50, 50, 50, text_height_at (AS10_TEXT, 50)));      /* the set height back to 40: still the text's */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_true (box_is (win, 50, 50, 100, 40));
+  /* near the bottom edge: the right handle stops at the last width whose text fits above y 200 */
+  shape_press_move (win, 1, 250, 20, 250, 20);                                   /* puts it down */
+  shape_release (win, 1);
+  shape_press_move (win, 1, 50, 140, 149, 159);
+  shape_release (win, 1);
+  type_keys (win, AS10_TEXT);
+  box_handle_center (win, EASEL_SEL_HANDLE_R, &x, &y);
+  easel_canvas_press (canvas, 1, x, y);
+  easel_canvas_motion (canvas, x - 95, y);
+  easel_canvas_release (canvas, 1);
+  g_assert_true (easel_canvas_text_box (canvas, &bx, &by, &bw, &bh));
+  g_assert_cmpint (bx, ==, 50);
+  g_assert_cmpint (by, ==, 140);
+  g_assert_cmpint (by + text_height_at (AS10_TEXT, bw), <=, 200);
+  g_assert_cmpint (by + text_height_at (AS10_TEXT, bw - 1), >, 200);           /* one pixel narrower would pass the edge */
+  g_assert_cmpint (bh, ==, MAX (20, text_height_at (AS10_TEXT, bw)));
+  /* the same from the left handle: the right edge stays */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_true (box_is (win, 50, 140, 100, 20 > text_height_at (AS10_TEXT, 100) ? 20 : text_height_at (AS10_TEXT, 100)));
+  box_handle_center (win, EASEL_SEL_HANDLE_L, &x, &y);
+  easel_canvas_press (canvas, 1, x, y);
+  easel_canvas_motion (canvas, x + 95, y);
+  easel_canvas_release (canvas, 1);
+  g_assert_true (easel_canvas_text_box (canvas, &bx, &by, &bw, &bh));
+  g_assert_cmpint (bx + bw, ==, 150);
+  g_assert_cmpint (by + text_height_at (AS10_TEXT, bw), <=, 200);
+  g_assert_cmpint (by + text_height_at (AS10_TEXT, bw - 1), >, 200);
+  /* a box whose right handle is where the picture's right handle is */
+  shape_press_move (win, 1, 250, 20, 250, 20);
+  shape_release (win, 1);
+  shape_press_move (win, 1, 200, 80, 299, 119);
+  shape_release (win, 1);
+  g_assert_true (box_is (win, 200, 80, 100, 40));
+  b = easel_canvas_text_buffer (canvas);
+  type_keys (win, "ab");
+  canvas_point (win, 300, 100.5, &x, &y);
+  easel_canvas_press (canvas, 1, x + 2, y);                                      /* 2 logical pixels outside the picture */
+  g_assert_false (easel_canvas_is_resizing (canvas));
+  g_assert_true (easel_canvas_is_stroking (canvas));
+  easel_canvas_motion (canvas, x - 18, y);
+  easel_canvas_release (canvas, 1);
+  g_assert_true (box_is (win, 200, 80, 80, 40));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_true (box_is (win, 200, 80, 100, 40));
+  /* dragged out past the picture's right edge: the box stays inside it */
+  easel_canvas_press (canvas, 1, x + 2, y);
+  easel_canvas_motion (canvas, x + 60, y);
+  easel_canvas_release (canvas, 1);
+  g_assert_true (box_is (win, 200, 80, 100, 40));
+  g_assert_true (action_enabled (win, "redo"));                                  /* no edit added: the resize undone above is still there */
+  canvas_point (win, 299.5, 100.5, &x, &y);                                     /* 1 pixel inside the picture: the text */
+  easel_canvas_press (canvas, 1, x, y);
+  g_assert_false (easel_canvas_is_resizing (canvas));
+  easel_canvas_release (canvas, 1);
+  g_assert_true (box_is (win, 200, 80, 100, 40));
+  g_assert_cmpuint (easel_text_buffer_caret (b), ==, 2);
+  /* a secondary press on a box handle: nothing */
+  box_handle_center (win, EASEL_SEL_HANDLE_B, &x, &y);
+  easel_canvas_press (canvas, 3, x, y);
+  easel_canvas_motion (canvas, x, y + 20);
+  easel_canvas_release (canvas, 3);
+  g_assert_true (box_is (win, 200, 80, 100, 40));
+  g_assert_true (box_text_is (win, "ab"));
+  close_windows ();
+}
+
+/* The style of the run that holds byte `at` of the open box's text. */
+static EaselTextStyle
+run_style_at (EaselWindow *win, size_t at)
+{
+  size_t n;
+  const EaselTextRun *runs = easel_text_buffer_runs (easel_canvas_text_buffer (easel_window_get_canvas (win)), &n);
+  size_t i = 0;
+
+  g_assert_cmpuint (n, >, 0);
+  while (i + 1 < n && runs[i + 1].start <= at)
+    i++;
+  return runs[i].style;
+}
+
+/* AS-11 (REQ-0017-12, REQ-0017-14), the ui part, through what the card calls: "abc def" with "def" selected set to 24 and to Bold: "def"
+   is 24 and bold, "abc " not, as one edit each; with "c d" selected the style shows its size and Bold as mixed (the card's empty size,
+   Bold off), and the card shows that: an empty size and Bold off, and for "def" 24 and Bold on; the caret after "abc " with nothing
+   selected, Ctrl+I then "x": only "x" is italic. */
+static void
+as11_card_shows_style (void)
+{
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  EaselTextBuffer *b;
+  EaselTextStyle v = { 0 }, st;
+  unsigned mixed;
+
+  write_settings (TEXT_SETTINGS);
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  use_tool (win, "text");
+  shape_press_move (win, 1, 10, 10, 150, 80);
+  shape_release (win, 1);
+  type_keys (win, "abc def");
+  b = easel_canvas_text_buffer (canvas);
+  easel_text_buffer_select (b, 4, 7);
+  v.size_pt = 24;
+  g_assert_true (easel_canvas_text_apply (canvas, EASEL_TEXT_SIZE, &v));
+  v.flags = EASEL_TEXT_BOLD;
+  g_assert_true (easel_canvas_text_apply (canvas, EASEL_TEXT_FLAG_BOLD, &v));
+  g_assert_cmpint (run_style_at (win, 5).size_pt, ==, 24);
+  g_assert_cmpint (run_style_at (win, 5).flags, ==, EASEL_TEXT_BOLD);
+  g_assert_cmpint (run_style_at (win, 1).size_pt, ==, 12);
+  g_assert_cmpint (run_style_at (win, 3).flags, ==, 0);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);          /* the Bold */
+  g_assert_cmpint (run_style_at (win, 5).flags, ==, 0);
+  g_assert_cmpint (run_style_at (win, 5).size_pt, ==, 24);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);          /* the size */
+  g_assert_cmpint (run_style_at (win, 5).size_pt, ==, 12);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "redo", NULL);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "redo", NULL);
+  g_assert_cmpint (run_style_at (win, 5).flags, ==, EASEL_TEXT_BOLD);
+  /* "c d": its size and Bold differ */
+  easel_text_buffer_select (b, 2, 5);
+  easel_canvas_text_selection_style (canvas, &st, &mixed);
+  g_assert_true (mixed & EASEL_TEXT_SIZE);
+  g_assert_true (mixed & EASEL_TEXT_FLAG_BOLD);
+  g_assert_false (mixed & EASEL_TEXT_FAMILY);
+  easel_canvas_text_edited (canvas);                                             /* the card follows the box */
+  g_assert_cmpstr (gtk_editable_get_text (GTK_EDITABLE (easel_font_card_get_size (easel_window_get_font_card (win)))), ==, "");
+  g_assert_false (gtk_toggle_button_get_active (easel_font_card_get_toggle (easel_window_get_font_card (win), EASEL_TEXT_BOLD)));
+  g_assert_cmpstr (easel_font_card_get_family_text (easel_window_get_font_card (win)), ==, "DejaVu Sans");
+  gtk_widget_grab_focus (GTK_WIDGET (easel_font_card_get_size (easel_window_get_font_card (win))));
+  g_signal_emit_by_name (easel_font_card_get_size (easel_window_get_font_card (win)), "activate");   /* the empty field: nothing */
+  g_assert_cmpint (run_style_at (win, 2).size_pt, ==, 12);
+  g_assert_cmpint (run_style_at (win, 4).size_pt, ==, 24);
+  easel_text_buffer_select (b, 4, 7);
+  easel_canvas_text_edited (canvas);
+  g_assert_cmpstr (gtk_editable_get_text (GTK_EDITABLE (easel_font_card_get_size (easel_window_get_font_card (win)))), ==, "24");
+  g_assert_true (gtk_toggle_button_get_active (easel_font_card_get_toggle (easel_window_get_font_card (win), EASEL_TEXT_BOLD)));
+  /* the same by the mouse (JOD's M1, 2026-10-26: a drag showed the size where it started): a press on "d" shows its style, a drag
+     back over "c d" shows the size empty */
+  {
+    double x0, y0, x1, y1;
+
+    easel_canvas_text_point (canvas, 5, &x0, &y0);
+    easel_canvas_text_point (canvas, 2, &x1, &y1);
+    easel_canvas_press_timed (canvas, 1, x0, y0, 500000);
+    g_assert_cmpstr (gtk_editable_get_text (GTK_EDITABLE (easel_font_card_get_size (easel_window_get_font_card (win)))), ==, "24");
+    easel_canvas_motion (canvas, x1, y1);
+    easel_canvas_release (canvas, 1);
+    g_assert_cmpstr (gtk_editable_get_text (GTK_EDITABLE (easel_font_card_get_size (easel_window_get_font_card (win)))), ==, "");
+  }
+  /* Ctrl+I with nothing selected, then "x" */
+  easel_text_buffer_select (b, 4, 4);
+  g_assert_true (key_taken (win, GDK_KEY_i, GDK_CONTROL_MASK));
+  type_keys (win, "x");
+  g_assert_true (box_text_is (win, "abc xdef"));
+  g_assert_cmpint (run_style_at (win, 4).flags, ==, EASEL_TEXT_ITALIC);
+  g_assert_cmpint (run_style_at (win, 3).flags, ==, 0);
+  g_assert_cmpint (run_style_at (win, 5).flags, ==, EASEL_TEXT_BOLD);
+  /* Ctrl+B on a selection only partly bold makes it all bold; on one all bold, none; Ctrl+U Underline */
+  easel_text_buffer_select (b, 4, 8);
+  g_assert_true (key_taken (win, GDK_KEY_b, GDK_CONTROL_MASK));
+  g_assert_cmpint (run_style_at (win, 4).flags, ==, EASEL_TEXT_BOLD | EASEL_TEXT_ITALIC);
+  g_assert_cmpint (run_style_at (win, 6).flags, ==, EASEL_TEXT_BOLD);
+  easel_text_buffer_select (b, 5, 8);
+  g_assert_true (key_taken (win, GDK_KEY_b, GDK_CONTROL_MASK));
+  g_assert_cmpint (run_style_at (win, 6).flags, ==, 0);
+  easel_text_buffer_select (b, 0, 1);                                            /* "a" bold, then "ab": starting bold, partly */
+  g_assert_true (key_taken (win, GDK_KEY_b, GDK_CONTROL_MASK));
+  easel_text_buffer_select (b, 0, 2);
+  g_assert_true (key_taken (win, GDK_KEY_b, GDK_CONTROL_MASK));
+  g_assert_cmpint (run_style_at (win, 0).flags, ==, EASEL_TEXT_BOLD);
+  g_assert_cmpint (run_style_at (win, 1).flags, ==, EASEL_TEXT_BOLD);
+  easel_text_buffer_select (b, 5, 8);
+  g_assert_true (key_taken (win, GDK_KEY_u, GDK_CONTROL_MASK));
+  g_assert_cmpint (run_style_at (win, 6).flags, ==, EASEL_TEXT_UNDERLINE);
+  /* at the start of a line made by Enter a change with nothing selected takes the next character's style as its base (REQ-0017-26) */
+  easel_text_buffer_select (b, 8, 8);
+  type_keys (win, "\n");
+  v.size_pt = 30;
+  easel_text_buffer_select (b, 9, 9);
+  type_keys (win, "q");
+  easel_text_buffer_select (b, 9, 10);
+  g_assert_true (easel_canvas_text_apply (canvas, EASEL_TEXT_SIZE, &v));        /* the new line's "q" at 30 */
+  easel_text_buffer_select (b, 9, 9);
+  g_assert_true (key_taken (win, GDK_KEY_i, GDK_CONTROL_MASK));
+  type_keys (win, "y");
+  g_assert_cmpint (run_style_at (win, 9).size_pt, ==, 30);
+  g_assert_cmpint (run_style_at (win, 9).flags & EASEL_TEXT_ITALIC, ==, EASEL_TEXT_ITALIC);
+  /* AS-8 (F4 of the check): Ctrl+B with nothing selected, then "z": only "z" is bold, and the Ctrl+B was no edit of its own */
+  easel_text_buffer_select (b, 10, 10);
+  g_assert_true (key_taken (win, GDK_KEY_b, GDK_CONTROL_MASK));
+  g_assert_true (box_text_is (win, "abc xdef\nyq"));
+  type_keys (win, "z");
+  g_assert_true (box_text_is (win, "abc xdef\nyzq"));
+  g_assert_cmpint (run_style_at (win, 9).flags & EASEL_TEXT_BOLD, ==, 0);
+  g_assert_cmpint (run_style_at (win, 10).flags, ==, run_style_at (win, 9).flags | EASEL_TEXT_BOLD);   /* "y"'s style, bold */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);          /* the "z" alone */
+  g_assert_true (box_text_is (win, "abc xdef\nyq"));
+  g_assert_cmpint (run_style_at (win, 9).flags & EASEL_TEXT_BOLD, ==, 0);
+  /* the family is the box's own copy of the name */
+  {
+    g_autofree char *name = g_strdup ("DejaVu Serif");
+
+    easel_text_buffer_select (b, 0, 1);
+    v.family = name;
+    g_assert_true (easel_canvas_text_apply (canvas, EASEL_TEXT_FAMILY, &v));
+    name[0] = 'X';
+    g_assert_cmpstr (run_style_at (win, 0).family, ==, "DejaVu Serif");
+  }
+  /* the card for "abc": "a" and "b" bold, "c" not, and two families: Bold off, the family field empty */
+  easel_text_buffer_select (b, 0, 3);
+  easel_canvas_text_edited (canvas);
+  g_assert_false (gtk_toggle_button_get_active (easel_font_card_get_toggle (easel_window_get_font_card (win), EASEL_TEXT_BOLD)));
+  g_assert_cmpstr (easel_font_card_get_family_text (easel_window_get_font_card (win)), ==, "");
+  close_windows ();
+}
+
+/* AS-12 (REQ-0017-12): the first box of a run starts in the settings' style; the last box put down with the caret in DejaVu Serif 18
+   bold: a new box by a click starts in DejaVu Serif 18 bold in the foreground color, twenty widths of its "0" wide; the last box closed
+   by Undo with DejaVu Sans Mono set at its caret: the next box starts in DejaVu Sans Mono. */
+static void
+as12_starting_style (void)
+{
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  EaselTextStyle v = { 0 }, st;
+  int bx, by, bw, bh, line_h, twenty;
+
+  write_settings ("[new-picture]\nwidth=600\nheight=200\ncanvas-color=#FFFFFF\n\n[text]\nfont=DejaVu Sans\nsize=12\n");   /* room for its width */
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  use_tool (win, "text");
+  shape_press_move (win, 1, 10, 10, 10, 10);
+  shape_release (win, 1);
+  easel_canvas_text_style_at_caret (canvas, &st);
+  g_assert_cmpstr (st.family, ==, "DejaVu Sans");
+  g_assert_cmpint (st.size_pt, ==, 12);
+  g_assert_cmpint (st.flags, ==, 0);
+  /* DejaVu Serif 18 bold at the caret, typed, put down */
+  v.family = "DejaVu Serif";
+  g_assert_true (easel_canvas_text_apply (canvas, EASEL_TEXT_FAMILY, &v));
+  v.size_pt = 18;
+  g_assert_true (easel_canvas_text_apply (canvas, EASEL_TEXT_SIZE, &v));
+  v.flags = EASEL_TEXT_BOLD;
+  g_assert_true (easel_canvas_text_apply (canvas, EASEL_TEXT_FLAG_BOLD, &v));
+  type_keys (win, "ab");
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+  g_assert_true (no_box (win));
+  /* a new box by a click */
+  easel_palette_bar_press (easel_window_get_palette_bar (win), 21, 1, 1);      /* blue */
+  shape_press_move (win, 1, 10, 100, 10, 100);
+  shape_release (win, 1);
+  easel_canvas_text_style_at_caret (canvas, &st);
+  g_assert_cmpstr (st.family, ==, "DejaVu Serif");
+  g_assert_cmpint (st.size_pt, ==, 18);
+  g_assert_cmpint (st.flags, ==, EASEL_TEXT_BOLD);
+  g_assert_cmphex (st.color, ==, 0xFF0000FFu);                                   /* the foreground when it is made */
+  easel_text_render_metrics (&st, &line_h, &twenty);
+  g_assert_true (easel_canvas_text_box (canvas, &bx, &by, &bw, &bh));
+  g_assert_cmpint (bw, ==, twenty);
+  /* DejaVu Sans Mono set at its caret, the box closed by Undo */
+  v.family = "DejaVu Sans Mono";
+  g_assert_true (easel_canvas_text_apply (canvas, EASEL_TEXT_FAMILY, &v));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_true (no_box (win));
+  shape_press_move (win, 1, 10, 150, 10, 150);
+  shape_release (win, 1);
+  easel_canvas_text_style_at_caret (canvas, &st);
+  g_assert_cmpstr (st.family, ==, "DejaVu Sans Mono");
+  close_windows ();
+}
+
+/* AS-13 (REQ-0017-13, REQ-0017-02): an empty box, red picked, "red" typed, blue picked, " blue" typed: "red" red, " blue" blue; the
+   caret moved into "red" and "x" typed: "x" red, the foreground still blue; "blue" selected and the green swatch pressed: "blue" green
+   as one edit, the foreground green; the colors swapped: no text changes; Opaque with a yellow background: yellow behind the text, then
+   green after a green background pick; Transparent: the picture shows through. */
+static void
+as13_text_color (void)
+{
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  EaselPaletteBar *pal;
+  EaselTextBuffer *b;
+  g_autofree uint32_t *px = NULL;
+  int w, h, cx, cy, bx, by, bw, bh;
+
+  g_object_get (gtk_settings_get_default (), "gtk-cursor-blink", &blink_at_start, NULL);
+  caret_blink (FALSE);
+  write_settings (TEXT_SETTINGS);
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  pal = easel_window_get_palette_bar (win);
+  use_tool (win, "text");
+  shape_press_move (win, 1, 10, 10, 110, 50);
+  shape_release (win, 1);
+  b = easel_canvas_text_buffer (canvas);
+  easel_palette_bar_press (pal, 17, 1, 1);                                       /* red: the empty box takes it */
+  type_keys (win, "red");
+  easel_palette_bar_press (pal, 21, 1, 1);                                       /* blue, nothing selected */
+  type_keys (win, " blue");
+  g_assert_cmphex (run_style_at (win, 1).color, ==, 0xFFFF0000u);
+  g_assert_cmphex (run_style_at (win, 5).color, ==, 0xFF0000FFu);
+  g_assert_false (easel_text_buffer_can_redo (b));
+  /* the caret into "red", "x" typed */
+  easel_text_buffer_select (b, 1, 1);
+  type_keys (win, "x");
+  g_assert_true (box_text_is (win, "rxed blue"));
+  g_assert_cmphex (run_style_at (win, 1).color, ==, 0xFFFF0000u);
+  g_assert_cmphex (easel_window_get_foreground (win), ==, 0xFF0000FFu);
+  /* "blue" selected, green pressed: one edit */
+  easel_text_buffer_select (b, 5, 9);
+  easel_palette_bar_press (pal, 19, 1, 1);
+  g_assert_cmphex (run_style_at (win, 6).color, ==, 0xFF00FF00u);
+  g_assert_cmphex (run_style_at (win, 4).color, ==, 0xFF0000FFu);
+  g_assert_cmphex (easel_window_get_foreground (win), ==, 0xFF00FF00u);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_cmphex (run_style_at (win, 6).color, ==, 0xFF0000FFu);
+  g_assert_true (box_text_is (win, "rxed blue"));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "redo", NULL);
+  /* a swap changes no text */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "swap-colors", NULL);
+  g_assert_cmphex (run_style_at (win, 6).color, ==, 0xFF00FF00u);
+  g_assert_cmphex (run_style_at (win, 1).color, ==, 0xFFFF0000u);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "swap-colors", NULL);
+  /* the background behind an Opaque box follows its color; a Transparent one shows the picture */
+  easel_text_buffer_select (b, 0, 0);
+  easel_palette_bar_press (pal, 18, 3, 1);                                       /* yellow background */
+  easel_canvas_set_text_opaque (canvas, TRUE);
+  g_assert_true (easel_canvas_text_box (canvas, &bx, &by, &bw, &bh));
+  wait_for_next_frame (win);
+  px = render_pixels (win, &w, &h, &cx, &cy);
+  g_assert_cmphex (rendered_pixel (px, w, cx, cy, bx + bw - 2, by + bh - 2), ==, 0xFFFFFF00u);
+  easel_palette_bar_press (pal, 19, 3, 1);                                       /* green background */
+  g_clear_pointer (&px, g_free);
+  wait_for_next_frame (win);
+  px = render_pixels (win, &w, &h, &cx, &cy);
+  g_assert_cmphex (rendered_pixel (px, w, cx, cy, bx + bw - 2, by + bh - 2), ==, 0xFF00FF00u);
+  easel_canvas_set_text_opaque (canvas, FALSE);
+  g_clear_pointer (&px, g_free);
+  wait_for_next_frame (win);
+  px = render_pixels (win, &w, &h, &cx, &cy);
+  g_assert_cmphex (rendered_pixel (px, w, cx, cy, bx + bw - 2, by + bh - 2), ==, 0xFFFFFFFFu);
+  /* the background picks set no color for the text typed next: a "z" at the start takes the style at the caret, the red "r"'s */
+  type_keys (win, "z");
+  g_assert_cmphex (run_style_at (win, 0).color, ==, 0xFFFF0000u);
+  /* a foreground chosen in the color chooser colors the selected text */
+  {
+    GdkRGBA magenta = { 1, 0, 1, 1 };
+
+    easel_text_buffer_select (b, 0, 1);
+    easel_palette_bar_press_indicator (pal, TRUE);
+    g_assert_true (easel_window_is_choosing_color (win));
+    easel_window_finish_color_choice (win, &magenta);
+    g_assert_cmphex (run_style_at (win, 0).color, ==, 0xFFFF00FFu);
+    g_assert_cmphex (run_style_at (win, 1).color, ==, 0xFFFF0000u);
+  }
+  caret_blink (blink_at_start);
+  close_windows ();
+}
+
+/* The mapped toggle buttons under `root`, those inside a menu button (its own toggle) not counted. */
+static int
+count_mapped_toggles_in (GtkWidget *root)
+{
+  int n = 0;
+
+  for (GtkWidget *child = gtk_widget_get_first_child (root); child; child = gtk_widget_get_next_sibling (child))
+    if (gtk_widget_get_mapped (child) && !GTK_IS_MENU_BUTTON (child))
+      n += GTK_IS_TOGGLE_BUTTON (child) ? 1 : count_mapped_toggles_in (child);
+  return n;
+}
+
+/* The first widget of `type` under `root`, or NULL. */
+static GtkWidget *
+find_descendant_of_type (GtkWidget *root, GType type)
+{
+  for (GtkWidget *child = gtk_widget_get_first_child (root); child; child = gtk_widget_get_next_sibling (child))
+    {
+      GtkWidget *found = G_TYPE_CHECK_INSTANCE_TYPE (child, type) ? child : find_descendant_of_type (child, type);
+
+      if (found != NULL)
+        return found;
+    }
+  return NULL;
+}
+
+/* The font card's bounds and the open box's rectangle, in the coordinates of the card's parent (the overlay over the view), and the
+   view's (the scrolled window's). */
+static void
+card_and_box (EaselWindow *win, graphene_rect_t *card, graphene_rect_t *box, graphene_rect_t *view)
+{
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  GtkWidget *w = GTK_WIDGET (easel_window_get_font_card (win)), *parent = gtk_widget_get_parent (w);
+  GtkWidget *scroller = gtk_widget_get_ancestor (GTK_WIDGET (canvas), GTK_TYPE_SCROLLED_WINDOW);
+  graphene_point_t a, b;
+  double x0, y0, x1, y1;
+  int bx, by, bw, bh;
+
+  g_assert_true (gtk_widget_compute_bounds (w, parent, card));
+  g_assert_true (gtk_widget_compute_bounds (scroller, parent, view));
+  g_assert_true (easel_canvas_text_box (canvas, &bx, &by, &bw, &bh));
+  canvas_point (win, bx, by, &x0, &y0);
+  canvas_point (win, bx + bw, by + bh, &x1, &y1);
+  g_assert_true (gtk_widget_compute_point (GTK_WIDGET (canvas), parent, &GRAPHENE_POINT_INIT ((float) x0, (float) y0), &a));
+  g_assert_true (gtk_widget_compute_point (GTK_WIDGET (canvas), parent, &GRAPHENE_POINT_INIT ((float) x1, (float) y1), &b));
+  *box = GRAPHENE_RECT_INIT (a.x, a.y, b.x - a.x, b.y - a.y);
+}
+
+/* Whether the focus is outside the font card: the keys then go to the box (REQ-0017-06, REQ-0017-14). */
+static gboolean
+focus_not_in_card (EaselWindow *win)
+{
+  GtkWidget *focus = gtk_root_get_focus (GTK_ROOT (win));
+
+  return focus == NULL || !gtk_widget_is_ancestor (focus, GTK_WIDGET (easel_window_get_font_card (win)));
+}
+
+static gboolean
+card_shown (EaselWindow *win)
+{
+  GtkWidget *w = GTK_WIDGET (easel_window_get_font_card (win));
+
+  return gtk_widget_get_visible (w) && gtk_widget_get_child_visible (w);
+}
+
+/* AS-14 (REQ-0017-14): at 800 % with the view at (0, 0), the box (20, 25, 30, 10) gets the font card above it with a gap of 8 logical
+   pixels, inside the view, the view not scrolled and the canvas area's size unchanged; one row: family, size, B, I, U and S and no
+   color button; the box (20, 1, 30, 10): the card below it; scrolled out of view: hidden; a box over the whole view: the card at the
+   view's top edge; Bold pressed on the card, "x" typed: "x" bold, the focus still in the box; "dejav" in the family's search: only
+   DejaVu families; Esc there (the list cancelled): the family unchanged; "18" typed in the size field with the text selected, then a
+   press in the box: 18 applied to it before the press placed the caret. */
+static void
+as14_card_place_and_focus (void)
+{
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  EaselFontCard *card;
+  GtkWidget *scroller;
+  GtkAdjustment *h, *v;
+  graphene_rect_t c, b, view;
+  int sw0, sh0, n_toggles = 0;
+  GListModel *listed;
+  GtkSpinButton *size;
+  double x, y;
+
+  write_settings (TEXT_SETTINGS);
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  card = easel_window_get_font_card (win);
+  scroller = gtk_widget_get_ancestor (GTK_WIDGET (canvas), GTK_TYPE_SCROLLED_WINDOW);
+  h = gtk_scrolled_window_get_hadjustment (GTK_SCROLLED_WINDOW (scroller));
+  v = gtk_scrolled_window_get_vadjustment (GTK_SCROLLED_WINDOW (scroller));
+  use_tool (win, "text");
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-to", g_variant_new_int32 (800));
+  wait_for_layout (win);
+  gtk_adjustment_set_value (h, 0);
+  gtk_adjustment_set_value (v, 0);
+  wait_for_layout (win);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 800);
+  sw0 = gtk_widget_get_width (scroller);
+  sh0 = gtk_widget_get_height (scroller);
+  g_assert_false (card_shown (win));
+  /* above the box */
+  shape_press_move (win, 1, 20, 25, 49, 34);
+  shape_release (win, 1);
+  wait_for_layout (win);
+  g_assert_true (card_shown (win));
+  card_and_box (win, &c, &b, &view);
+  g_assert_cmpfloat_with_epsilon (c.origin.y + c.size.height, b.origin.y - 8, 0.5);
+  g_assert_cmpfloat (c.origin.x, >=, view.origin.x - 0.5);
+  g_assert_cmpfloat (c.origin.x + c.size.width, <=, view.origin.x + view.size.width + 0.5);
+  g_assert_cmpfloat (gtk_adjustment_get_value (h), ==, 0);
+  g_assert_cmpfloat (gtk_adjustment_get_value (v), ==, 0);
+  g_assert_cmpint (gtk_widget_get_width (scroller), ==, sw0);
+  g_assert_cmpint (gtk_widget_get_height (scroller), ==, sh0);
+  /* the card's own background, over the white picture: dark in the dark theme, light in the light one (JOD's M1, 2026-10-26: the
+     card style's background is translucent in the dark theme, so the card faded into the picture) */
+  {
+    AdwStyleManager *manager = adw_style_manager_get_default ();
+    double scale = easel_canvas_get_scale (canvas);
+    graphene_rect_t in_window;
+
+    for (int dark = 0; dark < 2; dark++)
+      {
+        g_autofree uint32_t *px = NULL;
+        int rw, rh, cx, cy;
+        uint32_t p;
+
+        adw_style_manager_set_color_scheme (manager, dark ? ADW_COLOR_SCHEME_FORCE_DARK : ADW_COLOR_SCHEME_FORCE_LIGHT);
+        wait_for_layout (win);
+        wait_for_next_frame (win);
+        g_assert_true (gtk_widget_compute_bounds (GTK_WIDGET (card), GTK_WIDGET (win), &in_window));
+        px = render_pixels (win, &rw, &rh, &cx, &cy);
+        p = px[(gsize) ((in_window.origin.y + in_window.size.height / 2) * scale) * rw + (gsize) ((in_window.origin.x + 4) * scale)];
+        if (dark)
+          g_assert_cmpuint ((p >> 16) & 255, <, 0x60);
+        else
+          g_assert_cmpuint ((p >> 16) & 255, >, 0xD0);
+      }
+    adw_style_manager_set_color_scheme (manager, ADW_COLOR_SCHEME_DEFAULT);
+    wait_for_layout (win);
+  }
+  for (guint8 f = EASEL_TEXT_BOLD; f <= EASEL_TEXT_STRIKE; f <<= 1)
+    n_toggles += easel_font_card_get_toggle (card, f) != NULL;
+  g_assert_cmpint (n_toggles, ==, 4);
+  for (guint8 f = EASEL_TEXT_BOLD; f <= EASEL_TEXT_STRIKE; f <<= 1)
+    {
+      GtkWidget *t = GTK_WIDGET (easel_font_card_get_toggle (card, f));
+
+      g_assert_false (gtk_widget_get_focusable (t) || gtk_widget_get_focus_on_click (t));   /* a press keeps the focus where it is */
+    }
+  g_assert_cmpint (count_mapped_toggles_in (GTK_WIDGET (card)), ==, 4);         /* B, I, U, S: no other toggle, no color button */
+  g_assert_null (find_descendant_of_type (GTK_WIDGET (card), GTK_TYPE_COLOR_DIALOG_BUTTON));
+  /* a box near the view's right edge: the card shifted to stay in the view */
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+  {
+    double right;
+
+    canvas_point (win, 0, 0, &x, &y);
+    right = gtk_widget_get_width (scroller) / (easel_window_get_zoom (win) / 100.0 / easel_canvas_get_scale (canvas));
+    shape_press_move (win, 1, (int) right - 6, 25, (int) right - 3, 30);
+    shape_release (win, 1);
+    wait_for_layout (win);
+    card_and_box (win, &c, &b, &view);
+    g_assert_cmpfloat (c.origin.x, <, b.origin.x);                               /* moved toward smaller x */
+    g_assert_cmpfloat (c.origin.x + c.size.width, <=, view.origin.x + view.size.width + 0.5);
+  }
+  /* below a box with no room above */
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+  g_assert_false (gtk_widget_get_visible (GTK_WIDGET (card)));                    /* at once, with the box */
+  wait_for_layout (win);
+  g_assert_false (card_shown (win));
+  shape_press_move (win, 1, 20, 1, 49, 10);
+  shape_release (win, 1);
+  wait_for_layout (win);
+  card_and_box (win, &c, &b, &view);
+  g_assert_cmpfloat_with_epsilon (c.origin.y, b.origin.y + b.size.height + 8, 0.5);
+  /* scrolled out of view: hidden */
+  gtk_adjustment_set_value (v, 200 * 8);
+  wait_for_layout (win);
+  g_assert_cmpfloat (gtk_adjustment_get_value (v), >, 100);
+  g_assert_false (card_shown (win));
+  gtk_adjustment_set_value (v, 0);
+  wait_for_layout (win);
+  g_assert_true (card_shown (win));
+  /* a box over the whole view: the card at the view's top edge */
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+  shape_press_move (win, 1, 0, 0, 299, 199);
+  shape_release (win, 1);
+  wait_for_layout (win);
+  card_and_box (win, &c, &b, &view);
+  g_assert_true (card_shown (win));
+  g_assert_cmpfloat_with_epsilon (c.origin.y, view.origin.y, 0.5);
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-normal", NULL);
+  wait_for_layout (win);
+  /* Bold on the card, then "x": the focus stays in the box */
+  shape_press_move (win, 1, 20, 25, 120, 60);
+  shape_release (win, 1);
+  g_assert_true (focus_not_in_card (win));
+  gtk_toggle_button_set_active (easel_font_card_get_toggle (card, EASEL_TEXT_BOLD), TRUE);   /* as a press on it */
+  g_assert_true (focus_not_in_card (win));
+  type_keys (win, "x");
+  g_assert_cmpint (run_style_at (win, 0).flags, ==, EASEL_TEXT_BOLD);
+  /* the family's search, then Esc in it */
+  easel_font_card_set_search (card, "dejav");
+  listed = easel_font_card_get_listed (card);
+  g_assert_cmpuint (g_list_model_get_n_items (listed), >, 0);
+  for (guint i = 0; i < g_list_model_get_n_items (listed); i++)
+    {
+      g_autoptr (GtkStringObject) o = g_list_model_get_item (listed, i);
+
+      g_assert_true (g_str_has_prefix (gtk_string_object_get_string (o), "DejaVu"));
+    }
+  easel_font_card_cancel_family (card);
+  g_assert_cmpstr (easel_font_card_get_family_text (card), ==, "DejaVu Sans");
+  g_assert_true (focus_not_in_card (win));
+  g_assert_cmpstr (run_style_at (win, 0).family, ==, "DejaVu Sans");
+  /* "18" in the size field, then a press in the box: 18 first */
+  easel_text_buffer_select (easel_canvas_text_buffer (canvas), 0, 1);
+  size = easel_font_card_get_size (card);
+  gtk_widget_grab_focus (GTK_WIDGET (size));
+  gtk_editable_set_text (GTK_EDITABLE (size), "18");
+  canvas_point (win, 21, 26, &x, &y);
+  easel_canvas_press (canvas, 1, x, y);
+  easel_canvas_release (canvas, 1);
+  g_assert_cmpint (run_style_at (win, 0).size_pt, ==, 18);
+  g_assert_true (focus_not_in_card (win));
+  close_windows ();
+}
+
+/* key_taken with the key's hardware code, which a key matched by its place reads (REQ-0017-12: Ctrl+Shift+5). */
+static gboolean
+key_taken_code (EaselWindow *win, guint keyval, guint keycode, GdkModifierType state)
+{
+  g_autoptr (GListModel) controllers = gtk_widget_observe_controllers (GTK_WIDGET (win));
+  gboolean taken = FALSE;
+
+  for (guint i = 0; i < g_list_model_get_n_items (controllers); i++)
+    {
+      g_autoptr (GtkEventController) c = g_list_model_get_item (controllers, i);
+      gboolean handled = FALSE;
+
+      if (GTK_IS_EVENT_CONTROLLER_KEY (c))
+        {
+          g_signal_emit_by_name (c, "key-pressed", keyval, keycode, state, &handled);
+          taken |= handled;
+        }
+    }
+  return taken;
+}
+
+/* The hardware code of the key that writes `keyval` in the display's keymap (asserted to exist). */
+static guint
+keycode_of (guint keyval)
+{
+  g_autofree GdkKeymapKey *keys = NULL;
+  int n = 0;
+
+  g_assert_true (gdk_display_map_keyval (gdk_display_get_default (), keyval, &keys, &n));
+  g_assert_cmpint (n, >, 0);
+  return keys[0].keycode;
+}
+
+/* AS-26 (REQ-0017-12, REQ-0017-14): the card's tooltips name each control and its key; in "abc" with "ab" at 12 and "c" at 20, all
+   selected, Ctrl+] makes 13 and 21 as one edit, Ctrl+[ twice 11 and 19, Undo one press back each time; "a" at 500 and "b" at 499:
+   Ctrl+] makes "b" 500, and again changes nothing, with no bell and no edit; "a" at 1: Ctrl+[ the same; nothing selected at 12: Ctrl+]
+   then "x", "x" is 13; Ctrl+Shift+5 (the key that writes 5, reported as "%" with Shift) toggles Strikethrough as one edit, "%" from
+   another key or Ctrl+5 does not; Ctrl+Shift+F opens the family popover with the keys in its search. The layouts themselves are M2's:
+   the test gives the window the 5 key's code from this session's keymap. */
+static void
+as26_format_keys (void)
+{
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  EaselFontCard *card;
+  EaselTextBuffer *b;
+  EaselTextStyle v = { 0 };
+  guint bells, five = keycode_of (GDK_KEY_5), six = keycode_of (GDK_KEY_6);
+
+  write_settings ("[new-picture]\nwidth=1200\nheight=300\ncanvas-color=#FFFFFF\n\n[text]\nfont=DejaVu Sans\nsize=12\n");
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  card = easel_window_get_font_card (win);
+  use_tool (win, "text");
+  shape_press_move (win, 1, 10, 10, 1190, 290);                                 /* wide enough for "ab" at 500 on one line */
+  shape_release (win, 1);
+  b = easel_canvas_text_buffer (canvas);
+  /* the tooltips */
+  g_assert_cmpstr (gtk_widget_get_tooltip_text (easel_font_card_get_family_button (card)), ==, "Font family (Ctrl+Shift+F)");
+  g_assert_cmpstr (gtk_widget_get_tooltip_text (GTK_WIDGET (easel_font_card_get_size (card))), ==,
+                   "Font size (Ctrl+] larger, Ctrl+[ smaller)");
+  g_assert_cmpstr (gtk_widget_get_tooltip_text (GTK_WIDGET (easel_font_card_get_toggle (card, EASEL_TEXT_BOLD))), ==, "Bold (Ctrl+B)");
+  g_assert_cmpstr (gtk_widget_get_tooltip_text (GTK_WIDGET (easel_font_card_get_toggle (card, EASEL_TEXT_ITALIC))), ==, "Italic (Ctrl+I)");
+  g_assert_cmpstr (gtk_widget_get_tooltip_text (GTK_WIDGET (easel_font_card_get_toggle (card, EASEL_TEXT_UNDERLINE))), ==,
+                   "Underline (Ctrl+U)");
+  g_assert_cmpstr (gtk_widget_get_tooltip_text (GTK_WIDGET (easel_font_card_get_toggle (card, EASEL_TEXT_STRIKE))), ==,
+                   "Strikethrough (Ctrl+Shift+5)");
+  /* nothing selected at 12: Ctrl+] then "x" */
+  type_keys (win, "ab");
+  g_assert_true (key_taken (win, GDK_KEY_bracketright, GDK_CONTROL_MASK));
+  g_assert_false (action_enabled (win, "redo"));
+  type_keys (win, "x");
+  g_assert_true (box_text_is (win, "abx"));
+  g_assert_cmpint (run_style_at (win, 1).size_pt, ==, 12);
+  g_assert_cmpint (run_style_at (win, 2).size_pt, ==, 13);
+  g_assert_true (key_taken (win, GDK_KEY_BackSpace, 0));
+  type_keys (win, "c");
+  g_assert_true (box_text_is (win, "abc"));
+  /* "ab" 12 and "c" 20, all selected */
+  easel_text_buffer_select (b, 2, 3);
+  v.size_pt = 20;
+  g_assert_true (easel_canvas_text_apply (canvas, EASEL_TEXT_SIZE, &v));
+  easel_text_buffer_select (b, 0, 3);
+  bells = easel_canvas_get_error_bells (canvas);
+  g_assert_true (key_taken (win, GDK_KEY_bracketright, GDK_CONTROL_MASK));
+  g_assert_cmpint (run_style_at (win, 0).size_pt, ==, 13);
+  g_assert_cmpint (run_style_at (win, 2).size_pt, ==, 21);
+  easel_canvas_text_edited (canvas);
+  g_assert_cmpstr (gtk_editable_get_text (GTK_EDITABLE (easel_font_card_get_size (card))), ==, "");   /* still mixed */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_cmpint (run_style_at (win, 0).size_pt, ==, 12);
+  g_assert_cmpint (run_style_at (win, 2).size_pt, ==, 20);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "redo", NULL);
+  g_assert_true (key_taken (win, GDK_KEY_bracketleft, GDK_CONTROL_MASK));
+  g_assert_true (key_taken (win, GDK_KEY_bracketleft, GDK_CONTROL_MASK));
+  g_assert_cmpint (run_style_at (win, 0).size_pt, ==, 11);
+  g_assert_cmpint (run_style_at (win, 2).size_pt, ==, 19);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);          /* one press back */
+  g_assert_cmpint (run_style_at (win, 0).size_pt, ==, 12);
+  g_assert_cmpint (run_style_at (win, 2).size_pt, ==, 20);
+  g_assert_cmpuint (easel_canvas_get_error_bells (canvas), ==, bells);
+  /* the limits */
+  easel_text_buffer_select (b, 0, 1);
+  v.size_pt = 500;
+  g_assert_true (easel_canvas_text_apply (canvas, EASEL_TEXT_SIZE, &v));
+  easel_text_buffer_select (b, 1, 2);
+  v.size_pt = 499;
+  g_assert_true (easel_canvas_text_apply (canvas, EASEL_TEXT_SIZE, &v));
+  easel_text_buffer_select (b, 0, 2);
+  g_assert_true (key_taken (win, GDK_KEY_bracketright, GDK_CONTROL_MASK));
+  g_assert_cmpint (run_style_at (win, 0).size_pt, ==, 500);
+  g_assert_cmpint (run_style_at (win, 1).size_pt, ==, 500);
+  g_assert_true (key_taken (win, GDK_KEY_bracketright, GDK_CONTROL_MASK));      /* the keys stay the box's: taken, nothing done */
+  g_assert_cmpint (run_style_at (win, 1).size_pt, ==, 500);
+  g_assert_cmpuint (easel_canvas_get_error_bells (canvas), ==, bells);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);          /* no edit was added: the first press goes back */
+  g_assert_cmpint (run_style_at (win, 1).size_pt, ==, 499);
+  easel_text_buffer_select (b, 0, 1);
+  v.size_pt = 1;
+  g_assert_true (easel_canvas_text_apply (canvas, EASEL_TEXT_SIZE, &v));
+  g_assert_true (key_taken (win, GDK_KEY_bracketleft, GDK_CONTROL_MASK));
+  g_assert_cmpint (run_style_at (win, 0).size_pt, ==, 1);
+  g_assert_cmpuint (easel_canvas_get_error_bells (canvas), ==, bells);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_cmpint (run_style_at (win, 0).size_pt, ==, 500);
+  /* Ctrl+Shift+5, by the key */
+  easel_text_buffer_select (b, 0, 3);
+  g_assert_true (key_taken_code (win, GDK_KEY_percent, five, GDK_CONTROL_MASK | GDK_SHIFT_MASK));
+  g_assert_cmpint (run_style_at (win, 0).flags, ==, EASEL_TEXT_STRIKE);
+  g_assert_cmpint (run_style_at (win, 2).flags, ==, EASEL_TEXT_STRIKE);
+  g_assert_true (key_taken_code (win, GDK_KEY_percent, five, GDK_CONTROL_MASK | GDK_SHIFT_MASK));
+  g_assert_cmpint (run_style_at (win, 0).flags, ==, 0);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);          /* one edit each */
+  g_assert_cmpint (run_style_at (win, 2).flags, ==, EASEL_TEXT_STRIKE);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_cmpint (run_style_at (win, 2).flags, ==, 0);
+  key_taken_code (win, GDK_KEY_percent, six, GDK_CONTROL_MASK | GDK_SHIFT_MASK);
+  key_taken_code (win, GDK_KEY_5, five, GDK_CONTROL_MASK);
+  g_assert_cmpint (run_style_at (win, 0).flags, ==, 0);
+  g_assert_cmpint (run_style_at (win, 2).flags, ==, 0);
+  g_assert_true (box_text_is (win, "abc"));
+  /* Ctrl+Shift+F: the family popover, the keys in its search */
+  g_assert_true (key_taken (win, GDK_KEY_F, GDK_CONTROL_MASK | GDK_SHIFT_MASK));
+  for (gint64 deadline = g_get_monotonic_time () + 3 * G_USEC_PER_SEC;
+       (!easel_font_card_family_is_open (card) || gtk_root_get_focus (GTK_ROOT (win)) == NULL
+        || gtk_widget_get_ancestor (gtk_root_get_focus (GTK_ROOT (win)), GTK_TYPE_SEARCH_ENTRY) == NULL)
+       && g_get_monotonic_time () < deadline;)
+    g_main_context_iteration (NULL, FALSE);
+  g_assert_true (easel_font_card_family_is_open (card));
+  g_assert_nonnull (gtk_widget_get_ancestor (gtk_root_get_focus (GTK_ROOT (win)), GTK_TYPE_SEARCH_ENTRY));
+  easel_font_card_cancel_family (card);
+  g_assert_false (easel_font_card_family_is_open (card));
+  g_assert_true (box_text_is (win, "abc"));
+  close_windows ();
+}
+
+/* A wheel turn of dy notches over `w`, as GTK hands it to w's scroll controllers: the capture phase first, then the others, until one
+   takes it. */
+static gboolean
+wheel_over (GtkWidget *w, double dy)
+{
+  g_autoptr (GListModel) controllers = gtk_widget_observe_controllers (w);
+  gboolean handled = FALSE;
+
+  for (int pass = 0; pass < 2 && !handled; pass++)
+    for (guint i = 0; i < g_list_model_get_n_items (controllers) && !handled; i++)
+      {
+        g_autoptr (GtkEventController) c = g_list_model_get_item (controllers, i);
+
+        if (GTK_IS_EVENT_CONTROLLER_SCROLL (c) && (gtk_event_controller_get_propagation_phase (c) == GTK_PHASE_CAPTURE) == (pass == 0))
+          g_signal_emit_by_name (c, "scroll", 0.0, dy, &handled);
+      }
+  return handled;
+}
+
+/* The sizes of "a", "b" and "c" of the open box. */
+static void
+assert_abc_sizes (EaselWindow *win, int a, int b, int c)
+{
+  g_assert_cmpint (run_style_at (win, 0).size_pt, ==, a);
+  g_assert_cmpint (run_style_at (win, 1).size_pt, ==, b);
+  g_assert_cmpint (run_style_at (win, 2).size_pt, ==, c);
+}
+
+/* AS-26 (REQ-0017-25), the size field on mixed sizes: "ab" at 12 and "c" at 20 all selected, the field empty; + and − (the spin's own
+   step, what its buttons call) make 13 and 21 then 12 and 20, one edit each, the field staying empty; with the focus in the field, Up
+   and Down by 1 and Page Up and Page Down by 10 (the spin's key bindings), the focus staying there; the wheel with the focus by 1 a
+   notch; Page Up on 497 and 500 gives 500 and 500, and again nothing, no edit; Page Down on 4 and 1 gives 1 and 1; the wheel without
+   the focus scrolls the view and changes no size. The real buttons and wheel are M2's (T018c). */
+static void
+as26_card_steps_mixed (void)
+{
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  EaselFontCard *card;
+  EaselTextBuffer *b;
+  GtkSpinButton *size;
+  GtkAdjustment *vadj;
+  EaselTextStyle v = { 0 };
+  guint bells;
+  double top;
+
+  write_settings ("[new-picture]\nwidth=600\nheight=3000\ncanvas-color=#FFFFFF\n\n[text]\nfont=DejaVu Sans\nsize=12\n");
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  card = easel_window_get_font_card (win);
+  size = easel_font_card_get_size (card);
+  vadj = gtk_scrolled_window_get_vadjustment (GTK_SCROLLED_WINDOW (gtk_widget_get_ancestor (GTK_WIDGET (canvas),
+                                                                                             GTK_TYPE_SCROLLED_WINDOW)));
+  use_tool (win, "text");
+  shape_press_move (win, 1, 10, 10, 400, 200);
+  shape_release (win, 1);
+  type_keys (win, "abc");
+  b = easel_canvas_text_buffer (canvas);
+  easel_text_buffer_select (b, 2, 3);
+  v.size_pt = 20;
+  g_assert_true (easel_canvas_text_apply (canvas, EASEL_TEXT_SIZE, &v));
+  easel_text_buffer_select (b, 0, 3);
+  easel_canvas_text_edited (canvas);
+  g_assert_cmpstr (gtk_editable_get_text (GTK_EDITABLE (size)), ==, "");          /* mixed: the field empty */
+  bells = easel_canvas_get_error_bells (canvas);
+  /* + and − */
+  gtk_spin_button_spin (size, GTK_SPIN_STEP_FORWARD, 1);
+  assert_abc_sizes (win, 13, 13, 21);
+  g_assert_cmpstr (gtk_editable_get_text (GTK_EDITABLE (size)), ==, "");
+  gtk_spin_button_spin (size, GTK_SPIN_STEP_BACKWARD, 1);
+  assert_abc_sizes (win, 12, 12, 20);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);          /* one edit each */
+  assert_abc_sizes (win, 13, 13, 21);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "redo", NULL);
+  assert_abc_sizes (win, 12, 12, 20);
+  /* Up, Down, Page Up and Page Down with the focus in the field; the focus stays for the next key */
+  gtk_widget_grab_focus (GTK_WIDGET (size));
+  g_assert_false (focus_not_in_card (win));
+  g_signal_emit_by_name (size, "change-value", GTK_SCROLL_STEP_UP);
+  assert_abc_sizes (win, 13, 13, 21);
+  g_assert_false (focus_not_in_card (win));
+  g_signal_emit_by_name (size, "change-value", GTK_SCROLL_STEP_DOWN);
+  assert_abc_sizes (win, 12, 12, 20);
+  g_signal_emit_by_name (size, "change-value", GTK_SCROLL_PAGE_UP);
+  assert_abc_sizes (win, 22, 22, 30);
+  g_signal_emit_by_name (size, "change-value", GTK_SCROLL_PAGE_DOWN);
+  assert_abc_sizes (win, 12, 12, 20);
+  g_assert_cmpstr (gtk_editable_get_text (GTK_EDITABLE (size)), ==, "");
+  /* the wheel with the focus: a notch up (dy < 0), a notch down */
+  g_assert_true (wheel_over (GTK_WIDGET (size), -1));
+  assert_abc_sizes (win, 13, 13, 21);
+  g_assert_true (wheel_over (GTK_WIDGET (size), 1));
+  assert_abc_sizes (win, 12, 12, 20);
+  g_assert_false (focus_not_in_card (win));
+  easel_font_card_cancel_field (card);                                           /* Esc: the keys back to the box */
+  g_assert_true (focus_not_in_card (win));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);          /* the last notch alone */
+  assert_abc_sizes (win, 13, 13, 21);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "redo", NULL);
+  /* the limits: "a" 497 and "b" 500, Page Up */
+  easel_text_buffer_select (b, 0, 1);
+  v.size_pt = 497;
+  g_assert_true (easel_canvas_text_apply (canvas, EASEL_TEXT_SIZE, &v));
+  easel_text_buffer_select (b, 1, 2);
+  v.size_pt = 500;
+  g_assert_true (easel_canvas_text_apply (canvas, EASEL_TEXT_SIZE, &v));
+  easel_text_buffer_select (b, 0, 2);
+  easel_canvas_text_edited (canvas);
+  gtk_widget_grab_focus (GTK_WIDGET (size));
+  g_signal_emit_by_name (size, "change-value", GTK_SCROLL_PAGE_UP);
+  assert_abc_sizes (win, 500, 500, 20);
+  g_signal_emit_by_name (size, "change-value", GTK_SCROLL_PAGE_UP);
+  assert_abc_sizes (win, 500, 500, 20);
+  easel_font_card_cancel_field (card);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);          /* no edit was added: the first Page Up goes back */
+  assert_abc_sizes (win, 497, 500, 20);
+  /* "a" 4 and "b" 1, Page Down */
+  easel_text_buffer_select (b, 0, 1);
+  v.size_pt = 4;
+  g_assert_true (easel_canvas_text_apply (canvas, EASEL_TEXT_SIZE, &v));
+  easel_text_buffer_select (b, 1, 2);
+  v.size_pt = 1;
+  g_assert_true (easel_canvas_text_apply (canvas, EASEL_TEXT_SIZE, &v));
+  easel_text_buffer_select (b, 0, 2);
+  easel_canvas_text_edited (canvas);
+  gtk_widget_grab_focus (GTK_WIDGET (size));
+  g_signal_emit_by_name (size, "change-value", GTK_SCROLL_PAGE_DOWN);
+  assert_abc_sizes (win, 1, 1, 20);
+  easel_font_card_cancel_field (card);
+  g_assert_cmpuint (easel_canvas_get_error_bells (canvas), ==, bells);
+  /* the wheel without the focus: the view scrolls, no size changes */
+  easel_text_buffer_select (b, 0, 3);
+  easel_canvas_text_edited (canvas);
+  g_assert_true (focus_not_in_card (win));
+  wait_for_layout (win);
+  top = gtk_adjustment_get_value (vadj);
+  g_assert_true (wheel_over (GTK_WIDGET (size), 1));
+  g_assert_cmpfloat (gtk_adjustment_get_value (vadj), >, top);
+  assert_abc_sizes (win, 1, 1, 20);
+  g_assert_true (wheel_over (GTK_WIDGET (size), -1));
+  g_assert_cmpfloat (gtk_adjustment_get_value (vadj), ==, top);
+  assert_abc_sizes (win, 1, 1, 20);
+  close_windows ();
+}
+
+/* AS-15 (REQ-0017-14, REQ-0017-25), the size field (the family's button and popover: as15_family_popover): with the size field
+   "0", "600" and "18" applied by Enter: 1, 500 and 18; a letter typed there is not taken; − and + by 1 within 1 to 500; Esc in the size
+   field: the size as it was and the focus back in the box; while the size field has the focus the window's Select All and Undo go to
+   the field, not to the box (what the field then does is GTK's: the manual M1 look). */
+static void
+as15_size_field (void)
+{
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  EaselFontCard *card;
+  GtkSpinButton *size;
+  int pos;
+
+  write_settings (TEXT_SETTINGS);
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  card = easel_window_get_font_card (win);
+  use_tool (win, "text");
+  shape_press_move (win, 1, 10, 10, 150, 80);
+  shape_release (win, 1);
+  type_keys (win, "ab");
+  size = easel_font_card_get_size (card);
+  easel_text_buffer_select (easel_canvas_text_buffer (canvas), 1, 2);
+  g_assert_true (key_taken (win, GDK_KEY_Delete, 0));
+  g_assert_true (box_text_is (win, "a"));
+  easel_text_buffer_select (easel_canvas_text_buffer (canvas), 0, 1);           /* one character alone: one line even at 500 */
+  easel_canvas_text_edited (canvas);
+  {
+    static const char *typed[] = { "0", "600", "18" };
+    static const int want[] = { 1, 500, 18 };
+
+    for (int i = 0; i < 3; i++)
+      {
+        gtk_widget_grab_focus (GTK_WIDGET (size));
+        gtk_editable_set_text (GTK_EDITABLE (size), typed[i]);
+        g_signal_emit_by_name (size, "activate");
+        g_assert_cmpint (run_style_at (win, 0).size_pt, ==, want[i]);
+        g_assert_cmpint (gtk_spin_button_get_value_as_int (size), ==, want[i]);
+        g_assert_true (focus_not_in_card (win));
+      }
+  }
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);          /* "18" was one edit */
+  g_assert_cmpint (run_style_at (win, 0).size_pt, ==, 500);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "redo", NULL);
+  g_assert_cmpint (run_style_at (win, 0).size_pt, ==, 18);
+  /* Enter with the size it already has: nothing changes, and the keys go to the box again */
+  gtk_widget_grab_focus (GTK_WIDGET (size));
+  g_assert_false (focus_not_in_card (win));
+  g_signal_emit_by_name (size, "activate");
+  g_assert_true (focus_not_in_card (win));
+  g_assert_cmpint (run_style_at (win, 0).size_pt, ==, 18);
+  pos = 2;
+  gtk_editable_insert_text (GTK_EDITABLE (size), "a", 1, &pos);
+  g_assert_cmpstr (gtk_editable_get_text (GTK_EDITABLE (size)), ==, "18");
+  g_assert_cmpfloat (gtk_adjustment_get_step_increment (gtk_spin_button_get_adjustment (size)), ==, 1);   /* − and + step by 1 */
+  gtk_spin_button_spin (size, GTK_SPIN_STEP_FORWARD, 1);
+  g_assert_cmpint (run_style_at (win, 0).size_pt, ==, 19);
+  gtk_spin_button_spin (size, GTK_SPIN_STEP_BACKWARD, 1);
+  g_assert_cmpint (run_style_at (win, 0).size_pt, ==, 18);
+  gtk_spin_button_set_value (size, 500);
+  gtk_spin_button_spin (size, GTK_SPIN_STEP_FORWARD, 1);
+  g_assert_cmpint (run_style_at (win, 0).size_pt, ==, 500);
+  gtk_spin_button_set_value (size, 1);
+  gtk_spin_button_spin (size, GTK_SPIN_STEP_BACKWARD, 1);
+  g_assert_cmpint (run_style_at (win, 0).size_pt, ==, 1);
+  /* Esc in the size field */
+  gtk_widget_grab_focus (GTK_WIDGET (size));
+  gtk_editable_set_text (GTK_EDITABLE (size), "77");
+  easel_font_card_cancel_field (card);
+  g_assert_cmpint (run_style_at (win, 0).size_pt, ==, 1);
+  g_assert_cmpstr (gtk_editable_get_text (GTK_EDITABLE (size)), ==, "1");
+  g_assert_true (focus_not_in_card (win));
+  /* while a field has the focus the window's Select All and Undo act on the field, not on the box */
+  easel_text_buffer_select (easel_canvas_text_buffer (canvas), 0, 0);
+  gtk_widget_grab_focus (GTK_WIDGET (size));
+  gtk_editable_set_text (GTK_EDITABLE (size), "42");
+  g_action_group_activate_action (G_ACTION_GROUP (win), "select-all", NULL);
+  {
+    size_t from, to;
+
+    g_assert_false (easel_text_buffer_selection (easel_canvas_text_buffer (canvas), &from, &to));   /* the box's text not selected */
+  }
+  g_assert_cmpint (easel_window_get_tool (win), ==, EASEL_TOOL_TEXT);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_cmpint (run_style_at (win, 0).size_pt, ==, 1);                        /* the box's last edit not taken back */
+  close_windows ();
+}
+
+/* REQ-0017-06 (found by JOD, 2026-10-26): in a line that wraps inside a word ("abcdefghijk" then "lmn..." in a box 100 wide), a drag from
+   "j" to past the line's end selects "jk", the last two letters before the wrap; from "k", "k"; a press on the right half of "k" puts
+   the caret after it; a press on its left half, before it. */
+static void
+wrapped_line_end_select (void)
+{
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  EaselTextBuffer *b;
+  double x0, y0, x1, y1;
+  size_t from, to;
+
+  write_settings (TEXT_SETTINGS);
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  use_tool (win, "text");
+  shape_press_move (win, 1, 10, 10, 109, 60);
+  shape_release (win, 1);
+  type_keys (win, "abcdefghijklmnopqrstuvwxyz");
+  b = easel_canvas_text_buffer (canvas);
+  easel_canvas_text_point (canvas, 10, &x0, &y0);                               /* "k", the last letter of the first line */
+  easel_canvas_text_point (canvas, 11, &x1, &y1);
+  g_assert_cmpfloat (y1, >, y0);                                                 /* "l" starts the next line */
+  canvas_point (win, 108.5, 0, &x1, &y1);
+  for (size_t a = 9; a <= 10; a++)
+    {
+      easel_canvas_text_point (canvas, a, &x0, &y0);
+      easel_canvas_press_timed (canvas, 1, x0 + 0.3, y0, 10000 * (guint32) a);
+      easel_canvas_motion (canvas, x1, y0);
+      easel_canvas_release (canvas, 1);
+      g_assert_true (easel_text_buffer_selection (b, &from, &to));
+      g_assert_cmpuint (from, ==, a);
+      g_assert_cmpuint (to, ==, 11);
+    }
+  {
+    double kx, ky, lx, ly;
+
+    easel_canvas_text_point (canvas, 10, &kx, &ky);
+    easel_canvas_text_point (canvas, 9, &lx, &ly);
+    canvas_point (win, 108.5, 0, &x1, &y1);
+    /* "k" spans from kx - 0.5 to where the line ends; its right half */
+    easel_canvas_press_timed (canvas, 1, x1, ky, 900000);
+    easel_canvas_release (canvas, 1);
+    g_assert_cmpuint (easel_text_buffer_caret (b), ==, 11);
+    easel_canvas_press_timed (canvas, 1, kx, ky, 990000);
+    easel_canvas_release (canvas, 1);
+    g_assert_cmpuint (easel_text_buffer_caret (b), ==, 10);
+  }
+  close_windows ();
+}
+
+static gboolean generic_name (const char *name);
+
+/* The texts of the mapped, non-empty labels under `root`, in a set (the rows a list shows). */
+static void
+mapped_labels (GtkWidget *root, GHashTable *texts)
+{
+  for (GtkWidget *c = gtk_widget_get_first_child (root); c; c = gtk_widget_get_next_sibling (c))
+    {
+      if (GTK_IS_LABEL (c) && gtk_widget_get_mapped (c) && gtk_label_get_text (GTK_LABEL (c))[0] != '\0')
+        g_hash_table_add (texts, g_strdup (gtk_label_get_text (GTK_LABEL (c))));
+      mapped_labels (c, texts);
+    }
+}
+
+/* AS-15 (REQ-0017-14, REQ-0017-17), the family button and its popover: "ab" in DejaVu Sans selected; the button, "Font family", shows
+   it; opened, the popover has a search field and lists every installed family (no other row), DejaVu Sans highlighted, each name in its
+   own font (FontAwesome in the interface font); "mono" typed: only those families, the first highlighted; Down then Enter: the next
+   one picked for "ab" as one edit, the popover closed and the keys going to the box; Esc: only the popover closes, the family as it
+   was, the card and the box still open; "a" in DejaVu Serif and "b" in DejaVu Sans: the button empty, no row highlighted, and a pick of
+   DejaVu Serif applies to both as one edit; a family that is not installed shows on the button by its name. */
+static void
+as15_family_popover (void)
+{
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  EaselFontCard *card;
+  EaselTextBuffer *b;
+  GListModel *listed;
+  PangoFontFamily **families = NULL;
+  EaselTextStyle v = { 0 };
+  int n_families = 0;
+  g_autofree char *second = NULL;
+
+  write_settings (TEXT_SETTINGS);
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  card = easel_window_get_font_card (win);
+  use_tool (win, "text");
+  shape_press_move (win, 1, 10, 10, 150, 80);
+  shape_release (win, 1);
+  type_keys (win, "ab");
+  b = easel_canvas_text_buffer (canvas);
+  easel_text_buffer_select (b, 0, 2);
+  easel_canvas_text_edited (canvas);
+  g_assert_cmpstr (gtk_widget_get_tooltip_text (easel_font_card_get_family_button (card)), ==, "Font family (Ctrl+Shift+F)");
+  g_assert_cmpstr (easel_font_card_get_family_text (card), ==, "DejaVu Sans");
+  /* opened by the button, as a press does: every installed family, the current one highlighted */
+  gtk_widget_activate (easel_font_card_get_family_button (card));
+  for (gint64 deadline = g_get_monotonic_time () + 3 * G_USEC_PER_SEC;
+       !easel_font_card_family_is_open (card) && g_get_monotonic_time () < deadline;)
+    g_main_context_iteration (NULL, FALSE);                                      /* a button's activation clicks after a moment */
+  wait_for_layout (win);
+  g_assert_true (easel_font_card_family_is_open (card));
+  g_assert_true (easel_font_card_has_search (card));
+  pango_font_map_list_families (pango_cairo_font_map_get_default (), &families, &n_families);
+  {
+    int n_real = 0;
+
+    for (int i = 0; i < n_families; i++)
+      n_real += !generic_name (pango_font_family_get_name (families[i]));
+    n_families = n_real;                                                         /* the generic names are not listed */
+  }
+  g_free (families);
+  listed = easel_font_card_get_listed (card);
+  g_assert_cmpuint (g_list_model_get_n_items (listed), ==, n_families);       /* no blank row: only the families */
+  g_assert_cmpstr (easel_font_card_get_highlighted (card), ==, "DejaVu Sans");
+  wait_for_layout (win);                                                         /* the search field's own late signals (JOD's M1) */
+  g_assert_cmpstr (easel_font_card_get_highlighted (card), ==, "DejaVu Sans");
+  {
+    /* the list shows rows, the highlighted family among them (JOD's M1, 2026-10-26: a far family left the list empty) */
+    g_autoptr (GHashTable) shown = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, NULL);
+
+    mapped_labels (find_descendant_of_type (GTK_WIDGET (card), GTK_TYPE_LIST_VIEW), shown);
+    g_assert_cmpuint (g_hash_table_size (shown), >, 3);
+    g_assert_true (g_hash_table_contains (shown, "DejaVu Sans"));
+  }
+  g_assert_cmpstr (easel_font_card_row_font (card, "DejaVu Serif"), ==, "DejaVu Serif");
+  if (easel_text_render_find_family ("FontAwesome") != NULL)
+    g_assert_null (easel_font_card_row_font (card, "FontAwesome"));
+  /* closed by a press elsewhere (the popover's own way): GTK gives the focus back to the button, yet the keys go to the box again (JOD's
+     M1, 2026-10-26: typing went nowhere after the popover was closed) */
+  gtk_popover_popdown (GTK_POPOVER (find_descendant_of_type (easel_font_card_get_family_button (card), GTK_TYPE_POPOVER)));
+  wait_for_layout (win);
+  g_assert_false (easel_font_card_family_is_open (card));
+  g_assert_true (focus_not_in_card (win));
+  type_keys (win, "z");
+  g_assert_true (box_text_is (win, "z"));                                        /* "ab" was selected: replaced */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_true (box_text_is (win, "ab"));
+  /* the card's controls take no focus (JOD, 2026-10-27: the mouse, and the shortcuts from the keyboard): the family button cannot have
+     it; a press in the box gives the keys to the box */
+  g_assert_false (gtk_widget_get_focusable (easel_font_card_get_family_button (card)));
+  g_assert_false (gtk_widget_grab_focus (easel_font_card_get_family_button (card)));
+  g_assert_true (focus_not_in_card (win));
+  {
+    double x, y;
+
+    easel_canvas_text_point (canvas, 2, &x, &y);
+    easel_canvas_press_timed (canvas, 1, x, y, 777000);
+    easel_canvas_release (canvas, 1);
+  }
+  g_assert_true (focus_not_in_card (win));
+  type_keys (win, "c");
+  g_assert_true (box_text_is (win, "abc"));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  easel_text_buffer_select (b, 0, 2);
+  easel_canvas_text_edited (canvas);
+  gtk_widget_activate (easel_font_card_get_family_button (card));
+  for (gint64 deadline = g_get_monotonic_time () + 3 * G_USEC_PER_SEC;
+       !easel_font_card_family_is_open (card) && g_get_monotonic_time () < deadline;)
+    g_main_context_iteration (NULL, FALSE);
+  /* "mono": the first match highlighted; Down, Enter: the next one picked */
+  easel_font_card_set_search (card, "mono");
+  g_assert_cmpuint (g_list_model_get_n_items (listed), >, 1);
+  {
+    g_autoptr (GtkStringObject) first = g_list_model_get_item (listed, 0);
+    g_autoptr (GtkStringObject) next = g_list_model_get_item (listed, 1);
+
+    g_assert_cmpstr (easel_font_card_get_highlighted (card), ==, gtk_string_object_get_string (first));
+    second = g_strdup (gtk_string_object_get_string (next));
+  }
+  for (guint i = 0; i < g_list_model_get_n_items (listed); i++)
+    {
+      g_autoptr (GtkStringObject) o = g_list_model_get_item (listed, i);
+      g_autofree char *folded = g_utf8_casefold (gtk_string_object_get_string (o), -1);
+
+      g_assert_nonnull (strstr (folded, "mono"));
+    }
+  g_assert_true (easel_font_card_family_key (card, GDK_KEY_Down));
+  g_assert_cmpstr (easel_font_card_get_highlighted (card), ==, second);
+  g_assert_true (easel_font_card_family_key (card, GDK_KEY_Return));
+  g_assert_false (easel_font_card_family_is_open (card));
+  g_assert_cmpstr (run_style_at (win, 0).family, ==, second);
+  g_assert_cmpstr (run_style_at (win, 1).family, ==, second);
+  g_assert_cmpstr (easel_font_card_get_family_text (card), ==, second);
+  g_assert_true (focus_not_in_card (win));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);          /* one edit */
+  g_assert_cmpstr (run_style_at (win, 0).family, ==, "DejaVu Sans");
+  /* Esc: only the popover closes */
+  easel_text_buffer_select (b, 0, 2);
+  easel_canvas_text_edited (canvas);
+  easel_font_card_open_family (card);
+  easel_font_card_set_search (card, "serif");
+  g_assert_true (easel_font_card_family_key (card, GDK_KEY_Escape));
+  g_assert_false (easel_font_card_family_is_open (card));
+  g_assert_cmpstr (run_style_at (win, 0).family, ==, "DejaVu Sans");
+  g_assert_cmpstr (easel_font_card_get_family_text (card), ==, "DejaVu Sans");
+  g_assert_true (box_text_is (win, "ab"));
+  g_assert_true (card_shown (win) || gtk_widget_get_visible (GTK_WIDGET (card)));
+  g_assert_true (focus_not_in_card (win));
+  /* two families selected: an empty button, no row highlighted, and a pick of one of them applies to both */
+  easel_text_buffer_select (b, 0, 1);
+  v.family = "DejaVu Serif";
+  g_assert_true (easel_canvas_text_apply (canvas, EASEL_TEXT_FAMILY, &v));
+  easel_text_buffer_select (b, 0, 2);
+  easel_canvas_text_edited (canvas);
+  g_assert_cmpstr (easel_font_card_get_family_text (card), ==, "");
+  easel_font_card_open_family (card);
+  g_assert_null (easel_font_card_get_highlighted (card));
+  g_assert_true (easel_font_card_choose_family (card, "DejaVu Serif"));
+  g_assert_cmpstr (run_style_at (win, 1).family, ==, "DejaVu Serif");
+  g_assert_cmpstr (easel_font_card_get_family_text (card), ==, "DejaVu Serif");
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);          /* one edit: back to two families */
+  g_assert_cmpstr (run_style_at (win, 0).family, ==, "DejaVu Serif");
+  g_assert_cmpstr (run_style_at (win, 1).family, ==, "DejaVu Sans");
+  /* a family that is not installed: shown by its name */
+  easel_text_buffer_select (b, 0, 2);
+  v.family = "No Such Family Here";
+  g_assert_true (easel_canvas_text_apply (canvas, EASEL_TEXT_FAMILY, &v));
+  g_assert_cmpstr (easel_font_card_get_family_text (card), ==, "No Such Family Here");
+  close_windows ();
+}
+
+/* Opens the family popover as a press on its button does, and waits until it is open. */
+static void
+open_family_popover (EaselWindow *win)
+{
+  EaselFontCard *card = easel_window_get_font_card (win);
+
+  gtk_widget_activate (easel_font_card_get_family_button (card));
+  for (gint64 deadline = g_get_monotonic_time () + 3 * G_USEC_PER_SEC;
+       !easel_font_card_family_is_open (card) && g_get_monotonic_time () < deadline;)
+    g_main_context_iteration (NULL, FALSE);                                      /* a button's activation clicks after a moment */
+  g_assert_true (easel_font_card_family_is_open (card));
+  wait_for_layout (win);
+}
+
+/* REQ-0017-14 (JOD's M1, 2026-10-27, a screen recording): every way the family popover closes without a pick gives the keys back to the
+   box, and leaves no focus in the card (no focus ring on its button): Esc in it; its button pressed again; a press outside it on the
+   canvas, on the box, on the card (Bold) and on the toolbox (Text again); the focus given back to its button later (as the window
+   getting the keys back does on the desktop); after each, "x" typed lands in the box; Tab into the card and a step of the size field
+   leave the keys with the box too (JOD, 2026-10-27: the card's controls take no focus). How the keys reach the
+   box here: `key_taken` hands the key to the window's own key controller, which sees every key first (capture phase) and gives it to
+   the box unless the focus is in the card; so the test shows where the keys go given where GTK left the focus. It cannot see whether
+   the compositor gives the window the keys at all (the isolated session's windows are never active), the focus ring as drawn, or the
+   window losing and getting back the focus: those are M1 b's. */
+static void
+as15_popover_close_paths (void)
+{
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  EaselFontCard *card;
+  GtkWidget *popover;
+  GString *want = g_string_new (NULL);
+  double x, y;
+
+  write_settings (TEXT_SETTINGS);
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  card = easel_window_get_font_card (win);
+  use_tool (win, "text");
+  shape_press_move (win, 1, 10, 10, 150, 80);
+  shape_release (win, 1);
+  for (int way = 0; way < 7; way++)
+    {
+      open_family_popover (win);
+      popover = find_descendant_of_type (easel_font_card_get_family_button (card), GTK_TYPE_POPOVER);
+      switch (way)
+        {
+        case 0:                                                                  /* Esc in the popover */
+          g_assert_true (easel_font_card_family_key (card, GDK_KEY_Escape));
+          break;
+        case 1:                                                                  /* its button pressed again */
+          gtk_widget_activate (easel_font_card_get_family_button (card));
+          for (gint64 deadline = g_get_monotonic_time () + 3 * G_USEC_PER_SEC;
+               easel_font_card_family_is_open (card) && g_get_monotonic_time () < deadline;)
+            g_main_context_iteration (NULL, FALSE);
+          break;
+        case 2:                                                                  /* a press outside it, on the canvas */
+          gtk_popover_popdown (GTK_POPOVER (popover));
+          canvas_point (win, 200, 150, &x, &y);
+          easel_canvas_press (canvas, 2, x, y);                                   /* the middle button: nothing but the press */
+          easel_canvas_release (canvas, 2);
+          break;
+        case 3:                                                                  /* on the box */
+          gtk_popover_popdown (GTK_POPOVER (popover));
+          easel_canvas_text_point (canvas, want->len, &x, &y);
+          easel_canvas_press_timed (canvas, 1, x, y, 100000u * (guint32) (way + 1));
+          easel_canvas_release (canvas, 1);
+          break;
+        case 4:                                                                  /* on the card: Bold, twice */
+          gtk_popover_popdown (GTK_POPOVER (popover));
+          gtk_toggle_button_set_active (easel_font_card_get_toggle (card, EASEL_TEXT_BOLD), TRUE);
+          gtk_toggle_button_set_active (easel_font_card_get_toggle (card, EASEL_TEXT_BOLD), FALSE);
+          break;
+        case 5:                                                                  /* on the toolbox: Text again */
+          gtk_popover_popdown (GTK_POPOVER (popover));
+          use_tool (win, "text");
+          break;
+        default:
+          /* closed, then the focus given back to the button later, as the window getting the keys back from the closed popover does
+             on the desktop (JOD's recording; here it is done by hand) */
+          gtk_popover_popdown (GTK_POPOVER (popover));
+          wait_for_layout (win);
+          gtk_widget_grab_focus (easel_font_card_get_family_button (card));
+          break;
+        }
+      wait_for_layout (win);
+      g_assert_false (easel_font_card_family_is_open (card));
+      g_assert_true (focus_not_in_card (win));
+      g_assert_true (key_taken (win, GDK_KEY_x, 0));
+      g_string_append_c (want, 'x');
+      g_assert_true (box_text_is (win, want->str));
+    }
+  /* the size field's − and + take no focus, and a step gives the keys back to the box (JOD's M1, 2026-10-27) */
+  g_assert_false (gtk_widget_get_focus_on_click (GTK_WIDGET (easel_font_card_get_size (card))));
+  easel_text_buffer_select (easel_canvas_text_buffer (canvas), 0, (size_t) want->len);
+  gtk_widget_grab_focus (GTK_WIDGET (easel_font_card_get_size (card)));         /* as if the user had typed in it before */
+  gtk_spin_button_spin (easel_font_card_get_size (card), GTK_SPIN_STEP_FORWARD, 1);
+  wait_for_layout (win);
+  g_assert_cmpint (run_style_at (win, 0).size_pt, ==, 13);
+  g_assert_true (focus_not_in_card (win));
+  easel_text_buffer_select (easel_canvas_text_buffer (canvas), want->len, want->len);
+  g_assert_true (key_taken (win, GDK_KEY_x, 0));
+  g_string_append_c (want, 'x');
+  g_assert_true (box_text_is (win, want->str));
+  /* Tab into the card (its size field): the focus goes off again, the keys to the box */
+  g_assert_false (key_taken (win, GDK_KEY_Tab, 0));
+  gtk_widget_grab_focus (GTK_WIDGET (easel_font_card_get_size (card)));
+  wait_for_layout (win);
+  g_assert_true (focus_not_in_card (win));
+  g_assert_true (key_taken (win, GDK_KEY_x, 0));
+  g_string_append_c (want, 'x');
+  g_assert_true (box_text_is (win, want->str));
+  g_string_free (want, TRUE);
+  close_windows ();
+}
+
+/* Whether `name` is one of the generic family names (fontconfig's and CSS's), case ignored. */
+static gboolean
+generic_name (const char *name)
+{
+  static const char *generic[] = { "sans", "sans-serif", "serif", "monospace", "system-ui", "cursive", "fantasy", "emoji", "math",
+                                   "fangsong" };
+
+  for (guint i = 0; i < G_N_ELEMENTS (generic); i++)
+    if (g_ascii_strcasecmp (name, generic[i]) == 0)
+      return TRUE;
+  return FALSE;
+}
+
+/* AS-15 and AS-23 (REQ-0017-14, REQ-0017-24): the starting font "Sans" (generic) starts the box in an installed family that is not
+   generic, shown by the button, and the family list has no generic name; `font=auto` takes the desktop's interface font (DejaVu Serif
+   set in GSettings), and an interface font that is generic ("Sans 11") the installed family it stands for. */
+static void
+as15_as23_generic_and_auto (void)
+{
+  g_autoptr (GSettings) desktop = g_settings_new ("org.gnome.desktop.interface");
+  g_autofree char *interface_at_start = g_settings_get_string (desktop, "font-name");
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  EaselFontCard *card;
+  EaselTextStyle st;
+  GListModel *listed;
+
+  write_settings ("[new-picture]\nwidth=300\nheight=200\n\n[text]\nfont=Sans\nsize=12\n");
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  card = easel_window_get_font_card (win);
+  use_tool (win, "text");
+  shape_press_move (win, 1, 10, 10, 150, 80);
+  shape_release (win, 1);
+  easel_canvas_text_style_at_caret (canvas, &st);
+  g_assert_false (generic_name (st.family));
+  g_assert_nonnull (easel_text_render_find_family (st.family));
+  g_assert_cmpstr (easel_font_card_get_family_text (card), ==, st.family);
+  listed = easel_font_card_get_listed (card);
+  easel_font_card_set_search (card, "");
+  g_assert_cmpuint (g_list_model_get_n_items (listed), >, 10);
+  for (guint i = 0; i < g_list_model_get_n_items (listed); i++)
+    {
+      g_autoptr (GtkStringObject) o = g_list_model_get_item (listed, i);
+
+      g_assert_false (generic_name (gtk_string_object_get_string (o)));
+    }
+  close_windows ();
+  /* auto: the interface font */
+  write_settings ("[new-picture]\nwidth=300\nheight=200\n\n[text]\nfont=auto\nsize=12\n");
+  g_settings_set_string (desktop, "font-name", "DejaVu Serif 11");
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  use_tool (win, "text");
+  shape_press_move (win, 1, 10, 10, 150, 80);
+  shape_release (win, 1);
+  easel_canvas_text_style_at_caret (canvas, &st);
+  g_assert_cmpstr (st.family, ==, "DejaVu Serif");
+  close_windows ();
+  g_settings_set_string (desktop, "font-name", "Sans 11");
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  use_tool (win, "text");
+  shape_press_move (win, 1, 10, 10, 150, 80);
+  shape_release (win, 1);
+  easel_canvas_text_style_at_caret (canvas, &st);
+  g_assert_false (generic_name (st.family));
+  g_assert_nonnull (easel_text_render_find_family (st.family));
+  close_windows ();
+  g_settings_set_string (desktop, "font-name", interface_at_start);
+}
+
+/* The bytes of `mime` the clipboard holds, read as another app reads them (through the clipboard, without blocking this main loop). */
+static GBytes *
+clipboard_bytes (EaselClipboard *clipboard, const char *mime)
+{
+  g_autoptr (GInputStream) stream = NULL;
+  g_autoptr (GOutputStream) sink = g_memory_output_stream_new_resizable ();
+  GAsyncResult *result = NULL;
+  const char *got = NULL;
+
+  easel_clipboard_read_async (clipboard, (const char *[]) { mime, NULL }, NULL, store_result, &result);
+  while (result == NULL)
+    g_main_context_iteration (NULL, TRUE);
+  stream = easel_clipboard_read_finish (clipboard, result, &got, NULL);
+  g_clear_object (&result);
+  g_assert_nonnull (stream);
+  g_assert_cmpstr (got, ==, mime);
+  g_output_stream_splice_async (sink, stream, G_OUTPUT_STREAM_SPLICE_CLOSE_SOURCE | G_OUTPUT_STREAM_SPLICE_CLOSE_TARGET,
+                                G_PRIORITY_DEFAULT, NULL, store_result, &result);
+  while (result == NULL)
+    g_main_context_iteration (NULL, TRUE);
+  g_assert_cmpint (g_output_stream_splice_finish (sink, result, NULL), >=, 0);
+  g_object_unref (result);
+  return g_memory_output_stream_steal_as_bytes (G_MEMORY_OUTPUT_STREAM (sink));
+}
+
+/* Another app's content offering each of the n MIME types with its bytes (a NUL-terminated text each). */
+static void
+clipboard_offers (EaselMemoryClipboard *clipboard, const char *const *mimes, const char *const *texts, int n)
+{
+  GdkContentProvider *each[4];
+  g_autoptr (GdkContentProvider) all = NULL;
+
+  g_assert_cmpint (n, <=, 4);
+  for (int i = 0; i < n; i++)
+    {
+      g_autoptr (GBytes) bytes = g_bytes_new (texts[i], strlen (texts[i]));
+
+      each[i] = gdk_content_provider_new_for_bytes (mimes[i], bytes);
+    }
+  all = gdk_content_provider_new_union (each, (gsize) n);
+  easel_memory_clipboard_set_other (clipboard, all);
+}
+
+/* AS-19 (REQ-0017-19): "plain bold" with "bold" bold and red, all selected, Copy: the clipboard offers the plain text "plain bold" and
+   HTML in which "bold" is bold and red; Cut of "plain": the clipboard holds "plain", the box " bold", as one edit; Cut and Copy are
+   insensitive with nothing selected; Copy To… and Clear Selection are insensitive while a box is open. */
+static void
+as19_copy_cut_rich (void)
+{
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  EaselMemoryClipboard *clipboard;
+  EaselTextBuffer *b;
+  EaselTextStyle v = { 0 };
+  EaselRichText rt;
+  g_autoptr (GBytes) plain = NULL, html = NULL, cut = NULL;
+  gboolean bold_red = FALSE;
+
+  write_settings (TEXT_SETTINGS);
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  clipboard = memory_clipboard (win);
+  use_tool (win, "text");
+  shape_press_move (win, 1, 10, 10, 150, 80);
+  shape_release (win, 1);
+  type_keys (win, "plain bold");
+  b = easel_canvas_text_buffer (canvas);
+  easel_text_buffer_select (b, 6, 10);
+  v.flags = EASEL_TEXT_BOLD;
+  g_assert_true (easel_canvas_text_apply (canvas, EASEL_TEXT_FLAG_BOLD, &v));
+  v.color = 0xFFFF0000u;
+  g_assert_true (easel_canvas_text_apply (canvas, EASEL_TEXT_COLOR, &v));
+  g_assert_false (action_enabled (win, "copy-to"));
+  g_assert_false (action_enabled (win, "clear-selection"));
+  easel_text_buffer_select (b, 3, 3);
+  easel_canvas_text_edited (canvas);
+  g_assert_false (action_enabled (win, "copy"));
+  g_assert_false (action_enabled (win, "cut"));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "select-all", NULL);
+  g_assert_true (action_enabled (win, "copy"));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "copy", NULL);
+  plain = clipboard_bytes (EASEL_CLIPBOARD (clipboard), "text/plain;charset=utf-8");
+  g_assert_cmpmem (g_bytes_get_data (plain, NULL), g_bytes_get_size (plain), "plain bold", 10);
+  html = clipboard_bytes (EASEL_CLIPBOARD (clipboard), "text/html");
+  g_assert_true (easel_rich_text_from_html (g_bytes_get_data (html, NULL), g_bytes_get_size (html), &rt));
+  g_assert_cmpmem (rt.text, rt.len, "plain bold", 10);
+  for (size_t i = 0; i < rt.n; i++)
+    if (rt.runs[i].start == 6)
+      bold_red = (rt.runs[i].flags & EASEL_TEXT_BOLD) && rt.runs[i].has_color && rt.runs[i].color == 0xFFFF0000u;
+  g_assert_true (bold_red);
+  easel_rich_text_free (&rt);
+  g_assert_true (box_text_is (win, "plain bold"));                                /* Copy changed nothing */
+  /* Cut "plain" */
+  easel_text_buffer_select (b, 0, 5);
+  easel_canvas_text_edited (canvas);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "cut", NULL);
+  g_assert_true (box_text_is (win, " bold"));
+  cut = clipboard_bytes (EASEL_CLIPBOARD (clipboard), "text/plain;charset=utf-8");
+  g_assert_cmpmem (g_bytes_get_data (cut, NULL), g_bytes_get_size (cut), "plain", 5);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);          /* one edit */
+  g_assert_true (box_text_is (win, "plain bold"));
+  close_windows ();
+}
+
+/* AS-19 (REQ-0017-19), its memory clause: "abc" all selected and the rich text's memory made unavailable (the window's test switch):
+   Copy shows "Could Not Copy the Text" once and the clipboard keeps what it held; Cut the same, the text not removed. */
+static void
+as19_copy_text_memory (void)
+{
+  EaselWindow *win;
+  EaselMemoryClipboard *clipboard;
+  g_autoptr (GBytes) kept = NULL;
+
+  write_settings (TEXT_SETTINGS);
+  win = start_window ();
+  clipboard = memory_clipboard (win);
+  use_tool (win, "text");
+  shape_press_move (win, 1, 10, 10, 150, 80);
+  shape_release (win, 1);
+  type_keys (win, "abc");
+  easel_memory_clipboard_set_other_text (clipboard, "old");
+  g_action_group_activate_action (G_ACTION_GROUP (win), "select-all", NULL);
+  easel_window_set_rich_text_limit (win, 10);                                   /* less than any HTML of ours */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "copy", NULL);
+  assert_alert (win, "Could Not Copy the Text", "There is not enough memory to copy this text.");
+  kept = clipboard_bytes (EASEL_CLIPBOARD (clipboard), "text/plain;charset=utf-8");
+  g_assert_cmpmem (g_bytes_get_data (kept, NULL), g_bytes_get_size (kept), "old", 3);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "cut", NULL);
+  assert_alert (win, "Could Not Copy the Text", "There is not enough memory to copy this text.");
+  g_assert_true (box_text_is (win, "abc"));
+  g_clear_pointer (&kept, g_bytes_unref);
+  kept = clipboard_bytes (EASEL_CLIPBOARD (clipboard), "text/plain;charset=utf-8");
+  g_assert_cmpmem (g_bytes_get_data (kept, NULL), g_bytes_get_size (kept), "old", 3);
+  /* the switch off: Copy works again */
+  easel_window_set_rich_text_limit (win, G_MAXSIZE);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "copy", NULL);
+  g_clear_pointer (&kept, g_bytes_unref);
+  kept = clipboard_bytes (EASEL_CLIPBOARD (clipboard), "text/plain;charset=utf-8");
+  g_assert_cmpmem (g_bytes_get_data (kept, NULL), g_bytes_get_size (kept), "abc", 3);
+  close_windows ();
+}
+
+/* AS-20 (REQ-0017-20), its memory clause: rich text on the clipboard and the memory to read it made unavailable (the window's test
+   switch): Paste shows "Could Not Paste" with "There is not enough memory to paste this text." once and the box is as it was. */
+static void
+as20_paste_text_memory (void)
+{
+  static const char *html_plain[] = { "text/html", "text/plain;charset=utf-8" };
+  EaselWindow *win;
+  EaselMemoryClipboard *clipboard;
+
+  write_settings (TEXT_SETTINGS);
+  win = start_window ();
+  clipboard = memory_clipboard (win);
+  use_tool (win, "text");
+  shape_press_move (win, 1, 10, 10, 150, 80);
+  shape_release (win, 1);
+  type_keys (win, "ab");
+  clipboard_offers (clipboard, html_plain, (const char *[]) { "<b>xyz</b>", "xyz" }, 2);
+  easel_window_set_rich_text_limit (win, 3);                                    /* less than the clipboard's HTML */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "paste", NULL);
+  assert_alert (win, "Could Not Paste", "There is not enough memory to paste this text.");
+  g_assert_true (box_text_is (win, "ab"));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);          /* the typing, not a paste */
+  g_assert_true (box_text_is (win, ""));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "redo", NULL);
+  easel_window_set_rich_text_limit (win, G_MAXSIZE);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "paste", NULL);
+  g_assert_true (box_text_is (win, "abxyz"));
+  close_windows ();
+}
+
+/* AS-20 (REQ-0017-20), a size not given: "A" at 2em pasted into a box whose caret is at 12 takes 12. */
+static void
+as20_paste_size_not_given (void)
+{
+  static const char *html_plain[] = { "text/html", "text/plain;charset=utf-8" };
+  EaselWindow *win;
+  EaselMemoryClipboard *clipboard;
+
+  write_settings (TEXT_SETTINGS);
+  win = start_window ();
+  clipboard = memory_clipboard (win);
+  use_tool (win, "text");
+  shape_press_move (win, 1, 10, 10, 150, 80);
+  shape_release (win, 1);
+  clipboard_offers (clipboard, html_plain, (const char *[]) { "<span style=\"font-size:2em\">A</span>", "A" }, 2);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "paste", NULL);
+  g_assert_true (box_text_is (win, "A"));
+  g_assert_cmpint (run_style_at (win, 0).size_pt, ==, 12);
+  close_windows ();
+}
+
+/* AS-20 (REQ-0017-20, REQ-0017-27): rich "A" in a family not installed, 20 pt, italic, in a link, pasted into a box in DejaVu Sans 12:
+   "A" DejaVu Sans 20 italic, the link's text kept ("No Such Family Here", a name no font has);
+   Paste as Plain Text: DejaVu Sans 12 regular; "a\tb\r\nc": "a b" and "c" on two lines; a picture and text: the text; a picture
+   only: Paste and Paste as Plain Text insensitive; an owner that never answers: after the limit "Could Not Paste" with "The
+   clipboard's text cannot be read." and nothing changed; an HTML of more than 64 KiB read whole; a quit during the wait: the text
+   dropped and the quit gone on. */
+static void
+as20_paste_rich_plain_wait (void)
+{
+  static const char *html_plain[] = { "text/html", "text/plain;charset=utf-8" };
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  EaselMemoryClipboard *clipboard;
+  EaselTextBuffer *b;
+  EaselTextStyle st;
+  GString *big;
+  size_t len;
+
+  write_settings ("[new-picture]\nwidth=1000\nheight=400\ncanvas-color=#FFFFFF\n\n[text]\nfont=DejaVu Sans\nsize=12\n");
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  clipboard = memory_clipboard (win);
+  use_tool (win, "text");
+  shape_press_move (win, 1, 0, 0, 999, 399);
+  shape_release (win, 1);
+  b = easel_canvas_text_buffer (canvas);
+  clipboard_offers (clipboard, html_plain,
+                    (const char *[]) { "<span style=\"font-family:'No Such Family Here';font-size:20pt;font-style:italic\">"
+                                       "<a href=\"https://example.org\">A</a></span>", "A" }, 2);
+  g_assert_true (action_enabled (win, "paste"));
+  g_assert_true (action_enabled (win, "paste-plain"));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "paste", NULL);
+  g_assert_true (box_text_is (win, "A"));
+  g_assert_cmpstr (run_style_at (win, 0).family, ==, "DejaVu Sans");
+  g_assert_cmpint (run_style_at (win, 0).size_pt, ==, 20);
+  g_assert_cmpint (run_style_at (win, 0).flags, ==, EASEL_TEXT_ITALIC);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);          /* one edit */
+  g_assert_true (box_text_is (win, ""));
+  /* Paste as Plain Text */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "paste-plain", NULL);
+  g_assert_true (box_text_is (win, "A"));
+  easel_canvas_text_style_at_caret (canvas, &st);
+  g_assert_cmpint (run_style_at (win, 0).size_pt, ==, 12);
+  g_assert_cmpint (run_style_at (win, 0).flags, ==, 0);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  /* line breaks and a tab */
+  easel_memory_clipboard_set_other_text (clipboard, "a\tb\r\nc");
+  g_action_group_activate_action (G_ACTION_GROUP (win), "paste", NULL);
+  g_assert_true (box_text_is (win, "a b\nc"));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  /* a picture and text: the text; a picture only: insensitive */
+  {
+    g_autoptr (GBytes) png = small_png ();
+    GdkContentProvider *both[2] = { gdk_content_provider_new_for_bytes ("image/png", png),
+                                    gdk_content_provider_new_typed (G_TYPE_STRING, "t") };
+    g_autoptr (GdkContentProvider) all = gdk_content_provider_new_union (both, 2);
+
+    easel_memory_clipboard_set_other (clipboard, all);
+    g_assert_true (action_enabled (win, "paste"));
+    g_action_group_activate_action (G_ACTION_GROUP (win), "paste", NULL);
+    g_assert_true (box_text_is (win, "t"));
+    g_assert_cmpint (easel_window_get_tool (win), ==, EASEL_TOOL_TEXT);
+    g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+    easel_memory_clipboard_set_other_bytes (clipboard, "image/png", png);
+    g_assert_false (action_enabled (win, "paste"));
+    g_assert_false (action_enabled (win, "paste-plain"));
+  }
+  /* an owner that never answers */
+  easel_memory_clipboard_set_other_text (clipboard, "late");
+  easel_memory_clipboard_set_never_answers (clipboard, TRUE);
+  easel_window_set_clipboard_timeout (win, 300);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "paste", NULL);
+  assert_alert (win, "Could Not Paste", "The clipboard's text cannot be read.");
+  g_assert_true (box_text_is (win, ""));
+  easel_memory_clipboard_set_never_answers (clipboard, FALSE);
+  /* HTML of more than 64 KiB, read whole */
+  big = g_string_new (NULL);
+  for (int i = 0; big->len < 70 * 1024; i++)
+    g_string_append (big, "<span style=\"font-family:'DejaVu Sans';font-size:12pt\">a</span>");
+  g_string_append (big, "<span>Z</span>");
+  clipboard_offers (clipboard, html_plain, (const char *[]) { big->str, "short" }, 2);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "paste", NULL);
+  easel_text_buffer_text (b, &len);
+  g_assert_cmpuint (len, >, 1000);
+  g_assert_cmpint (easel_text_buffer_text (b, &len)[len - 1], ==, 'Z');
+  g_string_free (big, TRUE);
+  /* a quit request during the wait: the text that arrives is dropped and the quit goes on (the picture unchanged: nothing to save) */
+  {
+    gpointer alive = win;
+
+    g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+    g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+    g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);      /* the box closed: nothing to put down */
+    g_assert_true (no_box (win));
+    shape_press_move (win, 1, 0, 0, 999, 399);
+    shape_release (win, 1);
+    easel_memory_clipboard_set_other_text (clipboard, "late text");
+    easel_memory_clipboard_set_answer_delay (clipboard, 400);
+    easel_window_set_clipboard_timeout (win, 5000);
+    g_object_add_weak_pointer (G_OBJECT (win), &alive);
+    g_timeout_add_once (100, (GSourceOnceFunc) gtk_window_close, win);
+    g_action_group_activate_action (G_ACTION_GROUP (win), "paste", NULL);
+    for (int i = 0; i < 20 && alive != NULL; i++)
+      g_main_context_iteration (NULL, FALSE);
+    g_assert_null (alive);                                                       /* the quit went on */
+  }
+  close_windows ();
+}
+
+/* AS-21 (REQ-0017-21): no box open and only text on the clipboard: Paste insensitive with Text, the Pencil and Select; a picture and text
+   with Text and no box: Paste pastes the picture (Select made the tool). */
+static void
+as21_text_alone_no_paste (void)
+{
+  static const char *tools[] = { "text", "pencil", "select" };
+  EaselWindow *win;
+  EaselMemoryClipboard *clipboard;
+  g_autoptr (GBytes) png = small_png ();
+  int x, y, w, h;
+  gboolean floating;
+
+  write_settings (TEXT_SETTINGS);
+  win = start_window ();
+  clipboard = memory_clipboard (win);
+  easel_memory_clipboard_set_other_text (clipboard, "words");
+  for (guint i = 0; i < G_N_ELEMENTS (tools); i++)
+    {
+      use_tool (win, tools[i]);
+      g_assert_false (action_enabled (win, "paste"));
+    }
+  use_tool (win, "text");
+  {
+    GdkContentProvider *both[2] = { gdk_content_provider_new_for_bytes ("image/png", png),
+                                    gdk_content_provider_new_typed (G_TYPE_STRING, "t") };
+    g_autoptr (GdkContentProvider) all = gdk_content_provider_new_union (both, 2);
+
+    easel_memory_clipboard_set_other (clipboard, all);
+  }
+  g_assert_true (action_enabled (win, "paste"));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "paste", NULL);
+  g_assert_cmpint (easel_window_get_tool (win), ==, EASEL_TOOL_SELECT);
+  g_assert_true (easel_canvas_get_selection (easel_window_get_canvas (win), &x, &y, &w, &h, &floating));
+  g_assert_true (floating);
+  g_assert_cmpint (w, ==, 2);
+  close_windows ();
+}
+
+/* AS-22 (REQ-0017-22, REQ-0017-23): "abc" in a box; a secondary press on "b": the caret before "b", the box's menu open (Cut, Copy, Paste,
+   Paste as Plain Text; Select All), Cut and Copy insensitive; "abc" selected, the menu opened on it: the selection kept, Cut and Copy
+   sensitive; Text and no box: a secondary press opens nothing and changes nothing. */
+static void
+as22_box_menu (void)
+{
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  EaselTextBuffer *b;
+  GtkWidget *menu;
+  double x, y, x2, y2;
+  size_t from, to;
+
+  write_settings (TEXT_SETTINGS);
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  memory_clipboard (win);
+  use_tool (win, "text");
+  shape_press_move (win, 1, 10, 10, 150, 80);
+  shape_release (win, 1);
+  type_keys (win, "abc");
+  b = easel_canvas_text_buffer (canvas);
+  menu = GTK_WIDGET (easel_window_get_text_menu (win));
+  easel_canvas_text_point (canvas, 1, &x, &y);
+  easel_canvas_text_point (canvas, 2, &x2, &y2);
+  easel_canvas_press (canvas, 3, x + (x2 - x) / 4, y);                           /* on "b", its left part */
+  easel_canvas_release (canvas, 3);
+  g_assert_true (gtk_widget_get_visible (menu));
+  g_assert_false (easel_text_buffer_selection (b, &from, &to));
+  g_assert_cmpuint (easel_text_buffer_caret (b), ==, 1);
+  g_assert_false (action_enabled (win, "cut"));
+  g_assert_false (action_enabled (win, "copy"));
+  g_assert_true (action_enabled (win, "select-all"));
+  {
+    GMenuModel *model = gtk_popover_menu_get_menu_model (GTK_POPOVER_MENU (menu));
+    g_autoptr (GString) actions = g_string_new (NULL);
+
+    for (int sct = 0; sct < g_menu_model_get_n_items (model); sct++)
+      {
+        GMenuModel *section = g_menu_model_get_item_link (model, sct, G_MENU_LINK_SECTION);
+
+        for (int i = 0; i < g_menu_model_get_n_items (section); i++)
+          {
+            g_autofree char *action = NULL;
+
+            g_menu_model_get_item_attribute (section, i, G_MENU_ATTRIBUTE_ACTION, "s", &action);
+            g_string_append_printf (actions, "%s%s", actions->len ? " " : "", action);
+          }
+        g_string_append (actions, " |");
+        g_object_unref (section);
+      }
+    g_assert_cmpstr (actions->str, ==, "win.cut win.copy win.paste win.paste-plain | win.select-all |");
+  }
+  gtk_popover_popdown (GTK_POPOVER (menu));
+  /* on the selected text: the selection kept */
+  easel_text_buffer_select (b, 0, 3);
+  easel_canvas_text_edited (canvas);
+  easel_canvas_press (canvas, 3, x + (x2 - x) / 4, y);
+  easel_canvas_release (canvas, 3);
+  g_assert_true (gtk_widget_get_visible (menu));
+  g_assert_true (easel_text_buffer_selection (b, &from, &to));
+  g_assert_cmpuint (from, ==, 0);
+  g_assert_cmpuint (to, ==, 3);
+  g_assert_true (action_enabled (win, "cut"));
+  g_assert_true (action_enabled (win, "copy"));
+  gtk_popover_popdown (GTK_POPOVER (menu));
+  /* Text and no box: nothing */
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+  g_assert_true (no_box (win));
+  canvas_point (win, 200, 150, &x, &y);
+  easel_canvas_press (canvas, 3, x, y);
+  easel_canvas_release (canvas, 3);
+  g_assert_false (gtk_widget_get_visible (menu));
+  g_assert_false (gtk_widget_get_visible (GTK_WIDGET (easel_window_get_selection_menu (win))));
+  g_assert_false (gtk_widget_get_visible (GTK_WIDGET (easel_window_get_canvas_menu (win))));
+  g_assert_true (no_box (win));
+  close_windows ();
+}
+
+/* AS-8 (REQ-0017-08), the window: Undo and Redo act on the open box's edits. With a Pencil step undone first (a redo step of the
+   picture): "abc" typed, Left, "x" typed, "b" made bold; Undo takes back the bold, then the "x", then the "abc", then closes the box with
+   nothing put down and no step, the picture's redo step kept; while the box is open Undo is sensitive and Redo only when a box edit can
+   be redone, whatever the picture's redo steps; Redo redoes the box's edits in turn, a move taking the box to its place again; a
+   character typed after an Undo leaves nothing to redo and goes where the undone "x" was ("abyc"); Redo of the Bold leaves "b"
+   selected; in a new box, Redo of a Delete puts the caret where the deleted "c" was ("abzd"). */
+static void
+as8_undo_redo_routing (void)
+{
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  EaselTextBuffer *b;
+  EaselTextStyle v = { 0 };
+  const EaselTextRun *runs;
+  size_t n;
+  int r0[4], r1[4], wide;
+  size_t from, to;
+  EaselTextInk ink;
+
+  write_settings (TEXT_SETTINGS);
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  use_pencil (win);
+  A_STROKE (win);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_true (action_enabled (win, "redo"));                                  /* the picture's redo step */
+  use_tool (win, "text");
+  shape_press_move (win, 1, 10, 10, 110, 50);
+  shape_release (win, 1);
+  g_assert_true (action_enabled (win, "undo"));                                  /* an empty box: Undo closes it */
+  g_assert_false (action_enabled (win, "redo"));                                 /* no box edit to redo, whatever the picture's */
+  type_keys (win, "abc");
+  g_assert_true (key_taken (win, GDK_KEY_Left, 0));
+  type_keys (win, "x");
+  g_assert_true (box_text_is (win, "abxc"));
+  b = easel_canvas_text_buffer (canvas);
+  easel_text_buffer_select (b, 1, 2);
+  v.flags = EASEL_TEXT_BOLD;
+  g_assert_true (easel_text_buffer_apply (b, EASEL_TEXT_FLAG_BOLD, &v, FALSE));  /* the bold (the card's own way to it: T015) */
+  easel_canvas_text_edited (canvas);
+  g_assert_false (action_enabled (win, "redo"));
+  g_assert_true (easel_canvas_text_box (canvas, &r0[0], &r0[1], &r0[2], &r0[3]));
+  r1[0] = r0[0] + 20;
+  r1[1] = r0[1] + 5;
+  r1[2] = r0[2];
+  r1[3] = r0[3];
+  g_assert_true (easel_text_buffer_push_geometry (b, r0, r1));                   /* a move, as recorded (the drag itself: T014) */
+  easel_canvas_text_edited (canvas);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_true (box_is (win, r0[0], r0[1], r0[2], r0[3]));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "redo", NULL);
+  g_assert_true (box_is (win, r1[0], r1[1], r1[2], r1[3]));                    /* Redo takes the move's new place */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_true (box_is (win, r0[0], r0[1], r0[2], r0[3]));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  runs = easel_text_buffer_runs (b, &n);
+  g_assert_cmpuint (n, ==, 1);
+  g_assert_true (box_text_is (win, "abxc"));
+  g_assert_true (action_enabled (win, "redo"));
+  g_assert_true (easel_canvas_text_ink (canvas, &ink));
+  wide = ink.w;                                                                  /* "abxc" drawn */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_true (box_text_is (win, "abc"));
+  g_assert_true (easel_canvas_text_ink (canvas, &ink));
+  g_assert_cmpint (ink.w, <, wide);                                              /* drawn again without the "x" */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "redo", NULL);
+  g_assert_true (box_text_is (win, "abxc"));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "redo", NULL);
+  runs = easel_text_buffer_runs (b, &n);
+  g_assert_cmpuint (n, ==, 3);
+  g_assert_cmpint (runs[1].style.flags, ==, EASEL_TEXT_BOLD);
+  g_assert_true (easel_text_buffer_selection (b, &from, &to));
+  g_assert_cmpuint (from, ==, 1);                                                /* "b" selected, as right after the Bold */
+  g_assert_cmpuint (to, ==, 2);
+  g_assert_true (action_enabled (win, "redo"));                                  /* the move can be redone */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);          /* the bold, then the "x" */
+  g_assert_true (box_text_is (win, "abc"));
+  type_keys (win, "y");                                                          /* a new edit drops the edits to redo */
+  g_assert_false (action_enabled (win, "redo"));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "redo", NULL);         /* does nothing */
+  g_assert_true (box_text_is (win, "abyc"));                                     /* the caret where the "x" was */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_true (box_text_is (win, "abc"));                                      /* the "y" */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_true (box_text_is (win, ""));                                         /* the "abc" */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);          /* nothing left: the box closes */
+  g_assert_true (no_box (win));
+  g_assert_false (easel_window_get_modified (win));                              /* nothing put down, no step */
+  g_assert_true (action_enabled (win, "redo"));                                  /* the picture's redo step is still there */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "redo", NULL);
+  g_assert_cmphex (easel_image_get (easel_window_get_picture (win), 5, 3), ==, 0xFF000000u);   /* the Pencil's stroke again */
+  /* a delete redone: the caret where the deleted text was */
+  shape_press_move (win, 1, 10, 10, 110, 50);
+  shape_release (win, 1);
+  type_keys (win, "abcd");
+  g_assert_true (key_taken (win, GDK_KEY_Left, 0));
+  g_assert_true (key_taken (win, GDK_KEY_Left, 0));
+  g_assert_true (key_taken (win, GDK_KEY_Delete, 0));
+  g_assert_true (box_text_is (win, "abd"));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_true (key_taken (win, GDK_KEY_End, 0));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "redo", NULL);
+  type_keys (win, "z");
+  g_assert_true (box_text_is (win, "abzd"));
+  close_windows ();
+}
+
+/* AS-1 (REQ-0017-01, REQ-0017-02): Text after Airbrush with the tooltip "Text" and a symbolic "A", the toolbox in its final order;
+   chosen, the hint "Inserts text into the picture.", the crosshair over the canvas, and in the options panel only Opaque and
+   Transparent, drawn as Select's, Transparent chosen; Text's mode is its own (Select's stays as it was); choosing Text again changes
+   nothing. */
+static void
+as1_text_tool_and_options (void)
+{
+  static const struct { const char *name, *tip; int col, row; } tools[] = {
+    { "pan", "Pan", 0, 0 }, { "magnifier", "Magnifier", 1, 0 }, { "select", "Select", 0, 1 },
+    { "free-select", "Free-Form Select", 1, 1 }, { "eraser", "Eraser", 0, 2 }, { "pick", "Pick Color", 1, 2 },
+    { "fill", "Fill", 0, 3 }, { "gradient", "Gradient", 1, 3 }, { "pencil", "Pencil", 0, 4 }, { "brush", "Brush", 1, 4 },
+    { "airbrush", "Airbrush", 0, 5 }, { "text", "Text", 1, 5 }, { "line", "Line", 0, 6 }, { "curve", "Curve", 1, 6 },
+    { "rectangle", "Rectangle", 0, 7 }, { "rounded-rectangle", "Rounded Rectangle", 1, 7 }, { "ellipse", "Ellipse", 0, 8 },
+    { "polygon", "Polygon", 1, 8 },
+  };
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  EaselStatusBar *bar = easel_window_get_status_bar (win);
+  GtkToggleButton *buttons[G_N_ELEMENTS (tools)];
+  GtkWidget *opaque, *transparent;
+  graphene_rect_t first, r;
+
+  wait_for_layout (win);
+  for (guint i = 0; i < G_N_ELEMENTS (tools); i++)
+    {
+      buttons[i] = find_tool_button (GTK_WIDGET (win), tools[i].name);
+      g_assert_nonnull (buttons[i]);
+      g_assert_cmpstr (gtk_widget_get_tooltip_text (GTK_WIDGET (buttons[i])), ==, tools[i].tip);
+    }
+  g_assert_cmpstr (gtk_button_get_icon_name (GTK_BUTTON (buttons[11])), ==, "easel-tool-text-symbolic");
+  first = bounds_in (GTK_WIDGET (buttons[0]), GTK_WIDGET (win));
+  for (guint i = 1; i < G_N_ELEMENTS (tools); i++)
+    {
+      graphene_rect_t before = bounds_in (GTK_WIDGET (buttons[i - 1]), GTK_WIDGET (win));
+
+      r = bounds_in (GTK_WIDGET (buttons[i]), GTK_WIDGET (win));
+      if (tools[i].col == 0)
+        g_assert_cmpfloat_with_epsilon (r.origin.x, first.origin.x, 1.0);
+      else
+        g_assert_cmpfloat (r.origin.x, >, first.origin.x + first.size.width - 1);
+      if (tools[i].row > tools[i - 1].row)
+        g_assert_cmpfloat (r.origin.y, >, before.origin.y + 1);
+      else
+        g_assert_cmpfloat_with_epsilon (r.origin.y, before.origin.y, 1.0);
+    }
+  /* Select's mode made Opaque (its default) and left; Text chosen */
+  use_tool (win, "select");
+  wait_for_layout (win);
+  g_assert_true (gtk_toggle_button_get_active (GTK_TOGGLE_BUTTON (find_mapped_by_tooltip (GTK_WIDGET (win),
+                                                                  "Opaque: keep background color"))));
+  g_signal_emit_by_name (buttons[11], "clicked");
+  wait_for_layout (win);
+  g_assert_cmpint (easel_window_get_tool (win), ==, EASEL_TOOL_TEXT);
+  for (guint j = 0; j < G_N_ELEMENTS (tools); j++)
+    g_assert_true (gtk_toggle_button_get_active (buttons[j]) == (j == 11));
+  g_assert_cmpstr (easel_status_bar_get_text (bar, EASEL_STATUS_HINT), ==, "Inserts text into the picture.");
+  easel_canvas_pointer_at (canvas, 10.5, 10.5);
+  g_assert_cmpstr (gdk_cursor_get_name (gtk_widget_get_cursor (GTK_WIDGET (canvas))), ==, "crosshair");
+  /* the options: Opaque above Transparent, Transparent chosen, and nothing else shown */
+  opaque = find_mapped_by_tooltip (GTK_WIDGET (win), "Opaque: fill the text box with the background color");
+  transparent = find_mapped_by_tooltip (GTK_WIDGET (win), "Transparent: only the text");
+  g_assert_nonnull (opaque);
+  g_assert_nonnull (transparent);
+  g_assert_null (find_mapped_by_tooltip (GTK_WIDGET (win), "Opaque: keep background color"));
+  g_assert_true (gtk_toggle_button_get_active (GTK_TOGGLE_BUTTON (transparent)));
+  g_assert_false (gtk_toggle_button_get_active (GTK_TOGGLE_BUTTON (opaque)));
+  g_assert_cmpfloat (bounds_in (transparent, GTK_WIDGET (win)).origin.y, >, bounds_in (opaque, GTK_WIDGET (win)).origin.y + 1);
+  g_assert_cmpint (count_mapped_toggles_in_options (win), ==, 2);
+  /* Text's own mode: Opaque here leaves Select's as it was */
+  g_signal_emit_by_name (opaque, "clicked");
+  g_assert_true (easel_window_get_text_opaque (win));
+  use_tool (win, "select");
+  wait_for_layout (win);
+  g_assert_true (gtk_toggle_button_get_active (GTK_TOGGLE_BUTTON (find_mapped_by_tooltip (GTK_WIDGET (win),
+                                                                  "Opaque: keep background color"))));
+  g_signal_emit_by_name (find_mapped_by_tooltip (GTK_WIDGET (win), "Transparent: moving or clearing leaves a transparent hole"),
+                         "clicked");
+  use_tool (win, "text");
+  wait_for_layout (win);
+  g_assert_true (easel_window_get_text_opaque (win));                         /* kept, and Select's change did not touch it */
+  /* Text chosen again: nothing changes */
+  g_signal_emit_by_name (find_tool_button (GTK_WIDGET (win), "text"), "clicked");
+  wait_for_layout (win);
+  g_assert_cmpint (easel_window_get_tool (win), ==, EASEL_TOOL_TEXT);
+  g_assert_true (easel_window_get_text_opaque (win));
+  close_windows ();
+}
+
 /* AS-4 (REQ-0016-05, -06): Ctrl+V with the Pencil: Select becomes the tool and the copy floats at (0, 0), "5 x 4" in the status bar, the
    picture unchanged; dragged by (10, 5) and put down: 6 pixels changed, one step; the triangle's copy pasted and put down at once: 4
    pixels changed, the red ones under its transparent pixels stay red; a paste is a rectangle (its outline the 5 x 5 box). */
@@ -19033,6 +22417,30 @@ main (int argc, char **argv)
 
   if (!gtk_init_check ())
     return 77;
+  /* GTK's input method (4.22, Wayland) makes a focused context its current one at once, but makes the text-input object it lets go of
+     it through only in a later turn of the main loop. A ui test that opens a text box (its input method focused) and closes the window
+     without turning the main loop would leave a context of a gone canvas current, which GTK then calls on (a critical). One focus in a
+     window of its own, with a round trip, makes that object before any test. */
+  {
+    GtkWidget *w = gtk_window_new ();
+    GtkIMContext *im = gtk_im_multicontext_new ();
+
+    gtk_window_present (GTK_WINDOW (w));
+    gtk_im_context_set_client_widget (im, w);
+    gtk_im_context_focus_in (im);
+    for (int i = 0; i < 2; i++)
+      {
+        gdk_display_sync (gdk_display_get_default ());
+        while (g_main_context_iteration (NULL, FALSE))
+          ;
+      }
+    gtk_im_context_focus_out (im);
+    gtk_im_context_set_client_widget (im, NULL);
+    g_object_unref (im);
+    gtk_window_destroy (GTK_WINDOW (w));
+    while (g_main_context_iteration (NULL, FALSE))
+      ;
+  }
 
   g_test_init (&argc, &argv, NULL);
   /* The moving dashes of a selection would change a render from one frame to the next: the tests start with animations off (REQ-0014-17 c);
@@ -19237,6 +22645,41 @@ main (int argc, char **argv)
   g_test_add_func ("/0016/as8_paste_from_and_files", as8_paste_from_and_files);
   g_test_add_func ("/0016/as8_paste_from_dialog", as8_paste_from_dialog);
   g_test_add_func ("/0016/as9_copy_to", as9_copy_to);
+  g_test_add_func ("/0017/as1_text_tool_and_options", as1_text_tool_and_options);
+  g_test_add_func ("/0017/as2_drag_box", as2_drag_box);
+  g_test_add_func ("/0017/as2_box_cursors", as2_box_cursors);
+  g_test_add_func ("/0017/as3_click_box", as3_click_box);
+  g_test_add_func ("/0017/as4_box_drag_cancel", as4_box_drag_cancel);
+  g_test_add_func ("/0017/as5_wrap_grow_shrink", as5_wrap_grow_shrink);
+  g_test_add_func ("/0017/as16_box_shows_put_down_pixels", as16_box_shows_put_down_pixels);
+  g_test_add_func ("/0017/as16_later_character_wins", as16_later_character_wins);
+  g_test_add_func ("/0017/as25_line_starts", as25_line_starts);
+  g_test_add_func ("/0017/as26_format_keys", as26_format_keys);
+  g_test_add_func ("/0017/as26_card_steps_mixed", as26_card_steps_mixed);
+  g_test_add_func ("/0017/as5_refused_past_bottom", as5_refused_past_bottom);
+  g_test_add_func ("/0017/as7_keys_go_to_box", as7_keys_go_to_box);
+  g_test_add_func ("/0017/as24_show_memory", as24_show_memory);
+  g_test_add_func ("/0017/as8_undo_redo_routing", as8_undo_redo_routing);
+  g_test_add_func ("/0017/wrapped_line_end_select", wrapped_line_end_select);
+  g_test_add_func ("/0017/as17_put_down_events", as17_put_down_events);
+  g_test_add_func ("/0017/as18_put_down_memory", as18_put_down_memory);
+  g_test_add_func ("/0017/as9_move_band", as9_move_band);
+  g_test_add_func ("/0017/as10_box_handles", as10_box_handles);
+  g_test_add_func ("/0017/as11_card_shows_style", as11_card_shows_style);
+  g_test_add_func ("/0017/as12_starting_style", as12_starting_style);
+  g_test_add_func ("/0017/as13_text_color", as13_text_color);
+  g_test_add_func ("/0017/as14_card_place_and_focus", as14_card_place_and_focus);
+  g_test_add_func ("/0017/as15_size_field", as15_size_field);
+  g_test_add_func ("/0017/as15_family_popover", as15_family_popover);
+  g_test_add_func ("/0017/as15_popover_close_paths", as15_popover_close_paths);
+  g_test_add_func ("/0017/as15_as23_generic_and_auto", as15_as23_generic_and_auto);
+  g_test_add_func ("/0017/as19_copy_cut_rich", as19_copy_cut_rich);
+  g_test_add_func ("/0017/as20_paste_rich_plain_wait", as20_paste_rich_plain_wait);
+  g_test_add_func ("/0017/as19_copy_text_memory", as19_copy_text_memory);
+  g_test_add_func ("/0017/as20_paste_text_memory", as20_paste_text_memory);
+  g_test_add_func ("/0017/as20_paste_size_not_given", as20_paste_size_not_given);
+  g_test_add_func ("/0017/as21_text_alone_no_paste", as21_text_alone_no_paste);
+  g_test_add_func ("/0017/as22_box_menu", as22_box_menu);
   g_test_add_func ("/0016/as10_clipboard_memory", as10_clipboard_memory);
   g_test_add_func ("/0016/store_at_quit", store_at_quit);
   g_test_add_func ("/0016/as14_late_callback_after_timeout", as14_late_callback_after_timeout);

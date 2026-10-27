@@ -1,6 +1,7 @@
-foreach name : ['cursor', 'figure', 'figure-apply', 'figure-curve', 'figure-polygon', 'figure-step', 'gradient', 'selection', 'fill', 'footprint', 'format', 'grid', 'history', 'image', 'lasso', 'lattice', 'magnifier', 'number', 'palette', 'resize', 'settings', 'spray', 'stroke', 'view']
+foreach name : ['cursor', 'figure', 'figure-apply', 'figure-curve', 'figure-polygon', 'figure-step', 'gradient', 'selection', 'fill', 'footprint', 'format', 'grid', 'history', 'image', 'lasso', 'lattice', 'magnifier', 'number', 'palette', 'resize', 'settings', 'spray', 'stroke', 'rich-text', 'text-buffer', 'text-put', 'view']
   test('core-' + name,
     executable('test-' + name, 'core/test-' + name + '.c', dependencies: easel_core_dep),
+    env: {'EASEL_TEST_DATA': meson.current_source_dir() / 'data'},
     suite: 'core',
   )
 endforeach
@@ -27,7 +28,7 @@ test_window = executable('test-window', 'ui/test-window.c', 'ui/memory-clipboard
 # registered as /0001/..., /0002/..., so every case is in exactly one of them); see docs/engineering.md, Testing.
 # Not parallel: run in parallel, the ui windows failed as5_zoom_keeps_center with a stale layout (598.25 against 1196.5)
 # in 2 of 3 runs. Earlier one-off failures of the ui tests, run as a single executable, are unexplained.
-foreach feature : ['0001', '0002', '0003', '0004', '0005', '0006', '0007', '0008', '0009', '0010', '0011', '0012', '0013', '0014', '0015', '0016']
+foreach feature : ['0001', '0002', '0003', '0004', '0005', '0006', '0007', '0008', '0009', '0010', '0011', '0012', '0013', '0014', '0015', '0016', '0017']
   test('ui-' + feature, test_window, args: ['-p', '/' + feature], env: ui_env, suite: 'ui', timeout: 180,
        is_parallel: false)
 endforeach
@@ -42,6 +43,13 @@ executable('probe-clipboard', 'probe/probe-clipboard.c', dependencies: easel_ui_
 executable('slow-clipboard-owner', 'probe/slow-clipboard-owner.c', dependencies: easel_ui_dep)
 # Two processes, as Easel and another app are: `own` puts Easel's copy on the clipboard, `read` reads it back (M1 of 0016).
 executable('probe-clipboard-xproc', 'probe/probe-clipboard-xproc.c', dependencies: easel_ui_dep)
+# Feature 0017's risks R1 to R3: how Pango and Cairo draw text into an A8 surface at picture scale (no display needed).
+executable('probe-text-render', 'probe/probe-text-render.c', dependencies: easel_ui_dep)
+# Feature 0017's risk R6: what Writer and Firefox do with rich text on the clipboard: `own` (a click) and `read NAME`.
+executable('probe-clipboard-rich', 'probe/probe-clipboard-rich.c', dependencies: easel_ui_dep,
+  c_args: ['-DEASEL_SOURCE_DIR="' + meson.project_source_root() + '"'])
+executable('probe-paste-text', 'probe/probe-paste-text.c', dependencies: easel_ui_dep,
+  c_args: ['-DEASEL_SOURCE_DIR="' + meson.project_source_root() + '"'])
 
 # Performance budgets (docs/engineering.md): meson test -C build --benchmark
 perf_env = environment()
@@ -72,4 +80,6 @@ benchmark('perf-0015', executable('perf-0015', 'perf/perf-0015.c', dependencies:
   timeout: 900)
 benchmark('perf-0016', executable('perf-0016', 'perf/perf-0016.c', dependencies: easel_ui_dep), env: perf_env,
   timeout: 300)
+benchmark('perf-0017', executable('perf-0017', 'perf/perf-0017.c', dependencies: easel_ui_dep), env: perf_env,
+  timeout: 600)
 

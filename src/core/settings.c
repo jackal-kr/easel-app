@@ -10,6 +10,7 @@
 #define SECTION_HISTORY "history"
 #define SECTION_VIEW "view"
 #define SECTION_SAVE "save"
+#define SECTION_TEXT "text"
 
 /* Digits only, 1..EASEL_SIZE_MAX, or auto. */
 static bool
@@ -78,7 +79,15 @@ const char easel_settings_default_text[] =
   "statusbar=on\n"
   "\n"
   "[" SECTION_SAVE "]\n"
-  "jpeg-quality=90\n";
+  "jpeg-quality=90\n"
+  "\n"
+  "[" SECTION_TEXT "]\n"
+  "font=auto\n"
+  "size=12\n"
+  "bold=false\n"
+  "italic=false\n"
+  "underline=false\n"
+  "strikethrough=false\n";
 
 void
 easel_settings_defaults (EaselSettings *s)
@@ -98,6 +107,22 @@ easel_settings_defaults (EaselSettings *s)
   s->has_workspace_color_dark = false;
   s->workspace_color_dark = 0;
   s->jpeg_quality = EASEL_JPEG_QUALITY_DEFAULT;
+  s->text_font[0] = '\0';
+  s->text_size = EASEL_TEXT_SIZE_DEFAULT;
+  s->text_bold = s->text_italic = s->text_underline = s->text_strike = false;
+}
+
+/* true or false, in any case (REQ-0017-24). */
+static bool
+parse_true_false (EaselSpan v, bool *out)
+{
+  if (easel_span_is_nocase (v, "true"))
+    *out = true;
+  else if (easel_span_is_nocase (v, "false"))
+    *out = false;
+  else
+    return false;
+  return true;
 }
 
 /* on or off, in any case. */
@@ -177,6 +202,39 @@ apply (EaselSpan section, EaselSpan key, EaselSpan value, void *data)
         text[0] = 'x';   /* too long to be a number in range */
       if (!easel_parse_field (text, EASEL_JPEG_QUALITY_MIN, EASEL_JPEG_QUALITY_MAX, &s->jpeg_quality))
         s->jpeg_quality = EASEL_JPEG_QUALITY_DEFAULT;
+    }
+  else if (easel_span_is (section, SECTION_TEXT))
+    {
+      char text[16] = "";
+
+      if (easel_span_is (key, "font"))
+        {
+          /* `auto`, empty or too long: the desktop's document font; a family is matched with the installed ones by the ui. */
+          if (value.n == 0 || value.n >= sizeof s->text_font || easel_span_is_nocase (value, "auto"))
+            s->text_font[0] = '\0';
+          else
+            {
+              memcpy (s->text_font, value.p, value.n);
+              s->text_font[value.n] = '\0';
+            }
+        }
+      else if (easel_span_is (key, "size"))
+        {
+          if (value.n < sizeof text)
+            memcpy (text, value.p, value.n);
+          else
+            text[0] = 'x';
+          if (!easel_parse_field (text, EASEL_TEXT_SIZE_MIN, EASEL_TEXT_SIZE_MAX, &s->text_size))
+            s->text_size = EASEL_TEXT_SIZE_DEFAULT;
+        }
+      else if (easel_span_is (key, "bold") && !parse_true_false (value, &s->text_bold))
+        s->text_bold = false;
+      else if (easel_span_is (key, "italic") && !parse_true_false (value, &s->text_italic))
+        s->text_italic = false;
+      else if (easel_span_is (key, "underline") && !parse_true_false (value, &s->text_underline))
+        s->text_underline = false;
+      else if (easel_span_is (key, "strikethrough") && !parse_true_false (value, &s->text_strike))
+        s->text_strike = false;
     }
   else if (easel_span_is (section, SECTION_VIEW))
     {

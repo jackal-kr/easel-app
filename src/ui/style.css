@@ -29,3 +29,10 @@ scrolledwindow.workspace > viewport {
     background-color: #2C2C2C;
   }
 }
+
+/* The font card over the picture (REQ-0017-14): opaque in both themes, as a popover is. The card style's own background is
+   translucent in the dark theme, so the picture under it showed through and its controls faded (JOD's M1, 2026-10-26). */
+.font-card {
+  background-color: var(--popover-bg-color);
+  color: var(--popover-fg-color);
+}

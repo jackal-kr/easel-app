@@ -19,6 +19,10 @@ enum
   EASEL_JPEG_QUALITY_MIN = 1,
   EASEL_JPEG_QUALITY_MAX = 100,
   EASEL_JPEG_QUALITY_DEFAULT = 90,
+  EASEL_TEXT_SIZE_MIN = 1,
+  EASEL_TEXT_SIZE_MAX = 500,
+  EASEL_TEXT_SIZE_DEFAULT = 12,
+  EASEL_TEXT_FONT_MAX = 128,      /* the longest family name taken, with its NUL */
 };
 
 typedef struct
@@ -38,6 +42,9 @@ typedef struct
   bool has_workspace_color_dark;   /* a valid `[view] workspace-color-dark` was given (REQ-0009-04, REQ-0009-06) */
   uint32_t workspace_color_dark;   /* 0xRRGGBB, when has_workspace_color_dark */
   int jpeg_quality;       /* EASEL_JPEG_QUALITY_MIN..EASEL_JPEG_QUALITY_MAX (REQ-0005-14) */
+  char text_font[EASEL_TEXT_FONT_MAX];   /* `[text] font`, trimmed; empty for `auto`, the desktop's document font (REQ-0017-24) */
+  int text_size;          /* EASEL_TEXT_SIZE_MIN..EASEL_TEXT_SIZE_MAX points */
+  bool text_bold, text_italic, text_underline, text_strike;
 } EaselSettings;
 
 /* What a newly created settings file holds (REQ-0001-04). */

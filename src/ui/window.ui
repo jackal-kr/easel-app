@@ -262,13 +262,28 @@
                     </child>
                     <child>
                       <object class="GtkToggleButton">
+                        <property name="icon-name">easel-tool-text-symbolic</property>
+                        <property name="tooltip-text" translatable="yes">Text</property>
+                        <property name="action-name">win.tool</property>
+                        <property name="action-target">'text'</property>
+                        <layout>
+                          <property name="column">1</property>
+                          <property name="row">5</property>
+                        </layout>
+                        <style>
+                          <class name="flat"/>
+                        </style>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkToggleButton">
                         <property name="icon-name">easel-tool-line-symbolic</property>
                         <property name="tooltip-text" translatable="yes">Line</property>
                         <property name="action-name">win.tool</property>
                         <property name="action-target">'line'</property>
                         <layout>
-                          <property name="column">1</property>
-                          <property name="row">5</property>
+                          <property name="column">0</property>
+                          <property name="row">6</property>
                         </layout>
                         <style>
                           <class name="flat"/>
@@ -282,7 +297,7 @@
                         <property name="action-name">win.tool</property>
                         <property name="action-target">'curve'</property>
                         <layout>
-                          <property name="column">0</property>
+                          <property name="column">1</property>
                           <property name="row">6</property>
                         </layout>
                         <style>
@@ -297,8 +312,8 @@
                         <property name="action-name">win.tool</property>
                         <property name="action-target">'rectangle'</property>
                         <layout>
-                          <property name="column">1</property>
-                          <property name="row">6</property>
+                          <property name="column">0</property>
+                          <property name="row">7</property>
                         </layout>
                         <style>
                           <class name="flat"/>
@@ -312,7 +327,7 @@
                         <property name="action-name">win.tool</property>
                         <property name="action-target">'rounded-rectangle'</property>
                         <layout>
-                          <property name="column">0</property>
+                          <property name="column">1</property>
                           <property name="row">7</property>
                         </layout>
                         <style>
@@ -327,8 +342,8 @@
                         <property name="action-name">win.tool</property>
                         <property name="action-target">'ellipse'</property>
                         <layout>
-                          <property name="column">1</property>
-                          <property name="row">7</property>
+                          <property name="column">0</property>
+                          <property name="row">8</property>
                         </layout>
                         <style>
                           <class name="flat"/>
@@ -342,7 +357,7 @@
                         <property name="action-name">win.tool</property>
                         <property name="action-target">'polygon'</property>
                         <layout>
-                          <property name="column">0</property>
+                          <property name="column">1</property>
                           <property name="row">8</property>
                         </layout>
                         <style>
@@ -360,12 +375,25 @@
               </object>
             </child>
             <child>
-              <object class="GtkScrolledWindow" id="scroller">
+              <object class="GtkOverlay" id="canvas_overlay">
                 <property name="hexpand">true</property>
                 <property name="vexpand">true</property>
                 <property name="child">
-                  <object class="EaselCanvas" id="canvas"/>
+                  <object class="GtkScrolledWindow" id="scroller">
+                    <property name="hexpand">true</property>
+                    <property name="vexpand">true</property>
+                    <property name="child">
+                      <object class="EaselCanvas" id="canvas"/>
+                    </property>
+                  </object>
                 </property>
+                <child type="overlay">
+                  <object class="EaselFontCard" id="font_card">
+                    <property name="visible">false</property>
+                    <property name="halign">start</property>
+                    <property name="valign">start</property>
+                  </object>
+                </child>
               </object>
             </child>
           </object>
@@ -453,6 +481,32 @@
       <item>
         <attribute name="label" translatable="yes">Copy _To…</attribute>
         <attribute name="action">win.copy-to</attribute>
+      </item>
+    </section>
+  </menu>
+  <menu id="text_menu">
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">Cu_t</attribute>
+        <attribute name="action">win.cut</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">_Copy</attribute>
+        <attribute name="action">win.copy</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">_Paste</attribute>
+        <attribute name="action">win.paste</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">Paste as Plain _Text</attribute>
+        <attribute name="action">win.paste-plain</attribute>
+      </item>
+    </section>
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">Select _All</attribute>
+        <attribute name="action">win.select-all</attribute>
       </item>
     </section>
   </menu>

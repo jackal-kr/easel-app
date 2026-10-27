@@ -22,13 +22,13 @@ selection marked with Select, and a pasted one (REQ-0016-06), has every pixel of
   submenu of the primary menu (REQ-0013-16), whose order becomes Cut, Copy, Paste; a line; Select All, Clear Selection; and in the
   first section of the selection's context menu (REQ-0013-17, JOD's mock-up of 2026-10-20). Copy To… shall be in the selection's
   context menu after Select All (the mock-up's second section) and in the primary menu after Edit ›, followed by Paste From… (the
-  mock-up's primary menu: Edit ›, Copy To…, Paste From…; REQ-0005-01).
+  mock-up's primary menu: Edit ›, Copy To…, Paste From…; REQ-0005-01). (Pointer note, Text, 2026-10-26: While a text box is open, Cut, Copy and Paste act on its text, REQ-0017-19.)
 - REQ-0016-02 Cut, Copy and Copy To… shall be insensitive (and their shortcuts not taken) while there is no selection. Paste shall be
   insensitive, and Ctrl+V not taken, while the clipboard holds neither a picture nor a copied file (as Files' Copy puts one); it
   follows the clipboard as it changes, also when another app changes it. Paste From… is sensitive while the picture exists. All five
   do nothing before the picture exists; their shortcuts are not taken while a dialog, a prompt, a menu or the color chooser is open
   (choosing the item in an open menu acts), and they are ignored while a mouse button is held for a stroke or a drag, as a tool
-  change is (REQ-0001-09, REQ-0013-18, REQ-0014-14, REQ-0015-08).
+  change is (REQ-0001-09, REQ-0013-18, REQ-0014-14, REQ-0015-08). (Pointer note, Text, 2026-10-26: While a text box is open, Cut and Copy follow its selected text, Paste follows text on the clipboard, and Copy To… is insensitive, REQ-0017-19, -20.)
 
 ### Copy and Cut
 - REQ-0016-03 When the user chooses Copy, the app shall put the copy of the selection on the clipboard as a picture with its
@@ -518,6 +518,26 @@ Group B, the window
   `spec.sh lint` and `lint --names 0016` clean; every REQ-0016 id after it: 100 of 100 killed, 0 by crash, 0 inconclusive, 0 survived, 0 errors (1047 s).
 
 ## Check
+Repeated check (2026-10-26, at `2d119f0`, the committed 0016 with its retrospective; JOD chose a repeated check of 0016 at HEAD):
+- Tests: `meson test` 45 of 45 through `tools/isolated.sh`, the long suite included, warning-free.
+- Mutants: the whole list, 701 mutants: 700 killed, 0 killed by crash (test gap), 0 inconclusive (no snapshot), 0 survived, 0
+  errors, 1 long-only (not run) in 7241 s, as `tools/mutate.sh` reports (isolated). The long-only mutant (REQ-0014-16) applied by hand
+  against `ui-0014-long`: killed twice by `as14_long_trace`'s assertion (0.8 s each); the source restored and the suite green again.
+- Lints: `tools/spec.sh lint`, `lint --names 0016` and `mutate.sh --lint` (701, 0 stale) clean; `spec.sh status` 18 of 18 tasks; no
+  AI trailer in the commits since `1ef33de`.
+- Coverage: every requirement has a scenario and a test; REQ-0016-01 (the menus) and REQ-0016-13 (the prompt's look) have no mutant
+  and guard against no data loss (`as1_clipboard_menus` and `as12_oversize_prompt` assert them; Cancel has its mutant under -07).
+  Two characterizations, each proven by a mutant: `as11_ignored_during_drags` (T005) and `as7_grown_step_holds_what_it_counts` (T018).
+- Known note F4 (low, JOD 2026-10-26: recorded, not fixed, since no real user action on the target desktop reaches it): during the
+  store's wait at quit a second close request would re-enter `close_request` and start a second store inside the first, and through
+  `quit_now` could destroy the window twice. The wait never happens on GNOME 50, which has only the Wayland session: there GDK's store
+  fails at once ("This clipboard cannot store data", measured 0.0 ms on JOD's desktop, 2026-10-26). It needs Easel run with
+  `GDK_BACKEND=x11` under an X clipboard manager that answers slowly; a test could reach it with the memory clipboard's hanging store
+  and a second close request during the wait. A flag while storing that makes `close_request` return TRUE would close it, if X11 ever
+  matters.
+- Verdict: still `implemented`.
+
+Earlier check:
 - Date and commit: 2026-10-26, `1ef33de` (0015's retrospective) plus the uncommitted 0016 work tree (spec, Plan, Tasks T001-T018, code)
 - Tests: `meson test` 45 of 45 pass through `tools/isolated.sh`, the long suite `ui-0014-long` included; the cases of this feature: core
   `test-selection` 5 (paste, copy by rows, fit, grown put-down), `test-history` 1 (`as7_grow_step`), io `test-picture-file` 6, ui

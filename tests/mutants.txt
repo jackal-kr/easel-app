@@ -329,13 +329,11 @@ test: ui-0005
 file: src/ui/window.c
 test: ui-0005
 --- find
-  else
-    easel_canvas_put_down (self->canvas);
+    return FALSE;                               /* a text box that could not be put down: no dialog, no prompt (REQ-0017-18) */
   easel_canvas_cancel_resize (self->canvas);
   return TRUE;
 --- replace
-  else
-    easel_canvas_put_down (self->canvas);
+    return FALSE;                               /* a text box that could not be put down: no dialog, no prompt (REQ-0017-18) */
   return TRUE;
 
 === REQ-0005-02 Save is not held back while a dialog is open
@@ -1191,10 +1189,10 @@ file: src/ui/canvas.c
 test: ui-0007
 --- find
   return self->stroke != NULL || self->picking || self->shaping || self->pend_held || self->selecting || self->sel_moving
-         || self->lassoing || self->stretching;
+         || self->lassoing || self->stretching || self->text_drag != 0;
 --- replace
   return self->stroke != NULL || self->shaping || self->pend_held || self->selecting || self->sel_moving
-         || self->lassoing || self->stretching;
+         || self->lassoing || self->stretching || self->text_drag != 0;
 
 === REQ-0007-03 the selected Magnifier level never reaches the canvas
 file: src/ui/window.c
@@ -1815,18 +1813,18 @@ file: src/ui/tool-options.c
 test: ui-0011
 --- find
 tool == EASEL_TOOL_LINE || tool == EASEL_TOOL_CURVE ? 4
-              : easel_tool_draws_shape (tool) || tool == EASEL_TOOL_POLYGON ? 5 : easel_tool_selects (tool) ? 6 : -1;
+              : easel_tool_draws_shape (tool) || tool == EASEL_TOOL_POLYGON ? 5 : easel_tool_selects (tool) ? 6
 --- replace
 tool == EASEL_TOOL_LINE ? 4
-              : easel_tool_draws_shape (tool) || tool == EASEL_TOOL_POLYGON || tool == EASEL_TOOL_CURVE ? 5 : easel_tool_selects (tool) ? 6 : -1;
+              : easel_tool_draws_shape (tool) || tool == EASEL_TOOL_POLYGON || tool == EASEL_TOOL_CURVE ? 5 : easel_tool_selects (tool) ? 6
 
 === REQ-0011-02 Polygon shows no options
 file: src/ui/tool-options.c
 test: ui-0011
 --- find
-              : easel_tool_draws_shape (tool) || tool == EASEL_TOOL_POLYGON ? 5 : easel_tool_selects (tool) ? 6 : -1;
+              : easel_tool_draws_shape (tool) || tool == EASEL_TOOL_POLYGON ? 5 : easel_tool_selects (tool) ? 6
 --- replace
-              : easel_tool_draws_shape (tool) ? 5 : easel_tool_selects (tool) ? 6 : -1;
+              : easel_tool_draws_shape (tool) ? 5 : easel_tool_selects (tool) ? 6
 
 === REQ-0011-03 Curve has Polygon's hint
 file: src/ui/window.c
@@ -1840,9 +1838,9 @@ test: ui-0011
 file: src/ui/canvas.c
 test: ui-0011
 --- find
-  else if (easel_tool_draws_shape (self->tool) || easel_tool_draws_pending (self->tool) || easel_tool_selects (self->tool))
+  else if (easel_tool_draws_shape (self->tool) || easel_tool_draws_pending (self->tool) || easel_tool_selects (self->tool)
 --- replace
-  else if (easel_tool_draws_shape (self->tool) || easel_tool_selects (self->tool))
+  else if (easel_tool_draws_shape (self->tool) || easel_tool_selects (self->tool)
 
 === REQ-0011-02 Numpad does not step the width with Curve and Polygon
 file: src/ui/tool.c
@@ -2164,17 +2162,17 @@ test: ui-0011
 file: src/ui/window.c
 test: ui-0011
 --- find
-    g_simple_action_set_enabled (G_SIMPLE_ACTION (redo), !pending && easel_history_can_redo (self->history));
+box ? easel_canvas_text_can_redo (self->canvas) : !pending && easel_history_can_redo (self->history));
 --- replace
-    g_simple_action_set_enabled (G_SIMPLE_ACTION (redo), easel_history_can_redo (self->history));
+box ? easel_canvas_text_can_redo (self->canvas) : easel_history_can_redo (self->history));
 
 === REQ-0011-11 Undo is not available for a pending curve on a new picture
 file: src/ui/window.c
 test: ui-0011
 --- find
-    g_simple_action_set_enabled (G_SIMPLE_ACTION (undo), pending || easel_history_can_undo (self->history));
+(G_SIMPLE_ACTION (undo), pending || box || easel_history_can_undo (self->history));
 --- replace
-    g_simple_action_set_enabled (G_SIMPLE_ACTION (undo), easel_history_can_undo (self->history));
+(G_SIMPLE_ACTION (undo), box || easel_history_can_undo (self->history));
 
 === REQ-0011-11 Esc does not drop a pending curve or polygon
 file: src/ui/window.c
@@ -2211,10 +2209,8 @@ test: ui-0011
 file: src/ui/window.c
 test: ui-0011
 --- find
-  if (keep_marked)
-    easel_canvas_put_down_keeping_marked (self->canvas);
-  else
-    easel_canvas_put_down (self->canvas);
+  if (!put_down_for_action (self, keep_marked))
+    return FALSE;
 --- replace
   (void) keep_marked;
 
@@ -2234,8 +2230,8 @@ test: ui-0011
 file: src/ui/window.c
 test: ui-0011
 --- find
-  if (tool != self->tool)
-    easel_canvas_put_down (self->canvas);
+  if (tool != self->tool && !put_down_for_action (self, FALSE))
+    return;
 --- replace
   if (tool != self->tool)
     easel_canvas_drop (self->canvas);
@@ -2244,19 +2240,21 @@ test: ui-0011
 file: src/ui/window.c
 test: ui-0011
 --- find
-  if (tool != self->tool)
-    easel_canvas_put_down (self->canvas);
+  if (tool != self->tool && !put_down_for_action (self, FALSE))
+    return;
 --- replace
-  if (1)
-    easel_canvas_put_down (self->canvas);
+  if (!put_down_for_action (self, FALSE))
+    return;
 
 === REQ-0011-12 an Image action does not put a pending polygon down
 file: src/ui/window.c
 test: ui-0011
 --- find
-  easel_canvas_put_down (self->canvas);                    /* an Image action puts a pending curve or polygon down (REQ-0011-12) */
+  if (!put_down_for_action (self, FALSE))
+    return;
+  canvas_area_device
 --- replace
-  (void) 0;
+  canvas_area_device
 
 === REQ-0011-12 a primary press on a handle does not put a pending curve down
 file: src/ui/canvas.c
@@ -2416,9 +2414,9 @@ test: ui-0012
 file: src/ui/canvas.c
 test: ui-0012
 --- find
-  else if (easel_tool_draws_shape (self->tool) || easel_tool_draws_pending (self->tool) || easel_tool_selects (self->tool))
+  else if (easel_tool_draws_shape (self->tool) || easel_tool_draws_pending (self->tool) || easel_tool_selects (self->tool)
 --- replace
-  else if (easel_tool_draws_shape (self->tool) || self->tool == EASEL_TOOL_CURVE || self->tool == EASEL_TOOL_POLYGON || easel_tool_selects (self->tool))
+  else if (easel_tool_draws_shape (self->tool) || self->tool == EASEL_TOOL_CURVE || self->tool == EASEL_TOOL_POLYGON || easel_tool_selects (self->tool)
 
 === REQ-0012-02 Gradient has another tool's hint
 file: src/ui/window.c
@@ -2665,11 +2663,13 @@ file: src/ui/canvas.c
 test: ui-0012
 --- find
   self->action_button = 0;
+  self->text_selecting = FALSE;
   if (self->stroke != NULL || self->picking || self->shaping || self->pend_held || self->selecting || self->sel_moving
       || self->lassoing || self->stretching)
     easel_canvas_end_stroke (self);
 --- replace
   self->action_button = 0;
+  self->text_selecting = FALSE;
   if (self->pend_held && self->pend_gradient)
     easel_canvas_drop (self);
   if (self->stroke != NULL || self->picking || self->shaping || self->pend_held || self->selecting || self->sel_moving)
@@ -2678,13 +2678,11 @@ test: ui-0012
 file: src/ui/canvas.c
 test: ui-0012
 --- find
-easel_canvas_put_down (EaselCanvas *self)
-{
-  gboolean ok = finish_selection (self, FALSE);
+    return FALSE;                               /* the box first; the box stays open (REQ-0017-18) */
+  ok = finish_selection (self, FALSE);
 --- replace
-easel_canvas_put_down (EaselCanvas *self)
-{
-  gboolean ok = finish_selection (self, FALSE);
+    return FALSE;                               /* the box first; the box stays open (REQ-0017-18) */
+  ok = finish_selection (self, FALSE);
   if (self->pending && self->pend_gradient)
     {
       easel_canvas_drop (self);
@@ -3029,9 +3027,9 @@ test: ui-0013
 file: src/ui/canvas.c
 test: ui-0013
 --- find
-  else if (easel_tool_draws_shape (self->tool) || easel_tool_draws_pending (self->tool) || easel_tool_selects (self->tool))
+  else if (easel_tool_draws_shape (self->tool) || easel_tool_draws_pending (self->tool) || easel_tool_selects (self->tool)
 --- replace
-  else if (easel_tool_draws_shape (self->tool) || easel_tool_draws_pending (self->tool))
+  else if (easel_tool_draws_shape (self->tool) || easel_tool_draws_pending (self->tool)
 
 === REQ-0013-08 a lift leaves no hole
 file: src/core/selection.c
@@ -3194,9 +3192,9 @@ test: ui-0013
 file: src/ui/canvas.c
 test: ui-0013
 --- find
-  gboolean click = self->sel_px1 == self->sel_px0 && self->sel_py1 == self->sel_py0;
+  gboolean click = self->sel_for_text ? !self->text_dragged : self->sel_px1 == self->sel_px0 && self->sel_py1 == self->sel_py0;
 --- replace
-  gboolean click = FALSE;
+  gboolean click = self->sel_for_text ? !self->text_dragged : FALSE;
 
 === REQ-0013-05 the outline is drawn over the selection's own pixels
 file: src/ui/canvas.c
@@ -3436,12 +3434,10 @@ test: ui-0013
 file: src/ui/canvas.c
 test: ui-0013
 --- find
-          if (button == GDK_BUTTON_PRIMARY)
-            {
+                return;                               /* a box that could not be put down: no resize (REQ-0017-18) */
               finish_selection (self, FALSE);
 --- replace
-          if (button == GDK_BUTTON_PRIMARY)
-            {
+                return;                               /* a box that could not be put down: no resize (REQ-0017-18) */
 
 === REQ-0013-02 the selection's mode read for the canvas is the Eraser's
 file: src/ui/tool-options.c
@@ -3522,11 +3518,11 @@ test: ui-0013
   if (self->picture == NULL || dialog_is_open (self) || easel_canvas_is_stroking (self->canvas)
       || easel_canvas_is_resizing (self->canvas))
     return;
-  g_action_group_change_action_state
+  if (self->tool == EASEL_TOOL_TEXT
 --- replace
   if (self->picture == NULL || dialog_is_open (self) || easel_canvas_is_resizing (self->canvas))
     return;
-  g_action_group_change_action_state
+  if (self->tool == EASEL_TOOL_TEXT
 
 === REQ-0013-15 Select All does not put a floating selection down first
 file: src/ui/canvas.c
@@ -3578,9 +3574,11 @@ test: ui-0013
 file: src/ui/window.c
 test: ui-0013
 --- find
-  gtk_popover_popup (GTK_POPOVER (self->selection_menu));
+  GtkWidget *menu = self->tool == EASEL_TOOL_TEXT ? self->text_menu : self->selection_menu;
 --- replace
-  (void) self;
+  GtkWidget *menu = self->tool == EASEL_TOOL_TEXT ? self->text_menu : NULL;
+  if (menu == NULL)
+    return;
 
 === REQ-0013-08 the hole is the background color in Transparent mode too
 file: src/ui/canvas.c
@@ -3678,10 +3676,10 @@ test: ui-0013
 file: src/ui/window.c
 test: ui-0013
 --- find
-  if (keyval == GDK_KEY_Escape && !dialog_is_open (self) && easel_tool_selects (self->tool)
+  if (keyval == GDK_KEY_Escape && !dialog_is_open (self) && (easel_tool_selects (self->tool) || self->tool == EASEL_TOOL_TEXT)
       && easel_canvas_is_stroking (self->canvas))
 --- replace
-  if (FALSE && keyval == GDK_KEY_Escape && !dialog_is_open (self) && easel_tool_selects (self->tool)
+  if (FALSE && keyval == GDK_KEY_Escape && !dialog_is_open (self) && (easel_tool_selects (self->tool) || self->tool == EASEL_TOOL_TEXT)
       && easel_canvas_is_stroking (self->canvas))
 
 === REQ-0013-18 the other button's press during a drag starts a drag of its own
@@ -4100,17 +4098,19 @@ test: ui-0014
 file: src/ui/canvas.c
 test: ui-0014
 --- find
-easel_tool_draws_pending (self->tool) || easel_tool_selects (self->tool))
+easel_tool_draws_pending (self->tool) || easel_tool_selects (self->tool)
+           || self->tool == EASEL_TOOL_TEXT)
 --- replace
-easel_tool_draws_pending (self->tool) || self->tool == EASEL_TOOL_SELECT)
+easel_tool_draws_pending (self->tool) || self->tool == EASEL_TOOL_SELECT
+           || self->tool == EASEL_TOOL_TEXT)
 
 === REQ-0014-02 Free-Form Select shows no mode buttons
 file: src/ui/tool-options.c
 test: ui-0014
 --- find
-easel_tool_selects (tool) ? 6 : -1;
+: easel_tool_selects (tool) ? 6
 --- replace
-tool == EASEL_TOOL_SELECT ? 6 : -1;
+: tool == EASEL_TOOL_SELECT ? 6
 
 === REQ-0014-01 Free-Form Select is in the first column of the toolbox
 file: src/ui/window.ui
@@ -4825,10 +4825,10 @@ file: src/ui/canvas.c
 test: ui-0014
 --- find
   return self->stroke != NULL || self->picking || self->shaping || self->pend_held || self->selecting || self->sel_moving
-         || self->lassoing || self->stretching;
+         || self->lassoing || self->stretching || self->text_drag != 0;
 --- replace
   return self->stroke != NULL || self->picking || self->shaping || self->pend_held || self->selecting || self->sel_moving
-         || self->stretching;
+         || self->stretching || self->text_drag != 0;
 
 # ---- the shape's memory dialog, blocked presses, the whole-picture path (0014 T014) ----
 
@@ -5218,10 +5218,10 @@ test: core-selection
 file: src/ui/canvas.c
 test: ui-0015
 --- find
-  if (self->guides_hidden || self->no_sel_handles || !easel_tool_selects (self->tool))
+  if (self->guides_hidden || self->no_sel_handles || !(easel_tool_selects (self->tool) || self->tool == EASEL_TOOL_TEXT))
     return;
 --- replace
-  if (self->no_sel_handles || !easel_tool_selects (self->tool))
+  if (self->no_sel_handles || !(easel_tool_selects (self->tool) || self->tool == EASEL_TOOL_TEXT))
     return;
 
 === REQ-0015-01 an edge handle is not centered on its edge
@@ -5267,9 +5267,9 @@ file: src/ui/canvas.c
 test: ui-0015
 --- find
   append_selection_handles (self, snapshot);
-  append_magnifier_box (self, snapshot);
+  append_text_caret (self, snapshot, l);
 --- replace
-  append_magnifier_box (self, snapshot);
+  append_text_caret (self, snapshot, l);
 
 === REQ-0015-01 the handles do not follow a moved selection
 file: src/ui/canvas.c
@@ -5357,10 +5357,9 @@ test: ui-0015
 file: src/ui/canvas.c
 test: ui-0015
 --- find
-  if (hover != self->hover || marker_hit (self, x, y) != self->hover_marker || on_selection (self, x, y) != self->hover_sel
-      || easel_canvas_selection_handle_at (self, x, y) != self->hover_sel_handle)
+      || easel_canvas_selection_handle_at (self, x, y) != self->hover_sel_handle || text_hit (self, x, y) % 3 != self->hover_text)
 --- replace
-  if (hover != self->hover || marker_hit (self, x, y) != self->hover_marker || on_selection (self, x, y) != self->hover_sel)
+      || text_hit (self, x, y) % 3 != self->hover_text)
 
 # ---- stretching a marked or floating selection in the window (0015 T006) ----
 
@@ -5442,8 +5441,10 @@ file: src/ui/canvas.c
 test: ui-0015
 --- find
   append_handles (self, snapshot);                /* the picture's handles lie under the selection's pixels and tint (REQ-0015-01) */
+  append_text_box (self, snapshot, l);
   append_float_outside (self, snapshot, l);
 --- replace
+  append_text_box (self, snapshot, l);
   append_float_outside (self, snapshot, l);
   append_handles (self, snapshot);
 
@@ -6191,11 +6192,11 @@ test: ui-0016
 file: src/ui/window.c
 test: ui-0016
 --- find
+  provider = easel_clipboard_picture_new (copy);
   easel_clipboard_set_content (self->clipboard, provider);
-  return TRUE;
 --- replace
+  provider = easel_clipboard_picture_new (copy);
   (void) provider;
-  return TRUE;
 
 === REQ-0016-03 the copy offered to another app is not a PNG with its transparency
 file: src/ui/clipboard.c
@@ -6252,10 +6253,14 @@ test: ui-0016
 file: src/ui/window.c
 test: ui-0016
 --- find
-  g_action_group_change_action_state (G_ACTION_GROUP (self), "tool", g_variant_new_string ("select"));
-  easel_canvas_top_left_in_view (self->canvas, &x, &y);
+  if (!select_for_paste (self))
+    {
+      easel_image_free (pic);
+      return;
+    }
+  easel_canvas_top_left_in_view
 --- replace
-  easel_canvas_top_left_in_view (self->canvas, &x, &y);
+  easel_canvas_top_left_in_view
 
 === REQ-0016-05 a paste drops the floating selection instead of putting it down
 file: src/ui/canvas.c
@@ -6307,17 +6312,17 @@ test: core-selection
 file: src/ui/window.c
 test: ui-0016
 --- find
-          if (easel_canvas_paste_grown (self->canvas, pic, MAX (w, pic->width), MAX (h, pic->height), self->background))
+          else if (easel_canvas_paste_grown (self->canvas, pic, MAX (w, pic->width), MAX (h, pic->height), self->background))
 --- replace
-          if (easel_canvas_paste_grown (self->canvas, pic, MIN (w, pic->width), MIN (h, pic->height), self->background))
+          else if (easel_canvas_paste_grown (self->canvas, pic, MIN (w, pic->width), MIN (h, pic->height), self->background))
 
 === REQ-0016-07 Resize fills the new area with transparent pixels
 file: src/ui/window.c
 test: ui-0016
 --- find
-          if (easel_canvas_paste_grown (self->canvas, pic, MAX (w, pic->width), MAX (h, pic->height), self->background))
+          else if (easel_canvas_paste_grown (self->canvas, pic, MAX (w, pic->width), MAX (h, pic->height), self->background))
 --- replace
-          if (easel_canvas_paste_grown (self->canvas, pic, MAX (w, pic->width), MAX (h, pic->height), 0))
+          else if (easel_canvas_paste_grown (self->canvas, pic, MAX (w, pic->width), MAX (h, pic->height), 0))
 
 === REQ-0016-07 Cancel fits the picture anyway
 file: src/ui/window.c
@@ -6408,14 +6413,10 @@ test: core-selection
 file: src/ui/window.c
 test: ui-0016
 --- find
+  self->reading_clipboard = TRUE;
   gtk_widget_set_cursor_from_name (GTK_WIDGET (self), "wait");
-  easel_canvas_set_busy (self->canvas, TRUE);
-  easel_canvas_set_input_blocked (self->canvas, TRUE);
-  wait.timer
 --- replace
-  easel_canvas_set_busy (self->canvas, TRUE);
-  easel_canvas_set_input_blocked (self->canvas, TRUE);
-  wait.timer
+  self->reading_clipboard = TRUE;
 
 === REQ-0016-15 the commands act while Paste waits for the clipboard
 file: src/ui/window.c
@@ -6443,10 +6444,12 @@ test: ui-0016
 file: src/ui/window.c
 test: ui-0016
 --- find
-      self->close_after_reading = FALSE;
-      gtk_window_close (GTK_WINDOW (self));
+  self->close_after_reading = FALSE;
+  gtk_window_close (GTK_WINDOW (self));
+  return TRUE;
 --- replace
-      self->close_after_reading = FALSE;
+  self->close_after_reading = FALSE;
+  return FALSE;
 
 === REQ-0016-15 a failed read shows its dialog although a quit waits
 file: src/ui/window.c
@@ -6463,10 +6466,10 @@ test: ui-0016
 --- find
   easel_canvas_set_busy (self->canvas, FALSE);
   easel_canvas_set_input_blocked (self->canvas, FALSE);
-  if (self->close_after_reading)
+  if (!self->close_after_reading)
 --- replace
   easel_canvas_set_busy (self->canvas, FALSE);
-  if (self->close_after_reading)
+  if (!self->close_after_reading)
 
 === REQ-0016-15 copied files win over a picture on the clipboard
 file: src/ui/window.c
@@ -6809,10 +6812,11 @@ test: ui-0016
 file: src/ui/window.c
 test: ui-0016
 --- find
-      g_clear_pointer (&img, easel_image_free);
-      self->close_after_reading = FALSE;
+  if (clipboard_wait_end (self, &wait))
+    g_clear_pointer (&img, easel_image_free);
 --- replace
-      self->close_after_reading = FALSE;
+  if (clipboard_wait_end (self, &wait) && FALSE)
+    g_clear_pointer (&img, easel_image_free);
 
 === REQ-0016-07 the grown step keeps its log's spare capacity
 file: src/core/selection.c
@@ -6825,3 +6829,2371 @@ test: core-selection
   if (0)
     {
       EaselChange *p = realloc (l->log, l->n * sizeof *l->log);     /* held as counted (REQ-0002-16) */
+
+# ---- the text of a text box (0017 T002) ----
+
+=== REQ-0017-26 the style at the caret is the character after it, not before
+file: src/core/text-buffer.c
+test: core-text-buffer
+--- find
+  else if ((at_line_start || pos == 0) && pos < b->len)
+--- replace
+  else if (pos < b->len)
+
+=== REQ-0017-26 at a line's start the style is still the character before
+file: src/core/text-buffer.c
+test: core-text-buffer
+--- find
+  else if ((at_line_start || pos == 0) && pos < b->len)
+--- replace
+  else if (pos == 0 && pos < b->len)
+
+=== REQ-0017-26 an empty box does not take the starting style
+file: src/core/text-buffer.c
+test: core-text-buffer
+--- find
+  else if (b->len == 0)
+    *out = b->start;
+--- replace
+  else if (b->len == 0)
+    *out = (EaselTextStyle) { b->start.family, 0, 0, 0 };
+
+=== REQ-0017-12 a style set with nothing selected stays after the caret moves
+file: src/core/text-buffer.c
+test: core-text-buffer
+--- find
+  b->has_pending = false;                      /* the caret moved: a pending style is forgotten (REQ-0017-12) */
+--- replace
+  (void) 0;
+
+=== REQ-0017-12 a style set with nothing selected changes the character before the caret
+file: src/core/text-buffer.c
+test: core-text-buffer
+--- find
+      b->pending = s;
+      b->has_pending = true;
+      return true;
+--- replace
+      b->pending = s;
+      b->has_pending = true;
+      if (b->caret > 0)
+        set_field (&b->runs[run_at (b, b->caret - 1)].style, field, value);
+      return true;
+
+=== REQ-0017-12 a change of selected text reaches one character past the selection
+file: src/core/text-buffer.c
+test: core-text-buffer
+--- find
+    split_at (b, from);
+    split_at (b, to);
+    for (size_t i = 0; i < b->n_runs; i++)
+      if (b->runs[i].start >= from && b->runs[i].start < to)
+--- replace
+    split_at (b, from);
+    split_at (b, to + 1);
+    for (size_t i = 0; i < b->n_runs; i++)
+      if (b->runs[i].start >= from && b->runs[i].start < to + 1)
+
+=== REQ-0017-14 a size that differs within the selection is not shown as mixed
+file: src/core/text-buffer.c
+test: core-text-buffer
+--- find
+      if (s->size_pt != out->size_pt)
+        *mixed |= EASEL_TEXT_SIZE;
+--- replace
+      if (0)
+        *mixed |= EASEL_TEXT_SIZE;
+
+=== REQ-0017-12 equal neighbouring runs are not joined
+file: src/core/text-buffer.c
+test: core-text-buffer
+--- find
+      if (out > 0 && same_style (&b->runs[out - 1].style, &b->runs[i].style))
+        continue;
+--- replace
+      if (0)
+        continue;
+
+# ---- the undo of a box's edits (0017 T003) ----
+
+=== REQ-0017-08 each typed character is an edit of its own
+file: src/core/text-buffer.c
+test: core-text-buffer
+--- find
+  if (kind != EASEL_TEXT_EDIT_TYPING || (last != NULL && last->pos + last->after.len != from))
+    last = NULL;
+--- replace
+  last = NULL;
+
+=== REQ-0017-08 typing after the caret moved joins the earlier run
+file: src/core/text-buffer.c
+test: core-text-buffer
+--- find
+  b->can_join = false;                         /* and a run of typing or deleting ends (REQ-0017-08) */
+--- replace
+  (void) 0;
+
+=== REQ-0017-08 Backspaces in a row are separate edits
+file: src/core/text-buffer.c
+test: core-text-buffer
+--- find
+  if (last != NULL && !((kind == EASEL_TEXT_EDIT_BACKSPACE && last->pos == to) || (kind == EASEL_TEXT_EDIT_DELETE && last->pos == from)))
+--- replace
+  if (last != NULL && !((kind == EASEL_TEXT_EDIT_BACKSPACE && last->pos == from) || (kind == EASEL_TEXT_EDIT_DELETE && last->pos == from)))
+
+=== REQ-0017-08 Deletes at the same place are separate edits
+file: src/core/text-buffer.c
+test: core-text-buffer
+--- find
+  if (last != NULL && !((kind == EASEL_TEXT_EDIT_BACKSPACE && last->pos == to) || (kind == EASEL_TEXT_EDIT_DELETE && last->pos == from)))
+--- replace
+  if (last != NULL && !((kind == EASEL_TEXT_EDIT_BACKSPACE && last->pos == to) || (kind == EASEL_TEXT_EDIT_DELETE && last->pos == to)))
+
+=== REQ-0017-08 a new edit keeps the edits that could be redone
+file: src/core/text-buffer.c
+test: core-text-buffer
+--- find
+  drop_edits_from (b, b->n_done);
+  b->edits[b->n_done] = (Edit) { kind, pos, *before, *after, anchor, caret, anchor, caret, { 0 }, { 0 } };
+  b->n_done = b->n_edits = b->n_done + 1;
+--- replace
+  b->edits[b->n_done] = (Edit) { kind, pos, *before, *after, anchor, caret, anchor, caret, { 0 }, { 0 } };
+  b->n_done = b->n_done + 1;
+  if (b->n_edits < b->n_done)
+    b->n_edits = b->n_done;
+
+=== REQ-0017-08 a style set with nothing selected is an edit
+file: src/core/text-buffer.c
+test: core-text-buffer
+--- find
+      b->pending = s;
+      b->has_pending = true;
+      return true;
+--- replace
+      b->pending = s;
+      b->has_pending = true;
+      drop_edits_from (b, b->n_done);
+      return true;
+
+=== REQ-0017-08 Undo of a move gives the new rectangle back
+file: src/core/text-buffer.c
+test: core-text-buffer
+--- find
+    memcpy (rect, e->old_rect, sizeof e->old_rect);
+--- replace
+    memcpy (rect, e->new_rect, sizeof e->new_rect);
+
+=== REQ-0017-08 Undo of a format change leaves the new styles
+file: src/core/text-buffer.c
+test: core-text-buffer
+--- find
+      replace (b, e->pos, e->after.len, &e->before);
+--- replace
+      replace (b, e->pos, e->after.len, &e->after);
+
+# ---- putting a text box down (0017 T004) ----
+
+=== REQ-0017-16 the put-down writes the unmasked pixels of the ink too
+file: src/core/text-put.c
+test: core-text-put
+--- find
+      if (ink->mask[i])
+        return ink->color[i];
+--- replace
+      return ink->color[i];
+
+=== REQ-0017-16 an Opaque box is not filled with the background
+file: src/core/text-put.c
+test: core-text-put
+--- find
+  if (opaque && x >= bx && x < bx + bw && y >= by && y < by + bh)
+    return background;
+--- replace
+  if (0)
+    return background;
+
+=== REQ-0017-16 the Opaque fill reaches one pixel past the box
+file: src/core/text-put.c
+test: core-text-put
+--- find
+  if (opaque && x >= bx && x < bx + bw && y >= by && y < by + bh)
+--- replace
+  if (opaque && x >= bx && x <= bx + bw && y >= by && y < by + bh)
+
+=== REQ-0017-16 the ink's colors are written opaque
+file: src/core/text-put.c
+test: core-text-put
+--- find
+        return ink->color[i];
+--- replace
+        return ink->color[i] | 0xFF000000u;
+
+=== REQ-0017-16 a put-down that changes no pixel adds a step
+file: src/core/text-put.c
+test: core-text-put
+--- find
+  if (l.n == 0)
+    {
+      easel_change_log_free (&l);
+      return EASEL_SELECTION_NOTHING;
+    }
+--- replace
+  if (0)
+    {
+      easel_change_log_free (&l);
+      return EASEL_SELECTION_NOTHING;
+    }
+
+=== REQ-0017-18 a put-down without the memory for its step leaves the pixels changed
+file: src/core/text-put.c
+test: core-text-put
+--- find
+  if (!ok)
+    {
+      easel_change_log_restore (&l, img);
+--- replace
+  if (!ok)
+    {
+
+# ---- the [text] settings (0017 T005) ----
+
+=== REQ-0017-24 a text size of 501 is taken
+file: src/core/settings.c
+test: core-settings
+--- find
+          if (!easel_parse_field (text, EASEL_TEXT_SIZE_MIN, EASEL_TEXT_SIZE_MAX, &s->text_size))
+--- replace
+          if (!easel_parse_field (text, EASEL_TEXT_SIZE_MIN, EASEL_TEXT_SIZE_MAX + 1, &s->text_size))
+
+=== REQ-0017-24 a bad text size keeps the earlier one
+file: src/core/settings.c
+test: core-settings
+--- find
+            s->text_size = EASEL_TEXT_SIZE_DEFAULT;
+        }
+--- replace
+            (void) 0;
+        }
+
+=== REQ-0017-24 any text but false turns a style on
+file: src/core/settings.c
+test: core-settings
+--- find
+  if (easel_span_is_nocase (v, "true"))
+    *out = true;
+--- replace
+  if (!easel_span_is_nocase (v, "false"))
+    *out = true;
+
+=== REQ-0017-24 the font name auto in capitals is taken as a family
+file: src/core/settings.c
+test: core-settings
+--- find
+          if (value.n == 0 || value.n >= sizeof s->text_font || easel_span_is_nocase (value, "auto"))
+--- replace
+          if (value.n == 0 || value.n >= sizeof s->text_font || easel_span_is (value, "auto"))
+
+=== REQ-0017-24 a family name too long is cut instead of taken as auto
+file: src/core/settings.c
+test: core-settings
+--- find
+          if (value.n == 0 || value.n >= sizeof s->text_font || easel_span_is_nocase (value, "auto"))
+--- replace
+          if (value.n >= sizeof s->text_font)
+            value.n = sizeof s->text_font - 1;
+          if (value.n == 0 || easel_span_is_nocase (value, "auto"))
+
+=== REQ-0017-24 a created settings file has no text section
+file: src/core/settings.c
+test: io-settings-file
+--- find
+  "\n"
+  "[" SECTION_TEXT "]\n"
+--- replace
+  "\n"
+  "[" "other" "]\n"
+
+# ---- rich text on the clipboard (0017 T006) ----
+
+=== REQ-0017-20 spaces inside the text are not collapsed
+file: src/core/rich-text.c
+test: core-rich-text
+--- find
+            while (j < len && html[j] != '<' && html[j] != '&' && (unsigned char) html[j] > 0x20)
+--- replace
+            while (j < len && html[j] != '<' && html[j] != '&' && (unsigned char) html[j] >= 0x20)
+
+=== REQ-0017-20 a size in px is read as points
+file: src/core/rich-text.c
+test: core-rich-text
+--- find
+  if (nocase_eq (end, strlen (end), "px"))
+    v *= 0.75;
+--- replace
+  if (nocase_eq (end, strlen (end), "px"))
+    v *= 1;
+
+=== REQ-0017-20 the head and its style block are read as text
+file: src/core/rich-text.c
+test: core-rich-text
+--- find
+          else if (is_one_of (tag, skipped))
+            i = skip_element (html, len, i, tag);
+--- replace
+          else if (0)
+            i = skip_element (html, len, i, tag);
+
+=== REQ-0017-20 a br makes no line
+file: src/core/rich-text.c
+test: core-rich-text
+--- find
+  if (strcmp (tag, "br") == 0)
+    {
+      line_break (r);
+      return;
+    }
+--- replace
+  if (strcmp (tag, "br") == 0)
+    {
+      return;
+    }
+
+=== REQ-0017-20 a NUL byte at the end is read as text
+file: src/core/rich-text.c
+test: core-rich-text
+--- find
+      if ((unsigned char) html[i] < 0x20 && html[i] != '\t' && html[i] != '\n' && html[i] != '\r' && html[i] != '\f')
+        {
+          i++;
+          continue;
+        }
+--- replace
+      if (0)
+        {
+          i++;
+          continue;
+        }
+
+=== REQ-0017-20 paragraphs make no line
+file: src/core/rich-text.c
+test: core-rich-text
+--- find
+  if (r->text.len > 0)
+    r->break_pending = true;
+--- replace
+  if (0)
+    r->break_pending = true;
+
+=== REQ-0017-20 a color's alpha is dropped
+file: src/core/rich-text.c
+test: core-rich-text
+--- find
+      *out = (uint32_t) lround (v[3] * 255) << 24 | (uint32_t) lround (v[0]) << 16 | (uint32_t) lround (v[1]) << 8
+--- replace
+      *out = 0xFF000000u | (uint32_t) lround (v[0]) << 16 | (uint32_t) lround (v[1]) << 8
+
+=== REQ-0017-20 the font tag's size 7 is read as 24 points
+file: src/core/rich-text.c
+test: core-rich-text
+--- find
+      static const int pts[] = { 8, 10, 12, 14, 18, 24, 36 };
+--- replace
+      static const int pts[] = { 8, 10, 12, 14, 18, 24, 24 };
+
+=== REQ-0017-20 a family keeps its quotes
+file: src/core/rich-text.c
+test: core-rich-text
+--- find
+  if (n >= 2 && (s[0] == '"' || s[0] == '\'') && s[n - 1] == s[0])
+--- replace
+  if (0)
+
+=== REQ-0017-20 a font-weight of 700 is not bold
+file: src/core/rich-text.c
+test: core-rich-text
+--- find
+          if (nocase_eq (value, vn, "bold") || nocase_eq (value, vn, "bolder") || (end != tmp && w >= 600))
+--- replace
+          if (nocase_eq (value, vn, "bold") || nocase_eq (value, vn, "bolder"))
+
+=== REQ-0017-19 the HTML written does not escape <
+file: src/core/rich-text.c
+test: core-rich-text
+--- find
+      case '<':
+        buf_str (b, "&lt;");
+        break;
+--- replace
+      case '<':
+        buf_str (b, "<");
+        break;
+
+=== REQ-0017-19 underline and strikethrough together are written as underline
+file: src/core/rich-text.c
+test: core-rich-text
+--- find
+        buf_str (&b, ";text-decoration:underline line-through");
+--- replace
+        buf_str (&b, ";text-decoration:underline");
+
+=== REQ-0017-19 a line break is written as a plain newline
+file: src/core/rich-text.c
+test: core-rich-text
+--- find
+      case '\n':
+        buf_str (b, "<br>");
+        break;
+--- replace
+      case '\n':
+        buf_str (b, "\n");
+        break;
+
+=== REQ-0017-20 a color named by rgb() is not read
+file: src/core/rich-text.c
+test: core-rich-text
+--- find
+  if (n > 4 && (nocase_eq (s, 4, "rgb(") || (n > 5 && nocase_eq (s, 5, "rgba("))))
+--- replace
+  if (n > 5 && nocase_eq (s, 5, "rgba("))
+
+# ---- the Text tool and its options (0017 T007) ----
+
+=== REQ-0017-01 the Text tool's hint is another tool's
+file: src/ui/window.c
+test: ui-0017
+--- find
+    case EASEL_TOOL_TEXT:
+      return "Inserts text into the picture.";
+--- replace
+    case EASEL_TOOL_TEXT:
+      return "Draws a straight line with the selected line width.";
+
+=== REQ-0017-01 the cursor of the Text tool is the hand
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+  else if (easel_tool_draws_shape (self->tool) || easel_tool_draws_pending (self->tool) || easel_tool_selects (self->tool)
+           || self->tool == EASEL_TOOL_TEXT)
+--- replace
+  else if (easel_tool_draws_shape (self->tool) || easel_tool_draws_pending (self->tool) || easel_tool_selects (self->tool))
+
+=== REQ-0017-01 the Text button sits after Line
+file: src/ui/window.ui
+test: ui-0017
+--- find
+                        <property name="action-target">'text'</property>
+                        <layout>
+                          <property name="column">1</property>
+                          <property name="row">5</property>
+--- replace
+                        <property name="action-target">'text'</property>
+                        <layout>
+                          <property name="column">1</property>
+                          <property name="row">6</property>
+
+=== REQ-0017-02 the Text tool starts Opaque
+file: src/ui/tool-options.c
+test: ui-0017
+--- find
+  self->text_transparent = TRUE;
+--- replace
+  self->text_transparent = FALSE;
+
+=== REQ-0017-02 the Text tool shares Select's mode
+file: src/ui/tool-options.c
+test: ui-0017
+--- find
+  self->text_transparent = gtk_toggle_button_get_active (self->text_modes[1]);
+--- replace
+  self->text_transparent = gtk_toggle_button_get_active (self->select_modes[1]);
+
+=== REQ-0017-02 the Text tool shows no options
+file: src/ui/tool-options.c
+test: ui-0017
+--- find
+              : tool == EASEL_TOOL_TEXT ? 7 : -1;
+--- replace
+              : -1;
+
+# ---- making a text box (0017 T008) ----
+
+=== REQ-0017-03 a click box is not cut at the picture's right edge
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+      w = MIN (twenty, self->img->width - x);
+--- replace
+      w = twenty;
+
+=== REQ-0017-03 a short drag makes a box less than one line high
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+  h = MAX (h, line_h);
+  if (h >= self->img->height)
+--- replace
+  if (h >= self->img->height)
+
+=== REQ-0017-03 a box near the bottom edge is not moved up
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+  else if (y + h > self->img->height)
+    y = self->img->height - h;
+--- replace
+  else if (0)
+    y = self->img->height - h;
+
+=== REQ-0017-03 a box is taller than a picture shorter than a line
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+  if (h >= self->img->height)
+    {
+      y = 0;
+      h = self->img->height;
+    }
+  else if (y + h > self->img->height)
+--- replace
+  if (y + h > self->img->height)
+
+=== REQ-0017-03 Shift squares a text box
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+  if (self->shift && !self->sel_for_text)
+--- replace
+  if (self->shift)
+
+=== REQ-0017-17 a press outside an open box makes a new box
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+          if (button == GDK_BUTTON_PRIMARY || button == GDK_BUTTON_SECONDARY)
+            text_put_down (self);
+          return;
+        }
+--- replace
+          if (button == GDK_BUTTON_PRIMARY || button == GDK_BUTTON_SECONDARY)
+            text_put_down (self);
+        }
+
+=== REQ-0017-22 the secondary button with no box open starts a box
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+      if (button != GDK_BUTTON_PRIMARY)
+        return;                                   /* no box: the other buttons do nothing (REQ-0017-04, REQ-0017-22) */
+--- replace
+      if (0)
+        return;                                   /* no box: the other buttons do nothing (REQ-0017-04, REQ-0017-22) */
+
+=== REQ-0017-04 Esc does not cancel the drag of a box
+file: src/ui/window.c
+test: ui-0017
+--- find
+  if (keyval == GDK_KEY_Escape && !dialog_is_open (self) && (easel_tool_selects (self->tool) || self->tool == EASEL_TOOL_TEXT)
+--- replace
+  if (keyval == GDK_KEY_Escape && !dialog_is_open (self) && (easel_tool_selects (self->tool))
+
+=== REQ-0017-01 the cursor inside a box is the move cursor
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+    cursor = gdk_cursor_new_from_name (self->hover_text == 1 ? "text" : "move", NULL);   /* REQ-0017-01, before the picture's handles */
+--- replace
+    cursor = gdk_cursor_new_from_name ("move", NULL);   /* REQ-0017-01, before the picture's handles */
+
+=== REQ-0017-09 the move band is 6 logical pixels wide
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+#define TEXT_BAND 4.0          /* the width of a text box's move band, logical pixels (REQ-0017-09) */
+--- replace
+#define TEXT_BAND 6.0          /* the width of a text box's move band, logical pixels (REQ-0017-09) */
+
+=== REQ-0017-01 the status bar shows no size for an open box
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+  if (self->text_open)
+    return easel_canvas_text_box (self, &x, &y, w, h);           /* REQ-0017-01: the box's size as a selection's */
+--- replace
+  if (0)
+    return easel_canvas_text_box (self, &x, &y, w, h);           /* REQ-0017-01: the box's size as a selection's */
+
+
+# ---- showing the box (0017 T009) ----
+
+=== REQ-0017-16 a pixel is written where a character covers a quarter of it
+file: src/ui/text-render.c
+test: ui-0017
+--- find
+          if (data[(size_t) j * stride + k] >= 128)
+--- replace
+          if (data[(size_t) j * stride + k] >= 64)
+
+=== REQ-0017-16 where two characters cover a pixel the earlier one wins
+file: src/ui/text-render.c
+test: ui-0017
+--- find
+              color[at] = c;
+              mask[at] = 1;
+--- replace
+              if (!mask[at])
+                color[at] = c;
+              mask[at] = 1;
+
+=== REQ-0017-26 the box does not grow with its text
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+  *h = MIN (MAX (self->tb_set_h, self->text_h), self->img->height - self->tb_y);
+--- replace
+  *h = MIN (self->tb_set_h, self->img->height - self->tb_y);
+
+=== REQ-0017-06 a word longer than the box is not broken
+file: src/ui/text-render.c
+test: ui-0017
+--- find
+  pango_layout_set_wrap (layout, PANGO_WRAP_WORD_CHAR);
+--- replace
+  pango_layout_set_wrap (layout, PANGO_WRAP_WORD);
+
+=== REQ-0017-05 the caret is 2 pixels wide at 100 %
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+  w = self->zoom >= 400 ? 2 : 1;
+--- replace
+  w = 2;
+
+=== REQ-0017-05 the caret is 1 pixel wide at 800 %
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+  w = self->zoom >= 400 ? 2 : 1;
+--- replace
+  w = 1;
+
+=== REQ-0017-26 after an Enter the style is the character's before the caret
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+  easel_text_buffer_style_at_caret (b, caret == 0 || text[caret - 1] == '\n', out);
+--- replace
+  easel_text_buffer_style_at_caret (b, caret == 0, out);
+
+=== REQ-0017-26 at a wrapped line's start the style is the next character's
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+  easel_text_buffer_style_at_caret (b, caret == 0 || text[caret - 1] == '\n', out);
+--- replace
+  easel_text_buffer_style_at_caret (b, caret == 0 || text[caret - 1] == '\n' || text[caret - 1] == ' ', out);
+
+=== REQ-0017-05 the box shows the picture without its text
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+            c = ink->color[(size_t) (y - ink->y) * ink->w + (x - ink->x)];
+            inked = TRUE;
+--- replace
+            inked = TRUE;
+
+=== REQ-0017-05 an Opaque box shows no background
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+        if (self->text_opaque && x >= bx && x < bx + bw && y >= by && y < by + bh)
+          c = self->background;
+--- replace
+        if (0)
+          c = self->background;
+
+=== REQ-0017-05 the selected text has no accent behind it
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+        if (!inked && selected != NULL && selected[(gsize) j * rw + i])
+--- replace
+        if (0)
+
+=== REQ-0017-05 the accent covers the selected letters too
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+        if (!inked && selected != NULL && selected[(gsize) j * rw + i])
+--- replace
+        if (selected != NULL && selected[(gsize) j * rw + i])
+
+=== REQ-0017-05 the box has no handles
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+  if (self->guides_hidden || self->no_sel_handles || !(easel_tool_selects (self->tool) || self->tool == EASEL_TOOL_TEXT))
+--- replace
+  if (self->guides_hidden || self->no_sel_handles || !(easel_tool_selects (self->tool)))
+
+=== REQ-0017-05 the box has no outline
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+      : self->tool == EASEL_TOOL_TEXT ? !easel_canvas_text_box (self, &x, &y, &w, &h)
+--- replace
+      : self->tool == EASEL_TOOL_TEXT ? TRUE
+
+=== REQ-0017-05 the box is not drawn again when the view scrolls sideways (only the part in view is composed, T010)
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+      g_signal_connect_object (adjustment (self, GTK_ORIENTATION_HORIZONTAL), "value-changed", G_CALLBACK (gtk_widget_queue_draw),
+                               self, G_CONNECT_SWAPPED);
+--- replace
+      (void) 0;
+
+# ---- typing in the box (0017 T011) ----
+
+=== REQ-0017-07 a second line past the bottom edge is taken
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+      if (pango_layout_get_line_count (layout) > 1 && self->tb_y + MAX (h, self->tb_set_h) > self->img->height)
+--- replace
+      if (0)
+
+=== REQ-0017-07 the first line taller than the picture is refused
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+      if (pango_layout_get_line_count (layout) > 1 && self->tb_y + MAX (h, self->tb_set_h) > self->img->height)
+--- replace
+      if (self->tb_y + MAX (h, self->tb_set_h) > self->img->height)
+
+=== REQ-0017-07 a refused edit sounds no bell
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+        }
+      error_bell (self);
+      return FALSE;
+--- replace
+        }
+      return FALSE;
+
+=== REQ-0017-07 without the memory to show it the edit is made anyway
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+      else if (!easel_text_render_ink (layout, copy, self->tb_x, self->tb_y, self->text_show_max, &ink))
+--- replace
+      else if (!easel_text_render_ink (layout, copy, self->tb_x, self->tb_y, SIZE_MAX, &ink))
+
+=== REQ-0017-07 a box whose first text cannot be shown stays open
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+      if (no_memory && len == 0)
+--- replace
+      if (0)
+
+=== REQ-0017-07 the dialog of a box whose first text cannot be shown is not shown
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+          text_close (self);
+          g_signal_emit (self, signals[SIGNAL_TEXT_FAILED], 0, 0);
+--- replace
+          text_close (self);
+
+=== REQ-0017-06 keys go to the box only where the canvas has the focus
+file: src/ui/window.c
+test: ui-0017
+--- find
+  if (self->tool == EASEL_TOOL_TEXT && !dialog_is_open (self) && easel_canvas_text_buffer (self->canvas) != NULL)
+--- replace
+  if (self->tool == EASEL_TOOL_TEXT && !dialog_is_open (self) && easel_canvas_text_buffer (self->canvas) != NULL
+      && gtk_widget_has_focus (GTK_WIDGET (self->canvas)))
+
+=== REQ-0017-06 Enter does not start a new line
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+      easel_canvas_text_commit (self, "\n");          /* a new line (REQ-0017-06) */
+      return TRUE;
+--- replace
+      return TRUE;
+
+=== REQ-0017-06 Backspace with nothing selected removes nothing
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+        else if (keyval == GDK_KEY_BackSpace && caret > 0)
+--- replace
+        else if (0)
+
+=== REQ-0017-06 Shift does not extend the selection
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+  if (extend)
+    {
+      easel_text_buffer_selection (self->text_buf, &from, &to);
+--- replace
+  if (0)
+    {
+      easel_text_buffer_selection (self->text_buf, &from, &to);
+
+=== REQ-0017-06 Ctrl with the arrows moves by a character
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+        if (ctrl)
+          {
+            text_move (self, word_edge (self, caret, dir), shift);
+            return TRUE;
+          }
+--- replace
+        if (0)
+          {
+            text_move (self, word_edge (self, caret, dir), shift);
+            return TRUE;
+          }
+
+=== REQ-0017-06 Home goes to the start of the text
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+            index = home ? line->start_index : line->start_index + line->length;
+--- replace
+            index = home ? 0 : line->start_index + line->length;
+
+=== REQ-0017-06 Ctrl+End goes to the end of the line
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+        if (ctrl && (home || end))
+--- replace
+        if (ctrl && home)
+
+=== REQ-0017-06 a double-click does not select a word
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+  if (self->click_count == 2)
+    {
+      size_t len;
+--- replace
+  if (0)
+    {
+      size_t len;
+
+=== REQ-0017-06 a press inside the box does not place the caret
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+      hit = text_hit (self, x, y);
+      if (hit == 1 && button == GDK_BUTTON_PRIMARY)
+        text_press (self, x, y);
+--- replace
+      hit = text_hit (self, x, y);
+      if (0)
+        text_press (self, x, y);
+
+=== REQ-0017-06 a drag inside the box does not select
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+  if (self->text_selecting && self->text_open)
+    {
+      easel_text_buffer_select (self->text_buf, self->text_anchor, text_index_at (self, x, y));
+--- replace
+  if (0)
+    {
+      easel_text_buffer_select (self->text_buf, self->text_anchor, text_index_at (self, x, y));
+
+=== REQ-0017-06 the keypad's + changes the line width with a box open
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+  if (c != 0 && c != '\t' && g_unichar_isprint (c))
+--- replace
+  if (c != 0 && c != '\t' && g_unichar_isprint (c) && keyval != GDK_KEY_KP_Add)
+
+=== REQ-0017-08 Undo and Redo go to the picture with a box open
+file: src/ui/window.c
+test: ui-0017
+--- find
+  if (easel_canvas_text_step (self->canvas, undo))
+    return;
+--- replace
+  if (0)
+    return;
+
+=== REQ-0017-08 Undo with no box edit left keeps the box open
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+      text_close (self);                              /* nothing left: no step, the picture's redo steps kept */
+--- replace
+      ;
+
+=== REQ-0017-08 Undo or Redo of a move leaves the box where it is
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+  if (geometry)
+    {
+      self->tb_x = rect[0];
+--- replace
+  if (0)
+    {
+      self->tb_x = rect[0];
+
+=== REQ-0017-08 Redo of a box edit undoes another
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+  if (!(undo ? easel_text_buffer_undo (self->text_buf, rect, &geometry) : easel_text_buffer_redo (self->text_buf, rect, &geometry)))
+--- replace
+  if (!(easel_text_buffer_undo (self->text_buf, rect, &geometry)))
+
+=== REQ-0017-08 the box is not drawn again after an Undo
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+      self->tb_set_h = rect[3];
+    }
+  easel_canvas_text_edited (self);
+--- replace
+      self->tb_set_h = rect[3];
+    }
+  g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);
+
+=== REQ-0017-08 Undo is insensitive with an empty box and no picture step
+file: src/ui/window.c
+test: ui-0017
+--- find
+pending || box || easel_history_can_undo
+--- replace
+pending || easel_history_can_undo
+
+=== REQ-0017-08 Redo follows the picture's steps with a box open
+file: src/ui/window.c
+test: ui-0017
+--- find
+                                 box ? easel_canvas_text_can_redo (self->canvas) : !pending && easel_history_can_redo (self->history));
+--- replace
+                                 (box && easel_canvas_text_can_redo (self->canvas)) || (!pending && easel_history_can_redo (self->history)));
+
+=== REQ-0017-08 the actions are not synced when a box opens, changes or closes
+file: src/ui/window.c
+test: ui-0017
+--- find
+  sync_history_ui (self);                          /* a text box opened, edited or closed (REQ-0017-08) */
+--- replace
+
+=== REQ-0017-08 Redo keeps the caret of the text it put in, not of the edit
+file: src/core/text-buffer.c
+test: core-text-buffer
+--- find
+      b->anchor = e->anchor_after;
+      b->caret = e->caret_after;
+--- replace
+      b->anchor = b->caret = e->pos + e->after.len;
+
+=== REQ-0017-08 a typed or pasted edit does not hold its Undo's and Redo's run room
+file: src/core/text-buffer.c
+test: core-text-buffer
+--- find
+  if (!steps_room (b, last != NULL ? last->before.n : gone.n, last != NULL ? last->after.n + 1 : 1))
+--- replace
+  if (0)
+
+=== REQ-0017-08 a Delete or Backspace does not hold its Undo's run room
+file: src/core/text-buffer.c
+test: core-text-buffer
+--- find
+  if (!steps_room (b, last != NULL ? last->before.n + gone.n : gone.n, 0))
+--- replace
+  if (0)
+
+=== REQ-0017-08 a format change does not hold its Redo's run room
+file: src/core/text-buffer.c
+test: core-text-buffer
+--- find
+    if (!steps_room (b, before.n, before.n))                /* the runs of the range after it are no more than before */
+--- replace
+    if (0)
+
+=== REQ-0017-08 Undo asks for the text room of both pieces
+file: src/core/text-buffer.c
+test: core-text-buffer
+--- find
+      if (!room_for (b, &e->before, e->after.len))
+--- replace
+      if (!room_for (b, &e->before, 0))
+
+=== REQ-0017-08 Redo asks for the text room of both pieces
+file: src/core/text-buffer.c
+test: core-text-buffer
+--- find
+      if (!room_for (b, &e->after, e->before.len))
+--- replace
+      if (!room_for (b, &e->after, 0))
+
+=== REQ-0017-08 an edit refused for memory is half done
+file: src/core/text-buffer.c
+test: core-text-buffer
+--- find
+  /* Everything that can fail first: the buffer's room, the edit's room and its copies. */
+  if (!room_for (b, &added, to - from) || !room_for_edit (b) || !capture (b, from, to - from, &gone))
+    return false;
+--- replace
+  /* Everything that can fail first: the buffer's room, the edit's room and its copies. */
+  if (!room_for_edit (b) || !capture (b, from, to - from, &gone))
+    return false;
+  if (!room_for (b, &added, to - from))
+    {
+      b->anchor = b->caret = from;
+      return false;
+    }
+
+=== REQ-0017-07 a first text past the bottom edge closes the box
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+        ok = FALSE;                                   /* past the bottom edge */
+--- replace
+        ok = FALSE, no_memory = TRUE;
+
+=== REQ-0017-16 a box is closed without being put down
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+  r = easel_text_put_down (self->img, self->history, x, y, w, h, &self->text_ink, self->text_opaque, self->background, self->text_step_max);
+--- replace
+  r = EASEL_SELECTION_NOTHING;
+
+=== REQ-0017-16 an Opaque box is put down as Transparent
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+&self->text_ink, self->text_opaque, self->background, self->text_step_max);
+--- replace
+&self->text_ink, FALSE, self->background, self->text_step_max);
+
+=== REQ-0017-18 a put-down without memory closes the box
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+  if (r == EASEL_SELECTION_NO_MEMORY)
+    {
+      g_signal_emit (self, signals[SIGNAL_TEXT_FAILED], 0, 1);
+--- replace
+  if (0)
+    {
+      g_signal_emit (self, signals[SIGNAL_TEXT_FAILED], 0, 1);
+
+=== REQ-0017-18 a put-down without memory shows no dialog
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+      g_signal_emit (self, signals[SIGNAL_TEXT_FAILED], 0, 1);
+--- replace
+      ;
+
+=== REQ-0017-18 the put-down dialog says the text cannot be shown
+file: src/ui/window.c
+test: ui-0017
+--- find
+kind == 0 ? "There is not enough memory to show this text." : "There is not enough memory to add this text.");
+--- replace
+"There is not enough memory to show this text.");
+
+=== REQ-0017-18 a press outside a box that could not be put down makes a new box
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+          if (button == GDK_BUTTON_PRIMARY || button == GDK_BUTTON_SECONDARY)
+            text_put_down (self);
+          return;
+--- replace
+          if ((button == GDK_BUTTON_PRIMARY || button == GDK_BUTTON_SECONDARY) && text_put_down (self))
+            return;
+          if (button != GDK_BUTTON_PRIMARY)
+            return;
+          text_close (self);
+
+=== REQ-0017-18 the tool changes when the box could not be put down
+file: src/ui/window.c
+test: ui-0017
+--- find
+  if (tool != self->tool && !put_down_for_action (self, FALSE))
+    return;
+--- replace
+  if (tool != self->tool)
+    put_down_for_action (self, FALSE);
+
+=== REQ-0017-18 a file action goes on when the box could not be put down
+file: src/ui/window.c
+test: ui-0017
+--- find
+  if (!put_down_for_action (self, keep_marked))
+    return FALSE;
+--- replace
+  put_down_for_action (self, keep_marked);
+
+=== REQ-0017-18 an Image action goes on when the box could not be put down
+file: src/ui/window.c
+test: ui-0017
+--- find
+  if (!put_down_for_action (self, FALSE))
+    return;
+  canvas_area_device
+--- replace
+  put_down_for_action (self, FALSE);
+  canvas_area_device
+
+=== REQ-0017-18 a resize starts when the box could not be put down
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+              if (!text_put_down (self))
+                return;                               /* a box that could not be put down: no resize (REQ-0017-18) */
+--- replace
+              text_put_down (self);
+
+=== REQ-0017-18 Paste From pastes when the box could not be put down
+file: src/ui/window.c
+test: ui-0017
+--- find
+  return self->tool == EASEL_TOOL_SELECT;
+--- replace
+  return TRUE;
+
+=== REQ-0017-18 Quit goes on when the box could not be put down
+file: src/ui/window.c
+test: ui-0017
+--- find
+  if (!easel_canvas_put_down (self->canvas))
+    return TRUE;                                /* a selection could not be put down: the quit stops, the dialog tells why (REQ-0013-19) */
+--- replace
+  easel_canvas_put_down (self->canvas);
+
+=== REQ-0013-19 a selection that could not be put down stops the action
+file: src/ui/window.c
+test: ui-0013
+--- find
+  return ok || !easel_canvas_text_box (self->canvas, &x, &y, &w, &h);
+--- replace
+  return ok;
+
+=== REQ-0017-17 Esc does not put the box down
+file: src/ui/window.c
+test: ui-0017
+--- find
+          easel_canvas_put_down (self->canvas);   /* Esc puts the box down, or the dialog says why not (REQ-0017-17, -18) */
+          return GDK_EVENT_STOP;
+--- replace
+          return GDK_EVENT_STOP;
+
+=== REQ-0017-17 Select All with a box open puts it down and selects the picture
+file: src/ui/window.c
+test: ui-0017
+--- find
+  if (self->tool == EASEL_TOOL_TEXT && easel_canvas_text_select_all (self->canvas))
+    return;
+--- replace
+  if (0)
+    return;
+
+=== REQ-0017-17 a press on a resize handle does not put the box down
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+              if (!text_put_down (self))
+                return;                               /* a box that could not be put down: no resize (REQ-0017-18) */
+--- replace
+              if (0)
+                return;
+
+=== REQ-0017-17 the box is put down before Save keeps a marked selection
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+  if (!text_put_down (self))
+    return FALSE;                               /* the box first; the box stays open (REQ-0017-18) */
+  ok = finish_selection (self, TRUE);
+--- replace
+  ok = finish_selection (self, TRUE);
+
+=== REQ-0017-09 a press on the band does not move the box
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+      else if (hit != 1 && hit != 0 && button == GDK_BUTTON_PRIMARY)
+--- replace
+      else if (hit == 3 && button == GDK_BUTTON_PRIMARY)
+
+=== REQ-0017-09 a move is not kept inside the picture
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+    text_set_rect (self, CLAMP (o[0] + dx, 0, MAX (pw - o[2], 0)),
+--- replace
+    text_set_rect (self, o[0] + dx,
+
+=== REQ-0017-09 the box's hit area is its set height, not its shown height
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+    bh = h0 * l;
+--- replace
+    bh = self->tb_set_h * l;
+
+=== REQ-0017-10 a secondary press on a box handle resizes it
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+      else if (hit != 1 && hit != 0 && button == GDK_BUTTON_PRIMARY)
+--- replace
+      else if (hit != 1 && hit != 0)
+
+=== REQ-0017-10 a resize is not kept inside the picture
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+      nw = CLAMP (nw, 1, pw - nx);
+--- replace
+      nw = MAX (nw, 1);
+
+=== REQ-0017-10 a width whose text passes the bottom edge is taken
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+      if (!text_fits (self, y, w))
+        return FALSE;
+--- replace
+      if (0)
+        return FALSE;
+
+=== REQ-0017-10 a resize too narrow for the text stays at the previous width
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+          text_set_rect (self, left ? right - hi : nx, ny, hi, nh);
+--- replace
+          (void) right;
+
+=== REQ-0017-10 a resize to the left keeps the left edge
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+          text_set_rect (self, left ? right - hi : nx, ny, hi, nh);
+--- replace
+          text_set_rect (self, nx, ny, hi, nh);
+
+=== REQ-0017-11 a cancelled drag leaves the box where it was dragged
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+  if (changed && (cancel || !easel_text_buffer_push_geometry (self->text_buf, o, now)))
+--- replace
+  if (changed && !cancel && !easel_text_buffer_push_geometry (self->text_buf, o, now))
+
+=== REQ-0017-11 a finished move is not an edit
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+  if (changed && (cancel || !easel_text_buffer_push_geometry (self->text_buf, o, now)))
+--- replace
+  if (changed && cancel)
+
+=== REQ-0017-11 the other button does not cancel a drag of the box
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+      if (button != self->sel_button)
+        text_drag_end (self, TRUE);
+      return;
+--- replace
+      return;
+
+=== REQ-0017-11 Esc and Undo do not cancel a drag of the box
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+  if (self->text_drag != 0)
+    {
+      text_drag_end (self, TRUE);                 /* the other button, Esc or Undo: the box as at the press (REQ-0017-11) */
+--- replace
+  if (0)
+    {
+      text_drag_end (self, TRUE);                 /* the other button, Esc or Undo: the box as at the press (REQ-0017-11) */
+
+=== REQ-0017-11 a drag of the box is not a held drag
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+         || self->lassoing || self->stretching || self->text_drag != 0;
+--- replace
+         || self->lassoing || self->stretching;
+
+=== REQ-0017-12 a style change is not tried as an edit
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+  if (op->field != 0)
+    return easel_text_buffer_apply (b, op->field, op->value, caret_at_line_start (b));
+--- replace
+  if (op->field != 0)
+    return true;
+
+=== REQ-0017-12 a family set on the box keeps the caller's name
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+  if (field == EASEL_TEXT_FAMILY && (v.family = easel_text_buffer_intern (self->text_buf, value->family)) == NULL)
+--- replace
+  if (field == EASEL_TEXT_FAMILY && v.family == NULL)
+
+=== REQ-0017-12 Ctrl+B with all the selection bold makes it bold again
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+  v.flags = (st.flags & flag) && !(mixed & field) ? 0 : flag;
+--- replace
+  v.flags = flag;
+
+=== REQ-0017-12 Ctrl+B on a mixed selection turns Bold off
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+  v.flags = (st.flags & flag) && !(mixed & field) ? 0 : flag;
+--- replace
+  v.flags = (st.flags & flag) ? 0 : flag;
+
+=== REQ-0017-12 Ctrl+I toggles Bold
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+      easel_canvas_text_toggle (self, keyval == GDK_KEY_b ? EASEL_TEXT_BOLD : keyval == GDK_KEY_i ? EASEL_TEXT_ITALIC : EASEL_TEXT_UNDERLINE);
+--- replace
+      easel_canvas_text_toggle (self, keyval == GDK_KEY_b ? EASEL_TEXT_BOLD : keyval == GDK_KEY_i ? EASEL_TEXT_BOLD : EASEL_TEXT_UNDERLINE);
+
+=== REQ-0017-12 a toggled flag other than Bold, Italic and Underline sets Underline
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+                         : flag == EASEL_TEXT_UNDERLINE ? EASEL_TEXT_FLAG_UNDERLINE : EASEL_TEXT_FLAG_STRIKE;
+--- replace
+                         : EASEL_TEXT_FLAG_UNDERLINE;
+
+=== REQ-0017-12 Ctrl+] steps the size by 2
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+      easel_canvas_text_step_size (self, keyval == GDK_KEY_bracketright ? 1 : -1);
+--- replace
+      easel_canvas_text_step_size (self, keyval == GDK_KEY_bracketright ? 2 : -1);
+
+=== REQ-0017-12 Ctrl+[ makes the size larger
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+      easel_canvas_text_step_size (self, keyval == GDK_KEY_bracketright ? 1 : -1);
+--- replace
+      easel_canvas_text_step_size (self, 1);
+
+=== REQ-0017-12 a size step is not tried as an edit
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+  if (op->step != 0)
+    return easel_text_buffer_step_size (b, op->step, EASEL_TEXT_SIZE_MIN, EASEL_TEXT_SIZE_MAX, caret_at_line_start (b), &changed);
+--- replace
+  if (op->step != 0)
+    return true;
+
+=== REQ-0017-12 the size steps go past 500
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+    return easel_text_buffer_step_size (b, op->step, EASEL_TEXT_SIZE_MIN, EASEL_TEXT_SIZE_MAX, caret_at_line_start (b), &changed);
+--- replace
+    return easel_text_buffer_step_size (b, op->step, EASEL_TEXT_SIZE_MIN, 1000, caret_at_line_start (b), &changed);
+
+=== REQ-0017-12 a part at a size limit still steps
+file: src/core/text-buffer.c
+test: core-text-buffer ui-0017
+--- find
+  return size + delta < min ? min : size + delta > max ? max : size + delta;
+--- replace
+  return size + delta;
+
+=== REQ-0017-12 a step that changes no size is an edit
+file: src/core/text-buffer.c
+test: core-text-buffer ui-0017
+--- find
+  if (!*changed)
+    return true;
+  if (!format_selection
+--- replace
+  if (!format_selection
+
+=== REQ-0017-12 a size step with nothing selected is lost
+file: src/core/text-buffer.c
+test: core-text-buffer ui-0017
+--- find
+      s.size_pt += delta;
+--- replace
+      (void) delta;
+
+=== REQ-0017-12 a size step with nothing selected at the limit is a change
+file: src/core/text-buffer.c
+test: core-text-buffer
+--- find
+      if (stepped (s.size_pt, delta, min, max) == s.size_pt)
+        return true;
+--- replace
+
+=== REQ-0017-12 each part steps from the first part's size
+file: src/core/text-buffer.c
+test: core-text-buffer ui-0017
+--- find
+            b->runs[i].style.size_pt = stepped (b->runs[i].style.size_pt, delta, min, max);
+--- replace
+            b->runs[i].style.size_pt = stepped (b->runs[run_at (b, from)].style.size_pt, delta, min, max);
+
+=== REQ-0017-12 a size step does not reserve its Undo's and Redo's memory
+file: src/core/text-buffer.c
+test: core-text-buffer
+--- find
+    if (!steps_room (b, before.n, before.n))                /* the runs of the range after it are no more than before */
+--- replace
+    if (delta == 0 && !steps_room (b, before.n, before.n))  /* the runs of the range after it are no more than before */
+
+=== REQ-0017-12 Ctrl+Shift+5 is matched by its symbol, not its key
+file: src/ui/window.c
+test: ui-0017
+--- find
+      if (keys[i].keycode == keycode)
+--- replace
+      if (keyval == GDK_KEY_5)
+
+=== REQ-0017-12 Ctrl+Shift with any key toggles Strikethrough
+file: src/ui/window.c
+test: ui-0017
+--- find
+      if (keys[i].keycode == keycode)
+--- replace
+      if (keys[i].keycode != 0)
+
+=== REQ-0017-12 Ctrl+5 without Shift toggles Strikethrough
+file: src/ui/window.c
+test: ui-0017
+--- find
+  if ((state & (GDK_CONTROL_MASK | GDK_SHIFT_MASK | GDK_ALT_MASK)) != (GDK_CONTROL_MASK | GDK_SHIFT_MASK))
+--- replace
+  if (!(state & GDK_CONTROL_MASK))
+
+=== REQ-0017-12 Ctrl+Shift+5 toggles Underline
+file: src/ui/window.c
+test: ui-0017
+--- find
+          easel_canvas_text_toggle (self->canvas, EASEL_TEXT_STRIKE);
+--- replace
+          easel_canvas_text_toggle (self->canvas, EASEL_TEXT_UNDERLINE);
+
+=== REQ-0017-14 Ctrl+Shift+F does not open the family popover
+file: src/ui/window.c
+test: ui-0017
+--- find
+      easel_font_card_open_family (self->font_card);
+      return TRUE;
+--- replace
+      return TRUE;
+
+=== REQ-0017-14 the size field's tooltip names no keys
+file: src/ui/font-card.c
+test: ui-0017
+--- find
+  gtk_widget_set_tooltip_text (GTK_WIDGET (self->size), "Font size (Ctrl+] larger, Ctrl+[ smaller)");
+--- replace
+  gtk_widget_set_tooltip_text (GTK_WIDGET (self->size), "Size");
+
+=== REQ-0017-14 the Strikethrough toggle's tooltip names no key
+file: src/ui/font-card.c
+test: ui-0017
+--- find
+"format-text-strikethrough-symbolic", "Strikethrough (Ctrl+Shift+5)" },
+--- replace
+"format-text-strikethrough-symbolic", "Strikethrough" },
+
+=== REQ-0017-12 the next box starts in the settings' style, not the last box's
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+    style_at_caret_of (self->text_buf, &st);
+    easel_canvas_set_text_start_style (self, st.family, st.size_pt, st.flags);
+--- replace
+    style_at_caret_of (self->text_buf, &st);
+
+=== REQ-0017-12 a line start takes the style before the caret for a style change
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+  return caret == 0 || text[caret - 1] == '\n';
+--- replace
+  return FALSE;
+
+=== REQ-0017-13 a palette pick does not color the box's text
+file: src/ui/window.c
+test: ui-0017
+--- find
+  if (self->tool == EASEL_TOOL_TEXT)
+    easel_canvas_text_apply (self->canvas, EASEL_TEXT_COLOR, &v);
+--- replace
+  (void) v;
+
+=== REQ-0017-13 a background pick colors the box's text
+file: src/ui/window.c
+test: ui-0017
+--- find
+    pick_foreground (self, color);
+  else
+    set_colors (self, self->foreground, color);
+--- replace
+    pick_foreground (self, color);
+  else
+    {
+      set_colors (self, self->foreground, color);
+      easel_canvas_text_apply (self->canvas, EASEL_TEXT_COLOR, &(EaselTextStyle) { .color = color });
+    }
+
+=== REQ-0017-13 a foreground chosen in the chooser does not color the text
+file: src/ui/window.c
+test: ui-0017
+--- find
+  if (self->chooser_target == CHOOSE_FOREGROUND)
+    pick_foreground (self, color);
+--- replace
+  if (self->chooser_target == CHOOSE_FOREGROUND)
+    set_colors (self, color, self->background);
+
+=== REQ-0017-25 a size outside 1 to 500 is not clamped
+file: src/ui/font-card.c
+test: ui-0017
+--- find
+  gtk_spin_button_set_update_policy (self->size, GTK_UPDATE_ALWAYS);
+--- replace
+  gtk_spin_button_set_update_policy (self->size, GTK_UPDATE_IF_VALID);
+
+=== REQ-0017-25 the size field takes letters
+file: src/ui/font-card.c
+test: ui-0017
+--- find
+  gtk_spin_button_set_numeric (self->size, TRUE);
+--- replace
+  gtk_spin_button_set_numeric (self->size, FALSE);
+
+=== REQ-0017-25 the size goes to 1000
+file: src/ui/font-card.c
+test: ui-0017
+--- find
+  self->size = GTK_SPIN_BUTTON (gtk_spin_button_new_with_range (1, 500, 1));
+--- replace
+  self->size = GTK_SPIN_BUTTON (gtk_spin_button_new_with_range (1, 1000, 1));
+
+=== REQ-0017-25 the size steps by 2
+file: src/ui/font-card.c
+test: ui-0017
+--- find
+  self->size = GTK_SPIN_BUTTON (gtk_spin_button_new_with_range (1, 500, 1));
+--- replace
+  self->size = GTK_SPIN_BUTTON (gtk_spin_button_new_with_range (1, 500, 2));
+
+=== REQ-0017-14 Enter in the size field keeps the focus there
+file: src/ui/font-card.c
+test: ui-0017
+--- find
+  apply_size (self);
+  back_to_box (self);
+}
+--- replace
+  apply_size (self);
+}
+
+=== REQ-0017-14 a typed size is applied twice
+file: src/ui/font-card.c
+test: ui-0017
+--- find
+  if (v.size_pt == self->shown_size)
+    return;
+--- replace
+  if (0)
+    return;
+
+=== REQ-0017-14 Esc in a field keeps what was typed
+file: src/ui/font-card.c
+test: ui-0017
+--- find
+  easel_font_card_show_style (self, &self->shown, self->shown_mixed);
+  back_to_box (self);
+--- replace
+  back_to_box (self);
+
+=== REQ-0017-14 the toggles take the focus
+file: src/ui/font-card.c
+test: ui-0017
+--- find
+      gtk_widget_set_focusable (button, FALSE);
+--- replace
+      gtk_widget_set_focusable (button, TRUE);
+
+=== REQ-0017-14 a toggle applies its flag the other way
+file: src/ui/font-card.c
+test: ui-0017
+--- find
+        v.flags = gtk_toggle_button_get_active (button) ? toggles[i].flag : 0;
+--- replace
+        v.flags = gtk_toggle_button_get_active (button) ? 0 : toggles[i].flag;
+
+=== REQ-0017-14 the search is case-sensitive
+file: src/ui/font-card.c
+test: ui-0017
+--- find
+  gtk_string_filter_set_ignore_case (self->search, TRUE);
+--- replace
+  gtk_string_filter_set_ignore_case (self->search, FALSE);
+
+=== REQ-0017-14 the search matches the start of a name only
+file: src/ui/font-card.c
+test: ui-0017
+--- find
+  gtk_string_filter_set_match_mode (self->search, GTK_STRING_FILTER_MATCH_MODE_SUBSTRING);
+--- replace
+  gtk_string_filter_set_match_mode (self->search, GTK_STRING_FILTER_MATCH_MODE_PREFIX);
+
+=== REQ-0017-14 a font that cannot show its name is written in it
+file: src/ui/font-card.c
+test: ui-0017
+--- find
+        can = g_unichar_isspace (g_utf8_get_char (p)) || (font != NULL && pango_font_has_char (font, g_utf8_get_char (p)));
+--- replace
+        can = TRUE;
+
+=== REQ-0017-14 a size that differs within the selection shows as a number
+file: src/ui/font-card.c
+test: ui-0017
+--- find
+  self->shown_size = (mixed & EASEL_TEXT_SIZE) ? 0 : style->size_pt;
+--- replace
+  self->shown_size = style->size_pt;
+
+=== REQ-0017-14 a flag only some of the selection has shows as on
+file: src/ui/font-card.c
+test: ui-0017
+--- find
+    gtk_toggle_button_set_active (self->toggles[i], (style->flags & toggles[i].flag) && !(mixed & toggles[i].field));
+--- replace
+    gtk_toggle_button_set_active (self->toggles[i], (style->flags & toggles[i].flag) != 0);
+
+=== REQ-0017-14 the card is 6 logical pixels above the box
+file: src/ui/window.c
+test: ui-0017
+--- find
+  above = a.y - 8 - ch;
+--- replace
+  above = a.y - 6 - ch;
+
+=== REQ-0017-14 the card is 6 logical pixels below the box
+file: src/ui/window.c
+test: ui-0017
+--- find
+  below = b.y + 8;
+--- replace
+  below = b.y + 6;
+
+=== REQ-0017-14 with no room above or below the card covers the box below it
+file: src/ui/window.c
+test: ui-0017
+--- find
+  cy = above >= view.origin.y ? above : below + ch <= view.origin.y + view.size.height ? below : view.origin.y;
+--- replace
+  cy = above >= view.origin.y ? above : below;
+
+=== REQ-0017-14 the card is not shifted to stay in the view
+file: src/ui/window.c
+test: ui-0017
+--- find
+  cx = MAX (MIN (a.x, view.origin.x + view.size.width - cw), view.origin.x);
+--- replace
+  cx = a.x;
+
+=== REQ-0017-14 the card stays shown with the box out of view
+file: src/ui/window.c
+test: ui-0017
+--- find
+  gtk_widget_set_child_visible (GTK_WIDGET (self->font_card), card_place (self, &place, &in_view) && in_view);
+--- replace
+  gtk_widget_set_child_visible (GTK_WIDGET (self->font_card), card_place (self, &place, &in_view));
+
+=== REQ-0017-14 the card does not follow a scroll
+file: src/ui/window.c
+test: ui-0017
+--- find
+  g_signal_connect_object (gtk_scrolled_window_get_vadjustment (self->scroller), "value-changed", G_CALLBACK (update_card), self,
+--- replace
+  g_signal_connect_object (gtk_scrolled_window_get_vadjustment (self->scroller), "notify::lower", G_CALLBACK (update_card), self,
+
+=== REQ-0017-14 the card stays after the box closes
+file: src/ui/window.c
+test: ui-0017
+--- find
+  gtk_widget_set_visible (GTK_WIDGET (self->font_card), open);
+--- replace
+  if (open)
+    gtk_widget_set_visible (GTK_WIDGET (self->font_card), TRUE);
+
+=== REQ-0017-14 the card does not show the box's style
+file: src/ui/window.c
+test: ui-0017
+--- find
+      easel_font_card_show_style (self->font_card, &st, mixed);
+--- replace
+      (void) mixed;
+
+=== REQ-0017-14 the window takes the keys of a focused card field
+file: src/ui/window.c
+test: ui-0017
+--- find
+    return GDK_EVENT_PROPAGATE;                 /* the card's fields and its family list take their own keys (REQ-0017-14) */
+--- replace
+    (void) 0;
+
+=== REQ-0017-14 Select All in a card field selects the box's text
+file: src/ui/window.c
+test: ui-0017
+--- find
+  if (card_field_action (self, "selection.select-all"))
+    return;
+--- replace
+  if (0)
+    return;
+
+=== REQ-0017-14 Undo in a card field takes back a box edit
+file: src/ui/window.c
+test: ui-0017
+--- find
+  if (!card_field_action (EASEL_WINDOW (user_data), "text.undo"))
+--- replace
+  if (1)
+
+=== REQ-0017-14 a press in the box leaves the focus in a card field
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+        gtk_root_set_focus (gtk_widget_get_root (GTK_WIDGET (self)), NULL);
+--- replace
+        (void) 0;
+
+=== REQ-0017-06 the end of a wrapped line cannot be reached by a press or a drag
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+      if (px >= pos.x + pos.width / 2)
+        return (size_t) (line->start_index + line->length);
+--- replace
+      if (0)
+        return (size_t) (line->start_index + line->length);
+
+=== REQ-0017-14 the card does not follow a selection made by the mouse
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+      g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);   /* the card shows the selection's style (REQ-0017-14) */
+--- replace
+      (void) 0;
+
+=== REQ-0017-14 the card is translucent in the dark theme
+file: src/ui/font-card.c
+test: ui-0017
+--- find
+  gtk_widget_add_css_class (GTK_WIDGET (self), "font-card");                 /* opaque in both themes (style.css) */
+--- replace
+  (void) 0;
+
+=== REQ-0017-16 an empty Opaque box puts its fill down
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+  if (easel_text_buffer_text (self->text_buf, &len) != NULL && len == 0)
+--- replace
+  if (0)
+
+=== REQ-0017-03 a box's click is a press and release on the same pixel
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+  gboolean click = self->sel_for_text ? !self->text_dragged : self->sel_px1 == self->sel_px0 && self->sel_py1 == self->sel_py0;
+--- replace
+  gboolean click = self->sel_px1 == self->sel_px0 && self->sel_py1 == self->sel_py0;
+
+=== REQ-0017-03 a press that went beyond the threshold and came back is a click
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+          if (!self->text_dragged
+              && gtk_drag_check_threshold
+--- replace
+          self->text_dragged = FALSE;
+          if (!self->text_dragged
+              && gtk_drag_check_threshold
+
+=== REQ-0017-03 the rectangle shows within the drag threshold
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+  if (self->sel_for_text && !self->text_dragged)
+    return FALSE;                                 /* a box's press within the drag threshold is a click: no rectangle (REQ-0017-03) */
+--- replace
+
+=== REQ-0017-14 a pick that does not change the selection is lost
+file: src/ui/font-card.c
+test: ui-0017
+--- find
+  v.family = family;
+  apply (self, EASEL_TEXT_FAMILY, &v);
+--- replace
+  v.family = family;
+  if (g_strcmp0 (family, self->shown.family) != 0)
+    apply (self, EASEL_TEXT_FAMILY, &v);
+
+=== REQ-0017-14 the mixed state shows a family
+file: src/ui/font-card.c
+test: ui-0017
+--- find
+  gtk_label_set_text (self->family_label, (mixed & EASEL_TEXT_FAMILY) || style->family == NULL ? ""
+--- replace
+  gtk_label_set_text (self->family_label, style->family == NULL ? ""
+
+=== REQ-0017-14 the popover opens with no family highlighted
+file: src/ui/font-card.c
+test: ui-0017
+--- find
+  highlight (self, at);
+  gtk_widget_grab_focus (GTK_WIDGET (self->search_entry));
+--- replace
+  highlight (self, GTK_INVALID_LIST_POSITION);
+  gtk_widget_grab_focus (GTK_WIDGET (self->search_entry));
+
+=== REQ-0017-14 the popover highlights a family when the selection's differ
+file: src/ui/font-card.c
+test: ui-0017
+--- find
+  for (guint i = 0; !(self->shown_mixed & EASEL_TEXT_FAMILY) && self->shown.family != NULL && i < n; i++)
+--- replace
+  for (guint i = 0; self->shown.family != NULL && i < n; i++)
+
+=== REQ-0017-14 a search highlights no family
+file: src/ui/font-card.c
+test: ui-0017
+--- find
+  gtk_string_filter_set_search (self->search, text);
+  highlight (self, g_list_model_get_n_items (G_LIST_MODEL (self->listed)) > 0 ? 0 : GTK_INVALID_LIST_POSITION);
+--- replace
+  gtk_string_filter_set_search (self->search, text);
+
+=== REQ-0017-14 Down does not move the highlight
+file: src/ui/font-card.c
+test: ui-0017
+--- find
+      highlight (self, at == GTK_INVALID_LIST_POSITION ? (n > 0 ? 0 : at) : MIN (at + 1, n - 1));
+--- replace
+      highlight (self, at);
+
+=== REQ-0017-14 Enter does not pick
+file: src/ui/font-card.c
+test: ui-0017
+--- find
+      if (at != GTK_INVALID_LIST_POSITION)
+        on_row_activated (self->list, at, self);
+--- replace
+      (void) at;
+
+=== REQ-0017-14 Esc in the popover is not the popover's
+file: src/ui/font-card.c
+test: ui-0017
+--- find
+    case GDK_KEY_Escape:
+      easel_font_card_cancel_family (self);              /* only the popover closes (REQ-0017-14, REQ-0017-17) */
+      return TRUE;
+--- replace
+    case GDK_KEY_Escape:
+      return FALSE;
+
+=== REQ-0017-14 a pick leaves the popover open
+file: src/ui/font-card.c
+test: ui-0017
+--- find
+  apply (self, EASEL_TEXT_FAMILY, &v);
+  if (self->popover != NULL)
+    gtk_popover_popdown (self->popover);
+--- replace
+  apply (self, EASEL_TEXT_FAMILY, &v);
+
+=== REQ-0017-14 the family button has no name
+file: src/ui/font-card.c
+test: ui-0017
+--- find
+  gtk_widget_set_tooltip_text (GTK_WIDGET (self->family), "Font family (Ctrl+Shift+F)");   /* each control and its key (REQ-0017-14) */
+--- replace
+  (void) 0;
+
+=== REQ-0017-14 the clearing of the search at an opening highlights the first family
+file: src/ui/font-card.c
+test: ui-0017
+--- find
+  if (g_strcmp0 (text[0] != '\0' ? text : NULL, now != NULL && now[0] != '\0' ? now : NULL) != 0)
+    search (self, text);
+--- replace
+  (void) now;
+  search (self, text);
+
+=== REQ-0017-14 the popover scrolls to the current family before the list has its size
+file: src/ui/font-card.c
+test: ui-0017
+--- find
+  if (gtk_widget_get_mapped (GTK_WIDGET (self->list)) && gtk_widget_get_height (GTK_WIDGET (self->list)) > 0)
+    gtk_list_view_scroll_to (self->list, position, GTK_LIST_SCROLL_NONE, NULL);
+--- replace
+  if (1)
+    gtk_list_view_scroll_to (self->list, position, GTK_LIST_SCROLL_NONE, NULL);
+
+=== REQ-0017-14 the focus given back to the family button later stays there
+file: src/ui/window.c
+test: ui-0017
+--- find
+  g_signal_connect (self, "notify::focus-widget", G_CALLBACK (on_focus_widget_changed), NULL);
+--- replace
+  (void) on_focus_widget_changed;
+
+=== REQ-0017-14 a focus Tab carries into the size field stays there
+file: src/ui/window.c
+test: ui-0017
+--- find
+  return focus != NULL && gtk_widget_is_ancestor (focus, GTK_WIDGET (self->font_card)) && (!GTK_IS_TEXT (focus) || by_tab)
+--- replace
+  (void) by_tab;
+  return focus != NULL && gtk_widget_is_ancestor (focus, GTK_WIDGET (self->font_card)) && !GTK_IS_TEXT (focus)
+
+=== REQ-0017-14 the family button can take the focus
+file: src/ui/font-card.c
+test: ui-0017
+--- find
+  gtk_widget_set_focusable (GTK_WIDGET (self->family), FALSE);
+--- replace
+  gtk_widget_set_focusable (GTK_WIDGET (self->family), TRUE);
+
+=== REQ-0017-14 a step of the size field keeps the keys in it
+file: src/ui/font-card.c
+test: ui-0017
+--- find
+  if (!self->field_step)
+    back_to_box (self);
+--- replace
+
+=== REQ-0017-14 the size field's − and + take the focus
+file: src/ui/font-card.c
+test: ui-0017
+--- find
+  gtk_widget_set_focus_on_click (GTK_WIDGET (self->size), FALSE);
+--- replace
+  gtk_widget_set_focus_on_click (GTK_WIDGET (self->size), TRUE);
+
+=== REQ-0017-24 a generic starting font stays generic
+file: src/ui/text-render.c
+test: ui-0017
+--- find
+  if (!easel_text_render_is_generic (name))
+    return name;
+  /* fontconfig's choice
+--- replace
+  if (1)
+    return name;
+  /* fontconfig's choice
+
+=== REQ-0017-24 auto takes the desktop's document font
+file: src/ui/window.c
+test: ui-0017
+--- find
+  name = g_settings_get_string (settings, "font-name");
+--- replace
+  name = g_settings_get_string (settings, "document-font-name");
+
+=== REQ-0017-14 the family list shows the generic names
+file: src/ui/font-card.c
+test: ui-0017
+--- find
+    if (!easel_text_render_is_generic (pango_font_family_get_name (families[i])))
+--- replace
+    if (1)
+
+=== REQ-0017-24 Monospace is not a generic name
+file: src/ui/text-render.c
+test: ui-0017
+--- find
+  static const char *generic[] = { "sans", "sans-serif", "serif", "monospace", "system-ui", "cursive", "fantasy", "emoji", "math",
+--- replace
+  static const char *generic[] = { "sans", "sans-serif", "serif", "system-ui", "cursive", "fantasy", "emoji", "math",
+
+=== REQ-0017-08 a paste of runs does not hold its Undo's and Redo's run room
+file: src/core/text-buffer.c
+test: core-text-buffer
+--- find
+  if (!join_pieces (&added, &(Piece) { 0 }, &copy) || !steps_room (b, gone.n, added.n))
+--- replace
+  if (!join_pieces (&added, &(Piece) { 0 }, &copy))
+
+=== REQ-0017-20 a paste of runs keeps only its first run
+file: src/core/text-buffer.c
+test: core-text-buffer
+--- find
+  Piece added = { (char *) utf8, length, (EaselTextRun *) runs, length > 0 ? n : 0 }, gone = { 0 }, copy = { 0 };
+--- replace
+  Piece added = { (char *) utf8, length, (EaselTextRun *) runs, length > 0 ? 1 : 0 }, gone = { 0 }, copy = { 0 };
+
+=== REQ-0017-19 Copy with a box open copies the picture's selection
+file: src/ui/window.c
+test: ui-0017
+--- find
+    copy_box_text (user_data);                     /* a box open: its selected text (REQ-0017-19) */
+--- replace
+    copy_selection (user_data);
+
+=== REQ-0017-19 Cut with a box open leaves the text
+file: src/ui/window.c
+test: ui-0017
+--- find
+        easel_canvas_text_delete_selection (self->canvas, EASEL_TEXT_EDIT_CUT);   /* one edit (REQ-0017-19) */
+--- replace
+        ;
+
+=== REQ-0017-19 Copy offers no rich text
+file: src/ui/window.c
+test: ui-0017
+--- find
+  each[0] = gdk_content_provider_new_for_bytes ("text/html", html_bytes);
+--- replace
+  each[0] = gdk_content_provider_new_for_bytes ("text/x-none", html_bytes);
+
+=== REQ-0017-19 Copy To… stays sensitive with a box open
+file: src/ui/window.c
+test: ui-0017
+--- find
+      set_action_enabled (self, "copy-to", FALSE);
+--- replace
+      set_action_enabled (self, "copy-to", TRUE);
+
+=== REQ-0017-19 Copy is sensitive with nothing selected in the box
+file: src/ui/window.c
+test: ui-0017
+--- find
+      set_action_enabled (self, "copy", text_selected);
+--- replace
+      set_action_enabled (self, "copy", idle);
+
+=== REQ-0017-20 Paste with a box open pastes a picture
+file: src/ui/window.c
+test: ui-0017
+--- find
+      paste_box_text (self, TRUE);                 /* a box open: its text (REQ-0017-20) */
+      return;
+--- replace
+      (void) 0;
+
+=== REQ-0017-20 Paste as Plain Text keeps the rich styles
+file: src/ui/window.c
+test: ui-0017
+--- find
+  paste_box_text (self, FALSE);
+}
+--- replace
+  paste_box_text (self, TRUE);
+}
+
+=== REQ-0017-20 a family not installed is kept
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+          const char *family = rich[r].family != NULL ? easel_text_render_find_family (rich[r].family) : NULL;
+--- replace
+          const char *family = rich[r].family;
+
+=== REQ-0017-20 a pasted part's size is not kept
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+          if (rich[r].size_pt > 0)
+            st.size_pt = rich[r].size_pt;
+--- replace
+          (void) 0;
+
+=== REQ-0017-20 a tab stays a tab
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+      else if (c == '\t')
+        out[k++] = ' ';
+--- replace
+      else if (c == '\t')
+        out[k++] = '\t';
+
+=== REQ-0017-20 "\r\n" makes two new lines
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+          if (i + 1 < len && text[i + 1] == '\n')
+            at[++i] = k - 1;                          /* "\r\n": one new line */
+--- replace
+          (void) 0;
+
+=== REQ-0017-20 a picture alone makes a box's Paste sensitive
+file: src/ui/window.c
+test: ui-0017
+--- find
+      set_action_enabled (self, "paste", text);
+--- replace
+      set_action_enabled (self, "paste", text || picture);
+
+=== REQ-0017-21 text alone makes Paste sensitive with no box
+file: src/ui/window.c
+test: ui-0017
+--- find
+  g_simple_action_set_enabled (G_SIMPLE_ACTION (g_action_map_lookup_action (G_ACTION_MAP (self), "paste")), picture);
+--- replace
+  g_simple_action_set_enabled (G_SIMPLE_ACTION (g_action_map_lookup_action (G_ACTION_MAP (self), "paste")),
+                               picture || (idle && clipboard_has_text (self->clipboard)));
+
+=== REQ-0017-27 the clipboard's text that never comes shows no dialog
+file: src/ui/window.c
+test: ui-0017
+--- find
+  if (bytes == NULL)
+    show_save_error (self, "Could Not Paste", "The clipboard's text cannot be read.");
+--- replace
+  (void) 0;
+
+=== REQ-0017-27 a quit during a text paste's wait does not go on
+file: src/ui/window.c
+test: ui-0017
+--- find
+  self->close_after_reading = FALSE;
+  gtk_window_close (GTK_WINDOW (self));
+  return TRUE;
+--- replace
+  self->close_after_reading = FALSE;
+  return FALSE;
+
+=== REQ-0017-22 the box's menu is the selection's
+file: src/ui/window.c
+test: ui-0017
+--- find
+  GtkWidget *menu = self->tool == EASEL_TOOL_TEXT ? self->text_menu : self->selection_menu;
+--- replace
+  GtkWidget *menu = self->selection_menu;
+
+=== REQ-0017-22 a secondary press on text leaves the caret
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+          if (hit == 1 && !(easel_text_buffer_selection (self->text_buf, &from, &to) && at >= from && at <= to))
+            text_move (self, at, FALSE);
+--- replace
+          (void) from;
+          (void) to;
+
+=== REQ-0017-22 a secondary press on the selection drops it
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+          if (hit == 1 && !(easel_text_buffer_selection (self->text_buf, &from, &to) && at >= from && at <= to))
+--- replace
+          if (hit == 1 && !(easel_text_buffer_selection (self->text_buf, &from, &to) && FALSE))
+
+=== REQ-0017-12 Ctrl+B with nothing selected is lost
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+  easel_canvas_text_selection_style (self, &st, &mixed);
+  v.flags = (st.flags & flag) && !(mixed & field) ? 0 : flag;
+--- replace
+  if (flag == EASEL_TEXT_BOLD && !easel_text_buffer_selection (self->text_buf, &(size_t) { 0 }, &(size_t) { 0 }))
+    return;
+  easel_canvas_text_selection_style (self, &st, &mixed);
+  v.flags = (st.flags & flag) && !(mixed & field) ? 0 : flag;
+
+=== REQ-0017-19 the rich text's test switch is not used for Copy
+file: src/ui/window.c
+test: ui-0017
+--- find
+  if (html != NULL && html_len > self->rich_limit)
+    g_clear_pointer (&html, free);                /* the tests' switch: as if its memory could not be had */
+--- replace
+
+=== REQ-0017-19 the rich text's test switch is on at the start
+file: src/ui/window.c
+test: ui-0017
+--- find
+  self->rich_limit = G_MAXSIZE;
+--- replace
+  self->rich_limit = 0;
+
+=== REQ-0017-19 a failed copy of the text shows no dialog
+file: src/ui/window.c
+test: ui-0017
+--- find
+      show_save_error (self, "Could Not Copy the Text", "There is not enough memory to copy this text.");
+--- replace
+      (void) 0;
+
+=== REQ-0017-19 Cut removes the text when its copy failed
+file: src/ui/window.c
+test: ui-0017
+--- find
+      if (copy_box_text (self))
+        easel_canvas_text_delete_selection (self->canvas, EASEL_TEXT_EDIT_CUT);   /* one edit (REQ-0017-19) */
+--- replace
+      copy_box_text (self);
+      easel_canvas_text_delete_selection (self->canvas, EASEL_TEXT_EDIT_CUT);
+
+=== REQ-0017-20 the rich text's test switch is not used for Paste
+file: src/ui/window.c
+test: ui-0017
+--- find
+      if (n > self->rich_limit || !easel_rich_text_from_html (data != NULL ? data : "", n, &rt))
+--- replace
+      if (!easel_rich_text_from_html (data != NULL ? data : "", n, &rt))
+
+=== REQ-0017-20 a paste whose rich text cannot be read shows no dialog
+file: src/ui/window.c
+test: ui-0017
+--- find
+          show_save_error (self, "Could Not Paste", "There is not enough memory to paste this text.");
+--- replace
+          (void) 0;
+
+=== REQ-0017-25 − and + on mixed sizes change nothing
+file: src/ui/font-card.c
+test: ui-0017
+--- find
+      if (delta != 0 && self->canvas != NULL)
+        easel_canvas_text_step_size (self->canvas, delta);
+--- replace
+      (void) delta;
+
+=== REQ-0017-25 the empty field is read as 1 before a step
+file: src/ui/font-card.c
+test: ui-0017
+--- find
+  g_signal_connect (self->size, "input", G_CALLBACK (on_size_input), self);
+--- replace
+
+=== REQ-0017-25 the empty field's spin sits at the top of its range
+file: src/ui/font-card.c
+test: ui-0017
+--- find
+      gtk_spin_button_set_value (self->size, 250);
+--- replace
+      gtk_spin_button_set_value (self->size, 500);
+
+=== REQ-0017-25 a step of 10 from 497 keeps the size
+file: src/core/text-buffer.c
+test: core-text-buffer ui-0017
+--- find
+  return size + delta < min ? min : size + delta > max ? max : size + delta;
+--- replace
+  return size + delta < min || size + delta > max ? size : size + delta;
+
+=== REQ-0017-25 a key step in the field gives the keys to the box
+file: src/ui/font-card.c
+test: ui-0017
+--- find
+  self->field_step = TRUE;
+}
+--- replace
+  self->field_step = FALSE;
+}
+
+=== REQ-0017-25 the wheel in the field is left to the spin
+file: src/ui/font-card.c
+test: ui-0017
+--- find
+  self->field_step = TRUE;
+  gtk_spin_button_spin (self->size, dy < 0 ? GTK_SPIN_STEP_FORWARD : GTK_SPIN_STEP_BACKWARD, 1);
+--- replace
+  return GDK_EVENT_PROPAGATE;
+  gtk_spin_button_spin (self->size, dy < 0 ? GTK_SPIN_STEP_FORWARD : GTK_SPIN_STEP_BACKWARD, 1);
+
+=== REQ-0017-25 the wheel without the focus is left to the size field
+file: src/ui/window.c
+test: ui-0017
+--- find
+  if (focus != NULL && (focus == field || gtk_widget_is_ancestor (focus, field)))
+    return GDK_EVENT_PROPAGATE;
+  if (gtk_event_controller_scroll_get_unit
+--- replace
+  return GDK_EVENT_PROPAGATE;
+  if (gtk_event_controller_scroll_get_unit
+
+=== REQ-0017-20 the pasted size is not clamped
+file: src/core/rich-text.c
+test: core-rich-text
+--- find
+  return v < 1 ? 1 : v > 500 ? 500 : (int) v;
+--- replace
+  return (int) v;
+
+=== REQ-0017-20 <font size> 7 is 24
+file: src/core/rich-text.c
+test: core-rich-text
+--- find
+      static const int pts[] = { 8, 10, 12, 14, 18, 24, 36 };
+--- replace
+      static const int pts[] = { 8, 10, 12, 14, 18, 24, 24 };
+
+=== REQ-0017-20 a size in pixels is taken as points
+file: src/core/rich-text.c
+test: core-rich-text
+--- find
+    v *= 0.75;
+--- replace
+    (void) 0;
+
+=== REQ-0017-20 a size is cut, not rounded
+file: src/core/rich-text.c
+test: core-rich-text
+--- find
+  v = round (v);
+--- replace
+  v = floor (v);
+
+=== REQ-0017-20 a size in em is taken as points
+file: src/core/rich-text.c
+test: core-rich-text
+--- find
+  else if (!nocase_eq (end, strlen (end), "pt"))
+    return 0;
+--- replace
+
+=== REQ-0017-20 a part with no size takes size 0
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+          if (rich[r].size_pt > 0)
+            st.size_pt = rich[r].size_pt;
+--- replace
+          if (rich[r].size_pt >= 0)
+            st.size_pt = rich[r].size_pt;

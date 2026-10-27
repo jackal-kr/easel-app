@@ -29,7 +29,7 @@ wait_for_paint (EaselWindow *win)
     g_main_context_iteration (NULL, TRUE);
 }
 
-static void
+G_GNUC_UNUSED static void
 write_settings (const char *dir, int w, int h)
 {
   g_autofree char *path = g_build_filename (dir, "easel", "settings.ini", NULL);

@@ -21,7 +21,7 @@ they are used.
   the edge handles, and are not part of the picture; they scroll with the picture, keep their logical size at every zoom, and move
   with the selection, also while it is moved, smeared or stretched with the button held (JOD). The picture's own resize handles (REQ-0004-16) lie under the selection's tint and its floating pixels where they overlap (JOD,
   2026-10-22), and under the selection's handles. While a rectangle is dragged out or a
-  path traced there is no selection yet and no handle. (Pointer notes: REQ-0013-05 and REQ-0014-05, which said no handle is drawn.)
+  path traced there is no selection yet and no handle. (Pointer notes: REQ-0013-05 and REQ-0014-05, which said no handle is drawn.) (Pointer note, Text, 2026-10-26: An open text box shows the same eight handles with Text active, REQ-0017-05.)
 - REQ-0015-02 A press inside a handle's own 5 x 5 square shall go to that handle; elsewhere each handle takes presses in a hit area of
   9 x 9 logical pixels round its center, less the selection's bounding rectangle, and where those hit areas overlap a corner handle
   wins over an edge handle (JOD). Inside the bounding rectangle a press is what 0013 and 0014 say (on the selection, outside its
@@ -30,7 +30,7 @@ they are used.
   owns that handle's whole hit area, also the part inside the picture (JOD, 2026-10-22). While the pointer is over a handle the cursor shall be the resize cursor of its direction:
   horizontal for the left and right handles, vertical for the top and bottom ones, diagonal (top-left to bottom-right) for those two
   corners and the other diagonal for the top-right and bottom-left corners. (Pointer notes: REQ-0004-16, REQ-0013-03, REQ-0013-04,
-  REQ-0013-11, REQ-0013-12, REQ-0014-03 and REQ-0014-04, where "resize handle" means the picture's.)
+  REQ-0013-11, REQ-0013-12, REQ-0014-03 and REQ-0014-04, where "resize handle" means the picture's.) (Pointer note, Text, 2026-10-26: A text box's handles take presses as a selection's do, but inside the box a press always goes to its text, REQ-0017-09.)
 
 ### Stretching
 - REQ-0015-03 When the user presses the primary button on a selection handle and drags, the app shall stretch the selection: the

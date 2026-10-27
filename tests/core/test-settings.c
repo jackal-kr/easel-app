@@ -289,6 +289,46 @@ as16_jpeg_quality_setting (void)
   CHECK (parse ("[save]\njpeg-quality=30\n[new-picture]\nwidth=300\n").width == 300);
 }
 
+/* AS-23 (REQ-0017-24): `[text]`: `font` a family name (spaces round it trimmed; matching it with the installed families, without
+   regard to case, is the ui's) or `auto` (the desktop's document font: an empty name here); `size` 1 to 500; four booleans `true` or
+   `false` in any case; a missing, empty or bad value takes the default: auto, 12, false. The same syntax as the other keys. */
+static void
+as23_text_settings (void)
+{
+  EaselSettings s = parse ("");
+
+  CHECK (s.text_font[0] == '\0' && s.text_size == 12 && !s.text_bold && !s.text_italic && !s.text_underline && !s.text_strike);
+  s = parse (easel_settings_default_text);
+  CHECK (s.text_font[0] == '\0' && s.text_size == 12 && !s.text_bold);
+  s = parse ("[text]\nfont = dejavu serif \nsize=18\nbold=TRUE\nitalic=True\nunderline=false\nstrikethrough=tRuE\n");
+  CHECK (strcmp (s.text_font, "dejavu serif") == 0 && s.text_size == 18);
+  CHECK (s.text_bold && s.text_italic && !s.text_underline && s.text_strike);
+  CHECK (parse ("[text]\nfont=auto\n").text_font[0] == '\0');
+  CHECK (parse ("[text]\nfont=AUTO\n").text_font[0] == '\0');
+  CHECK (parse ("[text]\nfont=\n").text_font[0] == '\0');
+  CHECK (parse ("[text]\nsize=1\n").text_size == 1);
+  CHECK (parse ("[text]\nsize=500\n").text_size == 500);
+  CHECK (parse ("[text]\nsize=0\n").text_size == 12);
+  CHECK (parse ("[text]\nsize=501\n").text_size == 12);
+  CHECK (parse ("[text]\nsize=abc\n").text_size == 12);
+  CHECK (parse ("[text]\nsize=\n").text_size == 12);
+  CHECK (!parse ("[text]\nitalic=yes\n").text_italic);
+  CHECK (!parse ("[text]\nbold=1\n").text_bold);
+  CHECK (parse ("[text]\nbold=true\nbold=bad\n").text_bold == false);                 /* an invalid repeat resets */
+  CHECK (parse ("[text]\nsize=20\nsize=30\n").text_size == 30);                         /* the last repeat wins */
+  CHECK (parse ("[text]\nsize=20\nsize=bad\n").text_size == 12);                        /* an invalid repeat resets */
+  CHECK (parse ("[view]\nsize=30\n").text_size == 12);                                   /* another section does not count */
+  {
+    char longname[300];
+
+    memset (longname, 'a', sizeof longname);
+    memcpy (longname, "[text]\nfont=", 12);
+    longname[sizeof longname - 2] = '\n';
+    longname[sizeof longname - 1] = '\0';
+    CHECK (parse (longname).text_font[0] == '\0');                                         /* too long to be a family: auto */
+  }
+}
+
 static void
 as36_syntax_rules (void)
 {
@@ -335,6 +375,7 @@ main (void)
   RUN (as14_view_settings);
   RUN (as3_workspace_color_setting);
   RUN (as16_jpeg_quality_setting);
+  RUN (as23_text_settings);
   RUN (as6_garbage_is_all_defaults);
   RUN (as7_size_limits);
   RUN (as36_syntax_rules);

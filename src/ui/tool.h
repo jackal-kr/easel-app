@@ -25,10 +25,11 @@ typedef enum
   EASEL_TOOL_GRADIENT,
   EASEL_TOOL_SELECT,
   EASEL_TOOL_FREE_SELECT,
+  EASEL_TOOL_TEXT,
 } EaselTool;
 
 /* Reads a win.tool action target ("pan", "pencil", "brush", "airbrush", "eraser", "magnifier", "pick", "fill", "line", "rectangle",
-   "rounded-rectangle", "ellipse", "curve", "polygon"). */
+   "rounded-rectangle", "ellipse", "curve", "polygon", "gradient", "select", "free-select", "text"). */
 gboolean easel_tool_from_name (const char *name, EaselTool *tool);
 
 /* TRUE for Line, Rectangle, Rounded Rectangle and Ellipse: the tools that draw a shape by one drag (0010). */

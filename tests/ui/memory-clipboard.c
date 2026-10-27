@@ -105,11 +105,52 @@ typedef struct
 } Writing;
 
 static void
+on_serialized (GObject *source, GAsyncResult *result, gpointer data)
+{
+  g_autoptr (GOutputStream) out = data;
+
+  gdk_content_serialize_finish (result, NULL);
+  g_output_stream_close (out, NULL, NULL);
+}
+
+/* As GdkClipboard writes a local content: a MIME type the provider offers itself, written by it; one that a value it holds serializes
+   to (a G_TYPE_STRING to text/plain;charset=utf-8, say), serialized from that value by GDK's serializers (0017 T017: the typed text of
+   a provider read empty without this). */
+static void
 start_writing (gpointer data)
 {
   Writing *w = data;
+  g_autoptr (GdkContentFormats) own = gdk_content_provider_ref_formats (w->content);
+  gsize n = 0;
+  const GType *gtypes = gdk_content_formats_get_gtypes (own, &n);
+  gboolean done = FALSE;
 
-  gdk_content_provider_write_mime_type_async (w->content, w->mime, w->out, G_PRIORITY_DEFAULT, NULL, on_written, w->out);
+  if (gdk_content_formats_contain_mime_type (own, w->mime))
+    {
+      gdk_content_provider_write_mime_type_async (w->content, w->mime, w->out, G_PRIORITY_DEFAULT, NULL, on_written, w->out);
+      done = TRUE;
+    }
+  for (gsize i = 0; i < n && !done; i++)
+    {
+      g_autoptr (GdkContentFormats) one = gdk_content_formats_new_for_gtype (gtypes[i]);
+      g_autoptr (GdkContentFormats) to = gdk_content_formats_union_serialize_mime_types (gdk_content_formats_ref (one));
+      GValue value = G_VALUE_INIT;
+
+      if (!gdk_content_formats_contain_mime_type (to, w->mime))
+        continue;
+      g_value_init (&value, gtypes[i]);
+      if (gdk_content_provider_get_value (w->content, &value, NULL))
+        {
+          gdk_content_serialize_async (w->out, w->mime, &value, G_PRIORITY_DEFAULT, NULL, on_serialized, w->out);
+          done = TRUE;
+        }
+      g_value_unset (&value);
+    }
+  if (!done)
+    {
+      g_output_stream_close (w->out, NULL, NULL);
+      g_object_unref (w->out);
+    }
   g_object_unref (w->content);
   g_free (w);
 }

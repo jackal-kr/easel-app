@@ -1,8 +1,9 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 /* A clipboard owner that answers late, for the manual step M2 of feature 0016 (REQ-0016-15: Paste waits for the clipboard with the busy
    cursor): it puts a picture on the desktop's clipboard and, when another app reads it, answers only after a delay, or never.
-   Run by hand in the real session: build/tests/slow-clipboard-owner [SECONDS | never [PNG-FILE]]   (default 4 seconds; with a file, that PNG
-   is what is offered, to tell what a browser does with a big picture served at once from what it does with a late one)
+   Run by hand in the real session: build/tests/slow-clipboard-owner [SECONDS | never [PNG-FILE | text]]   (default 4 seconds; with a file,
+   that PNG is what is offered, to tell what a browser does with a big picture served at once from what it does with a late one; with
+   "text", a line of UTF-8 text is offered instead, for M2 of feature 0017: REQ-0017-27, Paste in a text box waits for it)
    Click its button (the compositor takes a clipboard only from a click), then press Ctrl+V in Easel and watch the busy cursor; "never" shows the dialog "Could Not Paste" after Easel's 5 seconds.
    Not a test: it prints what it does. */
 
@@ -14,8 +15,9 @@ G_DECLARE_FINAL_TYPE (SlowProvider, slow_provider, SLOW, PROVIDER, GdkContentPro
 struct _SlowProvider
 {
   GdkContentProvider parent_instance;
-  GBytes *png;
+  GBytes *png;                   /* what is offered: the picture, or the text */
   int delay_ms;                  /* < 0: never answers */
+  gboolean text;                 /* text/plain;charset=utf-8 instead of image/png */
 };
 
 G_DEFINE_FINAL_TYPE (SlowProvider, slow_provider, GDK_TYPE_CONTENT_PROVIDER)
@@ -23,7 +25,7 @@ G_DEFINE_FINAL_TYPE (SlowProvider, slow_provider, GDK_TYPE_CONTENT_PROVIDER)
 static GdkContentFormats *
 slow_ref_formats (GdkContentProvider *provider)
 {
-  return gdk_content_formats_new ((const char *[]) { "image/png" }, 1);
+  return gdk_content_formats_new ((const char *[]) { SLOW_PROVIDER (provider)->text ? "text/plain;charset=utf-8" : "image/png" }, 1);
 }
 
 typedef struct
@@ -127,7 +129,8 @@ on_click (GtkButton *button, gpointer data)
 
   /* The compositor takes a selection only from a client that has just had input: it is set from the click. */
   gdk_clipboard_set_content (gtk_widget_get_clipboard (GTK_WIDGET (button)), GDK_CONTENT_PROVIDER (provider));
-  g_print ("on the clipboard: a 200 x 100 PNG, %s\n", provider->delay_ms < 0 ? "never answering" : "answering after the delay");
+  g_print ("on the clipboard: %s, %s\n", provider->text ? "a line of text" : "a 200 x 100 PNG",
+           provider->delay_ms < 0 ? "never answering" : "answering after the delay");
 }
 
 static void
@@ -135,10 +138,17 @@ on_activate (GApplication *app, gpointer data)
 {
   SlowProvider *provider = g_object_new (SLOW_TYPE_PROVIDER, NULL);
   GtkWidget *window = gtk_application_window_new (GTK_APPLICATION (app));
-  GtkWidget *button = gtk_button_new_with_label ("Click: put the slow picture on the clipboard");
+  GtkWidget *button = gtk_button_new_with_label ("Click: put the slow content on the clipboard");
   const char *arg = data, *file = g_object_get_data (G_OBJECT (app), "png-file");
 
   provider->png = make_png ();
+  if (g_strcmp0 (file, "text") == 0)
+    {
+      provider->text = TRUE;
+      g_bytes_unref (provider->png);
+      provider->png = g_bytes_new_static ("Slow text from another app", 26);
+      file = NULL;
+    }
   if (file != NULL)
     {
       char *contents = NULL;

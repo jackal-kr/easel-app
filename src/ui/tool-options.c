@@ -21,16 +21,18 @@ struct _EaselToolOptions
 
   GtkWidget *line;           /* the separator above the presets */
   GtkWidget *stack;          /* one page per group, and an empty page: as wide as its widest page (REQ-0008-07) */
-  GtkWidget *groups[7];      /* Brush, Airbrush, Eraser, Magnifier, Line, the shapes, Select: a vertical box each */
+  GtkWidget *groups[8];      /* Brush, Airbrush, Eraser, Magnifier, Line, the shapes, Select, Text: a vertical box each */
   GtkToggleButton *brush[EASEL_BRUSH_N_PRESETS];
   GtkToggleButton *airbrush[EASEL_AIRBRUSH_N_PRESETS];
   GtkToggleButton *eraser[EASEL_ERASER_N_SIZES];
   GtkToggleButton *modes[2];
   GtkToggleButton *select_modes[2];
+  GtkToggleButton *text_modes[2];
   GtkToggleButton *magnifier[EASEL_MAGNIFIER_N_LEVELS];
   int brush_index, airbrush_index, eraser_index;
   gboolean transparent;
   gboolean select_transparent;   /* the selection's own mode (REQ-0013-02) */
+  gboolean text_transparent;     /* the Text tool's own mode, Transparent at each start (REQ-0017-02) */
   gboolean busy;
 };
 
@@ -301,6 +303,16 @@ build_presets (EaselToolOptions *self)
                                         preset_data ((EaselFootprint) { EASEL_SHAPE_SQUARE, 1 }, 1), self->select_modes[0]);
     self->groups[6] = select_grid;
   }
+  {
+    /* The Text tool's own modes, drawn as Select's, and nothing else (REQ-0017-02). */
+    GtkWidget *text_grid = new_grid ();
+
+    self->text_modes[0] = add_button (self, GTK_GRID (text_grid), 0, 1, "Opaque: fill the text box with the background color",
+                                      preset_data ((EaselFootprint) { EASEL_SHAPE_SQUARE, 1 }, 0), NULL);
+    self->text_modes[1] = add_button (self, GTK_GRID (text_grid), 1, 1, "Transparent: only the text",
+                                      preset_data ((EaselFootprint) { EASEL_SHAPE_SQUARE, 1 }, 1), self->text_modes[0]);
+    self->groups[7] = text_grid;
+  }
 
   {
     /* The levels line up under the two tool columns: the tool grid's margins and gaps, two equal columns (REQ-0008-07). */
@@ -327,7 +339,7 @@ build_presets (EaselToolOptions *self)
   gtk_stack_set_hhomogeneous (GTK_STACK (self->stack), TRUE);
   gtk_stack_set_vhomogeneous (GTK_STACK (self->stack), FALSE);
   gtk_stack_set_transition_type (GTK_STACK (self->stack), GTK_STACK_TRANSITION_TYPE_NONE);
-  for (int i = 0; i < 7; i++)
+  for (int i = 0; i < 8; i++)
     gtk_stack_add_named (GTK_STACK (self->stack), self->groups[i], NULL);
   gtk_stack_add_named (GTK_STACK (self->stack), gtk_box_new (GTK_ORIENTATION_VERTICAL, 0), "none");
   gtk_box_append (GTK_BOX (self), self->stack);
@@ -341,6 +353,7 @@ sync_selection (EaselToolOptions *self)
   gtk_toggle_button_set_active (self->eraser[self->eraser_index], TRUE);
   gtk_toggle_button_set_active (self->modes[self->transparent ? 1 : 0], TRUE);
   gtk_toggle_button_set_active (self->select_modes[self->select_transparent ? 1 : 0], TRUE);
+  gtk_toggle_button_set_active (self->text_modes[self->text_transparent ? 1 : 0], TRUE);
 }
 
 static int
@@ -361,6 +374,7 @@ read_selection (EaselToolOptions *self)
   self->eraser_index = index_of (self->eraser, EASEL_ERASER_N_SIZES);
   self->transparent = gtk_toggle_button_get_active (self->modes[1]);
   self->select_transparent = gtk_toggle_button_get_active (self->select_modes[1]);
+  self->text_transparent = gtk_toggle_button_get_active (self->text_modes[1]);
 }
 
 static void
@@ -377,6 +391,7 @@ easel_tool_options_init (EaselToolOptions *self)
   self->brush_index = EASEL_BRUSH_DEFAULT;
   self->airbrush_index = EASEL_AIRBRUSH_DEFAULT;
   self->eraser_index = EASEL_ERASER_DEFAULT;
+  self->text_transparent = TRUE;
   self->line = gtk_separator_new (GTK_ORIENTATION_HORIZONTAL);
   gtk_box_append (GTK_BOX (self), self->line);
   build_presets (self);
@@ -395,7 +410,8 @@ easel_tool_options_show_tool (EaselToolOptions *self, EaselTool tool)
 {
   int group = tool == EASEL_TOOL_BRUSH ? 0 : tool == EASEL_TOOL_AIRBRUSH ? 1 : tool == EASEL_TOOL_ERASER ? 2
               : tool == EASEL_TOOL_MAGNIFIER ? 3 : tool == EASEL_TOOL_LINE || tool == EASEL_TOOL_CURVE ? 4
-              : easel_tool_draws_shape (tool) || tool == EASEL_TOOL_POLYGON ? 5 : easel_tool_selects (tool) ? 6 : -1;
+              : easel_tool_draws_shape (tool) || tool == EASEL_TOOL_POLYGON ? 5 : easel_tool_selects (tool) ? 6
+              : tool == EASEL_TOOL_TEXT ? 7 : -1;
 
   /* Nothing of the options shows for a tool without any: the empty page, and no line above it (REQ-0006-02). */
   if (group >= 0)
@@ -428,6 +444,13 @@ easel_tool_options_get_select_transparent (EaselToolOptions *self)
 {
   read_selection (self);
   return self->select_transparent;
+}
+
+gboolean
+easel_tool_options_get_text_transparent (EaselToolOptions *self)
+{
+  read_selection (self);
+  return self->text_transparent;
 }
 
 gboolean

@@ -11,6 +11,7 @@ workflow; JOD to confirm or change each point; mark changes with an ADR if they 
   No nested XP-style menu bar.
 - Layout: toolbox (18 tools: the 16 XP tools plus Pan and Gradient) with per-tool options below it, canvas in a scrolled viewport, palette bar
   (fore/background indicator, swap button, 28 swatches), status bar with pointer position, picture size, zoom, selection size (Selection) and tool hint.
+  While a text box is open, a font card floats over the canvas next to the box (Text).
   The toolbox, the color box (palette bar) and the status bar can each be hidden from the View menu (0004).
 - Dialogs are libadwaita dialogs; destructive actions (discard unsaved changes) are labelled with the action, not "OK".
 - Preferences dialog: appearance, new-picture defaults, drawing defaults, palette persistence, undo memory budget.
@@ -44,7 +45,7 @@ They enter undo history only when committed; save, close, New and tool change mu
 One user-visible edit = exactly one undo step.
 
 ### Keyboard
-- Numpad +/- changes brush size (Ctrl+numpad +/- zooms). Ctrl+G toggles the grid, which shows while a cell is at least 4 device pixels wide (the 1-pixel grid from 400 %, as in XP). Esc drops a pending curve, polygon or gradient, and puts a floating selection down (Selection).
+- Numpad +/- changes brush size (Ctrl+numpad +/- zooms); while a text box is open they type + and − into it (Text). Ctrl+G toggles the grid, which shows while a cell is at least 4 device pixels wide (the 1-pixel grid from 400 %, as in XP). Esc drops a pending curve, polygon or gradient, and puts a floating selection down (Selection).
 - Canvas takes keyboard focus; the view must not jump when focus changes.
 - Every pointer operation has a keyboard path (see accessibility feature).
 

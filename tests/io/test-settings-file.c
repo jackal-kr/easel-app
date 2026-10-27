@@ -58,6 +58,22 @@ as16_save_section_in_new_file (void)
   g_assert_nonnull (g_strstr_len (contents, -1, "[save]\njpeg-quality=90\n"));
 }
 
+/* AS-23 (REQ-0017-24): a settings file the app creates has `[text]` with the defaults; an existing file without it is not changed. */
+static void
+as23_created_file_text_section (void)
+{
+  g_autofree char *dir = g_dir_make_tmp ("easel-XXXXXX", NULL);
+  g_autofree char *path = g_build_filename (dir, "settings.ini", NULL);
+  g_autofree char *contents = NULL;
+  EaselSettings s;
+
+  easel_settings_file_load (path, &s);
+  g_assert_cmpint (s.text_size, ==, 12);
+  g_assert_true (g_file_get_contents (path, &contents, NULL, NULL));
+  g_assert_nonnull (g_strstr_len (contents, -1,
+                                  "[text]\nfont=auto\nsize=12\nbold=false\nitalic=false\nunderline=false\nstrikethrough=false\n"));
+}
+
 /* REQ-0004-15: an existing file without [view] is never rewritten, and the defaults apply. */
 static void
 as14_existing_file_untouched (void)
@@ -204,6 +220,7 @@ main (int argc, char **argv)
   g_test_add_func ("/0004/as14_created_file_has_view", as14_created_file_has_view);
   g_test_add_func ("/0004/as14_existing_file_untouched", as14_existing_file_untouched);
   g_test_add_func ("/0005/as16_save_section_in_new_file", as16_save_section_in_new_file);
+  g_test_add_func ("/0017/as23_created_file_text_section", as23_created_file_text_section);
   g_test_add_func ("/0002/as19_new_file_has_history", as19_new_file_has_history);
   g_test_add_func ("/0002/as19_existing_file_untouched", as19_existing_file_untouched);
   g_test_add_func ("/0001/reads_existing_file", reads_existing_file);

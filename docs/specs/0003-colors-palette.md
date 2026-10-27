@@ -53,10 +53,10 @@ Look and input rules come from `docs/design.md` (Palette editing; Pointer: prima
 - REQ-0003-19 When the user clicks the swap button, which shows the symbol ⇄ and the tooltip "Swap foreground and background (Ctrl+Shift+X)", the app shall swap the foreground and background colors as REQ-0003-07 does; the button does nothing while a dialog, the quit prompt or the color chooser is open.
 
 ### Choosing colors
-- REQ-0003-06 When the user primary-clicks a palette swatch, the app shall make its color the foreground color and give that swatch keyboard focus; when the user secondary-clicks it, the background color, with the same focus. A middle click does nothing.
+- REQ-0003-06 When the user primary-clicks a palette swatch, the app shall make its color the foreground color and give that swatch keyboard focus; when the user secondary-clicks it, the background color, with the same focus. A middle click does nothing. (Pointer note, Text, 2026-10-26: While a text box is open, a primary press on a swatch also colors the selected text, REQ-0017-13.)
 - REQ-0003-07 When the user presses Ctrl+Shift+X, the app shall swap the foreground and background colors. The shortcut works wherever keyboard focus is in the window and does nothing while a dialog, the quit prompt or the color chooser is open (as REQ-0002-11).
 - REQ-0003-08 A pencil stroke shall use the foreground or background color that is current when it starts, to its end (REQ-0001-19, REQ-0001-21). A color with transparency sets pixels to exactly that value, without blending.
-- REQ-0003-09 Choosing, swapping or editing colors shall not change the picture, add an undo step or change the modified mark (adds to REQ-0002-02).
+- REQ-0003-09 Choosing, swapping or editing colors shall not change the picture, add an undo step or change the modified mark (adds to REQ-0002-02). (Pointer note, Text, 2026-10-26: While a text box is open, a color pick changes the box's text (one edit of the box), not the picture, REQ-0017-13.)
 - REQ-0003-10 The foreground and background colors shall not be remembered between runs: every start uses REQ-0001-08 (black, and the picture's background).
 
 ### Editing colors

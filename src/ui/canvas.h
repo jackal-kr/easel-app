@@ -6,6 +6,9 @@
 #include "history.h"
 #include "image.h"
 #include "selection.h"
+#include "rich-text.h"
+#include "text-buffer.h"
+#include "text-put.h"
 #include "footprint.h"
 #include "tool.h"
 #include "view.h"
@@ -257,6 +260,58 @@ gboolean easel_canvas_grid_is_drawn (EaselCanvas *self);
    event controller feeds these; tests call them. (x, y) are in canvas coordinates, logical pixels from the picture's
    top-left. */
 void easel_canvas_pointer_at (EaselCanvas *self, double x, double y);
+
+/* The open text box (feature 0017): its left, top, width and height in picture pixels; FALSE with none. */
+gboolean easel_canvas_text_box (EaselCanvas *self, int *x, int *y, int *w, int *h);
+/* The starting style of a new box (REQ-0017-12, REQ-0017-24): its family, size in points and style flags (EASEL_TEXT_BOLD, ...); its color
+   is the foreground color when the box is made. */
+void easel_canvas_set_text_start_style (EaselCanvas *self, const char *family, int size_pt, guint8 flags);
+/* The open box's text, NULL with none (tests; the edits of the window, T011). */
+EaselTextBuffer *easel_canvas_text_buffer (EaselCanvas *self);
+/* The box laid out and drawn again after its text or caret changed. */
+void easel_canvas_text_edited (EaselCanvas *self);
+/* A style field of the selected text set to `value`'s (one edit), or with nothing selected of the text typed next at the caret
+   (REQ-0017-12); tried as an edit is (REQ-0017-07). FALSE with no box, or when refused. What the font card, Ctrl+B/I/U and a color
+   pick call. */
+gboolean easel_canvas_text_apply (EaselCanvas *self, EaselTextField field, const EaselTextStyle *value);
+/* Each part of the selected text (or the text typed next) 1 point larger or smaller by `delta`, within 1 to 500, as one edit; nothing
+   when no size changes (REQ-0017-12, Ctrl+] and Ctrl+[). FALSE with no box, or when refused. */
+gboolean easel_canvas_text_step_size (EaselCanvas *self, int delta);
+/* A style flag (EASEL_TEXT_BOLD, ...) toggled: on unless all the selected text (or the caret's style) has it (Ctrl+B/I/U, Ctrl+Shift+5). */
+void easel_canvas_text_toggle (EaselCanvas *self, guint8 flag);
+/* The selected text removed as one edit of `kind` (Cut, REQ-0017-19); FALSE with no box or nothing selected, or when refused. */
+gboolean easel_canvas_text_delete_selection (EaselCanvas *self, EaselTextEditKind kind);
+/* `len` bytes of pasted text put in at the caret over the selection as one edit (REQ-0017-20): with the n parts of `rich` (NULL: the
+   style at the caret for all), line breaks made new lines and a tab a space; tried as any edit is (REQ-0017-07). */
+gboolean easel_canvas_text_paste (EaselCanvas *self, const char *text, size_t len, const EaselRichRun *rich, size_t n_rich);
+/* The style of the selected text, or at the caret, and in `mixed` the fields that differ within the selection (REQ-0017-14). */
+void easel_canvas_text_selection_style (EaselCanvas *self, EaselTextStyle *out, unsigned *mixed);
+/* Select All with a box open: all its text selected (REQ-0017-17); FALSE with no box. */
+gboolean easel_canvas_text_select_all (EaselCanvas *self);
+/* Undo or Redo of the open box's edits (REQ-0017-08): one edit taken back or done again, a move or resize taking the box to its place;
+   Undo with no edit left closes the box with nothing put down. FALSE with no box open. */
+gboolean easel_canvas_text_step (EaselCanvas *self, gboolean undo);
+/* Whether the open box has an edit to redo; FALSE with no box. */
+gboolean easel_canvas_text_can_redo (EaselCanvas *self);
+/* The box's pixels (REQ-0017-16); FALSE with no box. */
+gboolean easel_canvas_text_ink (EaselCanvas *self, EaselTextInk *ink);
+/* The style at the caret, a line's start being the text's or a line started by Enter (REQ-0017-26). */
+void easel_canvas_text_style_at_caret (EaselCanvas *self, EaselTextStyle *out);
+/* The Text tool's mode: TRUE for Opaque (REQ-0017-02). */
+void easel_canvas_set_text_opaque (EaselCanvas *self, gboolean opaque);
+/* A key for the open box, as the window's key handler gives it (REQ-0017-06): TRUE if the box took it. */
+gboolean easel_canvas_text_key (EaselCanvas *self, guint keyval, GdkModifierType state);
+/* Text an input method made (its "commit"), or a typed character: inserted at the caret, as one edit of a run of typing. */
+void easel_canvas_text_commit (EaselCanvas *self, const char *utf8);
+/* A key event given to the input method first: TRUE if it took it. */
+gboolean easel_canvas_text_filter (EaselCanvas *self, GdkEvent *event);
+/* The canvas point of the character at byte `index` of the box's text (tests). */
+void easel_canvas_text_point (EaselCanvas *self, size_t index, double *x, double *y);
+/* The most the box's pixels may use (a test hook, REQ-0017-07), and the error bells sounded (a test hook). */
+void easel_canvas_set_text_show_limit (EaselCanvas *self, size_t max_bytes);
+/* The most the put-down's step may use (a test hook, REQ-0017-18). */
+void easel_canvas_set_text_step_limit (EaselCanvas *self, size_t max_bytes);
+guint easel_canvas_get_error_bells (EaselCanvas *self);
 void easel_canvas_pointer_left (EaselCanvas *self);
 
 /* The touchpad or touch pinch (REQ-0004-08). The gesture feeds these; tests call them. scale is the gesture's scale since

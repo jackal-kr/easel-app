@@ -26,6 +26,10 @@ gboolean easel_tool_options_get_transparent (EaselToolOptions *self);
 /* The selection's Opaque / Transparent mode: TRUE for Transparent; its own, kept for the session (REQ-0013-02). */
 gboolean easel_tool_options_get_select_transparent (EaselToolOptions *self);
 
+/* The Text tool's Opaque / Transparent mode: TRUE for Transparent; its own, Transparent at each start, kept for the session
+   (REQ-0017-02). */
+gboolean easel_tool_options_get_text_transparent (EaselToolOptions *self);
+
 /* Numpad + or - (direction 1 or -1): the next larger or smaller preset of the tool; the ends stay. Returns TRUE if the
    selection changed. */
 gboolean easel_tool_options_step (EaselToolOptions *self, EaselTool tool, int direction);
