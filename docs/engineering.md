@@ -88,6 +88,7 @@ Defined by the packaging and release feature.
   group boundary and at `/sdd-check`. The ui tests do not run in parallel (`is_parallel: false`): run in parallel, the
   ui windows failed `as5_zoom_keeps_center` with a stale layout in 2 of 3 runs. That is all that was shown; earlier
   one-off failures of the ui tests (run as a single executable) are unexplained and not fixed.
+  `meson test --test-args '-p /NNNN/case'` adds a second filter to meson's own `-p /NNNN`, so the case runs twice in one process (as17 passed the first time and failed the second at `gtk_window_destroy`, 2026-10-27); to run one case alone, run `test-window -p /NNNN/case` with the ui environment of `tests/meson.build` (`GDK_DEBUG=no-portals`, `GTK_A11Y=none`, `GSK_RENDERER=cairo`, `EASEL_TEST_DATA`) inside `tools/isolated.sh`: without `GDK_DEBUG=no-portals` the file chooser is the portal's and the cases that wait for it fail.
   Close every Easel window (and any other test or probe window of ours) before running the ui tests or `tools/mutate.sh` in the real session (not needed through `tools/isolated.sh`):
   with one open from a manual check, three ui cases failed in every run until it was closed (learning log, 2026-10-16).
   `test-window` refuses to start, and `tools/mutate.sh` refuses to run a mutant of a ui test, while another `easel` or

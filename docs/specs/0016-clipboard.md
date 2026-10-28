@@ -114,7 +114,7 @@ selection marked with Select, and a pasted one (REQ-0016-06), has every pixel of
   the top-left in view, not at the pointer; a zoom keeps the center of the canvas area still (REQ-0004-06). Opening and closing the
   menu puts nothing down and changes nothing. (This replaces REQ-0013-17's "a secondary press elsewhere with Select does nothing".)
   The mock-up's third section holds Clear Image (Shift+Ctrl+N) (JOD, 2026-10-22); the command comes with Image Transforms, which
-  adds that section, as REQ-0013-17 leaves later features' items to them; this feature shows the first two sections.
+  adds that section, as REQ-0013-17 leaves later features' items to them; this feature shows the first two sections. (Pointer note, Image Transforms, 2026-10-27: the third section with Clear Image (Shift+Ctrl+N) is added, REQ-0018-02.)
 
 ### Failures
 - REQ-0016-10 If the clipboard's picture or the file to paste cannot be read, is not a picture, or is bigger than 10000 pixels in

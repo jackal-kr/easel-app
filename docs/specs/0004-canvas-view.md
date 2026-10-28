@@ -23,7 +23,7 @@ the picture). Words used below: the *canvas area* is the scrolled area that show
   - Show Grid (Ctrl+G, a check item) and Grid…;
   - a separator;
   - Tool Box, Color Box and Status Bar, check items that are checked while the panel is shown (REQ-0004-27).
-  View has no Frame Time item (it is a Preferences setting) and no Show Thumbnail item (Window Extras adds it). Each item shows its shortcut. The numpad plus and minus without Ctrl keep their own meaning (brush size, 0006).
+  View has no Frame Time item (it is a Preferences setting) and no Show Thumbnail item (Window Extras adds it). Each item shows its shortcut. The numpad plus and minus without Ctrl keep their own meaning (brush size, 0006). (Pointer note, Image Transforms, 2026-10-27: Image now holds Flip ›, Rotate ›, Invert Colors, Attributes… and Clear Image in three sections, REQ-0018-01.)
 - REQ-0004-02 A control that cannot do anything shall be insensitive: Zoom In at 800 %, Zoom Out at 10 %, Normal Size at 100 %, Large Size at 400 %.
 - REQ-0004-03 The View and Image actions and their shortcuts work wherever keyboard focus is in the window, and do nothing before the picture exists (REQ-0001-39), while a dialog, the quit prompt or the color chooser is open, and while a mouse button is held for a stroke or a resize drag.
 
