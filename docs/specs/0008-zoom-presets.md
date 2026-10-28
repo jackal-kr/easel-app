@@ -10,28 +10,28 @@ zoom presets, shown in the Magnifier's options and in a View > Zoom submenu, wit
 the same levels reachable and visible in both places.
 
 ## Requirements
-- REQ-0008-01 The app shall have one list of zoom presets, in percent and in this order: 100, 200, 400, 600, 800. 10, 25, 50 and 300 % are zoom steps (Zoom In and Zoom Out, Ctrl+wheel, the pinch: REQ-0001-16, REQ-0004-04, REQ-0004-08) and Fit to Window can give any whole percent (REQ-0004-07), but none of these are presets. (Amended 2026-10-18 by JOD after M1 step 1; the first version also had 10, 25 and 50 %.)
-- REQ-0008-02 The Magnifier's options (REQ-0007-02) shall show the presets as five buttons labelled "1x", "2x", "4x", "6x" and "8x", in two columns row by row (1x 2x / 4x 6x / 8x), with the tooltips "100 %", "200 %", "400 %", "600 %" and "800 %"; this replaces the eight buttons of REQ-0007-02. Choosing one still only selects the Magnifier's level (REQ-0007-02).
-- REQ-0008-03 The View menu shall hold, between the zoom row's group and Normal Size, a submenu "Zoom" that holds the presets only, one item each, in the order of REQ-0008-01, labelled "100 %", "200 %", "400 %", "600 %" and "800 %". Normal Size, Large Size and Fit to Window stay where they are in the menu, with their shortcuts (REQ-0004-05, REQ-0004-07). The label `100%` of the zoom row stays a label and does not open the list (this amends REQ-0004-01, the list of the View menu's items).
+- REQ-0008-01 The app shall have one list of zoom presets, in percent and in this order: 100, 200, 400, 600, 800, 1600 (1600: JOD, 2026-10-27). 10, 25, 50 and 300 % are zoom steps (Zoom In and Zoom Out, Ctrl+wheel, the pinch: REQ-0001-16, REQ-0004-04, REQ-0004-08) and Fit to Window can give any whole percent (REQ-0004-07), but none of these are presets. (Amended 2026-10-18 by JOD after M1 step 1; the first version also had 10, 25 and 50 %.)
+- REQ-0008-02 The Magnifier's options (REQ-0007-02) shall show the presets as six buttons labelled "1x", "2x", "4x", "6x", "8x" and "16x", in two columns row by row (1x 2x / 4x 6x / 8x 16x), with the tooltips "100 %", "200 %", "400 %", "600 %", "800 %" and "1600 %"; this replaces the eight buttons of REQ-0007-02. Choosing one still only selects the Magnifier's level (REQ-0007-02).
+- REQ-0008-03 The View menu shall hold, between the zoom row's group and Normal Size, a submenu "Zoom" that holds the presets only, one item each, in the order of REQ-0008-01, labelled "100 %", "200 %", "400 %", "600 %", "800 %" and "1600 %". Normal Size, Large Size and Fit to Window stay where they are in the menu, with their shortcuts (REQ-0004-05, REQ-0004-07). The label `100%` of the zoom row stays a label and does not open the list (this amends REQ-0004-01, the list of the View menu's items).
 - REQ-0008-04 When the user chooses a preset in the Zoom submenu, the app shall set the zoom to it, with any tool active, keeping the point at the center of the canvas area still as far as the view's edges allow (REQ-0004-06). It does nothing where REQ-0004-03 ignores the View actions (before the picture exists, while a dialog is open, during a stroke or a resize drag). It does not change the level selected in the Magnifier's options.
 - REQ-0008-05 The Zoom submenu shall show a check mark on the item whose preset equals the current zoom, and no check mark when the zoom is not a preset (at 10, 25, 50 or 300 %, or a Fit to Window zoom such as 42 %). The mark follows every change of zoom, however it came: the submenu, the zoom row, Normal and Large Size, Fit to Window, the wheel, the pinch, the Magnifier.
-- REQ-0008-06 Zoom In and Zoom Out (REQ-0004-04) shall keep their own step list, 10, 25, 50, 100, 200, 300, 400, 600 and 800 %; every preset is a step, so that the steps reach every preset.
+- REQ-0008-06 Zoom In and Zoom Out (REQ-0004-04) shall keep their own step list, 10, 25, 50, 100, 200, 300, 400, 600, 800 and 1600 %; every preset is a step, so that the steps reach every preset.
 
 - REQ-0008-07 The toolbox shall have the same width for every tool, whether the tool has options or not: choosing another tool never changes it. At the default text size the width is 87 pixels, that of the two-column grid of tool buttons (reference measurements from JOD, 2026-10-18). To keep every tool's options inside it, the Brush, Airbrush and Eraser presets shall be compact: the same shapes, sizes, tooltips, order and two columns as REQ-0006-04, REQ-0006-07 and REQ-0006-10, with less padding. The Magnifier's five level buttons shall be laid out as the tool buttons are: two columns lined up under the two tool columns, each button as wide as a tool button, with the same gaps, so that the group is centered in the toolbox; their labels are at the normal text size (amended 2026-10-18 by JOD after M1 step 1). At a larger text size the width is that of the widest content the toolbox then holds (the labels grow, the tool buttons do not), still the same for every tool, and no label is cut (this amends the look of the presets of 0006 and the buttons of REQ-0007-02 only).
 
 ## Scenarios
-- AS-1 (REQ-0008-01, REQ-0008-02, REQ-0008-03) Given the app just started, When the user opens View > Zoom, Then the items are 100 %, 200 %, 400 %, 600 % and 800 %, and the Magnifier's options, when the Magnifier is chosen, show 1x 2x / 4x 6x / 8x with the tooltips 100 % to 800 %: the same five levels | Verified by: automated (ui)
+- AS-1 (REQ-0008-01, REQ-0008-02, REQ-0008-03) Given the app just started, When the user opens View > Zoom, Then the items are 100 %, 200 %, 400 %, 600 %, 800 % and 1600 %, and the Magnifier's options, when the Magnifier is chosen, show 1x 2x / 4x 6x / 8x 16x with the tooltips 100 % to 1600 %: the same six levels | Verified by: automated (ui)
 - AS-2 (REQ-0008-04) Given a 3000 × 2000 picture at 100 % with Pencil active and a canvas area of 1390 × 853, When the user chooses 800 % in View > Zoom, Then the zoom is 800 % and the picture point that was at the center of the canvas area is still there; When the user chooses 100 %, Then the zoom is 100 %; the choice in the Magnifier's options is unchanged, and no pixel, undo step or modified mark changed | Verified by: automated (ui)
 - AS-3 (REQ-0008-05) Given 100 %, Then 100 % is checked and only it; When the user presses Ctrl+PageDown (400 %), Then 400 % is checked; When the user zooms in once from 400 %, Then 600 % is checked; When the user zooms out from 400 % (to 300 %), Then no item is checked; When the user zooms out to 50 % and to 25 % with Zoom Out, Then no item is checked; Given Fit to Window gave 42 %, Then no item is checked; When the user then presses the Magnifier on the picture with 4x chosen, Then 400 % is checked | Verified by: automated (ui)
 - AS-4 (REQ-0008-04) Given the color chooser open, a stroke in progress or a window whose picture does not exist yet, When the user chooses a preset, Then nothing changes | Verified by: automated (ui)
-- AS-5 (REQ-0008-06) From 100 %, Zoom In gives 200, 300, 400, 600, 800 %: every preset in order, 300 % the only step between them that is not a preset; 10, 25 and 50 % are steps below the first preset; zooming out from 400 % gives 300 %, then 200 % | Verified by: automated (core)
+- AS-5 (REQ-0008-06) From 100 %, Zoom In gives 200, 300, 400, 600, 800, 1600 %: every preset in order, 300 % the only step between them that is not a preset; 10, 25 and 50 % are steps below the first preset; zooming out from 400 % gives 300 %, then 200 % | Verified by: automated (core)
 - AS-6 (REQ-0008-07) Given the app at the default text size, When the user chooses each tool in turn (Pan, Pencil, Brush, Airbrush, Eraser, Magnifier, Pick Color, Fill), Then the toolbox is 87 pixels wide each time, and every preset of the Brush, Airbrush and Eraser and the eight level buttons of the Magnifier are fully shown; Given the text size at 150 % and at 200 %, Then the toolbox is the same width for every tool at each size, wider than 87 pixels only as far as its widest content needs, and no label is cut; With the Magnifier at the default text size, the left edges of 1x, 4x and 8x line up with the Pan button's left edge (within 1 pixel), the left edges of 2x and 6x with the Magnifier tool button's, each level button is as wide as a tool button, and the label is at the normal text size | Verified by: automated (ui, `as6_toolbox_width_is_the_same_for_every_tool`, which measures the toolbox after each choice at three text sizes) + manual M1 (the look of the compact presets and buttons)
 
 ## Edge cases
 - A zoom that is not a preset (42 %, 300 %): no check mark; choosing any preset still works.
 - Choosing the preset that is already the zoom changes nothing (no scroll, no redraw needed).
 - The submenu is open while the zoom changes by the wheel or a shortcut: not possible with the menu's popover modal, so no rule.
-- At 800 % Zoom In is insensitive (REQ-0004-02) and the 800 % item is still shown, checked.
+- At 1600 % Zoom In is insensitive (REQ-0004-02) and the 1600 % item is still shown, checked.
 
 ## Out of scope
 - A Custom Zoom… entry or any list the user edits (Preferences).
@@ -192,6 +192,41 @@ C. The toolbox
 D. The numbers
 - [x] T008 Start-up time after the change (engineering.md: start to usable window under 0.5 s) - done when `perf-0001` has run and its number is in the Plan's Measurements
   Result: measurement, no test: `perf-0001` start to the first frame 201.6 ms against the 0.5 s budget; numbers in the Plan's Measurements
+
+Change of 2026-10-28 (JOD, 2026-10-27): the zoom reaches 1600 % (REQ-0001-16, REQ-0004-02, -07, -08, REQ-0007-02, -03, REQ-0008-01, -02,
+-03, -06; 0004's AS-3 and AS-31, 0007's AS-1, AS-2 and AS-11, 0008's AS-1 and AS-5). The Eraser's cursor at 1600 % was probed first (0006's
+Plan, 2026-10-28: no cap).
+- [x] T009 1600 % as a level, a preset, a step and a Magnifier level, Fit to Window still capped at 800 % - done when core `test-view`
+  (the levels, the presets, Zoom In from 800 % and none from 1600 %, the Fit cap at 800 %, the pinch's stop at 1600 %) and
+  `test-magnifier` (the six levels; 16x from 100 % gives 1600 %, at 1600 % back to 100 %; 8x at 800 % back to 100 %) and ui tests of the
+  View > Zoom submenu (six items), the Magnifier's six buttons (1x 2x / 4x 6x / 8x 16x, the tooltips), Zoom In insensitive at 1600 %, the
+  wheel's last notch, AS-31's grid up to 1600 % and 0007's AS-19 are written first and red, then green; mutants; the toolbox width of
+  REQ-0008-07 kept with the sixth button
+  Result (2026-10-28): core `test-view` red first at `easel_view_zoom_step (100, 21) == 1600` and `test-magnifier` at the sixth level, then
+  green with 1600 in the levels and the presets and Fit to Window capped by its own `EASEL_VIEW_FIT_MAX` (800). The ui tests that still
+  said 800 % was the end failed with the new levels and were brought to the new wording (0001's `as13_zoom_keeps_point_under_pointer`,
+  0004's `as3_zoom_buttons`, 0008's `as1_zoom_submenu_and_lens_levels`, 0016's `as13_canvas_menu`), with the six levels in
+  `as2_magnifier_level_kept`, the lens layout (16x under the Magnifier's button) and 0008's toolbox width; `as19_magnifier_16x` (0007's
+  AS-11) is new. AS-31 (`as10_grid_covers_the_view_after_zoom_and_pan`, up to 1600 %) failed once on its own helper: after the zoom the
+  view stood at the picture's right edge, where the last column's far side is the picture's edge and has no line (REQ-0004-12), so the
+  check now looks at the cell before it. The menus and the lens follow the lists in the code, so no ui code changed. Mutants: the levels
+  stopping at 800 %, 1600 % not a preset, Fit to Window up to 1600 %, and three re-anchored; `mutate.sh` for the twelve changed REQ ids:
+  27 of 27 killed. Full isolated suite 51 of 51. perf-0004's grid case now zooms to 800 % directly (its Zoom In steps would have reached
+  1600 %).
+- [x] T010 perf at 1600 % (the 8000 x 8000 picture, the real session, the pointer parked, three runs, after JOD's "ready") - done when the
+  frame time of a scroll and of a pencil stroke and the peak memory at 1600 % are in the Plan and compared with 800 % (drawn by the visible
+  tiles, it should not grow), and the gate: the full isolated `meson test`, `mutate.sh` for the changed REQ ids, `--lint`, the lints
+  Result (2026-10-28, JOD's "ready", the real session, the pointer parked, no other Easel window; load 0.22 to 0.46; three runs of the new
+  `perf-0008`, each 800 %, 1600 %, then 800 % again on an 8000 x 8000 picture, the view in the middle):
+  | Zoom | A scroll (a tenth of the page) to the frame: median / worst | A pencil motion: median / worst | A frame with the 1-pixel grid | Resident, peak |
+  |---|---|---|---|---|
+  | 800 % (first) | 16.4 to 16.5 / 20.7 to 21.9 ms | 16.6 to 16.7 / 64.4 to 73.4 ms | 16.6 to 16.7 / 18.7 to 19.5 ms | 363 MB, 363 MB |
+  | 1600 % | 16.6 / 18.3 to 19.3 ms | 16.6 to 16.7 / 19.2 to 19.5 ms | 16.7 to 16.8 / 18.9 to 21.8 ms | 363 MB, 363 MB |
+  | 800 % (again) | 16.5 to 16.6 / 18.4 to 19.4 ms | 16.5 to 16.7 / 19.0 to 20.3 ms | 16.6 to 16.8 / 17.9 to 20.7 ms | 363 MB, 363 MB |
+  1600 % costs what 800 % costs: one frame (16.6 ms is the screen's) for a scroll, a pencil motion and a frame with the grid, and no more
+  memory. The slow first pencil motion (64 to 73 ms) comes only in the first block of each run, at 800 %, never at 1600 % nor in the
+  second 800 % block: the first stroke of the process, not the zoom. The gate: full isolated `meson test` 51 of 51, mutants above,
+  `--lint` and the spec lints below.
 
 ## Check
 - Date and commit: 2026-10-18, `5bd6583` plus the uncommitted work of 0008

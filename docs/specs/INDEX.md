@@ -35,7 +35,7 @@ Vertical slices first (a thin end-to-end feature), breadth later.
 | Feature | One line |
 |---|---|
 | Crop to selection | Crops the picture to the current selection in one command |
-| Zoom slider and wheel zoom in every tool | A zoom slider in the status bar, and Ctrl+wheel zooms with any tool, not only in Pan mode |
+| Zoom slider and wheel zoom in every tool | A zoom slider in the status bar (its range 10 to 1600 %), and Ctrl+wheel zooms with any tool, not only in Pan mode |
 | Invert selection | Selects everything outside the current selection |
 | Smooth text option | An opt-in switch that draws text with antialiasing; off by default |
 | Smooth shapes and brushes option | One opt-in switch that draws lines, curves, shapes and brush strokes with antialiasing; off by default |
