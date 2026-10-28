@@ -11,6 +11,8 @@ description: Step 3 of the loop, also usable any time. Read-only check of a feat
    `/sdd-check`, and how to run the suites is in that section too (all tests, the whole mutation list; through `tools/isolated.sh`); a rule that guards against data loss and has no mutant in
    `tests/mutants.txt` gets one, a mutant that survives is a finding, and so is one killed only by a crash (add an
    assertion). If none does, first check whether any input could observe the change; an equivalent mutant is not a finding.
+   A claim that a test covers a requirement is checked by the mutant or break it names; a claim that names none is a finding. A clause
+   that names several cases (marked and floating, a success and its failure) has a test per case; a case without one is a finding (0018 F2).
    A background run is awaited by its process id or by the summary line `tools/mutate.sh` prints, and its counts are copied from that summary line, never from a search of the log.
    A crashed mutant is reported with its saved log, `.scratch/mutate/crash-N.log`, copied out first (a later run of `mutate.sh` empties that folder), and is run again alone three times first, to tell the mutant's own flaw from a known flake; one that is inconclusive (no snapshot) is run again once by the tool, and a second one fails the run.
    Read the `Result:` line of every task: copy them into Check, report every `characterization` task as a finding, and

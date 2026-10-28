@@ -160,6 +160,9 @@ Defined by the packaging and release feature.
 ## Performance budgets
 Accepted by JOD (2026-10-15) as the starting budgets. Measure in features 0001 and 0004; change a number by ADR.
 Rule P5 applies: no optimization without a measurement against a budget here.
+A change to a shared hot loop (a resampler, a lay, a row walk that several features call) reruns the benchmark of every feature that
+uses it, compared with a build of the last commit (a git worktree), the two builds' runs interleaved so that both see the same load; never
+with numbers written in a spec weeks before (0018: `scale_region` made 0015's 8000 x 8000 release 63 % slower with every test green).
 
 | Area | Budget |
 |---|---|

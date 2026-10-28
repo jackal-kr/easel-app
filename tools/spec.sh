@@ -28,7 +28,7 @@ cmd_status() {
 }
 
 # Every REQ needs a scenario that mentions it; every scenario needs "Verified by:";
-# an accepted/implemented spec may have no open "- [NEEDS CLARIFICATION" lines.
+# an accepted/implemented spec may have no open "- [NEEDS CLARIFICATION" lines; an accepted one needs a "Reviewed:" line.
 # Draft specs only get warnings; the exit code is 1 only for accepted/implemented specs.
 cmd_lint() {
   local rc=0 s st r p
@@ -41,6 +41,10 @@ cmd_lint() {
     grep -E '^- AS-[0-9]+' "$s" | grep -vq 'Verified by:' && problems+=("a scenario has no 'Verified by:'")
     if [ "$st" != draft ] && grep -q '^- \[NEEDS CLARIFICATION' "$s"; then
       problems+=("open NEEDS CLARIFICATION in a $st spec")
+    fi
+    # An accepted spec names the review it had (sdd-spec step 5); implemented specs predate the rule and are not asked.
+    if [ "$st" = accepted ] && ! grep -qE '^Reviewed: ' "$s"; then
+      problems+=("accepted without a 'Reviewed:' line")
     fi
     for p in "${problems[@]}"; do
       echo "$s: $p"

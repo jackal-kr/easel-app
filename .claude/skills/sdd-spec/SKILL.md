@@ -19,6 +19,9 @@ Input: feature number or name from `docs/specs/INDEX.md`.
    A requirement about how something looks names the reference it follows. A control that repeats an existing control's meaning reuses its look; say so, and ask only where a mock-up draws it otherwise.
    A mode or option whose name or tooltip names an effect on the picture is checked against every place the picture changes (a hole, a clear, a put-down) before the spec is accepted.
    A control the user can reach from the keyboard has its key and its tooltip in the spec, decided with the control, not after it.
+   Every key a spec names is checked against the desktop's own shortcuts before the spec is accepted (`gsettings list-recursively` of
+   `org.gnome.desktop.wm.keybindings`, `org.gnome.shell.keybindings`, `org.gnome.settings-daemon.plugins.media-keys` and
+   `org.gnome.mutter.keybindings`); a key the desktop takes is changed in the spec, not found at M1 (0018: Shift+Ctrl+R).
    Every way a control can change a value (its buttons, the arrow keys, the Page keys, the wheel, typing) is listed in the spec with
    the value's mixed and limit states; a wheel over a floating control is checked against the view's own scrolling.
    A control whose "nothing chosen" or "the same picked again" matters is probed with the widget meant for it before the spec names
@@ -42,4 +45,5 @@ Input: feature number or name from `docs/specs/INDEX.md`.
    Ask JOD the open questions with AskUserQuestion: at most 4 per round, a recommended option first, concrete examples;
    for a default the user sees, show the result on JOD's own screen (e.g. 1920x1200 -> window 1440x900 -> picture 1024x768).
    Write each answer into the spec as a requirement or edge case and delete the question.
-7. `tools/spec.sh lint`. Show JOD the short spec. When JOD says "go" and lint is clean: `Status: accepted`. Stop: no plan, no code.
+7. `tools/spec.sh lint`. Show JOD the short spec. When JOD says "go" and lint is clean: `Status: accepted`, with a line
+   `Reviewed: spec-reviewer, <date>` under `Status:` naming the run of step 5 (the lint refuses `accepted` without it). Stop: no plan, no code.

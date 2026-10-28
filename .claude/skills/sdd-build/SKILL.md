@@ -55,6 +55,13 @@ Precondition: `Status: accepted` in the spec. Otherwise stop and say so.
      `tools/isolated.sh`, the benchmarks in the real session). A test that fails once and then passes is logged with its values and how it was hunted,
      never just re-run until green;
    - a ui mutant killed in under 5 s is run again alone through `tools/isolated.sh` before its kill counts;
+   - a claim (in a Result, a note or the scenario-to-test map) that a test covers a requirement names the mutant or the manual break that
+     made that test fail; a requirement met by an absence (nothing is pushed, nothing is drawn) is proved by a break written into the spec:
+     the old line, the inserted line and the tests that failed (0018: two runs were named for REQ-0018-08 that did not observe it);
+   - a test of a flip, a turn or a mirror uses an asymmetric picture; a test that passes at its first run after the code exists is made
+     red by taking the code out or breaking it, and that run is reported (0018 T006: a symmetric oracle passed with the mirror missing);
+   - a change to a shared hot loop reruns the benchmark of every feature that uses it, against a build of the last commit (a git worktree),
+     the two builds' runs interleaved (`docs/engineering.md`, Performance budgets);
    - a mutant is run against the test that can observe its change; one with no visible effect in the window is pointed at the core test and noted as equivalent for the ui;
    - a surviving mutant is applied by hand and its test run before the survivor is believed;
    - tick the task and report in one line, and fill its `Result:` line in the spec: the test that failed first and its

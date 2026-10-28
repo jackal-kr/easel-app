@@ -1,6 +1,7 @@
 # 0025 Pixel contract tests
 
 Status: accepted
+Reviewed: spec-reviewer, 2026-10-28 (changes after the review shown to JOD old/new, not reviewed again)
 Depends on: 0001, 0004, 0006, 0007, 0009, 0010, 0012, 0013, 0014, 0015, 0016, 0017, 0018 (the features whose pixels the contract covers)
 
 ## Why
