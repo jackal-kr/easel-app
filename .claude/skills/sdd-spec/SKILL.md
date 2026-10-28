@@ -15,6 +15,7 @@ Input: feature number or name from `docs/specs/INDEX.md`.
 3. Fill Why, Requirements (`REQ-NNNN-xx`, "When/While/If ... the app shall ..."), Scenarios (`AS-n`, Given/When/Then, cite the
    REQ ids, end with `Verified by:`), Edge cases, Out of scope. **Behavior only**: no files, functions, libraries, data structures.
    A file the user edits by hand needs its syntax in the spec (comments, spaces, case, repeated keys, bad lines), not only its keys.
+   A drawing feature's spec states how it meets P7 (the constitution's pixel contract) points 1 to 4: exact colors, a view that only magnifies, preview and put-down by the same code, the same input giving the same pixels; a requirement that cannot meet one names the exception and the reason.
    A requirement about how something looks names the reference it follows. A control that repeats an existing control's meaning reuses its look; say so, and ask only where a mock-up draws it otherwise.
    A mode or option whose name or tooltip names an effect on the picture is checked against every place the picture changes (a hole, a clear, a put-down) before the spec is accepted.
    A control the user can reach from the keyboard has its key and its tooltip in the spec, decided with the control, not after it.

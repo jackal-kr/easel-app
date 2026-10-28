@@ -7,9 +7,16 @@ the plan against it). Changing a principle needs an ADR in `docs/decisions/`. JO
 - **P1** XP Paint's functionality and workflow, GNOME-native look (GTK 4 + libadwaita). No XP visuals.
 - **P2** XP's hidden behaviors are features (`docs/reference/xp-behaviors.md`).
 - **P3** No XP-era limits (e.g. undo depth is bounded by a memory budget only).
-- **P4** Hard-edged pixels by default (no antialiasing); at 100% zoom 1 image pixel = 1 device pixel. Smoothing is an opt-in option for text, lines, curves, shapes and brushes; the Pencil, the Eraser and Fill are always exact.
+- **P4** Hard-edged pixels by default (no antialiasing). Smoothing is an opt-in option for text, lines, curves, shapes and brushes; the Pencil, the Eraser and Fill are always exact.
 - **P5** Keep it simple: no threads, caches or fancy rendering until a measurement justifies them.
 - **P6** Every user-adjustable default is a setting in a configuration file, not a constant in code; the Preferences dialog edits the same settings.
+- **P7 The pixel contract** (ADR-0003).
+  1. Every tool writes whole picture pixels with exact colors. Smoothing, where it exists, is opt-in and still writes whole pixels.
+  2. The view only magnifies: one picture pixel is exactly zoom × zoom logical pixels, at every scroll position and window size. Where that is not a whole number of device pixels (a fractional scale), every cell's edges are rounded the same way: no gaps, no overlaps, and no cell that moves when the view scrolls.
+  3. A preview, a floating selection and a text box show exactly the pixels the put-down writes, made by the same code.
+  4. The same input gives the same pixels: a letter is the same bitmap wherever it falls in a line, and a shape's pixels depend only on its integer coordinates, not on the zoom, the scroll or the screen scale.
+  5. Overlays (outline, handles, caret, grid, tint) are drawn in screen space and never change a picture pixel. The tint and the grid let the pixels show through; the outline, the handles and the caret cover pixels only with thin lines and small marks.
+  6. Coordinates are integer picture pixels, so a drag from A to B makes the same figure at any zoom.
 
 ## Process
 - **S1** Specs are the source of truth; code is derived. When code and spec disagree, one is wrong: decide which, fix the spec first.
