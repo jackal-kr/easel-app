@@ -162,6 +162,7 @@ struct _EaselCanvas
   double stretch_x0, stretch_y0;                /* where the pointer was at the press, in picture pixels: the zoom may change while it is held */
   double stretch_lx, stretch_ly;                /* where the pointer is now, in picture pixels */
   int stretch_sx, stretch_sy, stretch_sw, stretch_sh;   /* the selection's rectangle at the press */
+  EaselOrient stretch_orient0;                  /* and its orientation (a drag past the opposite edge adds mirrors to it) */
   gboolean stretch_copied;                      /* the copy of a Ctrl stretch of a floating selection was left (REQ-0015-04) */
   guint ants_tick;                              /* the timer of the moving dashes, 12 a second; 0 when there is none */
   gsize ants_redraws;                           /* test hook: the redraws the moving dashes asked for */
@@ -2318,6 +2319,106 @@ on_selection (EaselCanvas *self, double x, double y)
   return selection_mask (self) == NULL || selection_mask (self)[(size_t) (py - self->sel_y) * self->sel_w + (px - self->sel_x)] != 0;
 }
 
+/* The line of a free-form selection whose rectangle is (nx, ny, nw, nh) and whose float has the orientation `orient` (REQ-0015-06,
+   REQ-0018-07): the path as traced, scaled to the rectangle before the orientation (a quarter turn swaps its width and height), then
+   turned and flipped within it. The path as traced is path0, or, before the first stretch or command, the selection's own line. FALSE,
+   with out untouched, if the copy would need more than the limit. */
+static gboolean
+oriented_line (EaselCanvas *self, EaselOrient orient, int nx, int ny, int nw, int nh, EaselPath *out)
+{
+  gboolean has0 = self->sel_path0.n > 0;
+  const EaselPath *src = has0 ? &self->sel_path0 : &self->sel_path;
+  int sx = has0 ? self->sel_p0_x : self->sel_path_x, sy = has0 ? self->sel_p0_y : self->sel_path_y;
+  int sw = has0 ? self->sel_p0_w : self->sel_w, sh = has0 ? self->sel_p0_h : self->sel_h;
+  int pw = easel_orient_swaps (orient) ? nh : nw, ph = easel_orient_swaps (orient) ? nw : nh;
+  EaselPath scaled = { 0 };
+  gboolean ok;
+
+  if (!easel_lasso_scale_path (src, sx, sy, sw, sh, nx, ny, pw, ph, &scaled, self->sel_lift_max))
+    return FALSE;
+  ok = easel_lasso_orient_path (&scaled, nx, ny, pw, ph, orient, out, self->sel_lift_max);
+  easel_path_free (&scaled);
+  return ok;
+}
+
+/* A command on the selection could not get its memory: marked again if this command lifted it (the picture was never touched), and the
+   dialog of the command (REQ-0018-10). */
+static void
+transform_refused (EaselCanvas *self, gboolean lifted_here, int kind)
+{
+  if (lifted_here)
+    {
+      drop_float (self);
+      self->sel_state = 1;
+      g_signal_emit (self, signals[SIGNAL_PENDING_CHANGED], 0);
+    }
+  g_signal_emit (self, signals[SIGNAL_SELECTION_FAILED], 0, kind);
+}
+
+gboolean
+easel_canvas_transform_selection (EaselCanvas *self, EaselOp op)
+{
+  gboolean lifted_here = FALSE;
+  EaselPath line = { 0 };
+  int kind = op == EASEL_OP_INVERT ? 6 : (op == EASEL_OP_FLIP_H || op == EASEL_OP_FLIP_V) ? 4 : 5;
+
+  if (self->sel_state == 0 || self->img == NULL || op > EASEL_OP_INVERT)
+    return FALSE;
+  if (self->sel_state == 1)
+    {
+      if (easel_selection_lift (&self->sel_float, self->img, self->sel_x, self->sel_y, self->sel_w, self->sel_h, self->sel_mask,
+                                FALSE, hole_color (self), self->sel_lift_max) != EASEL_SELECTION_DONE)
+        {
+          g_signal_emit (self, signals[SIGNAL_SELECTION_FAILED], 0, 0);      /* REQ-0013-19: the selection stays marked */
+          return TRUE;
+        }
+      self->sel_state = 2;
+      lifted_here = TRUE;
+      g_signal_emit (self, signals[SIGNAL_PENDING_CHANGED], 0);
+    }
+  if (op != EASEL_OP_INVERT && (self->sel_path.n > 0 || self->sel_path0.n > 0))
+    {
+      /* A free-form selection: its line follows (REQ-0018-07), made first, so that a refusal leaves everything as it was. */
+      EaselOrient step = easel_op_orient (op), o2 = easel_orient_compose (self->sel_float.orient, step);
+      gboolean quarter = easel_orient_swaps (step);
+
+      if (!oriented_line (self, o2, self->sel_x, self->sel_y, quarter ? self->sel_h : self->sel_w, quarter ? self->sel_w : self->sel_h,
+                          &line))
+        {
+          transform_refused (self, lifted_here, kind);
+          return TRUE;
+        }
+    }
+  if (easel_selection_transform (&self->sel_float, op, self->sel_lift_max) != EASEL_SELECTION_DONE)
+    {
+      easel_path_free (&line);
+      transform_refused (self, lifted_here, kind);
+      return TRUE;
+    }
+  if (line.n > 0)
+    {
+      if (self->sel_path0.n == 0)
+        {
+          self->sel_path0 = self->sel_path;          /* the path as traced, kept to scale afresh from (REQ-0015-06) */
+          self->sel_path = (EaselPath) { 0 };
+          self->sel_p0_x = self->sel_path_x;
+          self->sel_p0_y = self->sel_path_y;
+          self->sel_p0_w = self->sel_w;
+          self->sel_p0_h = self->sel_h;
+        }
+      easel_path_free (&self->sel_path);
+      self->sel_path = line;
+      self->sel_path_x = self->sel_x;
+      self->sel_path_y = self->sel_y;
+    }
+  self->sel_w = self->sel_float.w;
+  self->sel_h = self->sel_float.h;
+  self->sel_epoch++;
+  g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);
+  gtk_widget_queue_draw (GTK_WIDGET (self));
+  return TRUE;
+}
+
 /* The one function that puts a floating selection down and removes the selection (REQ-0013-11, -12); keep_marked keeps a
    marked one (Save, Save As). FALSE if the put-down could not get its memory: the picture is as before the lift and the
    selection is gone (REQ-0013-19). */
@@ -2441,9 +2542,8 @@ stretch_restore_path (EaselCanvas *self)
 {
   EaselPath scaled = { 0 };
 
-  if (self->sel_path0.n == 0 || !easel_lasso_scale_path (&self->sel_path0, self->sel_p0_x, self->sel_p0_y, self->sel_p0_w, self->sel_p0_h,
-                                                       self->stretch_sx, self->stretch_sy, self->stretch_sw, self->stretch_sh, &scaled,
-                                                       self->sel_lift_max))
+  if (self->sel_path0.n == 0
+      || !oriented_line (self, self->stretch_orient0, self->stretch_sx, self->stretch_sy, self->stretch_sw, self->stretch_sh, &scaled))
     return;
   easel_path_free (&self->sel_path);
   self->sel_path = scaled;
@@ -2467,9 +2567,10 @@ restore_stretch (EaselCanvas *self)
     {
       cut_copies (self, self->stretch_stamps0);
       /* Pixels already at the size of the press (the copy failed before any change) are as they were: nothing to make. */
-      if ((self->sel_float.w != self->stretch_sw || self->sel_float.h != self->stretch_sh)
-          && easel_selection_stretch (&self->sel_float, self->stretch_sx, self->stretch_sy, self->stretch_sw, self->stretch_sh,
-                                      self->sel_lift_max) != EASEL_SELECTION_DONE)
+      if ((self->sel_float.w != self->stretch_sw || self->sel_float.h != self->stretch_sh
+           || self->sel_float.orient != self->stretch_orient0)
+          && easel_selection_stretch_oriented (&self->sel_float, self->stretch_sx, self->stretch_sy, self->stretch_sw, self->stretch_sh,
+                                               self->stretch_orient0, self->sel_lift_max) != EASEL_SELECTION_DONE)
         g_signal_emit (self, signals[SIGNAL_SELECTION_FAILED], 0, 3);
     }
   self->sel_x = self->stretch_sx;
@@ -2790,6 +2891,7 @@ begin_stretch (EaselCanvas *self, int handle, double x, double y)
   self->stretch_sy = self->sel_y;
   self->stretch_sw = self->sel_w;
   self->stretch_sh = self->sel_h;
+  self->stretch_orient0 = self->sel_state == 2 ? self->sel_float.orient : EASEL_ORIENT_IDENTITY;
   self->sel_copy = self->ctrl;
   self->sel_lifted_here = FALSE;
   self->stretch_copied = FALSE;
@@ -2816,11 +2918,17 @@ stretch_apply (EaselCanvas *self)
 {
   int dx = (int) lround (self->stretch_lx - self->stretch_x0), dy = (int) lround (self->stretch_ly - self->stretch_y0);
   int nx, ny, nw, nh;
+  bool mirror_x, mirror_y;
+  EaselOrient orient = self->stretch_orient0;
 
-  easel_stretch_rect ((EaselSelHandle) self->stretch_handle, self->stretch_sx, self->stretch_sy, self->stretch_sw, self->stretch_sh, dx, dy,
-                      self->shift, &nx, &ny, &nw, &nh);
+  easel_stretch_rect_mirror ((EaselSelHandle) self->stretch_handle, self->stretch_sx, self->stretch_sy, self->stretch_sw, self->stretch_sh,
+                             dx, dy, self->shift, &nx, &ny, &nw, &nh, &mirror_x, &mirror_y);
+  if (mirror_x)
+    orient = easel_orient_compose (orient, EASEL_ORIENT_FLIP_X);
+  if (mirror_y)
+    orient = easel_orient_compose (orient, EASEL_ORIENT_FLIP_Y);
   if (nx == self->sel_x && ny == self->sel_y && nw == self->sel_w && nh == self->sel_h)
-    return;                                       /* no movement to another size */
+    return;                                       /* no movement to another size (a mirrored rectangle is never the same one) */
   if (self->sel_state == 1)
     {
       if (easel_selection_lift (&self->sel_float, self->img, self->sel_x, self->sel_y, self->sel_w, self->sel_h, self->sel_mask,
@@ -2845,8 +2953,9 @@ stretch_apply (EaselCanvas *self)
     }
   /* At 100 % and above only the part in view is made while the button is held (the memory of the whole image is had now, so a failure
      shows at the first movement, REQ-0015-09); the whole is made at the release. Below 100 % the whole view is the picture: all is made. */
-  if ((self->zoom >= 100 ? easel_selection_stretch_lazy (&self->sel_float, nx, ny, nw, nh, self->sel_lift_max)
-                         : easel_selection_stretch (&self->sel_float, nx, ny, nw, nh, self->sel_lift_max)) != EASEL_SELECTION_DONE)
+  if ((self->zoom >= 100 ? easel_selection_stretch_lazy_oriented (&self->sel_float, nx, ny, nw, nh, orient, self->sel_lift_max)
+                         : easel_selection_stretch_oriented (&self->sel_float, nx, ny, nw, nh, orient, self->sel_lift_max))
+      != EASEL_SELECTION_DONE)
     {
       end_failed_stretch (self, 3);
       return;
@@ -2865,8 +2974,7 @@ stretch_apply (EaselCanvas *self)
           self->sel_p0_w = self->sel_w;
           self->sel_p0_h = self->sel_h;
         }
-      if (!easel_lasso_scale_path (&self->sel_path0, self->sel_p0_x, self->sel_p0_y, self->sel_p0_w, self->sel_p0_h, nx, ny, nw, nh,
-                                   &scaled, self->sel_lift_max))
+      if (!oriented_line (self, orient, nx, ny, nw, nh, &scaled))
         {
           end_failed_stretch (self, 3);
           return;
@@ -4106,6 +4214,12 @@ easel_canvas_is_stroking (EaselCanvas *self)
 {
   return self->stroke != NULL || self->picking || self->shaping || self->pend_held || self->selecting || self->sel_moving
          || self->lassoing || self->stretching || self->text_drag != 0;
+}
+
+gboolean
+easel_canvas_is_panning (EaselCanvas *self)
+{
+  return self->panning;
 }
 
 static GtkAdjustment *

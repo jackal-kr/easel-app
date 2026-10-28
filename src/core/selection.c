@@ -419,20 +419,32 @@ easel_float_free (EaselFloat *f)
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 
 /* The new pixels of the rectangle [x0, x1) x [y0, y1) of a W x H image made from the image o by the nearest pixel (REQ-0015-05): the
-   same function whole or in parts. With a mask the shape's pixels of the rectangle are counted: the number returned. */
+   same function whole or in parts. With a mask the shape's pixels of the rectangle are counted: the number returned. The image is the
+   scaled one oriented by `orient` (REQ-0018-07): it is scaled to the size before the orientation (the W x H of a quarter turn swapped),
+   and the pixel (i, j) is that of the scaled image which the orientation puts there. */
 static size_t
-scale_region (const ImageView *o, int W, int H, uint32_t *op, uint8_t *om, int x0, int y0, int x1, int y1)
+scale_region (const ImageView *o, int W, int H, EaselOrient orient, uint32_t *op, uint8_t *om, int x0, int y0, int x1, int y1)
 {
   size_t kept = 0;
+  int pw = easel_orient_swaps (orient) ? H : W, ph = easel_orient_swaps (orient) ? W : H;
 
   for (int j = y0; j < y1; j++)
     {
-      int sj = (int) (((2LL * j + 1) * o->h) / (2LL * H));
+      /* Without an orientation the source row is the same along the row: made once (the speed of a stretch, REQ-0015-10). */
+      int sj = orient == EASEL_ORIENT_IDENTITY ? (int) (((2LL * j + 1) * o->h) / (2LL * ph)) : 0;
 
       for (int i = x0; i < x1; i++)
         {
-          int si = (int) (((2LL * i + 1) * o->w) / (2LL * W));
-          size_t from = (size_t) sj * (size_t) o->w + (size_t) si;
+          int sx = i, sy = j, si;
+          size_t from;
+
+          if (orient != EASEL_ORIENT_IDENTITY)
+            {
+              easel_orient_source (orient, pw, ph, i, j, &sx, &sy);
+              sj = (int) (((2LL * sy + 1) * o->h) / (2LL * ph));
+            }
+          si = (int) (((2LL * sx + 1) * o->w) / (2LL * pw));
+          from = (size_t) sj * (size_t) o->w + (size_t) si;
 
           op[(size_t) j * (size_t) W + (size_t) i] = o->px[from];
           if (om != NULL)
@@ -448,10 +460,15 @@ scale_region (const ImageView *o, int W, int H, uint32_t *op, uint8_t *om, int x
 /* A shape that the nearest pixel lost keeps one pixel (REQ-0015-06): the new pixel nearest the center of the box among those whose
    footprint (the lifted pixels it covers) holds a shape pixel, with the color of the first such shape pixel in reading order. */
 static void
-keep_one_pixel (const ImageView *o, int W, int H, uint32_t *op, uint8_t *om)
+keep_one_pixel (const ImageView *o, int W, int H, EaselOrient orient, uint32_t *op, uint8_t *om)
 {
   double best = 1e300;
   int bi = -1, bj = -1;
+  int DW = W, PW = easel_orient_swaps (orient) ? H : W, PH = easel_orient_swaps (orient) ? W : H;
+
+  /* The search is in the scaled image before the orientation (of PW x PH), the pixel found is put where the orientation puts it. */
+  W = PW;
+  H = PH;
 
   for (int j = 0; j < H; j++)
     {
@@ -492,8 +509,11 @@ keep_one_pixel (const ImageView *o, int W, int H, uint32_t *op, uint8_t *om)
         for (int x = x0; x <= x1 && !done; x++)
           if (o->mask[(size_t) y * (size_t) o->w + (size_t) x] != 0)
             {
-              om[(size_t) bj * (size_t) W + (size_t) bi] = 1;
-              op[(size_t) bj * (size_t) W + (size_t) bi] = o->px[(size_t) y * (size_t) o->w + (size_t) x];
+              int tx, ty;
+
+              easel_orient_target (orient, PW, PH, bi, bj, &tx, &ty);
+              om[(size_t) ty * (size_t) DW + (size_t) tx] = 1;
+              op[(size_t) ty * (size_t) DW + (size_t) tx] = o->px[(size_t) y * (size_t) o->w + (size_t) x];
               done = true;
             }
     }
@@ -531,9 +551,25 @@ image_alloc (bool with_mask, int W, int H, size_t max_bytes, bool zero, uint32_t
   return EASEL_SELECTION_DONE;
 }
 
-EaselSelectionResult
-easel_selection_scale (const uint32_t *px, const uint8_t *mask, int w, int h, int W, int H, uint32_t **out_px, uint8_t **out_mask,
-                       size_t max_bytes)
+/* The bytes of a w x h array oriented (a mask), the pixels' easel_orient_pixels. */
+static void
+orient_bytes (const uint8_t *src, int w, int h, EaselOrient o, uint8_t *dst)
+{
+  int ow = easel_orient_swaps (o) ? h : w, oh = easel_orient_swaps (o) ? w : h;
+
+  for (int dy = 0; dy < oh; dy++)
+    for (int dx = 0; dx < ow; dx++)
+      {
+        int sx, sy;
+
+        easel_orient_source (o, w, h, dx, dy, &sx, &sy);
+        dst[(size_t) dy * (size_t) ow + (size_t) dx] = src[(size_t) sy * (size_t) w + (size_t) sx];
+      }
+}
+
+static EaselSelectionResult
+scale_oriented (const uint32_t *px, const uint8_t *mask, int w, int h, int W, int H, EaselOrient orient, uint32_t **out_px,
+                uint8_t **out_mask, size_t max_bytes)
 {
   ImageView o = { w, h, px, mask };
   uint32_t *op;
@@ -548,8 +584,15 @@ easel_selection_scale (const uint32_t *px, const uint8_t *mask, int w, int h, in
   r = image_alloc (mask != NULL, W, H, max_bytes, false, &op, &om);
   if (r != EASEL_SELECTION_DONE)
     return r;
-  if (scale_region (&o, W, H, op, om, 0, 0, W, H) == 0 && om != NULL)
-    keep_one_pixel (&o, W, H, op, om);
+  if ((easel_orient_swaps (orient) ? H : W) == w && (easel_orient_swaps (orient) ? W : H) == h)
+    {
+      /* no scaling: the lifted pixels only oriented (a flip or a turn of a float at its lifted size), by the tiled copy */
+      easel_orient_pixels (px, w, h, orient, op);
+      if (om != NULL)
+        orient_bytes (mask, w, h, orient, om);
+    }
+  else if (scale_region (&o, W, H, orient, op, om, 0, 0, W, H) == 0 && om != NULL)
+    keep_one_pixel (&o, W, H, orient, op, om);
   *out_px = op;
   if (out_mask != NULL)
     *out_mask = om;
@@ -558,7 +601,47 @@ easel_selection_scale (const uint32_t *px, const uint8_t *mask, int w, int h, in
   return EASEL_SELECTION_DONE;
 }
 
+EaselSelectionResult
+easel_selection_scale (const uint32_t *px, const uint8_t *mask, int w, int h, int W, int H, uint32_t **out_px, uint8_t **out_mask,
+                       size_t max_bytes)
+{
+  return scale_oriented (px, mask, w, h, W, H, EASEL_ORIENT_IDENTITY, out_px, out_mask, max_bytes);
+}
+
 #define STRETCH_MAX 10000
+
+/* The sizes *nw x *nh of a corner drag, brought to the ratio of w x h (REQ-0015-07): the side whose size differs more from its size at the
+   press, as a factor, leads (the width on a tie), the other is its size times the factor, halves up, at least 1; if that passes 10000 the
+   leading side is reduced so that both fit. */
+static void
+ratio_sizes (int w, int h, int *nw, int *nh)
+{
+  double fw = (double) *nw / w, fh = (double) *nh / h;
+  bool width_leads = fabs (fw - 1) >= fabs (fh - 1);
+  double f = width_leads ? fw : fh;
+  int lead = width_leads ? *nw : *nh, old_other = width_leads ? h : w;
+  long long other = (long long) floor (old_other * f + 0.5);
+
+  if (other < 1)
+    other = 1;
+  if (other > STRETCH_MAX)
+    {
+      other = STRETCH_MAX;
+      lead = (int) floor ((double) (width_leads ? w : h) * STRETCH_MAX / old_other + 0.5);
+      if (lead < 1)
+        lead = 1;
+    }
+  if (width_leads)
+    {
+      *nw = lead;
+      *nh = (int) other;
+    }
+  else
+    {
+      *nh = lead;
+      *nw = (int) other;
+    }
+}
 
 /* One side: the edge at `lo` or `hi` (hi = lo + size) dragged by d, the other edge fixed: its new start and size. */
 static void
@@ -600,31 +683,7 @@ easel_stretch_rect (EaselSelHandle handle, int x, int y, int w, int h, int dx, i
   drag_side (top, bottom, y, h, dy, ny, nh);
   if (keep_ratio && corner)
     {
-      double fw = (double) *nw / w, fh = (double) *nh / h;
-      bool width_leads = fabs (fw - 1) >= fabs (fh - 1);
-      double f = width_leads ? fw : fh;
-      int lead = width_leads ? *nw : *nh, old_other = width_leads ? h : w;
-      long long other = (long long) floor (old_other * f + 0.5);
-
-      if (other < 1)
-        other = 1;
-      if (other > STRETCH_MAX)
-        {
-          other = STRETCH_MAX;
-          lead = (int) floor ((double) (width_leads ? w : h) * STRETCH_MAX / old_other + 0.5);
-          if (lead < 1)
-            lead = 1;
-        }
-      if (width_leads)
-        {
-          *nw = lead;
-          *nh = (int) other;
-        }
-      else
-        {
-          *nh = lead;
-          *nw = (int) other;
-        }
+      ratio_sizes (w, h, nw, nh);
       /* The edges the handle does not stand for stay: the new origin follows from the new size. */
       if (left)
         *nx = x + w - *nw;
@@ -637,8 +696,64 @@ easel_stretch_rect (EaselSelHandle handle, int x, int y, int w, int h, int dx, i
     }
 }
 
+/* One axis of a drag that may mirror: the edge dragged (`high` for the larger one) is now at e, the other edge o stays. The size is the
+   distance, at least 1 and at most STRETCH_MAX; the axis is mirrored when the dragged edge is past o (on the side of o it was not on). */
+static void
+mirror_side (bool high, long long o, long long e, int *size, bool *mirrored)
+{
+  long long d = high ? e - o : o - e;                /* positive: the dragged edge is on its own side of o */
+
+  *mirrored = d < 0;
+  d = d < 0 ? -d : d;
+  *size = (int) (d < 1 ? 1 : d > STRETCH_MAX ? STRETCH_MAX : d);
+}
+
+/* Where an axis of `size` starts when it runs from the fixed edge o: toward the larger values when it is the dragged edge's side of a high
+   handle or the far side of a low one. */
+static int
+mirror_start (bool high, bool mirrored, long long o, int size)
+{
+  return (int) (high != mirrored ? o : o - size);
+}
+
+void
+easel_stretch_rect_mirror (EaselSelHandle handle, int x, int y, int w, int h, int dx, int dy, bool keep_ratio, int *nx, int *ny, int *nw,
+                           int *nh, bool *mirror_x, bool *mirror_y)
+{
+  bool left = handle == EASEL_SEL_HANDLE_TL || handle == EASEL_SEL_HANDLE_L || handle == EASEL_SEL_HANDLE_BL;
+  bool right = handle == EASEL_SEL_HANDLE_TR || handle == EASEL_SEL_HANDLE_R || handle == EASEL_SEL_HANDLE_BR;
+  bool top = handle == EASEL_SEL_HANDLE_TL || handle == EASEL_SEL_HANDLE_T || handle == EASEL_SEL_HANDLE_TR;
+  bool bottom = handle == EASEL_SEL_HANDLE_BL || handle == EASEL_SEL_HANDLE_B || handle == EASEL_SEL_HANDLE_BR;
+  bool corner = (left || right) && (top || bottom);
+  long long ox = right ? x : (long long) x + w, oy = bottom ? y : (long long) y + h;      /* the edges that stay */
+  bool mx = false, my = false;
+
+  *nx = x;
+  *nw = w;
+  *ny = y;
+  *nh = h;
+  if (left || right)
+    {
+      mirror_side (right, ox, (right ? (long long) x + w : x) + dx, nw, &mx);
+      *nx = mirror_start (right, mx, ox, *nw);
+    }
+  if (top || bottom)
+    {
+      mirror_side (bottom, oy, (bottom ? (long long) y + h : y) + dy, nh, &my);
+      *ny = mirror_start (bottom, my, oy, *nh);
+    }
+  if (keep_ratio && corner)
+    {
+      ratio_sizes (w, h, nw, nh);
+      *nx = mirror_start (right, mx, ox, *nw);
+      *ny = mirror_start (bottom, my, oy, *nh);
+    }
+  *mirror_x = mx;
+  *mirror_y = my;
+}
+
 static EaselSelectionResult
-stretch_to (EaselFloat *f, int x, int y, int W, int H, size_t max_bytes, bool lazy)
+stretch_to (EaselFloat *f, int x, int y, int W, int H, size_t max_bytes, bool lazy, EaselOrient orient)
 {
   ImageView orig = original_view (f);
   uint32_t *npx = NULL;
@@ -664,7 +779,7 @@ stretch_to (EaselFloat *f, int x, int y, int W, int H, size_t max_bytes, bool la
         }
     }
   else
-    r = easel_selection_scale (orig.px, orig.mask, orig.w, orig.h, W, H, &npx, orig.mask != NULL ? &nmask : NULL, max_bytes);
+    r = scale_oriented (orig.px, orig.mask, orig.w, orig.h, W, H, orient, &npx, orig.mask != NULL ? &nmask : NULL, max_bytes);
   if (r != EASEL_SELECTION_DONE)
     return r;
   for (size_t k = 0; k < f->n_stamps && !uses_current; k++)
@@ -735,6 +850,7 @@ stretch_to (EaselFloat *f, int x, int y, int W, int H, size_t max_bytes, bool la
   f->h = H;
   f->x = x;
   f->y = y;
+  f->orient = orient;
   return EASEL_SELECTION_DONE;
 no_memory:
   free (npx);
@@ -747,13 +863,25 @@ no_memory:
 EaselSelectionResult
 easel_selection_stretch (EaselFloat *f, int x, int y, int W, int H, size_t max_bytes)
 {
-  return stretch_to (f, x, y, W, H, max_bytes, false);
+  return stretch_to (f, x, y, W, H, max_bytes, false, f->orient);
 }
 
 EaselSelectionResult
 easel_selection_stretch_lazy (EaselFloat *f, int x, int y, int W, int H, size_t max_bytes)
 {
-  return stretch_to (f, x, y, W, H, max_bytes, true);
+  return stretch_to (f, x, y, W, H, max_bytes, true, f->orient);
+}
+
+EaselSelectionResult
+easel_selection_stretch_oriented (EaselFloat *f, int x, int y, int W, int H, EaselOrient orient, size_t max_bytes)
+{
+  return stretch_to (f, x, y, W, H, max_bytes, false, orient);
+}
+
+EaselSelectionResult
+easel_selection_stretch_lazy_oriented (EaselFloat *f, int x, int y, int W, int H, EaselOrient orient, size_t max_bytes)
+{
+  return stretch_to (f, x, y, W, H, max_bytes, true, orient);
 }
 
 void
@@ -777,7 +905,7 @@ easel_selection_fill (EaselFloat *f, int x0, int y0, int x1, int y1)
 
         if (f->fill[by * f->fill_cols + bx])
           continue;
-        f->kept_px += scale_region (&orig, f->w, f->h, f->px, f->mask, ax, ay, bx1, by1);
+        f->kept_px += scale_region (&orig, f->w, f->h, f->orient, f->px, f->mask, ax, ay, bx1, by1);
         f->made_px += (size_t) (bx1 - ax) * (size_t) (by1 - ay);
         f->fill[by * f->fill_cols + bx] = 1;
       }
@@ -793,9 +921,146 @@ easel_selection_complete (EaselFloat *f)
   easel_selection_fill (f, 0, 0, f->w, f->h);
   orig = original_view (f);
   if (f->mask != NULL && f->kept_px == 0)
-    keep_one_pixel (&orig, f->w, f->h, f->px, f->mask);
+    keep_one_pixel (&orig, f->w, f->h, f->orient, f->px, f->mask);
   free (f->fill);
   f->fill = NULL;
+}
+
+/* Invert Colors of the float (REQ-0018-05, REQ-0018-07): its shown and lifted pixels are inverted (alpha kept), in place when no copy
+   left before uses them; else they are replaced by inverted ones and the copies keep the images they were made with, which are kept for
+   them (as a stretch keeps them). Everything that can fail is had first. */
+static EaselSelectionResult
+invert_float (EaselFloat *f, size_t max_bytes)
+{
+  bool stretched = f->orig_px != NULL, uses_current = false, uses_orig = false;
+  size_t n_cur = (size_t) f->w * (size_t) f->h, n_orig = (size_t) f->ow * (size_t) f->oh, add;
+  uint32_t *npx = NULL, *norig = NULL;
+  uint8_t *nmask = NULL, *norig_mask = NULL;
+  int *ids = NULL, cur_id = 0, orig_id = 0;
+  EaselKept *kept = NULL;
+  EaselSelectionResult r;
+
+  easel_selection_complete (f);                    /* the shown image is whole before it is inverted */
+  for (size_t k = 0; k < f->n_stamps; k++)
+    {
+      int id = f->stamp_img != NULL ? f->stamp_img[k] : EASEL_IMAGE_CURRENT;
+
+      uses_current = uses_current || id == EASEL_IMAGE_CURRENT;
+      uses_orig = uses_orig || id == EASEL_IMAGE_ORIGINAL;
+    }
+  if (!stretched)
+    {
+      uses_current = uses_current || uses_orig;      /* the shown image is the lifted one */
+      uses_orig = false;
+    }
+  if (!uses_current && !uses_orig)
+    {
+      /* No copy uses either image: they are inverted where they are, which allocates nothing and cannot fail. */
+      for (size_t i = 0; i < n_cur; i++)
+        f->px[i] ^= 0x00FFFFFFu;
+      if (stretched)
+        for (size_t i = 0; i < n_orig; i++)
+          f->orig_px[i] ^= 0x00FFFFFFu;
+      return EASEL_SELECTION_DONE;
+    }
+  /* The new images: a mask is copied for an image that goes to the copies, else the float keeps the one it has. */
+  r = image_alloc (uses_current && f->mask != NULL, f->w, f->h, max_bytes, false, &npx, &nmask);
+  if (r != EASEL_SELECTION_DONE)
+    return r;
+  if (stretched)
+    {
+      r = image_alloc (uses_orig && f->orig_mask != NULL, f->ow, f->oh, max_bytes, false, &norig, &norig_mask);
+      if (r != EASEL_SELECTION_DONE)
+        goto no_memory;
+    }
+  if (f->stamp_img == NULL && f->n_stamps > 0 && uses_current)
+    {
+      if (f->cap > SIZE_MAX / (sizeof *f->stamps + sizeof *ids) || f->cap * (sizeof *f->stamps + sizeof *ids) > max_bytes)
+        goto no_memory;
+      ids = malloc (f->cap * sizeof *ids);
+      if (ids == NULL)
+        goto no_memory;
+    }
+  add = (uses_current ? 1 : 0) + (uses_orig ? 1 : 0);
+  if (add > 0)
+    {
+      kept = realloc (f->kept, (f->n_kept + add) * sizeof *kept);
+      if (kept == NULL)
+        goto no_memory;
+    }
+  for (size_t i = 0; i < n_cur; i++)
+    npx[i] = f->px[i] ^ 0x00FFFFFFu;
+  if (nmask != NULL)
+    memcpy (nmask, f->mask, n_cur);
+  if (stretched)
+    {
+      for (size_t i = 0; i < n_orig; i++)
+        norig[i] = f->orig_px[i] ^ 0x00FFFFFFu;
+      if (norig_mask != NULL)
+        memcpy (norig_mask, f->orig_mask, n_orig);
+    }
+  /* Everything is had: from here nothing fails. */
+  if (ids != NULL)
+    {
+      f->stamp_img = ids;
+      for (size_t k = 0; k < f->n_stamps; k++)
+        f->stamp_img[k] = EASEL_IMAGE_CURRENT;
+    }
+  if (add > 0)
+    f->kept = kept;
+  if (uses_current)
+    {
+      f->kept[f->n_kept] = (EaselKept) { f->w, f->h, f->px, f->mask };
+      cur_id = (int) f->n_kept++;
+      f->mask = nmask != NULL ? nmask : f->mask;
+      for (size_t k = 0; k < f->n_stamps; k++)
+        if (f->stamp_img[k] == EASEL_IMAGE_CURRENT || (!stretched && f->stamp_img[k] == EASEL_IMAGE_ORIGINAL))
+          f->stamp_img[k] = cur_id;
+    }
+  else
+    free (f->px);
+  f->px = npx;
+  if (stretched)
+    {
+      if (uses_orig)
+        {
+          f->kept[f->n_kept] = (EaselKept) { f->ow, f->oh, f->orig_px, f->orig_mask };
+          orig_id = (int) f->n_kept++;
+          f->orig_mask = norig_mask != NULL ? norig_mask : f->orig_mask;
+          for (size_t k = 0; k < f->n_stamps; k++)
+            if (f->stamp_img[k] == EASEL_IMAGE_ORIGINAL)
+              f->stamp_img[k] = orig_id;
+        }
+      else
+        free (f->orig_px);
+      f->orig_px = norig;
+    }
+  return EASEL_SELECTION_DONE;
+no_memory:
+  free (npx);
+  free (nmask);
+  free (norig);
+  free (norig_mask);
+  free (ids);
+  return EASEL_SELECTION_NO_MEMORY;
+}
+
+EaselSelectionResult
+easel_selection_transform (EaselFloat *f, EaselOp op, size_t max_bytes)
+{
+  EaselOrient step;
+  bool quarter;
+
+  if (op == EASEL_OP_INVERT)
+    return invert_float (f, max_bytes);
+  if (op > EASEL_OP_ROTATE_270)
+    return EASEL_SELECTION_NOTHING;                  /* Clear Image is the picture's */
+  step = easel_op_orient (op);
+  quarter = easel_orient_swaps (step);
+  /* The shown image is made afresh from the lifted pixels, scaled to the size it has before its orientation, then oriented: which makes
+     it the command of what was shown, whatever the stretch (REQ-0018-07). The place stays; a quarter turn swaps the size. */
+  return stretch_to (f, f->x, f->y, quarter ? f->h : f->w, quarter ? f->w : f->h, max_bytes, false,
+                     easel_orient_compose (f->orient, step));
 }
 
 EaselSelectionResult

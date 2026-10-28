@@ -10,6 +10,7 @@
 
 #include "history.h"
 #include "image.h"
+#include "transform.h"
 
 /* A copy left in the picture by a Ctrl drag of a float: where. */
 typedef struct
@@ -56,6 +57,8 @@ typedef struct
   int fill_cols, fill_rows;
   size_t made_px, kept_px;         /* the pixels of the current image made so far, and those of them in the shape */
   bool skip_clear;                 /* a paste (0016): its fully transparent pixels are neither laid nor put down, nor its copies' */
+  EaselOrient orient;              /* the flips and turns made to it (0018): the shown image is the lifted one scaled to the size before
+                                      them, then oriented (REQ-0018-07); the identity until the first */
 } EaselFloat;
 
 typedef enum
@@ -113,11 +116,24 @@ EaselSelectionResult easel_selection_stretch (EaselFloat *f, int x, int y, int W
    first (easel_selection_stamp completes by itself). The next stretch replaces the image; a copy never uses an unfinished image. */
 EaselSelectionResult easel_selection_stretch_lazy (EaselFloat *f, int x, int y, int W, int H, size_t max_bytes);
 
+/* The same two stretches with an orientation given (REQ-0018-11): the float's orientation becomes `orient`, the shown image being the
+   lifted pixels scaled to W x H before it and then oriented; the plain ones keep the float's own. */
+EaselSelectionResult easel_selection_stretch_oriented (EaselFloat *f, int x, int y, int W, int H, EaselOrient orient, size_t max_bytes);
+EaselSelectionResult easel_selection_stretch_lazy_oriented (EaselFloat *f, int x, int y, int W, int H, EaselOrient orient,
+                                                            size_t max_bytes);
+
 /* Makes the blocks of a lazily stretched image that meet the rectangle [x0, x1) x [y0, y1) of its pixels (clipped), if not made. */
 void easel_selection_fill (EaselFloat *f, int x0, int y0, int x1, int y1);
 
 /* Makes the whole image of a lazily stretched float; nothing to do for a float whose image is whole. */
 void easel_selection_complete (EaselFloat *f);
+
+/* A flip, a turn or Invert Colors of the float (REQ-0018-07), as the commands of the Image menu: the shown image is made afresh, the
+   lifted pixels staying as lifted, so that the shown image is exactly the command of what was shown; the place is kept (a quarter turn
+   swaps the width and the height), the hole and the copies left before are not touched. Invert inverts the lifted and the shown pixels,
+   not the shape; the copies keep the pixels they have. NO_MEMORY, with the float as it was, if the new image (4 bytes a pixel and a
+   byte for a mask, and what the copies' record needs) exceeds max_bytes or cannot be had. NOTHING for Clear Image (no selection's). */
+EaselSelectionResult easel_selection_transform (EaselFloat *f, EaselOp op, size_t max_bytes);
 
 /* The eight handles of a selection, by the edges they stand for. */
 typedef enum
@@ -134,6 +150,14 @@ typedef enum
    up, at least 1, and if that passes 10000 the leading side is reduced so that both fit; an edge handle ignores keep_ratio. */
 void easel_stretch_rect (EaselSelHandle handle, int x, int y, int w, int h, int dx, int dy, bool keep_ratio, int *nx, int *ny, int *nw,
                          int *nh);
+
+/* The same drag, a side dragged past the opposite edge mirroring instead (REQ-0018-11): the size of a side is the distance from the
+   opposite edge to the dragged one, 1 to 10000, and *mirror_x / *mirror_y say that the dragged edge is past the opposite one (on the
+   side it was not on); with the dragged edge on the opposite edge the side is 1 pixel, not mirrored, on the side it was. With keep_ratio
+   a corner keeps the ratio as easel_stretch_rect does, the side that does not lead running from its opposite edge to the side the
+   pointer is on. */
+void easel_stretch_rect_mirror (EaselSelHandle handle, int x, int y, int w, int h, int dx, int dy, bool keep_ratio, int *nx, int *ny,
+                                int *nw, int *nh, bool *mirror_x, bool *mirror_y);
 
 /* The pixels (and shape) of a w x h selection scaled to W x H by the nearest pixel (REQ-0015-05, -06): the new pixel (i, j) is the
    lifted pixel (floor ((i + 1/2) w / W), floor ((j + 1/2) h / H)); with a mask it is in the shape when that pixel is. If that leaves

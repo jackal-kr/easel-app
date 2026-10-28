@@ -1606,9 +1606,10 @@ as1_menus (void)
   g_assert_cmpstr (s1, ==, "Zoom|(null); Normal Size|win.zoom-normal; Large Size|win.zoom-large; Fit to Window|win.zoom-fit");
   g_assert_cmpstr (s2, ==, "Show Grid|win.grid; Grid…|win.grid-dialog");
   g_assert_cmpstr (s3, ==, "Tool Box|win.show-toolbox; Color Box|win.show-colorbox; Status Bar|win.show-statusbar");
-  g_assert_cmpint (g_menu_model_get_n_items (im), ==, 1);
-  i0 = describe_section (im, 0);
-  g_assert_cmpstr (i0, ==, "Attributes…|win.attributes");
+  /* 0018 (REQ-0018-01) added the flips and turns, Invert Colors and Clear Image around Attributes: its section is the last of three */
+  g_assert_cmpint (g_menu_model_get_n_items (im), ==, 3);
+  i0 = describe_section (im, 2);
+  g_assert_cmpstr (i0, ==, "Attributes…|win.attributes; _Clear Image|win.clear-image");
 
   /* No Frame Time and no Show Thumbnail. */
   g_assert_null (g_strstr_len (s3, -1, "Frame"));
@@ -15650,8 +15651,209 @@ as2_stretch_right (void)
   close_windows ();
 }
 
-/* AS-4, AS-9 (REQ-0015-03, -05): the 1-pixel stop beside the opposite edge, no mirroring; back to the size as it was adds no step; the
-   left handle moves the left edge; the height stops at 10000 with the pointer far outside the window and the view does not scroll. */
+/* AS-13 (REQ-0018-11): a 4 x 2 marked selection at (10, 10) in Opaque mode whose two rows read a b c d. Its right handle held and
+   dragged by (-6, 0) is 2 x 2 at (8, 10); dragged back to (0, 0) it is 4 x 2 at (10, 10) and put down the picture is as it was; released
+   by (-4, 0), exactly on the left edge, it is 1 x 2 at (10, 10); released by (-6, 0) and put down it shows d b at (8, 10); that
+   selection's right handle, at x 10, dragged by (2, 0) makes it 4 x 2 at (8, 10) showing d c b a, still mirrored. */
+static void
+as13_handle_flip (void)
+{
+  static const uint32_t A = 0xFFAA0000u, B = 0xFF00BB00u, C = 0xFF0000CCu, D = 0xFFDDDD00u, W_ = 0xFFFFFFFFu;
+  static const uint32_t row[4] = { A, B, C, D };
+
+  for (int run = 0; run < 9; run++)
+    {
+      EaselWindow *win;
+      EaselCanvas *canvas;
+      EaselImage *img;
+      g_autoptr (EaselImage) start = NULL;
+      double x, y, l;
+      int sx, sy, sw, sh;
+      gboolean fl;
+
+      write_settings ("[new-picture]\nwidth=40\nheight=30\ncanvas-color=#FFFFFF\n");
+      win = start_window ();
+      canvas = easel_window_get_canvas (win);
+      img = (EaselImage *) easel_window_get_picture (win);
+      wait_for_layout (win);
+      for (int j = 0; j < 2; j++)
+        for (int i = 0; i < 4; i++)
+          easel_image_set (img, 10 + i, 10 + j, row[i]);
+      easel_canvas_update (canvas);
+      start = easel_image_new (40, 30, 0);
+      memcpy (start->px, img->px, 40 * 30 * sizeof (uint32_t));
+      l = logical_per_pixel (canvas);
+      use_select (win);
+      g_signal_emit_by_name (find_mapped_by_tooltip (GTK_WIDGET (win), "Opaque: keep background color"), "clicked");
+      shape_press_move (win, 1, 10, 10, 13, 11);
+      shape_release (win, 1);
+      g_assert_true (selection_is (win, 10, 10, 4, 2));
+      sel_handle_center (canvas, EASEL_SEL_HANDLE_R, &x, &y);
+      switch (run)
+        {
+        case 0:                                  /* held, past the edge and back */
+          easel_canvas_press (canvas, 1, x, y);
+          easel_canvas_motion (canvas, x - 6 * l, y);
+          g_assert_true (selection_is (win, 8, 10, 2, 2));
+          easel_canvas_motion (canvas, x, y);
+          g_assert_true (selection_is (win, 10, 10, 4, 2));
+          easel_canvas_release (canvas, 1);
+          g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+          assert_same_picture (img, start);
+          break;
+        case 1:                                  /* exactly on the left edge: 1 pixel, not past it */
+          drag_sel_handle (win, EASEL_SEL_HANDLE_R, -4, 0);
+          g_assert_true (selection_is (win, 10, 10, 1, 2));
+          break;
+        case 2:                                  /* released past the edge: d b */
+          drag_sel_handle (win, EASEL_SEL_HANDLE_R, -6, 0);
+          g_assert_true (selection_is (win, 8, 10, 2, 2));
+          g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+          for (int j = 10; j < 12; j++)
+            {
+              g_assert_cmphex (easel_image_get (img, 8, j), ==, D);
+              g_assert_cmphex (easel_image_get (img, 9, j), ==, B);
+              g_assert_cmphex (easel_image_get (img, 10, j), ==, W_);                /* the hole */
+              g_assert_cmphex (easel_image_get (img, 13, j), ==, W_);
+            }
+          break;
+        case 4:                                  /* a mirrored float, a drag cancelled: it is as at the press, d b */
+          drag_sel_handle (win, EASEL_SEL_HANDLE_R, -6, 0);
+          sel_handle_center (canvas, EASEL_SEL_HANDLE_R, &x, &y);
+          easel_canvas_press (canvas, 1, x, y);
+          easel_canvas_motion (canvas, x + 2 * l, y);
+          g_assert_true (selection_is (win, 8, 10, 4, 2));
+          g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+          g_assert_true (selection_is (win, 8, 10, 2, 2));
+          easel_canvas_release (canvas, 1);
+          g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+          g_assert_cmphex (easel_image_get (img, 8, 10), ==, D);
+          g_assert_cmphex (easel_image_get (img, 9, 10), ==, B);
+          break;
+        case 5:                                  /* an unmirrored float, a mirroring drag cancelled: a a b c c d, not mirrored */
+          drag_sel_handle (win, EASEL_SEL_HANDLE_R, 2, 0);
+          g_assert_true (selection_is (win, 10, 10, 6, 2));
+          sel_handle_center (canvas, EASEL_SEL_HANDLE_R, &x, &y);
+          easel_canvas_press (canvas, 1, x, y);
+          easel_canvas_motion (canvas, x - 8 * l, y);
+          g_assert_true (selection_is (win, 8, 10, 2, 2));
+          g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+          g_assert_true (selection_is (win, 10, 10, 6, 2));
+          easel_canvas_release (canvas, 1);
+          g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+          g_assert_cmphex (easel_image_get (img, 10, 10), ==, A);
+          g_assert_cmphex (easel_image_get (img, 15, 10), ==, D);
+          break;
+        case 6:                                  /* a drag across to the same size, cancelled: not mirrored */
+          drag_sel_handle (win, EASEL_SEL_HANDLE_R, 2, 0);
+          g_assert_true (selection_is (win, 10, 10, 6, 2));
+          sel_handle_center (canvas, EASEL_SEL_HANDLE_L, &x, &y);
+          easel_canvas_press (canvas, 1, x, y);
+          easel_canvas_motion (canvas, x + 12 * l, y);
+          g_assert_true (selection_is (win, 16, 10, 6, 2));
+          g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+          g_assert_true (selection_is (win, 10, 10, 6, 2));
+          easel_canvas_release (canvas, 1);
+          g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+          g_assert_cmphex (easel_image_get (img, 10, 10), ==, A);
+          g_assert_cmphex (easel_image_get (img, 15, 10), ==, D);
+          break;
+        case 7:                                  /* released, then Undo before it is put down: it is all forgotten (0015's AS-2) */
+          drag_sel_handle (win, EASEL_SEL_HANDLE_R, -6, 0);
+          g_assert_true (selection_is (win, 8, 10, 2, 2));
+          g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+          g_assert_false (easel_canvas_get_selection (canvas, &sx, &sy, &sw, &sh, &fl));
+          assert_same_picture (img, start);
+          g_assert_false (action_enabled (win, "undo"));
+          g_assert_false (action_enabled (win, "redo"));
+          break;
+        case 8:                                  /* put down, then Undo and Redo: the picture as before, then the mirrored result */
+          drag_sel_handle (win, EASEL_SEL_HANDLE_R, -6, 0);
+          g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+          g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+          assert_same_picture (img, start);
+          g_assert_true (action_enabled (win, "redo"));
+          g_action_group_activate_action (G_ACTION_GROUP (win), "redo", NULL);
+          for (int j = 10; j < 12; j++)
+            {
+              g_assert_cmphex (easel_image_get (img, 8, j), ==, D);
+              g_assert_cmphex (easel_image_get (img, 9, j), ==, B);
+              g_assert_cmphex (easel_image_get (img, 10, j), ==, W_);
+            }
+          break;
+        default:                                 /* and widened again: d c b a, still mirrored */
+          drag_sel_handle (win, EASEL_SEL_HANDLE_R, -6, 0);
+          g_assert_true (selection_is (win, 8, 10, 2, 2));
+          drag_sel_handle (win, EASEL_SEL_HANDLE_R, 2, 0);
+          g_assert_true (selection_is (win, 8, 10, 4, 2));
+          g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+          for (int j = 10; j < 12; j++)
+            {
+              g_assert_cmphex (easel_image_get (img, 8, j), ==, D);
+              g_assert_cmphex (easel_image_get (img, 9, j), ==, C);
+              g_assert_cmphex (easel_image_get (img, 10, j), ==, B);
+              g_assert_cmphex (easel_image_get (img, 11, j), ==, A);
+              g_assert_cmphex (easel_image_get (img, 12, j), ==, W_);
+              g_assert_cmphex (easel_image_get (img, 13, j), ==, W_);
+            }
+        }
+      close_windows ();
+    }
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* AS-14 (REQ-0018-11): the marked 5 x 4 selection at (1, 1) of 0015's AS-4. Its bottom-right handle dragged by (-15, -6) with Shift
+   is 10 x 8 at (-9, -7), the width leading; its right handle alone by (-10, 0) is 5 x 4 at (-4, 1); its left handle by (7, 0), at the
+   same size, shows the pixels flipped across (a 5 x 4 at (6, 1)), and its top handle by (0, 8) down (5 x 4 at (1, 5)) shows them flipped
+   up and down. */
+static void
+as14_handle_flip_shift (void)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  g_autoptr (EaselImage) start = marked_for_stretch (win);
+
+  /* the red block is symmetric: a blue pixel at the top left corner of the selection tells a flip from none */
+  easel_image_set ((EaselImage *) img, 1, 1, 0xFF0000FFu);
+  easel_image_set (start, 1, 1, 0xFF0000FFu);
+  easel_canvas_update (canvas);
+  easel_canvas_set_shift (canvas, TRUE);
+  drag_sel_handle (win, EASEL_SEL_HANDLE_BR, -15, -6);
+  easel_canvas_set_shift (canvas, FALSE);
+  g_assert_true (selection_is (win, -9, -7, 10, 8));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  assert_same_picture (img, start);
+  shape_press_move (win, 1, 1, 1, 5, 4);
+  shape_release (win, 1);
+  drag_sel_handle (win, EASEL_SEL_HANDLE_R, -10, 0);
+  g_assert_true (selection_is (win, -4, 1, 5, 4));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  /* the same size on the other side of the left edge: the old (x, y) is shown at (5 - x, y) of the 5 x 4 at (6, 1) */
+  shape_press_move (win, 1, 1, 1, 5, 4);
+  shape_release (win, 1);
+  drag_sel_handle (win, EASEL_SEL_HANDLE_L, 10, 0);
+  g_assert_true (selection_is (win, 6, 1, 5, 4));
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+  for (int j = 0; j < 4; j++)
+    for (int i = 0; i < 5; i++)
+      g_assert_cmphex (easel_image_get (img, 6 + i, 1 + j), ==, easel_image_get (start, 1 + (4 - i), 1 + j));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  assert_same_picture (img, start);
+  shape_press_move (win, 1, 1, 1, 5, 4);
+  shape_release (win, 1);
+  drag_sel_handle (win, EASEL_SEL_HANDLE_T, 0, 8);
+  g_assert_true (selection_is (win, 1, 5, 5, 4));
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+  for (int j = 0; j < 4; j++)
+    for (int i = 0; i < 5; i++)
+      g_assert_cmphex (easel_image_get (img, 1 + i, 5 + j), ==, easel_image_get (start, 1 + i, 1 + (3 - j)));
+  close_windows ();
+}
+
+/* AS-4, AS-9 (REQ-0015-03, -05): the right handle past the left edge now mirrors (5 x 4 at (-4, 1), REQ-0018-11) and so does the left
+   one past the right edge (5 x 4 at (6, 1)); back to the size as it was adds no step; the left handle moves the left edge; the height
+   stops at 10000 with the pointer far outside the window and the view does not scroll. */
 static void
 as4_stretch_limits_and_left (void)
 {
@@ -15695,17 +15897,17 @@ as4_stretch_limits_and_left (void)
     g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
     assert_same_picture (img, start);
   }
-  /* The right handle past the left edge: 1 x 4 at (1, 1). */
+  /* The right handle past the left edge: 5 x 4 at (-4, 1), mirrored. */
   shape_press_move (win, 1, 1, 1, 5, 4);
   shape_release (win, 1);
   drag_sel_handle (win, EASEL_SEL_HANDLE_R, -10, 0);
-  g_assert_true (selection_is (win, 1, 1, 1, 4));
+  g_assert_true (selection_is (win, -4, 1, 5, 4));
   g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
-  /* The left handle past the right edge: 1 x 4 at (5, 1). */
+  /* The left handle past the right edge: 5 x 4 at (6, 1), mirrored. */
   shape_press_move (win, 1, 1, 1, 5, 4);
   shape_release (win, 1);
   drag_sel_handle (win, EASEL_SEL_HANDLE_L, 10, 0);
-  g_assert_true (selection_is (win, 1 + 4, 1, 1, 4));
+  g_assert_true (selection_is (win, 6, 1, 5, 4));
   g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
   /* The left handle by (-1, 0): 6 x 4 at (0, 1), the red at the columns 1 to 4; put down: 2 pixels changed. */
   shape_press_move (win, 1, 1, 1, 5, 4);
@@ -21635,7 +21837,8 @@ as13_canvas_menu (void)
 
   g_assert_nonnull (menu);
   model = gtk_popover_menu_get_menu_model (menu);
-  g_assert_cmpint (g_menu_model_get_n_items (model), ==, 2);
+  /* 0018 (REQ-0018-02) added the third section, Clear Image */
+  g_assert_cmpint (g_menu_model_get_n_items (model), ==, 3);
   s0 = describe_section (model, 0);
   s1 = describe_section (model, 1);
   g_assert_cmpstr (s0, ==, "_Paste|win.paste; Paste _From…|win.paste-from; Select _All|win.select-all");
@@ -22389,6 +22592,1141 @@ as25_dashes_timer (void)
   animations (FALSE);                          /* back to the test program's start (off), for the cases after this one */
 }
 
+/* ---- 0018: Image Transforms (the whole picture) ---- */
+
+#define MEMORY_BODY "There is not enough memory for this change."
+
+/* A picture of the settings' size, white, with red at (rx, ry) and blue at (bx, by), written straight into it. */
+static EaselImage *
+marked_picture (EaselWindow *win, int rx, int ry, int bx, int by)
+{
+  EaselImage *img = (EaselImage *) easel_window_get_picture (win);
+
+  wait_for_layout (win);
+  easel_image_set (img, rx, ry, 0xFFFF0000u);
+  easel_image_set (img, bx, by, 0xFF0000FFu);
+  easel_canvas_update (easel_window_get_canvas (win));
+  return img;
+}
+
+/* AS-1 (REQ-0018-01, REQ-0018-02), the Image menu and the canvas menu: the Image menu in three sections, Flip › and Rotate ›, Invert
+   Colors, Attributes… and Clear Image; the submenus' items; the keys (Ctrl+R, Ctrl+L, Shift+Ctrl+N and Ctrl+E as accelerators,
+   Ctrl+I shown by the item but not an accelerator: the text box's Italic takes it first); the canvas menu's third section. The look
+   is M1's. The selection menu is T004's. */
+static void
+as1_image_menus (void)
+{
+  EaselWindow *win = start_window ();
+  GMenuModel *im = menu_of (easel_window_get_image_button (win));
+  GMenuModel *canvas_menu = gtk_popover_menu_get_menu_model (easel_window_get_canvas_menu (win));
+  g_autoptr (GMenuModel) section0 = NULL, flip = NULL, rotate = NULL, section1 = NULL;
+  g_autofree char *i0 = NULL, *i1 = NULL, *i2 = NULL, *f = NULL, *r = NULL, *accel = NULL, *c2 = NULL;
+
+  g_assert_cmpint (g_menu_model_get_n_items (im), ==, 3);
+  i0 = describe_section (im, 0);
+  i1 = describe_section (im, 1);
+  i2 = describe_section (im, 2);
+  g_assert_cmpstr (i0, ==, "_Flip|(null); _Rotate|(null)");
+  g_assert_cmpstr (i1, ==, "_Invert Colors|win.invert");
+  g_assert_cmpstr (i2, ==, "Attributes…|win.attributes; _Clear Image|win.clear-image");
+  section0 = g_menu_model_get_item_link (im, 0, G_MENU_LINK_SECTION);
+  flip = g_menu_model_get_item_link (section0, 0, G_MENU_LINK_SUBMENU);
+  rotate = g_menu_model_get_item_link (section0, 1, G_MENU_LINK_SUBMENU);
+  g_assert_nonnull (flip);
+  g_assert_nonnull (rotate);
+  f = describe_section (flip, 0);
+  r = describe_section (rotate, 0);
+  g_assert_cmpstr (f, ==, "Flip _Horizontal|win.flip-horizontal; Flip _Vertical|win.flip-vertical");
+  g_assert_cmpstr (r, ==, "Rotate _90°|win.rotate-90; Rotate 1_80°|win.rotate-180; Rotate _270°|win.rotate-270");
+  /* the keys */
+  g_assert_true (has_accel ("win.rotate-90", GDK_KEY_r, GDK_CONTROL_MASK));
+  g_assert_true (has_accel ("win.rotate-270", GDK_KEY_l, GDK_CONTROL_MASK));
+  g_assert_false (has_accel ("win.rotate-270", GDK_KEY_r, GDK_CONTROL_MASK | GDK_SHIFT_MASK));      /* the desktop's own (JOD's M1 a) */
+  g_assert_true (has_accel ("win.clear-image", GDK_KEY_n, GDK_CONTROL_MASK | GDK_SHIFT_MASK));
+  g_assert_true (has_accel ("win.attributes", GDK_KEY_e, GDK_CONTROL_MASK));
+  g_assert_false (has_accel ("win.invert", GDK_KEY_i, GDK_CONTROL_MASK));
+  g_assert_false (has_accel ("win.flip-horizontal", GDK_KEY_h, GDK_CONTROL_MASK));
+  section1 = g_menu_model_get_item_link (im, 1, G_MENU_LINK_SECTION);
+  g_assert_true (g_menu_model_get_item_attribute (section1, 0, "accel", "s", &accel));
+  g_assert_cmpstr (accel, ==, "<Control>i");
+  /* the menu writes the keys the way GTK does (the spec's "Ctrl+L" and "Shift+Ctrl+N") */
+  {
+    g_autofree char *l1 = gtk_accelerator_get_label (GDK_KEY_l, GDK_CONTROL_MASK);
+    g_autofree char *l2 = gtk_accelerator_get_label (GDK_KEY_n, GDK_CONTROL_MASK | GDK_SHIFT_MASK);
+
+    g_assert_cmpstr (l1, ==, "Ctrl+L");
+    g_assert_cmpstr (l2, ==, "Shift+Ctrl+N");
+  }
+  /* the canvas menu: a third section with Clear Image */
+  g_assert_cmpint (g_menu_model_get_n_items (canvas_menu), ==, 3);
+  c2 = describe_section (canvas_menu, 2);
+  g_assert_cmpstr (c2, ==, "_Clear Image|win.clear-image");
+  close_windows ();
+}
+
+/* AS-2 (REQ-0018-04, REQ-0018-09), the commands on a 3 x 2 picture, white but red at (0, 0) and blue at (2, 1): each puts them where
+   the spec says with the size, as one step, the title marked; Undo gives the picture back exactly, Redo the result; four turns of 90
+   are the picture, four steps. */
+static void
+as2_picture_transforms (void)
+{
+  static const struct { const char *action; int w, h, rx, ry, bx, by; } want[] = {
+    { "rotate-90", 2, 3, 1, 0, 0, 2 },
+    { "rotate-270", 2, 3, 0, 2, 1, 0 },
+    { "rotate-180", 3, 2, 2, 1, 0, 0 },
+    { "flip-horizontal", 3, 2, 2, 0, 0, 1 },
+    { "flip-vertical", 3, 2, 0, 1, 2, 0 },
+  };
+
+  for (size_t k = 0; k < G_N_ELEMENTS (want); k++)
+    {
+      EaselWindow *win;
+      EaselImage *img;
+
+      write_settings ("[new-picture]\nwidth=3\nheight=2\ncanvas-color=#FFFFFF\n");
+      win = start_window ();
+      img = marked_picture (win, 0, 0, 2, 1);
+      g_assert_false (easel_window_get_modified (win));
+      g_action_group_activate_action (G_ACTION_GROUP (win), want[k].action, NULL);
+      assert_size (win, want[k].w, want[k].h);
+      g_assert_cmphex (easel_image_get (img, want[k].rx, want[k].ry), ==, 0xFFFF0000u);
+      g_assert_cmphex (easel_image_get (img, want[k].bx, want[k].by), ==, 0xFF0000FFu);
+      g_assert_true (easel_window_get_modified (win));
+      g_assert_true (action_enabled (win, "undo"));
+      g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+      assert_size (win, 3, 2);
+      g_assert_cmphex (easel_image_get (img, 0, 0), ==, 0xFFFF0000u);
+      g_assert_cmphex (easel_image_get (img, 2, 1), ==, 0xFF0000FFu);
+      g_assert_cmpint (count_color (img, 0xFFFFFFFFu), ==, 4);
+      g_assert_false (easel_window_get_modified (win));
+      g_assert_false (action_enabled (win, "undo"));
+      g_action_group_activate_action (G_ACTION_GROUP (win), "redo", NULL);
+      assert_size (win, want[k].w, want[k].h);
+      g_assert_cmphex (easel_image_get (img, want[k].rx, want[k].ry), ==, 0xFFFF0000u);
+      close_windows ();
+    }
+  /* four turns of 90: the picture, four steps */
+  {
+    EaselWindow *win;
+    EaselImage *img;
+
+    write_settings ("[new-picture]\nwidth=3\nheight=2\ncanvas-color=#FFFFFF\n");
+    win = start_window ();
+    img = marked_picture (win, 0, 0, 2, 1);
+    for (int i = 0; i < 4; i++)
+      g_action_group_activate_action (G_ACTION_GROUP (win), "rotate-90", NULL);
+    assert_size (win, 3, 2);
+    g_assert_cmphex (easel_image_get (img, 0, 0), ==, 0xFFFF0000u);
+    g_assert_cmphex (easel_image_get (img, 2, 1), ==, 0xFF0000FFu);
+    for (int i = 0; i < 4; i++)
+      {
+        g_assert_true (action_enabled (win, "undo"));
+        g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+      }
+    g_assert_false (action_enabled (win, "undo"));
+    close_windows ();
+  }
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* AS-3 (REQ-0018-04): a 300 x 200 picture at 400 % scrolled: Ctrl+R (the action) makes it 200 x 300, the zoom stays, the scroll
+   position is kept as far as the new size allows; at 100 % the window draws the turned picture (the red mark of (0, 0) is now at
+   (199, 0)). */
+static void
+as3_turn_keeps_view (void)
+{
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  EaselImage *img;
+  GtkScrolledWindow *scroller;
+  GtkAdjustment *h, *v;
+  g_autofree uint32_t *drawn = NULL;
+  double h0, v0;
+  int w, hgt, cx, cy;
+
+  write_settings ("[new-picture]\nwidth=300\nheight=200\ncanvas-color=#FFFFFF\n");
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  img = marked_picture (win, 0, 0, 299, 199);
+  scroller = GTK_SCROLLED_WINDOW (gtk_widget_get_ancestor (GTK_WIDGET (canvas), GTK_TYPE_SCROLLED_WINDOW));
+  h = gtk_scrolled_window_get_hadjustment (scroller);
+  v = gtk_scrolled_window_get_vadjustment (scroller);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-large", NULL);
+  wait_for_layout (win);
+  g_assert_cmpint (easel_canvas_get_zoom (canvas), ==, 400);
+  gtk_adjustment_set_value (h, 100);
+  gtk_adjustment_set_value (v, 100);
+  wait_for_layout (win);
+  h0 = gtk_adjustment_get_value (h);                                              /* what the picture let it be */
+  v0 = gtk_adjustment_get_value (v);
+  g_assert_cmpfloat (v0, >, 0);                                                   /* it scrolls vertically: the window is not tall enough */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "rotate-90", NULL);
+  wait_for_layout (win);
+  assert_size (win, 200, 300);
+  g_assert_cmpint (easel_canvas_get_zoom (canvas), ==, 400);
+  g_assert_cmpfloat_with_epsilon (gtk_adjustment_get_value (h), MIN (h0, gtk_adjustment_get_upper (h) - gtk_adjustment_get_page_size (h)), 1.0);
+  g_assert_cmpfloat_with_epsilon (gtk_adjustment_get_value (v), MIN (v0, gtk_adjustment_get_upper (v) - gtk_adjustment_get_page_size (v)), 1.0);
+  /* at 100 %, drawn */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-normal", NULL);
+  wait_for_layout (win);
+  g_assert_cmpint (easel_canvas_get_zoom (canvas), ==, 100);
+  gtk_adjustment_set_value (h, 0);
+  gtk_adjustment_set_value (v, 0);
+  wait_for_next_frame (win);
+  drawn = render_pixels (win, &w, &hgt, &cx, &cy);
+  g_assert_cmphex (easel_image_get (img, 199, 0), ==, 0xFFFF0000u);
+  g_assert_cmphex (rendered_pixel (drawn, w, cx, cy, 199, 0), ==, 0xFFFF0000u);
+  g_assert_cmphex (rendered_pixel (drawn, w, cx, cy, 0, 0), ==, 0xFFFFFFFFu);
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* AS-4 (REQ-0018-05, REQ-0018-09): Invert Colors (the action the menu calls) on an all transparent picture is one step and marks the
+   title though nothing visible changed; the pixels are #FFFFFF00; again, #00000000; Undo takes one back. */
+static void
+as4_invert_transparent_step (void)
+{
+  EaselWindow *win;
+  EaselImage *img;
+
+  write_settings ("[new-picture]\nwidth=6\nheight=4\ncanvas-color=transparent\n");
+  win = start_window ();
+  img = (EaselImage *) easel_window_get_picture (win);
+  wait_for_layout (win);
+  g_assert_cmphex (img->px[0], ==, 0x00000000u);
+  g_assert_false (easel_window_get_modified (win));
+  g_assert_true (key_taken (win, GDK_KEY_i, GDK_CONTROL_MASK));                    /* Ctrl+I, no text box open: Invert Colors */
+  g_assert_cmphex (img->px[0], ==, 0x00FFFFFFu);
+  g_assert_cmphex (img->px[23], ==, 0x00FFFFFFu);
+  g_assert_false (key_taken (win, GDK_KEY_i, GDK_CONTROL_MASK | GDK_SHIFT_MASK) && img->px[0] != 0x00FFFFFFu);   /* Shift+Ctrl+I is not it */
+  g_assert_cmphex (img->px[0], ==, 0x00FFFFFFu);
+  g_assert_true (easel_window_get_modified (win));
+  g_assert_true (action_enabled (win, "undo"));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "invert", NULL);
+  g_assert_cmphex (img->px[0], ==, 0x00000000u);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_cmphex (img->px[0], ==, 0x00FFFFFFu);
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* AS-5 (REQ-0018-06, REQ-0018-03): a 20 x 20 white picture with a 4 x 4 red block lifted (Transparent mode) and moved to (2, 2) by the
+   arrow keys, a background of the palette: Clear Image puts the selection down (its step, red at (2, 2)), then every pixel is the
+   background as one more step; Undo once gives the picture with the red square at (2, 2); Clear Image on a picture all in the
+   background adds no step. */
+static void
+as5_clear_image (void)
+{
+  EaselWindow *win;
+  EaselImage *img;
+  EaselPaletteBar *bar;
+  uint32_t bg;
+  int sx, sy, sw, sh;
+  gboolean floating;
+
+  write_settings ("[new-picture]\nwidth=20\nheight=20\ncanvas-color=#FFFFFF\n");
+  win = start_window ();
+  img = (EaselImage *) easel_window_get_picture (win);
+  bar = easel_window_get_palette_bar (win);
+  wait_for_layout (win);
+  for (int y = 0; y < 4; y++)
+    for (int x = 0; x < 4; x++)
+      easel_image_set (img, x, y, 0xFFFF0000u);
+  easel_canvas_update (easel_window_get_canvas (win));
+  easel_palette_bar_press (bar, 3, 3, 1);                                       /* the background: a swatch of the palette */
+  bg = easel_window_get_background (win);
+  g_assert_cmphex (bg, !=, 0xFFFFFFFFu);
+  use_select (win);
+  g_signal_emit_by_name (find_mapped_by_tooltip (GTK_WIDGET (win), "Transparent: moving or clearing leaves a transparent hole"), "clicked");
+  shape_press_move (win, 1, 0, 0, 3, 3);
+  shape_release (win, 1);
+  for (int i = 0; i < 2; i++)
+    {
+      g_assert_true (key_taken (win, GDK_KEY_Right, 0));
+      g_assert_true (key_taken (win, GDK_KEY_Down, 0));
+    }
+  g_assert_true (easel_canvas_get_selection (easel_window_get_canvas (win), &sx, &sy, &sw, &sh, &floating));
+  g_assert_true (floating && sx == 2 && sy == 2);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "clear-image", NULL);
+  g_assert_false (easel_canvas_get_selection (easel_window_get_canvas (win), &sx, &sy, &sw, &sh, &floating));
+  g_assert_cmpint (count_color (img, bg), ==, 400);
+  g_assert_true (easel_window_get_modified (win));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_cmphex (easel_image_get (img, 2, 2), ==, 0xFFFF0000u);
+  g_assert_cmphex (easel_image_get (img, 5, 5), ==, 0xFFFF0000u);
+  g_assert_cmphex (easel_image_get (img, 0, 0), ==, 0x00000000u);                /* the hole of the Transparent mode */
+  g_assert_cmpint (count_color (img, 0xFFFF0000u), ==, 16);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "redo", NULL);
+  g_assert_cmpint (count_color (img, bg), ==, 400);
+  /* the picture is all background: Clear Image again adds no step, so one Undo takes back the first */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "clear-image", NULL);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_cmpint (count_color (img, 0xFFFF0000u), ==, 16);
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* AS-10 (REQ-0018-01, REQ-0018-03): with a text box open Ctrl+I is Italic (the key goes to the box, the picture is not inverted); the
+   Invert Colors of the menu puts the box down and then inverts the whole picture, two steps; a pending polygon is put down closed and
+   then the picture is turned, two steps. */
+static void
+as10_text_box_and_pending (void)
+{
+  EaselWindow *win;
+  EaselImage *img;
+  EaselCanvas *canvas;
+
+  write_settings ("[new-picture]\nwidth=60\nheight=40\ncanvas-color=#FFFFFF\n\n[text]\nfont=DejaVu Sans\nsize=12\n");
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  img = (EaselImage *) easel_window_get_picture (win);
+  wait_for_layout (win);
+  use_tool (win, "text");
+  shape_press_move (win, 1, 5, 5, 55, 35);
+  shape_release (win, 1);
+  type_keys (win, "ab");
+  easel_text_buffer_select (easel_canvas_text_buffer (canvas), 0, 2);
+  g_assert_true (key_taken (win, GDK_KEY_i, GDK_CONTROL_MASK));
+  g_assert_cmpint (run_style_at (win, 0).flags, ==, EASEL_TEXT_ITALIC);
+  g_assert_cmphex (easel_image_get (img, 0, 0), ==, 0xFFFFFFFFu);                /* not inverted */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "invert", NULL);          /* the menu's item */
+  g_assert_true (no_box (win));
+  g_assert_cmphex (easel_image_get (img, 0, 0), ==, 0xFF000000u);                /* the white picture inverted: black */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);            /* the inversion */
+  g_assert_cmphex (easel_image_get (img, 0, 0), ==, 0xFFFFFFFFu);
+  g_assert_cmpint (inked_in_box (win), >, 0);                                      /* the text is in the picture */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);            /* the put-down of the box */
+  g_assert_cmpint (inked_in_box (win), ==, 0);
+  g_assert_false (action_enabled (win, "undo"));
+  /* a pending polygon, then Ctrl+R: put down closed as shown, then the picture turned */
+  use_tool (win, "polygon");
+  wait_for_layout (win);
+  shape_press_move (win, 1, 5, 5, 30, 5);
+  shape_release (win, 1);
+  shape_press_move (win, 1, 30, 5, 30, 30);
+  shape_release (win, 1);
+  g_assert_true (easel_canvas_is_pending (canvas));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "rotate-90", NULL);
+  g_assert_false (easel_canvas_is_pending (canvas));
+  assert_size (win, 40, 60);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);            /* the turn */
+  assert_size (win, 60, 40);
+  g_assert_cmpint (count_color (img, easel_window_get_foreground (win)), >, 0);  /* the polygon is in the picture */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);            /* the polygon */
+  g_assert_cmpint (count_color (img, easel_window_get_foreground (win)), ==, 0);
+  g_assert_false (action_enabled (win, "undo"));
+  /* a text box whose put-down cannot get its memory stays open and the command is not done (REQ-0018-03, REQ-0017-18) */
+  use_tool (win, "text");
+  shape_press_move (win, 1, 5, 5, 55, 35);
+  shape_release (win, 1);
+  type_keys (win, "Hi");
+  easel_canvas_set_text_step_limit (canvas, 0);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "rotate-90", NULL);
+  assert_alert (win, TEXT_ADD_HEADING, TEXT_ADD_BODY);
+  assert_size (win, 60, 40);
+  g_assert_true (box_text_is (win, "Hi"));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "invert", NULL);
+  assert_alert (win, TEXT_ADD_HEADING, TEXT_ADD_BODY);
+  g_assert_cmphex (easel_image_get (img, 0, 0), ==, 0xFFFFFFFFu);
+  easel_canvas_set_text_step_limit (canvas, (size_t) -1);
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* AS-11 (REQ-0018-01): with a mouse button held for a pencil stroke or a Pan drag, the commands do nothing and the drag goes on. */
+static void
+as11_ignored_while_held (void)
+{
+  static const char *actions[] = { "rotate-90", "rotate-180", "rotate-270", "flip-horizontal", "flip-vertical", "invert", "clear-image" };
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  EaselImage *img = (EaselImage *) easel_window_get_picture (win);
+  double x, y;
+  int w = img->width, h = img->height;
+
+  wait_for_layout (win);
+  use_tool (win, "pencil");
+  canvas_point (win, 10.5, 10.5, &x, &y);
+  easel_canvas_press (canvas, 1, x, y);
+  g_assert_true (easel_canvas_is_stroking (canvas));
+  for (size_t i = 0; i < G_N_ELEMENTS (actions); i++)
+    g_action_group_activate_action (G_ACTION_GROUP (win), actions[i], NULL);
+  assert_size (win, w, h);
+  g_assert_cmphex (easel_image_get (img, 10, 10), ==, 0xFF000000u);              /* the stroke's first pixel, not inverted or cleared */
+  g_assert_true (easel_canvas_is_stroking (canvas));
+  canvas_point (win, 20.5, 10.5, &x, &y);
+  easel_canvas_motion (canvas, x, y);
+  easel_canvas_release (canvas, 1);
+  g_assert_cmphex (easel_image_get (img, 15, 10), ==, 0xFF000000u);              /* the stroke went on */
+  g_assert_cmphex (easel_image_get (img, 0, 0), ==, easel_window_get_background (win));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);            /* one step: the stroke alone */
+  g_assert_false (action_enabled (win, "undo"));
+  /* a Pan drag */
+  use_tool (win, "pan");
+  canvas_point (win, 10.5, 10.5, &x, &y);
+  easel_canvas_press (canvas, 1, x, y);
+  for (size_t i = 0; i < G_N_ELEMENTS (actions); i++)
+    g_action_group_activate_action (G_ACTION_GROUP (win), actions[i], NULL);
+  assert_size (win, w, h);
+  g_assert_false (action_enabled (win, "undo"));
+  easel_canvas_release (canvas, 1);
+  close_windows ();
+}
+
+/* AS-12 (REQ-0018-10), the picture part: with the memory for the command's new pixels made unavailable (the window's test limit), each
+   command shows its dialog once, with the picture and the history unchanged. (The Undo and Redo of a buffer step swap buffers and
+   allocate nothing, so no input makes them fail.) */
+static void
+as12_transform_dialogs (void)
+{
+  static const struct { const char *action, *heading; } cases[] = {
+    { "rotate-90", "Could Not Rotate the Picture" },
+    { "rotate-180", "Could Not Rotate the Picture" },
+    { "flip-horizontal", "Could Not Flip the Picture" },
+    { "flip-vertical", "Could Not Flip the Picture" },
+    { "invert", "Could Not Invert the Colors" },
+    { "clear-image", "Could Not Clear the Picture" },
+  };
+  EaselWindow *win = start_window ();
+  EaselImage *img = marked_picture (win, 0, 0, 299, 199);
+  g_autofree uint32_t *before = g_memdup2 (img->px, 300 * 200 * sizeof (uint32_t));
+
+  for (size_t k = 0; k < G_N_ELEMENTS (cases); k++)
+    {
+      easel_window_set_transform_limit (win, 3);
+      g_action_group_activate_action (G_ACTION_GROUP (win), cases[k].action, NULL);
+      assert_alert (win, cases[k].heading, MEMORY_BODY);
+      assert_size (win, 300, 200);
+      g_assert_cmpint (memcmp (img->px, before, 300 * 200 * sizeof (uint32_t)), ==, 0);
+      g_assert_false (action_enabled (win, "undo"));
+      g_assert_false (easel_window_get_modified (win));
+    }
+  easel_window_set_transform_limit (win, G_MAXSIZE);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "rotate-90", NULL);
+  assert_size (win, 200, 300);
+  close_windows ();
+}
+
+/* AS-11 (REQ-0018-01): with a text box open and the focus in a text field of the font card (the size, the family's search), Ctrl+I, Ctrl+R,
+   Shift+Ctrl+R and Shift+Ctrl+N do nothing to the picture: the key goes to the field (the window's key handler lets it through, and
+   the accelerators' actions leave the picture alone, as Undo goes to the field); with the focus in the box they act again. */
+static void
+as11_keys_in_an_entry (void)
+{
+  static const char *actions[] = { "rotate-90", "rotate-270", "rotate-180", "flip-horizontal", "flip-vertical", "invert", "clear-image" };
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  EaselFontCard *card;
+  EaselImage *img;
+
+  write_settings ("[new-picture]\nwidth=60\nheight=40\ncanvas-color=#FFFFFF\n\n[text]\nfont=DejaVu Sans\nsize=12\n");
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  card = easel_window_get_font_card (win);
+  img = (EaselImage *) easel_window_get_picture (win);
+  wait_for_layout (win);
+  use_tool (win, "text");
+  shape_press_move (win, 1, 5, 5, 55, 35);
+  shape_release (win, 1);
+  type_keys (win, "ab");
+  /* the focus in the size field */
+  gtk_widget_grab_focus (GTK_WIDGET (easel_font_card_get_size (card)));
+  g_assert_false (focus_not_in_card (win));
+  g_assert_false (key_taken (win, GDK_KEY_i, GDK_CONTROL_MASK));                 /* it goes to the field */
+  g_assert_cmpint (run_style_at (win, 0).flags, ==, 0);                           /* not Italic either */
+  g_assert_cmphex (easel_image_get (img, 0, 0), ==, 0xFFFFFFFFu);
+  for (size_t i = 0; i < G_N_ELEMENTS (actions); i++)
+    g_action_group_activate_action (G_ACTION_GROUP (win), actions[i], NULL);
+  assert_size (win, 60, 40);
+  g_assert_cmphex (easel_image_get (img, 0, 0), ==, 0xFFFFFFFFu);
+  g_assert_true (box_text_is (win, "ab"));
+  g_assert_false (no_box (win));
+  /* the focus in the family's search field */
+  easel_font_card_open_family (card);
+  for (gint64 deadline = g_get_monotonic_time () + 3 * G_USEC_PER_SEC;
+       (!easel_font_card_family_is_open (card) || gtk_root_get_focus (GTK_ROOT (win)) == NULL
+        || gtk_widget_get_ancestor (gtk_root_get_focus (GTK_ROOT (win)), GTK_TYPE_SEARCH_ENTRY) == NULL)
+       && g_get_monotonic_time () < deadline;)
+    g_main_context_iteration (NULL, FALSE);
+  g_assert_true (easel_font_card_family_is_open (card));
+  g_assert_false (key_taken (win, GDK_KEY_i, GDK_CONTROL_MASK));
+  for (size_t i = 0; i < G_N_ELEMENTS (actions); i++)
+    g_action_group_activate_action (G_ACTION_GROUP (win), actions[i], NULL);
+  assert_size (win, 60, 40);
+  g_assert_cmphex (easel_image_get (img, 0, 0), ==, 0xFFFFFFFFu);
+  g_assert_false (no_box (win));
+  easel_font_card_cancel_family (card);
+  /* the focus in the box again: a command acts, putting the box down first */
+  g_assert_true (focus_not_in_card (win));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "rotate-90", NULL);
+  g_assert_true (no_box (win));
+  assert_size (win, 40, 60);
+  (void) canvas;
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* REQ-0018-01 with the layouts (JOD's M1 a, step 9): on a Ukrainian or Russian layout the key at Ctrl+I's place reports "ш", yet it
+   inverts the picture, and with a text box open it is Italic; the keys at B's and U's places (и, г) are Bold and Underline. The test
+   hands the key handler the Cyrillic keyval with the hardware code of the Latin key (this session's keymap has no Cyrillic layout). */
+static void
+as1_keys_any_layout (void)
+{
+  EaselWindow *win;
+  EaselImage *img;
+  EaselCanvas *canvas;
+
+  write_settings ("[new-picture]\nwidth=60\nheight=40\ncanvas-color=#FFFFFF\n\n[text]\nfont=DejaVu Sans\nsize=12\n");
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  img = (EaselImage *) easel_window_get_picture (win);
+  wait_for_layout (win);
+  g_assert_true (key_taken_code (win, GDK_KEY_Cyrillic_sha, keycode_of (GDK_KEY_i), GDK_CONTROL_MASK));
+  g_assert_cmphex (easel_image_get (img, 0, 0), ==, 0xFF000000u);                /* inverted: Invert Colors */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  use_tool (win, "text");
+  shape_press_move (win, 1, 5, 5, 55, 35);
+  shape_release (win, 1);
+  type_keys (win, "ab");
+  easel_text_buffer_select (easel_canvas_text_buffer (canvas), 0, 2);
+  g_assert_true (key_taken_code (win, GDK_KEY_Cyrillic_sha, keycode_of (GDK_KEY_i), GDK_CONTROL_MASK));
+  g_assert_cmpint (run_style_at (win, 0).flags, ==, EASEL_TEXT_ITALIC);
+  g_assert_true (key_taken_code (win, GDK_KEY_Cyrillic_i, keycode_of (GDK_KEY_b), GDK_CONTROL_MASK));
+  g_assert_cmpint (run_style_at (win, 0).flags, ==, EASEL_TEXT_ITALIC | EASEL_TEXT_BOLD);
+  g_assert_true (key_taken_code (win, GDK_KEY_Cyrillic_ghe, keycode_of (GDK_KEY_u), GDK_CONTROL_MASK));
+  g_assert_cmpint (run_style_at (win, 0).flags, ==, EASEL_TEXT_ITALIC | EASEL_TEXT_BOLD | EASEL_TEXT_UNDERLINE);
+  /* the size keys and the popover's key on the Cyrillic keys of their places (х is [, ъ is ], а is F) */
+  g_assert_true (key_taken_code (win, GDK_KEY_Cyrillic_hardsign, keycode_of (GDK_KEY_bracketright), GDK_CONTROL_MASK));
+  g_assert_cmpint (run_style_at (win, 0).size_pt, ==, 13);
+  g_assert_true (key_taken_code (win, GDK_KEY_Cyrillic_ha, keycode_of (GDK_KEY_bracketleft), GDK_CONTROL_MASK));
+  g_assert_cmpint (run_style_at (win, 0).size_pt, ==, 12);
+  /* Ctrl with Alt (AltGr on some setups) is not mapped: that key is typed, not a shortcut */
+  easel_text_buffer_select (easel_canvas_text_buffer (canvas), 0, 2);
+  key_taken_code (win, GDK_KEY_Cyrillic_ghe, keycode_of (GDK_KEY_u), GDK_CONTROL_MASK | GDK_ALT_MASK);
+  key_taken_code (win, GDK_KEY_Cyrillic_hardsign, keycode_of (GDK_KEY_bracketright), GDK_CONTROL_MASK | GDK_ALT_MASK);
+  g_assert_cmpint (run_style_at (win, 0).size_pt, ==, 12);
+  g_assert_cmpint (run_style_at (win, 0).flags, ==, EASEL_TEXT_ITALIC | EASEL_TEXT_BOLD | EASEL_TEXT_UNDERLINE);   /* no second Underline toggle */
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* REQ-0018-01, the mapping limited to keys of non-Latin scripts (T009, the check's F4): a Latin letter with a diacritic, as a Czech layout
+   writes them, is not mapped to the Latin key at its place: Ctrl+ú at the place of "[" does not make the text smaller, Ctrl+ě and Ctrl+š
+   at the places of "2" and "3" do nothing to the style, and Ctrl+í at the place of "9" does nothing either; a Cyrillic letter still is
+   mapped (ш at I's place is Italic). */
+static void
+as1_keys_latin_accents_not_mapped (void)
+{
+  EaselWindow *win;
+  EaselCanvas *canvas;
+
+  write_settings ("[new-picture]\nwidth=60\nheight=40\ncanvas-color=#FFFFFF\n\n[text]\nfont=DejaVu Sans\nsize=12\n");
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  wait_for_layout (win);
+  use_tool (win, "text");
+  shape_press_move (win, 1, 5, 5, 55, 35);
+  shape_release (win, 1);
+  type_keys (win, "ab");
+  easel_text_buffer_select (easel_canvas_text_buffer (canvas), 0, 2);
+  g_assert_cmpint (run_style_at (win, 0).size_pt, ==, 12);
+  key_taken_code (win, GDK_KEY_uacute, keycode_of (GDK_KEY_bracketleft), GDK_CONTROL_MASK);
+  g_assert_cmpint (run_style_at (win, 0).size_pt, ==, 12);                         /* not Ctrl+[ */
+  key_taken_code (win, GDK_KEY_ecaron, keycode_of (GDK_KEY_2), GDK_CONTROL_MASK);
+  key_taken_code (win, GDK_KEY_scaron, keycode_of (GDK_KEY_3), GDK_CONTROL_MASK);
+  key_taken_code (win, GDK_KEY_iacute, keycode_of (GDK_KEY_9), GDK_CONTROL_MASK);
+  g_assert_cmpint (run_style_at (win, 0).size_pt, ==, 12);
+  g_assert_cmpint (run_style_at (win, 0).flags, ==, 0);
+  g_assert_true (key_taken_code (win, GDK_KEY_Cyrillic_sha, keycode_of (GDK_KEY_i), GDK_CONTROL_MASK));
+  g_assert_cmpint (run_style_at (win, 0).flags, ==, EASEL_TEXT_ITALIC);           /* a Cyrillic letter is still mapped */
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* A 20 x 20 white picture with a 4 x 4 red square at (0, 0), the background color a swatch of the palette (not white), Select active
+   in the mode asked for, the square marked: returns the picture and the background. */
+static EaselImage *
+clear_case (EaselWindow *win, const char *mode_tooltip, uint32_t *bg)
+{
+  EaselImage *img = (EaselImage *) easel_window_get_picture (win);
+
+  wait_for_layout (win);
+  for (int y = 0; y < 4; y++)
+    for (int x = 0; x < 4; x++)
+      easel_image_set (img, x, y, 0xFFFF0000u);
+  easel_canvas_update (easel_window_get_canvas (win));
+  easel_palette_bar_press (easel_window_get_palette_bar (win), 3, 3, 1);
+  *bg = easel_window_get_background (win);
+  g_assert_cmphex (*bg, !=, 0xFFFFFFFFu);
+  use_select (win);
+  g_signal_emit_by_name (find_mapped_by_tooltip (GTK_WIDGET (win), mode_tooltip), "clicked");
+  shape_press_move (win, 1, 0, 0, 3, 3);
+  shape_release (win, 1);
+  g_assert_true (selection_is (win, 0, 0, 4, 4));
+  return img;
+}
+
+/* AS-5, REQ-0018-03 (T009, the check's F2): Clear Image with a marked selection removes it (nothing is lifted, no hole) and clears the
+   whole picture to the background as one step; Undo gives the picture back exactly, with nothing more to undo. */
+static void
+as5_clear_image_marked (void)
+{
+  EaselWindow *win;
+  EaselImage *img;
+  g_autoptr (EaselImage) start = NULL;
+  uint32_t bg;
+  int sx, sy, sw, sh;
+  gboolean floating;
+
+  write_settings ("[new-picture]\nwidth=20\nheight=20\ncanvas-color=#FFFFFF\n");
+  win = start_window ();
+  img = clear_case (win, "Opaque: keep background color", &bg);
+  start = easel_image_new (20, 20, 0);
+  memcpy (start->px, img->px, 20 * 20 * sizeof (uint32_t));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "clear-image", NULL);
+  g_assert_false (easel_canvas_get_selection (easel_window_get_canvas (win), &sx, &sy, &sw, &sh, &floating));
+  g_assert_cmpint (count_color (img, bg), ==, 400);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  assert_same_picture (img, start);
+  g_assert_false (action_enabled (win, "undo"));
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* AS-5 with REQ-0013-19 (T009, the check's F2): a floating selection moved by (2, 2) whose put-down cannot get the memory for its step:
+   Clear Image puts the selection's pixels back as before the lift, removes the selection, clears the whole picture to the background as one
+   step, and then shows "Could Not Move the Selection"; Undo gives the picture as before the lift, with nothing more to undo. */
+static void
+as5_clear_image_put_down_refused (void)
+{
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  EaselImage *img;
+  g_autoptr (EaselImage) start = NULL;
+  uint32_t bg;
+  int sx, sy, sw, sh;
+  gboolean floating;
+
+  write_settings ("[new-picture]\nwidth=20\nheight=20\ncanvas-color=#FFFFFF\n");
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  img = clear_case (win, "Transparent: moving or clearing leaves a transparent hole", &bg);
+  start = easel_image_new (20, 20, 0);
+  memcpy (start->px, img->px, 20 * 20 * sizeof (uint32_t));
+  for (int i = 0; i < 2; i++)
+    {
+      g_assert_true (key_taken (win, GDK_KEY_Right, 0));
+      g_assert_true (key_taken (win, GDK_KEY_Down, 0));
+    }
+  g_assert_true (easel_canvas_get_selection (canvas, &sx, &sy, &sw, &sh, &floating));
+  g_assert_true (floating && sx == 2 && sy == 2);
+  easel_canvas_set_selection_step_limit (canvas, 100);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "clear-image", NULL);
+  assert_alert (win, MOVE_HEADING, MOVE_BODY);
+  g_assert_false (easel_canvas_get_selection (canvas, &sx, &sy, &sw, &sh, &floating));
+  g_assert_cmpint (count_color (img, bg), ==, 400);                               /* the clear went on */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  assert_same_picture (img, start);                                               /* the pixels as before the lift */
+  g_assert_false (action_enabled (win, "undo"));
+  easel_canvas_set_selection_step_limit (canvas, SIZE_MAX);
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* ---- 0018 T004: Flip, turn and invert of a selection ---- */
+
+/* AS-1 (REQ-0018-02), the selection menu: its third section holds Flip ›, Rotate › and Invert Colors, the same submenus as the Image
+   menu, for a selection made with Select and for one made with Free-Form Select; it opens on the secondary press on either. */
+static void
+as1_selection_menu (void)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  GtkPopoverMenu *menu = easel_window_get_selection_menu (win);
+  GMenuModel *sel = gtk_popover_menu_get_menu_model (menu);
+  g_autoptr (GMenuModel) section = NULL, flip = NULL, rotate = NULL;
+  g_autofree char *s2 = NULL, *f = NULL, *r = NULL, *accel = NULL;
+
+  g_assert_cmpint (g_menu_model_get_n_items (sel), ==, 3);
+  s2 = describe_section (sel, 2);
+  g_assert_cmpstr (s2, ==, "_Flip|(null); _Rotate|(null); _Invert Colors|win.invert");
+  section = g_menu_model_get_item_link (sel, 2, G_MENU_LINK_SECTION);
+  flip = g_menu_model_get_item_link (section, 0, G_MENU_LINK_SUBMENU);
+  rotate = g_menu_model_get_item_link (section, 1, G_MENU_LINK_SUBMENU);
+  f = describe_section (flip, 0);
+  r = describe_section (rotate, 0);
+  g_assert_cmpstr (f, ==, "Flip _Horizontal|win.flip-horizontal; Flip _Vertical|win.flip-vertical");
+  g_assert_cmpstr (r, ==, "Rotate _90°|win.rotate-90; Rotate 1_80°|win.rotate-180; Rotate _270°|win.rotate-270");
+  g_assert_true (g_menu_model_get_item_attribute (section, 2, "accel", "s", &accel));
+  g_assert_cmpstr (accel, ==, "<Control>i");
+  /* it opens on a selection of either tool */
+  use_select (win);
+  shape_press_move (win, 1, 1, 1, 5, 4);
+  shape_release (win, 1);
+  shape_press_move (win, 3, 3, 2, 3, 2);
+  shape_release (win, 3);
+  g_assert_true (gtk_widget_get_visible (GTK_WIDGET (menu)));
+  gtk_popover_popdown (GTK_POPOVER (menu));
+  use_free_select (win);
+  shape_press_move (win, 1, 10, 10, 20, 10);
+  easel_canvas_motion (canvas, 0, 0);
+  close_windows ();
+}
+
+/* AS-6 (REQ-0018-03, REQ-0018-07, REQ-0018-08): a 4 x 2 marked selection at (10, 10) in Opaque mode with the white background: Rotate 90°
+   (the action the menus call) lifts it and turns it, floating 2 x 4 at (10, 10), the status bar showing 2 × 4, no step and no
+   modified mark yet; Esc puts it down as one step: the old rectangle is white (the hole) but for the turned pixels, which are the old
+   (x, y) at (1 - y, x); Undo gives the picture as before the lift. */
+static void
+as6_turn_marked_selection (void)
+{
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  EaselImage *img;
+  g_autofree uint32_t *start = NULL;
+  uint32_t color[4][2];
+  int sx, sy, sw, sh;
+  gboolean floating;
+
+  write_settings ("[new-picture]\nwidth=40\nheight=30\ncanvas-color=#FFFFFF\n");
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  img = (EaselImage *) easel_window_get_picture (win);
+  wait_for_layout (win);
+  for (int y = 0; y < 2; y++)
+    for (int x = 0; x < 4; x++)
+      {
+        color[x][y] = 0xFF000000u | (uint32_t) (1 + y * 4 + x) * 0x010203u;
+        easel_image_set (img, 10 + x, 10 + y, color[x][y]);
+      }
+  easel_canvas_update (canvas);
+  start = g_memdup2 (img->px, 40 * 30 * sizeof (uint32_t));
+  use_select (win);
+  g_signal_emit_by_name (find_mapped_by_tooltip (GTK_WIDGET (win), "Opaque: keep background color"), "clicked");
+  shape_press_move (win, 1, 10, 10, 13, 11);
+  shape_release (win, 1);
+  g_assert_true (selection_is (win, 10, 10, 4, 2));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "rotate-90", NULL);
+  g_assert_true (selection_is (win, 10, 10, 2, 4));
+  g_assert_true (easel_canvas_get_selection (canvas, &sx, &sy, &sw, &sh, &floating));
+  g_assert_true (floating);
+  g_assert_cmpstr (easel_status_bar_get_text (easel_window_get_status_bar (win), EASEL_STATUS_SELECTION), ==, "2 × 4");
+  g_assert_false (easel_window_get_modified (win));
+  assert_size (win, 40, 30);                                                       /* the picture is not turned */
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+  g_assert_true (easel_window_get_modified (win));
+  for (int y = 0; y < 2; y++)
+    for (int x = 0; x < 4; x++)
+      g_assert_cmphex (easel_image_get (img, 10 + (1 - y), 10 + x), ==, color[x][y]);
+  for (int x = 2; x < 4; x++)
+    for (int y = 0; y < 2; y++)
+      g_assert_cmphex (easel_image_get (img, 10 + x, 10 + y), ==, 0xFFFFFFFFu);    /* the hole, not covered by the turned selection */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_cmpint (memcmp (img->px, start, 40 * 30 * sizeof (uint32_t)), ==, 0);
+  g_assert_false (action_enabled (win, "undo"));
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* AS-6, REQ-0018-08 (the second part): a marked 4 x 2 selection at (10, 10) turned by Rotate 90° and flipped by Flip Horizontal floats;
+   Undo before it is put down forgets it all (no selection, the picture as before, nothing to Undo or Redo); and turned again and put
+   down, Undo gives the picture as before the lift and Redo the turned result, exactly one step each way. */
+static void
+as8_turn_undo_redo (void)
+{
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  EaselImage *img;
+  g_autoptr (EaselImage) start = NULL;
+  int sx, sy, sw, sh;
+  gboolean floating;
+
+  for (int put_down = 0; put_down < 2; put_down++)
+    {
+      write_settings ("[new-picture]\nwidth=40\nheight=30\ncanvas-color=#FFFFFF\n");
+      win = start_window ();
+      canvas = easel_window_get_canvas (win);
+      img = (EaselImage *) easel_window_get_picture (win);
+      wait_for_layout (win);
+      for (int y = 0; y < 2; y++)
+        for (int x = 0; x < 4; x++)
+          easel_image_set (img, 10 + x, 10 + y, 0xFF000000u | (uint32_t) (1 + y * 4 + x) * 0x010203u);
+      easel_canvas_update (canvas);
+      start = easel_image_new (40, 30, 0);
+      memcpy (start->px, img->px, 40 * 30 * sizeof (uint32_t));
+      use_select (win);
+      g_signal_emit_by_name (find_mapped_by_tooltip (GTK_WIDGET (win), "Opaque: keep background color"), "clicked");
+      shape_press_move (win, 1, 10, 10, 13, 11);
+      shape_release (win, 1);
+      g_action_group_activate_action (G_ACTION_GROUP (win), "rotate-90", NULL);
+      g_action_group_activate_action (G_ACTION_GROUP (win), "flip-horizontal", NULL);
+      g_assert_true (selection_is (win, 10, 10, 2, 4));
+      g_assert_false (easel_window_get_modified (win));
+      if (!put_down)
+        {
+          g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+          g_assert_false (easel_canvas_get_selection (canvas, &sx, &sy, &sw, &sh, &floating));
+          assert_same_picture (img, start);
+          g_assert_false (action_enabled (win, "undo"));
+          g_assert_false (action_enabled (win, "redo"));
+        }
+      else
+        {
+          g_autofree uint32_t *turned = NULL;
+
+          g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+          turned = g_memdup2 (img->px, 40 * 30 * sizeof (uint32_t));
+          g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+          assert_same_picture (img, start);
+          g_assert_false (action_enabled (win, "undo"));                              /* exactly one step */
+          g_assert_true (action_enabled (win, "redo"));
+          g_action_group_activate_action (G_ACTION_GROUP (win), "redo", NULL);
+          g_assert_cmpint (memcmp (img->px, turned, 40 * 30 * sizeof (uint32_t)), ==, 0);
+          g_assert_false (action_enabled (win, "redo"));
+        }
+      close_windows ();
+    }
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* One run of AS-7 (REQ-0018-07): a 4 x 1 selection of the colors A B C D lifted and made 2 wide by its right handle (showing B D, the
+   nearest pixels), Flip Horizontal (D B, the flip of what is shown), and, when `back`, made 4 wide again (D C B A, the lifted pixels
+   flipped); put down by Esc. */
+static void
+flip_stretched_run (gboolean back)
+{
+  static const uint32_t A = 0xFFAA0000u, B = 0xFF00BB00u, C = 0xFF0000CCu, D = 0xFFDDDD00u, WHITE_ = 0xFFFFFFFFu;
+  EaselWindow *win;
+  EaselImage *img;
+
+  write_settings ("[new-picture]\nwidth=40\nheight=10\ncanvas-color=#FFFFFF\n");
+  win = start_window ();
+  img = (EaselImage *) easel_window_get_picture (win);
+  wait_for_layout (win);
+  easel_image_set (img, 10, 5, A);
+  easel_image_set (img, 11, 5, B);
+  easel_image_set (img, 12, 5, C);
+  easel_image_set (img, 13, 5, D);
+  easel_canvas_update (easel_window_get_canvas (win));
+  use_select (win);
+  g_signal_emit_by_name (find_mapped_by_tooltip (GTK_WIDGET (win), "Opaque: keep background color"), "clicked");
+  shape_press_move (win, 1, 10, 5, 13, 5);
+  shape_release (win, 1);
+  g_assert_true (selection_is (win, 10, 5, 4, 1));
+  drag_sel_handle (win, EASEL_SEL_HANDLE_R, -2, 0);
+  g_assert_true (selection_is (win, 10, 5, 2, 1));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "flip-horizontal", NULL);
+  g_assert_true (selection_is (win, 10, 5, 2, 1));
+  if (back)
+    {
+      drag_sel_handle (win, EASEL_SEL_HANDLE_R, 2, 0);
+      g_assert_true (selection_is (win, 10, 5, 4, 1));
+    }
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+  if (back)
+    {
+      g_assert_cmphex (easel_image_get (img, 10, 5), ==, D);
+      g_assert_cmphex (easel_image_get (img, 11, 5), ==, C);
+      g_assert_cmphex (easel_image_get (img, 12, 5), ==, B);
+      g_assert_cmphex (easel_image_get (img, 13, 5), ==, A);
+    }
+  else
+    {
+      g_assert_cmphex (easel_image_get (img, 10, 5), ==, D);
+      g_assert_cmphex (easel_image_get (img, 11, 5), ==, B);
+      g_assert_cmphex (easel_image_get (img, 12, 5), ==, WHITE_);                  /* the hole of the 4 x 1 the selection was lifted from */
+      g_assert_cmphex (easel_image_get (img, 13, 5), ==, WHITE_);
+    }
+  close_windows ();
+}
+
+/* AS-7 (REQ-0018-07): the flip of a selection made smaller is the flip of what is shown, and made as big as it was it shows the lifted
+   pixels flipped, exactly. */
+static void
+as7_flip_stretched (void)
+{
+  flip_stretched_run (FALSE);
+  flip_stretched_run (TRUE);
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* AS-12 (REQ-0018-10), the selection part: a marked selection whose lift cannot get its memory shows REQ-0013-19's dialog and stays
+   marked; a floating one whose new image cannot be had shows the dialog of its command ("Could Not Flip / Rotate the Selection") and
+   stays as it was, its rectangle and its floating state; Invert Colors, which needs no memory while no copy uses the pixels, works
+   under the same limit, and with a copy left by a Ctrl move (which keeps the old pixels) it is refused with "Could Not Invert the
+   Selection". */
+static void
+as12_selection_dialogs (void)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  EaselImage *img = marked_picture (win, 12, 12, 14, 13);
+  g_autofree uint32_t *before = g_memdup2 (img->px, 300 * 200 * sizeof (uint32_t));
+  int sx, sy, sw, sh;
+  gboolean floating;
+
+  use_select (win);
+  shape_press_move (win, 1, 10, 10, 15, 14);
+  shape_release (win, 1);
+  g_assert_true (selection_is (win, 10, 10, 6, 5));
+  /* the lift cannot be had */
+  easel_canvas_set_selection_lift_limit (canvas, 3);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "rotate-90", NULL);
+  assert_alert (win, MOVE_HEADING, MOVE_BODY);
+  g_assert_true (selection_is (win, 10, 10, 6, 5));
+  g_assert_true (easel_canvas_get_selection (canvas, &sx, &sy, &sw, &sh, &floating));
+  g_assert_false (floating);
+  g_assert_cmpint (memcmp (img->px, before, 300 * 200 * sizeof (uint32_t)), ==, 0);
+  /* floating (a flip lifts it), then the new image cannot be had */
+  easel_canvas_set_selection_lift_limit (canvas, SIZE_MAX);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "flip-vertical", NULL);
+  g_assert_true (easel_canvas_get_selection (canvas, &sx, &sy, &sw, &sh, &floating));
+  g_assert_true (floating);
+  easel_canvas_set_selection_lift_limit (canvas, 3);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "flip-horizontal", NULL);
+  assert_alert (win, "Could Not Flip the Selection", MEMORY_BODY);
+  g_assert_true (selection_is (win, 10, 10, 6, 5));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "rotate-90", NULL);
+  assert_alert (win, "Could Not Rotate the Selection", MEMORY_BODY);
+  g_assert_true (selection_is (win, 10, 10, 6, 5));
+  /* Invert Colors with no copy is done where the pixels are: no memory, no dialog */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "invert", NULL);
+  g_assert_null (open_alert (win));
+  /* a Ctrl move leaves a copy of the pixels: Invert Colors then needs the memory to keep them */
+  easel_canvas_set_selection_lift_limit (canvas, SIZE_MAX);
+  easel_canvas_set_ctrl (canvas, TRUE);
+  drag_selection (win, 12, 12, 15, 12);
+  easel_canvas_set_ctrl (canvas, FALSE);
+  g_assert_true (selection_is (win, 13, 10, 6, 5));
+  easel_canvas_set_selection_lift_limit (canvas, 3);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "invert", NULL);
+  assert_alert (win, "Could Not Invert the Selection", MEMORY_BODY);
+  g_assert_true (selection_is (win, 13, 10, 6, 5));
+  easel_canvas_set_selection_lift_limit (canvas, SIZE_MAX);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "rotate-90", NULL);
+  g_assert_true (selection_is (win, 13, 10, 5, 6));
+  close_windows ();
+}
+
+/* ---- 0018 T005: the line, the size and the handles of a selection after a turn ---- */
+
+/* A 40 x 30 white picture whose L (the box of 4 x 3 at (3, 2): the two left columns of its three rows and its whole last row) has eight
+   different colors, Free-Form Select in Opaque mode, the L traced by the pointer through its corners: marked, its box (3, 2, 4, 3).
+   Returns the colors by the L's own (x, y). */
+static void
+traced_l (EaselWindow *win, uint32_t color[4][3])
+{
+  static const int corners[] = { 3, 2, 5, 2, 5, 4, 7, 4, 7, 5, 3, 5 };
+  EaselImage *img = (EaselImage *) easel_window_get_picture (win);
+  int k = 0;
+
+  wait_for_layout (win);
+  for (int y = 0; y < 3; y++)
+    for (int x = 0; x < 4; x++)
+      if (x < 2 || y == 2)
+        {
+          color[x][y] = 0xFF000000u | (uint32_t) (1 + k++) * 0x010203u;
+          easel_image_set (img, 3 + x, 2 + y, color[x][y]);
+        }
+  easel_canvas_update (easel_window_get_canvas (win));
+  use_free_select (win);
+  g_signal_emit_by_name (find_mapped_by_tooltip (GTK_WIDGET (win), "Opaque: keep background color"), "clicked");
+  trace_corners (win, corners, 6);
+  g_assert_true (selection_is (win, 3, 2, 4, 3));
+}
+
+/* The line of the free-form selection now is these n corners, at this offset. */
+static void
+assert_line (EaselCanvas *canvas, const int *want, size_t want_n, int want_dx, int want_dy)
+{
+  size_t n;
+  int dx, dy;
+  const int *xy = easel_canvas_get_selection_path (canvas, &n, &dx, &dy);
+
+  g_assert_nonnull (xy);
+  g_assert_cmpuint (n, ==, want_n);
+  for (size_t i = 0; i < 2 * want_n; i++)
+    g_assert_cmpint (xy[i], ==, want[i]);
+  g_assert_cmpint (dx, ==, want_dx);
+  g_assert_cmpint (dy, ==, want_dy);
+}
+
+/* AS-8 (REQ-0018-07): the L turned by Rotate 90° keeps its top-left corner and is 3 x 4; its shape is the L turned, its line the traced
+   corners turned within the box ((x, y) goes to (L + (B - y), T + (x - L))), and, put down, its pixels are the old (x, y) at (2 - y, x)
+   from (3, 2); only the old L's pixels the new one does not cover are the hole; stretched afterwards by its right handle (3 wider) the
+   line is the traced path scaled to the size before the turn and turned, and a flip then mirrors that line. */
+static void
+as8_turn_free_form (void)
+{
+  static const int turned[] = { 6, 2, 6, 4, 4, 4, 4, 6, 3, 6, 3, 2 };
+  static const int turned_wide[] = { 9, 2, 9, 4, 5, 4, 5, 6, 3, 6, 3, 2 };
+  static const int turned_wide_flipped[] = { 3, 2, 3, 4, 7, 4, 7, 6, 9, 6, 9, 2 };
+  static const uint8_t mask_turned[] = { 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 0, 0 };
+  uint32_t color[4][3];
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  EaselImage *img;
+  const uint8_t *mask;
+  int mw, mh;
+
+  write_settings ("[new-picture]\nwidth=40\nheight=30\ncanvas-color=#FFFFFF\n");
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  img = (EaselImage *) easel_window_get_picture (win);
+  traced_l (win, color);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "rotate-90", NULL);
+  g_assert_true (selection_is (win, 3, 2, 3, 4));
+  assert_line (canvas, turned, 6, 0, 0);
+  mask = easel_canvas_get_selection_mask (canvas, &mw, &mh);
+  g_assert_nonnull (mask);
+  g_assert_cmpint (mw, ==, 3);
+  g_assert_cmpint (mh, ==, 4);
+  for (int i = 0; i < 12; i++)
+    g_assert_cmpint (mask[i], ==, mask_turned[i]);
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+  for (int y = 0; y < 3; y++)
+    for (int x = 0; x < 4; x++)
+      if (x < 2 || y == 2)
+        g_assert_cmphex (easel_image_get (img, 3 + (2 - y), 2 + x), ==, color[x][y]);
+  g_assert_cmphex (easel_image_get (img, 4, 4), ==, 0xFFFFFFFFu);                 /* the old L's pixels the turned one does not cover */
+  g_assert_cmphex (easel_image_get (img, 5, 4), ==, 0xFFFFFFFFu);
+  g_assert_cmphex (easel_image_get (img, 6, 4), ==, 0xFFFFFFFFu);
+  close_windows ();
+  /* the line follows a stretch and a flip made after the turn */
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  traced_l (win, color);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "rotate-90", NULL);
+  /* a stretch cancelled by Esc gives the line of the press back, turned */
+  {
+    double hx, hy, l = logical_per_pixel (canvas);
+
+    sel_handle_center (canvas, EASEL_SEL_HANDLE_R, &hx, &hy);
+    easel_canvas_press (canvas, 1, hx, hy);
+    easel_canvas_motion (canvas, hx + 3 * l, hy);
+    g_assert_true (selection_is (win, 3, 2, 6, 4));
+    g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+    easel_canvas_release (canvas, 1);
+    g_assert_true (selection_is (win, 3, 2, 3, 4));
+    assert_line (canvas, turned, 6, 0, 0);
+  }
+  drag_sel_handle (win, EASEL_SEL_HANDLE_R, 3, 0);
+  g_assert_true (selection_is (win, 3, 2, 6, 4));
+  assert_line (canvas, turned_wide, 6, 0, 0);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "flip-horizontal", NULL);
+  g_assert_true (selection_is (win, 3, 2, 6, 4));
+  assert_line (canvas, turned_wide_flipped, 6, 0, 0);
+  close_windows ();
+  /* a selection moved by (5, 3) and then turned: the line is the turned one at the new place, with no offset left */
+  {
+    static const int turned_moved[] = { 11, 5, 11, 7, 9, 7, 9, 9, 8, 9, 8, 5 };
+
+    win = start_window ();
+    canvas = easel_window_get_canvas (win);
+    traced_l (win, color);
+    shape_press_move (win, 1, 3, 2, 8, 5);
+    shape_release (win, 1);
+    g_assert_true (selection_is (win, 8, 5, 4, 3));
+    assert_line (canvas, (const int[]) { 3, 2, 5, 2, 5, 4, 7, 4, 7, 5, 3, 5 }, 6, 5, 3);   /* the corners as traced, the offset follows */
+    g_action_group_activate_action (G_ACTION_GROUP (win), "rotate-90", NULL);
+    g_assert_true (selection_is (win, 8, 5, 3, 4));
+    assert_line (canvas, turned_moved, 6, 0, 0);
+    close_windows ();
+  }
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* AS-9 (REQ-0018-07): a 300 x 10 marked selection at (0, 190) of a 400 x 200 picture, Rotate 90°: it floats 10 x 300 at (0, 190), its rows
+   from 200 to 489 outside the picture, the status bar showing 10 × 300 and the picture still 400 x 200; put down by Esc, only the
+   pixels inside land: the old (x, y), x < 10, at (9 - y, 190 + x), and the rest of the old rectangle is the hole. */
+static void
+as9_turn_past_picture (void)
+{
+  EaselWindow *win;
+  EaselImage *img;
+  EaselCanvas *canvas;
+  int sx, sy, sw, sh;
+  gboolean floating;
+
+  write_settings ("[new-picture]\nwidth=400\nheight=200\ncanvas-color=#FFFFFF\n");
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  img = (EaselImage *) easel_window_get_picture (win);
+  wait_for_layout (win);
+  for (int y = 0; y < 10; y++)
+    for (int x = 0; x < 300; x++)
+      easel_image_set (img, x, 190 + y, 0xFF000000u | (uint32_t) (x + 1) * 0x100u | (uint32_t) (y + 1));
+  easel_canvas_update (canvas);
+  use_select (win);
+  g_signal_emit_by_name (find_mapped_by_tooltip (GTK_WIDGET (win), "Opaque: keep background color"), "clicked");
+  shape_press_move (win, 1, 0, 190, 299, 199);
+  shape_release (win, 1);
+  g_assert_true (selection_is (win, 0, 190, 300, 10));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "rotate-90", NULL);
+  g_assert_true (selection_is (win, 0, 190, 10, 300));
+  g_assert_true (easel_canvas_get_selection (canvas, &sx, &sy, &sw, &sh, &floating));
+  g_assert_true (floating);
+  g_assert_cmpstr (easel_status_bar_get_text (easel_window_get_status_bar (win), EASEL_STATUS_SELECTION), ==, "10 × 300");
+  assert_size (win, 400, 200);
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+  assert_size (win, 400, 200);
+  for (int y = 0; y < 10; y++)
+    for (int x = 0; x < 10; x++)
+      g_assert_cmphex (easel_image_get (img, 9 - y, 190 + x), ==, 0xFF000000u | (uint32_t) (x + 1) * 0x100u | (uint32_t) (y + 1));
+  g_assert_cmphex (easel_image_get (img, 150, 195), ==, 0xFFFFFFFFu);              /* the old rectangle: the hole */
+  g_assert_cmphex (easel_image_get (img, 299, 199), ==, 0xFFFFFFFFu);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_cmphex (easel_image_get (img, 150, 195), ==, 0xFF000000u | 151u * 0x100u | 6u);
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* After Rotate 90° of a 4 x 2 marked selection at (10, 10): the status bar shows 2 × 4, the eight handles are where those of a 2 x 4
+   selection marked at (10, 10) are (a reference made first), the outline is drawn around it, and a handle dragged makes it the size the
+   drag says (the right one 2 wider: 4 × 4, the bottom one 2 higher: 4 × 6). */
+static void
+handles_follow_turn (void)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  double ref_x[8], ref_y[8], x, y;
+  g_autofree uint32_t *drawn = NULL;
+  int w, h, cx, cy;
+
+  use_select (win);
+  shape_press_move (win, 1, 10, 10, 11, 13);                                      /* the reference: marked 2 x 4 */
+  shape_release (win, 1);
+  g_assert_true (selection_is (win, 10, 10, 2, 4));
+  for (int k = 0; k < 8; k++)
+    sel_handle_center (canvas, (EaselSelHandle) k, &ref_x[k], &ref_y[k]);
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+  shape_press_move (win, 1, 10, 10, 13, 11);
+  shape_release (win, 1);
+  g_assert_true (selection_is (win, 10, 10, 4, 2));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "rotate-90", NULL);
+  g_assert_true (selection_is (win, 10, 10, 2, 4));
+  g_assert_cmpstr (easel_status_bar_get_text (easel_window_get_status_bar (win), EASEL_STATUS_SELECTION), ==, "2 × 4");
+  for (int k = 0; k < 8; k++)
+    {
+      sel_handle_center (canvas, (EaselSelHandle) k, &x, &y);
+      g_assert_cmpfloat_with_epsilon (x, ref_x[k], 0.01);
+      g_assert_cmpfloat_with_epsilon (y, ref_y[k], 0.01);
+    }
+  /* the outline is drawn around the 2 x 4 rectangle (the handles hidden: the line and the tint are the subject here) */
+  easel_canvas_set_selection_handles_shown (canvas, FALSE);
+  wait_for_next_frame (win);
+  drawn = render_pixels (win, &w, &h, &cx, &cy);
+  assert_outline (win, drawn, w, cx, cy, 10, 10, 2, 4);
+  easel_canvas_set_selection_handles_shown (canvas, TRUE);
+  /* a handle's hit area is the new rectangle's */
+  drag_sel_handle (win, EASEL_SEL_HANDLE_R, 2, 0);
+  g_assert_true (selection_is (win, 10, 10, 4, 4));
+  drag_sel_handle (win, EASEL_SEL_HANDLE_B, 0, 2);
+  g_assert_true (selection_is (win, 10, 10, 4, 6));
+  g_assert_cmpstr (easel_status_bar_get_text (easel_window_get_status_bar (win), EASEL_STATUS_SELECTION), ==, "4 × 6");
+  close_windows ();
+}
+
 int
 main (int argc, char **argv)
 {
@@ -22792,6 +24130,29 @@ main (int argc, char **argv)
   g_test_add_func ("/0003/as17_undo_ignored_while_chooser_open", as17_undo_ignored_while_chooser_open);
   g_test_add_func ("/0003/as14_edit_is_remembered", as14_edit_is_remembered);
   g_test_add_func ("/0003/as15_swatch_changes_when_write_fails", as15_swatch_changes_when_write_fails);
+  g_test_add_func ("/0018/as1_image_menus", as1_image_menus);
+  g_test_add_func ("/0018/as2_picture_transforms", as2_picture_transforms);
+  g_test_add_func ("/0018/as3_turn_keeps_view", as3_turn_keeps_view);
+  g_test_add_func ("/0018/as4_invert_transparent_step", as4_invert_transparent_step);
+  g_test_add_func ("/0018/as5_clear_image", as5_clear_image);
+  g_test_add_func ("/0018/as10_text_box_and_pending", as10_text_box_and_pending);
+  g_test_add_func ("/0018/as11_ignored_while_held", as11_ignored_while_held);
+  g_test_add_func ("/0018/as12_transform_dialogs", as12_transform_dialogs);
+  g_test_add_func ("/0018/as11_keys_in_an_entry", as11_keys_in_an_entry);
+  g_test_add_func ("/0018/as1_keys_any_layout", as1_keys_any_layout);
+  g_test_add_func ("/0018/as1_selection_menu", as1_selection_menu);
+  g_test_add_func ("/0018/as6_turn_marked_selection", as6_turn_marked_selection);
+  g_test_add_func ("/0018/as7_flip_stretched", as7_flip_stretched);
+  g_test_add_func ("/0018/as12_selection_dialogs", as12_selection_dialogs);
+  g_test_add_func ("/0018/as8_turn_free_form", as8_turn_free_form);
+  g_test_add_func ("/0018/as9_turn_past_picture", as9_turn_past_picture);
+  g_test_add_func ("/0018/as8_turn_undo_redo", as8_turn_undo_redo);
+  g_test_add_func ("/0018/as1_keys_latin_accents_not_mapped", as1_keys_latin_accents_not_mapped);
+  g_test_add_func ("/0018/as5_clear_image_marked", as5_clear_image_marked);
+  g_test_add_func ("/0018/as5_clear_image_put_down_refused", as5_clear_image_put_down_refused);
+  g_test_add_func ("/0018/as13_handle_flip", as13_handle_flip);
+  g_test_add_func ("/0018/as14_handle_flip_shift", as14_handle_flip_shift);
+  g_test_add_func ("/0018/handles_follow_turn", handles_follow_turn);
   ret = g_test_run ();
   g_object_unref (app);
   return ret;

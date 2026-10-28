@@ -15,6 +15,7 @@
 #include "image.h"
 #include "line.h"
 #include "selection.h"
+#include "transform.h"
 
 #define WHITE 0xFFFFFFFFu
 #define RED 0xFFFF0000u
@@ -1664,6 +1665,435 @@ as10_lazy_stretch_memory (void)
   easel_image_free (img);
 }
 
+/* ---- 0018 T004 (REQ-0018-07): flip, turn and invert of a floating selection ---- */
+
+/* The new place of the pixel (x, y) of a w x h picture under a flip or turn, by the spec's formulas (REQ-0018-04), and the new size. */
+static void
+naive_place (EaselOp op, int w, int h, int x, int y, int *nx, int *ny, int *nw, int *nh)
+{
+  *nx = x;
+  *ny = y;
+  *nw = w;
+  *nh = h;
+  switch (op)
+    {
+    case EASEL_OP_FLIP_H: *nx = w - 1 - x; break;
+    case EASEL_OP_FLIP_V: *ny = h - 1 - y; break;
+    case EASEL_OP_ROTATE_90: *nx = h - 1 - y; *ny = x; *nw = h; *nh = w; break;
+    case EASEL_OP_ROTATE_180: *nx = w - 1 - x; *ny = h - 1 - y; break;
+    case EASEL_OP_ROTATE_270: *nx = y; *ny = w - 1 - x; *nw = h; *nh = w; break;
+    default: break;
+    }
+}
+
+/* The w x h pixels (and mask, when given) after op, by those formulas: new buffers. */
+static void
+naive_apply (EaselOp op, const uint32_t *px, const uint8_t *mask, int w, int h, uint32_t **out_px, uint8_t **out_mask, int *nw, int *nh)
+{
+  int dummy_x, dummy_y;
+
+  naive_place (op, w, h, 0, 0, &dummy_x, &dummy_y, nw, nh);
+  *out_px = malloc ((size_t) w * h * sizeof **out_px);
+  *out_mask = mask != NULL ? malloc ((size_t) w * h) : NULL;
+  CHECK (*out_px != NULL && (mask == NULL || *out_mask != NULL));
+  for (int y = 0; y < h; y++)
+    for (int x = 0; x < w; x++)
+      {
+        int nx, ny, ww, hh;
+
+        naive_place (op, w, h, x, y, &nx, &ny, &ww, &hh);
+        (*out_px)[(size_t) ny * *nw + nx] = px[(size_t) y * w + x];
+        if (mask != NULL)
+          (*out_mask)[(size_t) ny * *nw + nx] = mask[(size_t) y * w + x];
+      }
+}
+
+/* A flip or turn of a stretched float shows exactly the flip or turn of what was shown (REQ-0018-07): for every lifted size up to 4 x 4,
+   every stretch to up to 6 x 6, every command, and a second one on top; the place is kept, the lifted pixels stay as lifted, and a
+   stretch back to the lifted size (turned by the commands) shows the lifted pixels flipped and turned, exactly. With a shape the mask
+   follows its pixels, also where the nearest pixel loses the shape (the one pixel it keeps). */
+static void
+check_transform_of_shown (bool shape)
+{
+  static const EaselOp ops[] = { EASEL_OP_FLIP_H, EASEL_OP_FLIP_V, EASEL_OP_ROTATE_90, EASEL_OP_ROTATE_180, EASEL_OP_ROTATE_270 };
+
+  srand (3);
+  for (int lw = 1; lw <= 4; lw++)
+    for (int lh = 1; lh <= 4; lh++)
+      for (int W = 1; W <= 6; W++)
+        for (int H = 1; H <= 6; H++)
+          for (size_t k = 0; k < sizeof ops / sizeof *ops; k++)
+            {
+              EaselImage *img = easel_image_new (20, 20, 0);
+              EaselFloat f = { 0 };
+              uint32_t *ref, *shown_px, *want_px, *lifted_want;
+              uint8_t *ref_mask, *shown_mask = NULL, *want_mask, *lifted_mask_want;
+              int w2, h2, w3, h3, lw2, lh2;
+              EaselOp second = ops[(k + 2) % (sizeof ops / sizeof *ops)];
+
+              CHECK (img != NULL);
+              lifted_block (img, &f, lw, lh, shape, &ref, &ref_mask);
+              CHECK (easel_selection_stretch (&f, 3, 4, W, H, SIZE_MAX) == EASEL_SELECTION_DONE);
+              shown_px = malloc ((size_t) W * H * sizeof *shown_px);
+              CHECK (shown_px != NULL);
+              memcpy (shown_px, f.px, (size_t) W * H * sizeof *shown_px);
+              if (shape)
+                {
+                  shown_mask = malloc ((size_t) W * H);
+                  CHECK (shown_mask != NULL);
+                  memcpy (shown_mask, f.mask, (size_t) W * H);
+                }
+              CHECK (easel_selection_transform (&f, ops[k], SIZE_MAX) == EASEL_SELECTION_DONE);
+              naive_apply (ops[k], shown_px, shown_mask, W, H, &want_px, &want_mask, &w2, &h2);
+              CHECK (f.w == w2 && f.h == h2 && f.x == 3 && f.y == 4);
+              CHECK (memcmp (f.px, want_px, (size_t) w2 * h2 * sizeof *want_px) == 0);
+              if (shape)
+                CHECK (memcmp (f.mask, want_mask, (size_t) w2 * h2) == 0);
+              CHECK (f.ow == lw && f.oh == lh && memcmp (f.orig_px, ref, (size_t) lw * lh * sizeof *ref) == 0);   /* as lifted */
+              /* a second command on top of the first: the command of what is shown now */
+              CHECK (easel_selection_transform (&f, second, SIZE_MAX) == EASEL_SELECTION_DONE);
+              {
+                uint32_t *want2;
+                uint8_t *want2_mask;
+
+                naive_apply (second, want_px, want_mask, w2, h2, &want2, &want2_mask, &w3, &h3);
+                CHECK (f.w == w3 && f.h == h3);
+                CHECK (memcmp (f.px, want2, (size_t) w3 * h3 * sizeof *want2) == 0);
+                if (shape)
+                  CHECK (memcmp (f.mask, want2_mask, (size_t) w3 * h3) == 0);
+                free (want2);
+                free (want2_mask);
+              }
+              /* stretched back to the lifted size, turned as the two commands turn it: the lifted pixels flipped and turned, exactly */
+              {
+                uint32_t *l1, *l2;
+                uint8_t *m1, *m2;
+                int a, b, c, d;
+
+                naive_apply (ops[k], ref, ref_mask, lw, lh, &l1, &m1, &a, &b);
+                naive_apply (second, l1, m1, a, b, &l2, &m2, &c, &d);
+                lifted_want = l2;
+                lifted_mask_want = m2;
+                lw2 = c;
+                lh2 = d;
+                free (l1);
+                free (m1);
+              }
+              CHECK (easel_selection_stretch (&f, 3, 4, lw2, lh2, SIZE_MAX) == EASEL_SELECTION_DONE);
+              CHECK (memcmp (f.px, lifted_want, (size_t) lw2 * lh2 * sizeof *lifted_want) == 0);
+              if (shape)
+                CHECK (memcmp (f.mask, lifted_mask_want, (size_t) lw2 * lh2) == 0);
+              easel_float_free (&f);
+              free (lifted_want);
+              free (lifted_mask_want);
+              free (want_px);
+              free (want_mask);
+              free (shown_px);
+              free (shown_mask);
+              free (ref);
+              free (ref_mask);
+              easel_image_free (img);
+            }
+}
+
+static void
+as7_transform_stretched_float (void)
+{
+  check_transform_of_shown (false);
+}
+
+static void
+shape_oriented_with_pixels (void)
+{
+  check_transform_of_shown (true);
+}
+
+/* A stretch made lazily (the part in view while a handle is held, REQ-0015-05) of an oriented float gives, once completed, the pixels and
+   shape of the full stretch of the same float, also across the 256-pixel blocks and for a shape the nearest pixel loses. */
+static void
+oriented_lazy_equals_whole (void)
+{
+  static const EaselOp ops[] = { EASEL_OP_FLIP_H, EASEL_OP_FLIP_V, EASEL_OP_ROTATE_90, EASEL_OP_ROTATE_180, EASEL_OP_ROTATE_270 };
+
+  srand (21);
+  for (int round = 0; round < 30; round++)
+    {
+      EaselImage *img = easel_image_new (80, 60, 0), *img2 = easel_image_new (80, 60, 0);
+      EaselFloat whole = { 0 }, lazy = { 0 };
+      uint32_t *ref, *ref2;
+      uint8_t *ref_mask, *ref_mask2;
+      bool shape = round % 2;
+      int w = 3 + rand () % 30, h = 3 + rand () % 20, W = 1 + rand () % 700, H = 1 + rand () % 600;
+      EaselOp op = ops[round % (sizeof ops / sizeof *ops)];
+
+      if (round % 8 == 3)
+        W = 257 + 256 * (round % 3);
+      if (round % 8 == 5)
+        H = 257 + 256 * (round % 2);
+      CHECK (img != NULL && img2 != NULL);
+      srand (1000 + round);
+      lifted_block (img, &whole, w, h, shape, &ref, &ref_mask);
+      srand (1000 + round);
+      lifted_block (img2, &lazy, w, h, shape, &ref2, &ref_mask2);
+      CHECK (easel_selection_transform (&whole, op, SIZE_MAX) == EASEL_SELECTION_DONE);
+      CHECK (easel_selection_transform (&lazy, op, SIZE_MAX) == EASEL_SELECTION_DONE);
+      CHECK (easel_selection_stretch (&whole, 4, 5, W, H, SIZE_MAX) == EASEL_SELECTION_DONE);
+      CHECK (easel_selection_stretch_lazy (&lazy, 4, 5, W, H, SIZE_MAX) == EASEL_SELECTION_DONE);
+      easel_selection_fill (&lazy, 0, 0, W < 300 ? W : 300, H < 300 ? H : 300);
+      easel_selection_complete (&lazy);
+      CHECK (lazy.w == whole.w && lazy.h == whole.h);
+      CHECK (memcmp (lazy.px, whole.px, (size_t) W * H * sizeof *lazy.px) == 0);
+      if (shape)
+        CHECK (memcmp (lazy.mask, whole.mask, (size_t) W * H) == 0);
+      easel_float_free (&whole);
+      easel_float_free (&lazy);
+      free (ref);
+      free (ref2);
+      free (ref_mask);
+      free (ref_mask2);
+      easel_image_free (img);
+      easel_image_free (img2);
+    }
+}
+
+/* The small sizes where the nearest pixel loses a shape (an L of 3 to 6 square lifted, made 1 to 4 wide and high), lazily and whole, for
+   every command: the pixel kept at the completion is put where the orientation puts it (REQ-0018-07). */
+static void
+oriented_lazy_shape_small (void)
+{
+  static const EaselOp ops[] = { EASEL_OP_FLIP_H, EASEL_OP_FLIP_V, EASEL_OP_ROTATE_90, EASEL_OP_ROTATE_180, EASEL_OP_ROTATE_270 };
+
+  for (int lw = 3; lw <= 6; lw++)
+    for (int lh = 3; lh <= 6; lh++)
+      for (int W = 1; W <= 4; W++)
+        for (int H = 1; H <= 4; H++)
+          for (size_t k = 0; k < sizeof ops / sizeof *ops; k++)
+            {
+              EaselImage *img = easel_image_new (20, 20, 0);
+              EaselFloat whole = { 0 }, lazy = { 0 };
+              uint32_t *ref, *ref2;
+              uint8_t *ref_mask, *ref_mask2;
+
+              srand (7);
+              lifted_block (img, &whole, lw, lh, true, &ref, &ref_mask);
+              srand (7);
+              lifted_block (img, &lazy, lw, lh, true, &ref2, &ref_mask2);
+              CHECK (easel_selection_transform (&whole, ops[k], SIZE_MAX) == EASEL_SELECTION_DONE);
+              CHECK (easel_selection_transform (&lazy, ops[k], SIZE_MAX) == EASEL_SELECTION_DONE);
+              CHECK (easel_selection_stretch (&whole, 2, 2, W, H, SIZE_MAX) == EASEL_SELECTION_DONE);
+              CHECK (easel_selection_stretch_lazy (&lazy, 2, 2, W, H, SIZE_MAX) == EASEL_SELECTION_DONE);
+              easel_selection_complete (&lazy);
+              CHECK (memcmp (lazy.px, whole.px, (size_t) W * H * sizeof *lazy.px) == 0);
+              CHECK (memcmp (lazy.mask, whole.mask, (size_t) W * H) == 0);
+              easel_float_free (&whole);
+              easel_float_free (&lazy);
+              free (ref);
+              free (ref2);
+              free (ref_mask);
+              free (ref_mask2);
+              easel_image_free (img);
+            }
+}
+
+/* Invert Colors of a floating selection (REQ-0018-05, -07): the lifted pixels and the shown ones are inverted (alpha kept), the shape
+   not; the copies left before keep their pixels, whichever image they were made with (the unstretched one, the one before a stretch,
+   the stretched one); twice gives the float back; a refused command (the memory) changes nothing. */
+static void
+selection_invert (void)
+{
+  EaselImage *img = easel_image_new (60, 40, 0);
+  EaselFloat f = { 0 };
+  uint32_t *ref, before_copies[60 * 40], after[60 * 40], *shown, *orig;
+  uint8_t *ref_mask;
+  size_t shown_n, orig_n;
+
+  CHECK (img != NULL);
+  srand (11);
+  lifted_block (img, &f, 4, 3, true, &ref, &ref_mask);
+  CHECK (easel_selection_stamp (&f, SIZE_MAX));                                   /* a copy of the unstretched image */
+  CHECK (easel_selection_stretch (&f, 20, 10, 8, 6, SIZE_MAX) == EASEL_SELECTION_DONE);
+  CHECK (easel_selection_stamp (&f, SIZE_MAX));                                   /* a copy of the stretched image */
+  f.x = 30;
+  f.y = 20;
+  easel_selection_lay (&f, false, img, 0, 0, 60, 40, before_copies, 60);
+  shown_n = (size_t) f.w * f.h;
+  orig_n = (size_t) f.ow * f.oh;
+  shown = malloc (shown_n * sizeof *shown);
+  orig = malloc (orig_n * sizeof *orig);
+  CHECK (shown != NULL && orig != NULL);
+  memcpy (shown, f.px, shown_n * sizeof *shown);
+  memcpy (orig, f.orig_px, orig_n * sizeof *orig);
+  /* refused while the copies use the images: nothing changes */
+  {
+    uint32_t *before_px = f.px, *before_orig = f.orig_px;
+
+    CHECK (easel_selection_transform (&f, EASEL_OP_INVERT, 3) == EASEL_SELECTION_NO_MEMORY);
+    CHECK (f.px == before_px && f.orig_px == before_orig && memcmp (f.px, shown, shown_n * sizeof *shown) == 0);
+    /* the shown image (8 x 6, 192 bytes) is the one over the limit; the lifted one (4 x 3 and its mask, 60 bytes) is not */
+    CHECK (easel_selection_transform (&f, EASEL_OP_INVERT, 100) == EASEL_SELECTION_NO_MEMORY);
+    CHECK (f.px == before_px && f.orig_px == before_orig && memcmp (f.px, shown, shown_n * sizeof *shown) == 0);
+  }
+  CHECK (easel_selection_transform (&f, EASEL_OP_INVERT, SIZE_MAX) == EASEL_SELECTION_DONE);
+  for (size_t i = 0; i < shown_n; i++)
+    CHECK (f.px[i] == (shown[i] ^ 0x00FFFFFFu));
+  for (size_t i = 0; i < orig_n; i++)
+    CHECK (f.orig_px[i] == (orig[i] ^ 0x00FFFFFFu));
+  CHECK (f.mask != NULL && f.orig_mask != NULL && f.w == 8 && f.h == 6 && f.x == 30 && f.y == 20);
+  easel_selection_lay (&f, false, img, 0, 0, 60, 40, after, 60);
+  CHECK (memcmp (after, before_copies, sizeof after) == 0);                        /* the copies did not change */
+  CHECK (easel_selection_transform (&f, EASEL_OP_INVERT, SIZE_MAX) == EASEL_SELECTION_DONE);
+  CHECK (memcmp (f.px, shown, shown_n * sizeof *shown) == 0 && memcmp (f.orig_px, orig, orig_n * sizeof *orig) == 0);
+  easel_selection_lay (&f, false, img, 0, 0, 60, 40, after, 60);
+  CHECK (memcmp (after, before_copies, sizeof after) == 0);
+  easel_float_free (&f);
+  free (shown);
+  free (orig);
+  free (ref);
+  free (ref_mask);
+  /* made smaller than it was lifted, the lifted image is the one over the limit */
+  CHECK (easel_selection_lift (&f, img, 2, 2, 8, 6, NULL, false, YELLOW, SIZE_MAX) == EASEL_SELECTION_DONE);
+  CHECK (easel_selection_stamp (&f, SIZE_MAX));                                   /* a copy of the lifted image */
+  CHECK (easel_selection_stretch (&f, 2, 2, 2, 2, SIZE_MAX) == EASEL_SELECTION_DONE);
+  {
+    uint32_t *before_px = f.px, *before_orig = f.orig_px;
+
+    CHECK (easel_selection_transform (&f, EASEL_OP_INVERT, 100) == EASEL_SELECTION_NO_MEMORY);   /* 16 bytes shown, 192 lifted */
+    CHECK (f.px == before_px && f.orig_px == before_orig);
+  }
+  easel_float_free (&f);
+  /* with no copy the images are inverted where they are: no allocation, so no limit refuses it, and the images are the same buffers */
+  CHECK (easel_selection_lift (&f, img, 2, 2, 8, 6, NULL, false, YELLOW, SIZE_MAX) == EASEL_SELECTION_DONE);
+  CHECK (easel_selection_stretch (&f, 2, 2, 2, 2, SIZE_MAX) == EASEL_SELECTION_DONE);
+  {
+    uint32_t *before_px = f.px, *before_orig = f.orig_px, first = f.px[0], first_orig = f.orig_px[0];
+
+    CHECK (easel_selection_transform (&f, EASEL_OP_INVERT, 3) == EASEL_SELECTION_DONE);
+    CHECK (f.px == before_px && f.orig_px == before_orig);
+    CHECK (f.px[0] == (first ^ 0x00FFFFFFu) && f.orig_px[0] == (first_orig ^ 0x00FFFFFFu));
+  }
+  easel_float_free (&f);
+  /* an unstretched float with a copy: the same */
+  CHECK (easel_selection_lift (&f, img, 2, 2, 5, 4, NULL, false, YELLOW, SIZE_MAX) == EASEL_SELECTION_DONE);
+  CHECK (easel_selection_stamp (&f, SIZE_MAX));
+  f.x = 20;
+  f.y = 20;
+  easel_selection_lay (&f, false, img, 0, 0, 60, 40, before_copies, 60);
+  {
+    uint32_t first = f.px[0];
+
+    CHECK (easel_selection_transform (&f, EASEL_OP_INVERT, SIZE_MAX) == EASEL_SELECTION_DONE);
+    CHECK (f.px[0] == (first ^ 0x00FFFFFFu) && f.orig_px == NULL);
+  }
+  easel_selection_lay (&f, false, img, 0, 0, 60, 40, after, 60);
+  CHECK (memcmp (after, before_copies, sizeof after) == 0);
+  easel_float_free (&f);
+  easel_image_free (img);
+}
+
+/* ---- 0018 T006 (REQ-0018-11): a handle dragged past the opposite edge mirrors ---- */
+
+/* The rectangles a handle gives by the spec (REQ-0018-11), worked out by hand: the extent runs from the opposite edge, which stays, to
+   the dragged edge, at least 1 pixel; with the dragged edge on the opposite edge it is 1 pixel and not mirrored (on the side it was);
+   past it, the extent is the distance and the axis is mirrored; each side limited to 10000; with Shift a corner keeps the ratio of the
+   sizes at the press, the side that does not lead running from its opposite edge toward the pointer's side, mirrored when the pointer
+   is past it. */
+static void
+as13_stretch_rect_mirror (void)
+{
+  static const struct
+  {
+    EaselSelHandle handle;
+    int x, y, w, h, dx, dy;
+    bool shift;
+    int nx, ny, nw, nh;
+    bool mx, my;
+  } cases[] = {
+    /* the right handle of 4 x 2 at (10, 10), edge 14, opposite edge 10 */
+    { EASEL_SEL_HANDLE_R, 10, 10, 4, 2, 2, 0, false, 10, 10, 6, 2, false, false },
+    { EASEL_SEL_HANDLE_R, 10, 10, 4, 2, -3, 0, false, 10, 10, 1, 2, false, false },          /* edge at 11: 1 pixel */
+    { EASEL_SEL_HANDLE_R, 10, 10, 4, 2, -4, 0, false, 10, 10, 1, 2, false, false },          /* exactly on the opposite edge */
+    { EASEL_SEL_HANDLE_R, 10, 10, 4, 2, -5, 0, false, 9, 10, 1, 2, true, false },            /* edge at 9: 1 pixel, mirrored */
+    { EASEL_SEL_HANDLE_R, 10, 10, 4, 2, -6, 0, false, 8, 10, 2, 2, true, false },            /* edge at 8 */
+    /* the left handle: edge 10, opposite edge 14 */
+    { EASEL_SEL_HANDLE_L, 10, 10, 4, 2, -2, 0, false, 8, 10, 6, 2, false, false },
+    { EASEL_SEL_HANDLE_L, 10, 10, 4, 2, 4, 0, false, 13, 10, 1, 2, false, false },           /* on the opposite edge: 1 pixel, its side */
+    { EASEL_SEL_HANDLE_L, 10, 10, 4, 2, 5, 0, false, 14, 10, 1, 2, true, false },
+    { EASEL_SEL_HANDLE_L, 10, 10, 4, 2, 7, 0, false, 14, 10, 3, 2, true, false },
+    /* the bottom handle: edge 12, opposite edge 10; the top: edge 10, opposite edge 12 */
+    { EASEL_SEL_HANDLE_B, 10, 10, 4, 2, 0, -3, false, 10, 9, 4, 1, false, true },
+    { EASEL_SEL_HANDLE_B, 10, 10, 4, 2, 0, -2, false, 10, 10, 4, 1, false, false },
+    { EASEL_SEL_HANDLE_T, 10, 10, 4, 2, 0, 5, false, 10, 12, 4, 3, false, true },
+    { EASEL_SEL_HANDLE_T, 10, 10, 4, 2, 0, 2, false, 10, 11, 4, 1, false, false },
+    /* corners: each axis on its own */
+    { EASEL_SEL_HANDLE_BR, 10, 10, 4, 2, -6, -3, false, 8, 9, 2, 1, true, true },
+    { EASEL_SEL_HANDLE_BR, 10, 10, 4, 2, -6, 2, false, 8, 10, 2, 4, true, false },
+    { EASEL_SEL_HANDLE_TL, 10, 10, 4, 2, 6, 4, false, 14, 12, 2, 2, true, true },
+    { EASEL_SEL_HANDLE_TL, 10, 10, 4, 2, -2, -1, false, 8, 9, 6, 3, false, false },
+    /* the limit of 10000, also mirrored */
+    { EASEL_SEL_HANDLE_R, 10, 10, 4, 2, 20000, 0, false, 10, 10, 10000, 2, false, false },
+    { EASEL_SEL_HANDLE_R, 10, 10, 4, 2, -20000, 0, false, -9990, 10, 10000, 2, true, false },
+    { EASEL_SEL_HANDLE_L, 10, 10, 4, 2, 20000, 0, false, 14, 10, 10000, 2, true, false },
+    /* Shift on a corner of 5 x 4 at (1, 1) (0015's selection): the sizes keep their ratio */
+    { EASEL_SEL_HANDLE_BR, 1, 1, 5, 4, -15, -6, true, -9, -7, 10, 8, true, true },           /* AS-14: the width leads, twice its size */
+    { EASEL_SEL_HANDLE_BR, 1, 1, 5, 4, 5, 0, true, 1, 1, 10, 8, false, false },
+    { EASEL_SEL_HANDLE_BR, 1, 1, 5, 4, -10, 0, true, -4, 1, 5, 4, true, false },             /* a tie: the width leads; the height keeps its size */
+    { EASEL_SEL_HANDLE_BR, 1, 1, 5, 4, 0, -10, true, 1, -5, 8, 6, false, true },             /* the height leads (1.5); the width 7.5 -> 8 */
+    { EASEL_SEL_HANDLE_TL, 1, 1, 5, 4, 10, 8, true, 6, 5, 5, 4, true, true },
+    { EASEL_SEL_HANDLE_BR, 1, 1, 5, 4, 5, -6, true, 1, -7, 10, 8, false, true },             /* the follower is mirrored, the leader not */
+    { EASEL_SEL_HANDLE_BR, 1, 1, 5, 4, 20000, 0, true, 1, 1, 10000, 8000, false, false },
+    /* Shift changes nothing for an edge handle */
+    { EASEL_SEL_HANDLE_R, 1, 1, 5, 4, -10, 0, true, -4, 1, 5, 4, true, false },
+  };
+
+  for (size_t k = 0; k < sizeof cases / sizeof *cases; k++)
+    {
+      int nx, ny, nw, nh;
+      bool mx, my;
+
+      easel_stretch_rect_mirror (cases[k].handle, cases[k].x, cases[k].y, cases[k].w, cases[k].h, cases[k].dx, cases[k].dy,
+                                 cases[k].shift, &nx, &ny, &nw, &nh, &mx, &my);
+      if (nx != cases[k].nx || ny != cases[k].ny || nw != cases[k].nw || nh != cases[k].nh || mx != cases[k].mx || my != cases[k].my)
+        {
+          fprintf (stderr, "case %zu: got (%d, %d, %d, %d) mirrored %d %d, want (%d, %d, %d, %d) mirrored %d %d\n", k, nx, ny, nw, nh,
+                   mx, my, cases[k].nx, cases[k].ny, cases[k].nw, cases[k].nh, cases[k].mx, cases[k].my);
+          exit (1);
+        }
+    }
+}
+
+/* A float stretched with an orientation of its own (the base orientation with the drag's mirrors): the lifted 4 x 1 pixels a b c d made 2
+   wide show b d, with a flip of x d b; whole and lazily made the same; the float keeps the orientation it was given, so that the next
+   stretch starts from it. */
+static void
+stretch_with_orientation (void)
+{
+  for (int lazy = 0; lazy < 2; lazy++)
+    {
+      EaselImage *img = easel_image_new (20, 20, 0);
+      EaselFloat f = { 0 };
+      uint32_t *ref;
+      uint8_t *ref_mask;
+
+      srand (5);
+      lifted_block (img, &f, 4, 1, false, &ref, &ref_mask);
+      if (lazy)
+        CHECK (easel_selection_stretch_lazy_oriented (&f, 3, 4, 2, 1, EASEL_ORIENT_FLIP_X, SIZE_MAX) == EASEL_SELECTION_DONE);
+      else
+        CHECK (easel_selection_stretch_oriented (&f, 3, 4, 2, 1, EASEL_ORIENT_FLIP_X, SIZE_MAX) == EASEL_SELECTION_DONE);
+      easel_selection_complete (&f);
+      CHECK (f.orient == EASEL_ORIENT_FLIP_X && f.w == 2 && f.h == 1 && f.x == 3 && f.y == 4);
+      CHECK (f.px[0] == ref[3] && f.px[1] == ref[1]);                                   /* d b */
+      CHECK (easel_selection_stretch (&f, 3, 4, 4, 1, SIZE_MAX) == EASEL_SELECTION_DONE);   /* the orientation is kept: d c b a */
+      CHECK (f.px[0] == ref[3] && f.px[1] == ref[2] && f.px[2] == ref[1] && f.px[3] == ref[0]);
+      CHECK (easel_selection_stretch_oriented (&f, 3, 4, 2, 1, EASEL_ORIENT_IDENTITY, SIZE_MAX) == EASEL_SELECTION_DONE);
+      CHECK (f.orient == EASEL_ORIENT_IDENTITY && f.px[0] == ref[1] && f.px[1] == ref[3]);   /* b d again */
+      easel_float_free (&f);
+      free (ref);
+      free (ref_mask);
+      easel_image_free (img);
+    }
+}
+
 int
 main (void)
 {
@@ -1693,6 +2123,13 @@ main (void)
   RUN (stretch_keeps_the_original_and_the_hole);
   RUN (as2_lazy_stretch_matches_full);
   RUN (as7_lazy_shape_keeps_one_pixel);
+  RUN (as7_transform_stretched_float);
+  RUN (shape_oriented_with_pixels);
+  RUN (oriented_lazy_equals_whole);
+  RUN (oriented_lazy_shape_small);
+  RUN (selection_invert);
+  RUN (as13_stretch_rect_mirror);
+  RUN (stretch_with_orientation);
   RUN (as10_lazy_stretch_memory);
   RUN (as10_stretch_memory);
   RUN (as10_copies_list_counted_at_stretch);

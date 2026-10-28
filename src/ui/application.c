@@ -80,6 +80,11 @@ easel_application_new (void)
   /* The grid and Attributes actions come with their own tasks; their shortcuts are registered with the menus. */
   gtk_application_set_accels_for_action (GTK_APPLICATION (app), "win.grid", (const char *[]) { "<Control>g", NULL });
   gtk_application_set_accels_for_action (GTK_APPLICATION (app), "win.attributes", (const char *[]) { "<Control>e", NULL });
+  /* Image Transforms (0018). Invert Colors (Ctrl+I) has no accelerator: with a text box open the key is Italic (REQ-0017-12), which
+     the window's key handler decides before an action could fire, so the handler also runs Invert Colors when no box is open. */
+  gtk_application_set_accels_for_action (GTK_APPLICATION (app), "win.rotate-90", (const char *[]) { "<Control>r", NULL });
+  gtk_application_set_accels_for_action (GTK_APPLICATION (app), "win.rotate-270", (const char *[]) { "<Control>l", NULL });
+  gtk_application_set_accels_for_action (GTK_APPLICATION (app), "win.clear-image", (const char *[]) { "<Control><Shift>n", NULL });
   gtk_application_set_accels_for_action (GTK_APPLICATION (app), "win.close", (const char *[]) { "<Control>w", NULL });
   gtk_application_set_accels_for_action (GTK_APPLICATION (app), "app.quit", (const char *[]) { "<Control>q", NULL });
   g_action_map_add_action_entries (G_ACTION_MAP (app), app_actions, G_N_ELEMENTS (app_actions), app);

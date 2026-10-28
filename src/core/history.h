@@ -46,6 +46,12 @@ bool easel_history_push_fill (EaselHistory *h, uint32_t old_value, uint32_t new_
 bool easel_history_push_grow (EaselHistory *h, int old_w, int old_h, int new_w, int new_h, uint32_t fill, EaselChange *changes,
                               size_t n);
 
+/* A step that keeps a whole picture buffer (0018: a turn, a flip, an invert or a clear of the picture): px, w x hgt, is the picture's
+   buffer as it was before the command, which the caller has just replaced by new pixels of its own (and size); on success the history
+   owns px. Undo and Redo swap the picture's buffer and size with the step's, allocating nothing, and mark the whole picture dirty. It
+   counts 4 bytes a pixel plus 64, and its pixel count never changes. False, with px still the caller's: no memory. */
+bool easel_history_push_buffer (EaselHistory *h, int w, int hgt, uint32_t *px);
+
 /* Write the step's pixels back through easel_image_set, so the screen update sees them. False: nothing to do. */
 bool easel_history_undo (EaselHistory *h, EaselImage *img);
 bool easel_history_redo (EaselHistory *h, EaselImage *img);

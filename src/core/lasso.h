@@ -28,6 +28,13 @@ void easel_path_free (EaselPath *p);
 bool easel_lasso_scale_path (const EaselPath *src, int sx, int sy, int sw, int sh, int nx, int ny, int nw, int nh, EaselPath *out,
                              size_t max_bytes);
 
+/* The path of a shape flipped or turned (feature 0018, REQ-0018-07): the corners of src, which lie on the grid lines of the box (x, y, w, h)
+   (from x to x + w and from y to y + h), turned within that box by the orientation o. For a clockwise quarter turn the corner (x', y')
+   goes to (L + (B - y'), T + (x' - L)) with L = x, T = y and B = y + h; a flip mirrors it across the middle of the box; the box keeps its
+   left and its top and a quarter turn swaps its width and its height. The formula holds for corners outside the box too. FALSE, with out
+   untouched, if the copy would need more than max_bytes. */
+bool easel_lasso_orient_path (const EaselPath *src, int x, int y, int w, int h, EaselOrient o, EaselPath *out, size_t max_bytes);
+
 /* Makes the shape of the closed path over a picture of img_w x img_h: the bounding rectangle (x, y, w, h) of the pixels of the
    shape that are inside the picture, and their mask (w x h bytes, 1 inside the shape; the caller frees it with free ()). NOTHING,
    with no mask, for a path of one corner (a click), a path that encloses no pixel (a straight drag, an out and back) or a shape with

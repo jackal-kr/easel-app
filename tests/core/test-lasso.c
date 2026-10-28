@@ -342,6 +342,102 @@ as7_scaled_path_rounding_and_margins (void)
   easel_path_free (&orig);
 }
 
+/* ---- 0018 T005 (REQ-0018-07): the line of a free-form selection after a flip or a turn ---- */
+
+/* An L traced in the box of 4 x 3 pixels at (3, 2), so that the grid lines run from x 3 to 7 and from y 2 to 5: (3,2) (5,2) (5,4) (7,4)
+   (7,5) (3,5), then three corners outside the box, as a path traced partly outside the picture has them: (9,7) (1,0) (-2,-1). The box
+   is not square and its left and top are not 0, and nothing in the path is symmetric. */
+static const int L_PATH[] = { 3, 2, 5, 2, 5, 4, 7, 4, 7, 5, 3, 5, 9, 7, 1, 0, -2, -1 };
+#define L_N 9
+
+/* The corners of that path after each command, worked out by hand from the spec (L = 3, T = 2, R = 7, B = 5; the box of the result
+   keeps the left and the top):
+   Flip Horizontal (x, y) -> (L + R - x, y) = (10 - x, y)          Flip Vertical (x, y) -> (x, T + B - y) = (x, 7 - y)
+   Rotate 180      (x, y) -> (10 - x, 7 - y)
+   Rotate 90       (x, y) -> (L + (B - y), T + (x - L)) = (8 - y, x - 1)
+   Rotate 270      (x, y) -> (L + (y - T), T + (R - x)) = (y + 1, 9 - x) */
+static const int WANT_FLIP_H[] = { 7, 2, 5, 2, 5, 4, 3, 4, 3, 5, 7, 5, 1, 7, 9, 0, 12, -1 };
+static const int WANT_FLIP_V[] = { 3, 5, 5, 5, 5, 3, 7, 3, 7, 2, 3, 2, 9, 0, 1, 7, -2, 8 };
+static const int WANT_ROT_180[] = { 7, 5, 5, 5, 5, 3, 3, 3, 3, 2, 7, 2, 1, 0, 9, 7, 12, 8 };
+static const int WANT_ROT_90[] = { 6, 2, 6, 4, 4, 4, 4, 6, 3, 6, 3, 2, 1, 8, 8, 0, 9, -3 };
+static const int WANT_ROT_270[] = { 3, 6, 3, 4, 5, 4, 5, 2, 6, 2, 6, 6, 8, 0, 1, 8, 0, 11 };
+
+static EaselPath
+l_path (void)
+{
+  EaselPath p = { 0 };
+
+  for (int i = 0; i < L_N; i++)
+    CHECK (easel_path_add (&p, L_PATH[2 * i], L_PATH[2 * i + 1], SIZE_MAX));
+  return p;
+}
+
+static bool
+path_is (const EaselPath *p, const int *want)
+{
+  return p->n == L_N && memcmp (p->xy, want, L_N * 2 * sizeof *want) == 0;
+}
+
+/* The line of a flipped or turned shape is the traced path turned within its box on the grid lines, also its corners outside the box
+   (REQ-0018-07): each command gives the corners listed by hand; four turns of 90 and two flips on one axis give the original line
+   exactly; a turn and its opposite do. A refusal for the memory leaves the output untouched. */
+static void
+line_oriented (void)
+{
+  static const struct { EaselOp op; const int *want; } cases[] = {
+    { EASEL_OP_FLIP_H, WANT_FLIP_H }, { EASEL_OP_FLIP_V, WANT_FLIP_V }, { EASEL_OP_ROTATE_180, WANT_ROT_180 },
+    { EASEL_OP_ROTATE_90, WANT_ROT_90 }, { EASEL_OP_ROTATE_270, WANT_ROT_270 },
+  };
+  EaselPath src = l_path(), out = { 0 }, a, b;
+  int w = 4, h = 3;
+
+  for (size_t k = 0; k < sizeof cases / sizeof *cases; k++)
+    {
+      CHECK (easel_lasso_orient_path (&src, 3, 2, w, h, easel_op_orient (cases[k].op), &out, SIZE_MAX));
+      CHECK (path_is (&out, cases[k].want));
+      easel_path_free (&out);
+    }
+  CHECK (path_is (&src, L_PATH));                                                   /* the source is not changed */
+  /* four turns of 90, the box turning with the path (the same left and top, the width and the height swapped) */
+  a = l_path ();
+  for (int i = 0; i < 4; i++)
+    {
+      b = (EaselPath) { 0 };
+      CHECK (easel_lasso_orient_path (&a, 3, 2, w, h, easel_op_orient (EASEL_OP_ROTATE_90), &b, SIZE_MAX));
+      easel_path_free (&a);
+      a = b;
+      w = w ^ h;
+      h = w ^ h;
+      w = w ^ h;
+    }
+  CHECK (path_is (&a, L_PATH) && w == 4 && h == 3);
+  easel_path_free (&a);
+  /* two flips on one axis */
+  for (int k = 0; k < 2; k++)
+    {
+      EaselOp op = k == 0 ? EASEL_OP_FLIP_H : EASEL_OP_FLIP_V;
+
+      CHECK (easel_lasso_orient_path (&src, 3, 2, 4, 3, easel_op_orient (op), &a, SIZE_MAX));
+      CHECK (easel_lasso_orient_path (&a, 3, 2, 4, 3, easel_op_orient (op), &b, SIZE_MAX));
+      CHECK (path_is (&b, L_PATH));
+      easel_path_free (&a);
+      easel_path_free (&b);
+    }
+  /* a turn of 90 and then one of 270 (in the turned box, 3 x 4) */
+  CHECK (easel_lasso_orient_path (&src, 3, 2, 4, 3, easel_op_orient (EASEL_OP_ROTATE_90), &a, SIZE_MAX));
+  CHECK (easel_lasso_orient_path (&a, 3, 2, 3, 4, easel_op_orient (EASEL_OP_ROTATE_270), &b, SIZE_MAX));
+  CHECK (path_is (&b, L_PATH));
+  easel_path_free (&a);
+  easel_path_free (&b);
+  /* the memory: 9 corners are 72 bytes; less is refused and the output is untouched */
+  out = (EaselPath) { 0 };
+  CHECK (!easel_lasso_orient_path (&src, 3, 2, 4, 3, easel_op_orient (EASEL_OP_ROTATE_90), &out, 71));
+  CHECK (out.n == 0 && out.xy == NULL);
+  CHECK (easel_lasso_orient_path (&src, 3, 2, 4, 3, easel_op_orient (EASEL_OP_ROTATE_90), &out, 72));
+  easel_path_free (&out);
+  easel_path_free (&src);
+}
+
 int
 main (void)
 {
@@ -352,5 +448,6 @@ main (void)
   RUN (as12_shape_memory);
   RUN (as7_scaled_path_line);
   RUN (as7_scaled_path_rounding_and_margins);
+  RUN (line_oriented);
   return 0;
 }

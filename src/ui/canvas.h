@@ -192,6 +192,14 @@ int easel_canvas_get_spray_count (EaselCanvas *self);
 /* A pencil stroke is in progress. Signal "stroking-changed" (gboolean stroking) comes when one starts, and when it ends or
    is cancelled. */
 gboolean easel_canvas_is_stroking (EaselCanvas *self);
+/* A flip, a turn or Invert Colors of the selection (REQ-0018-03, REQ-0018-07): a marked selection is lifted first, the float is made afresh
+   (easel_selection_transform), its rectangle keeps its place (a quarter turn swaps its size), and the change joins the one step of its
+   put-down. FALSE, nothing done, without a selection. If the lift cannot get its memory the dialog of REQ-0013-19 comes and the selection
+   stays marked; if the new image cannot, the dialog of the command ("selection-failed" kind 4 flip, 5 rotate, 6 invert) and the selection
+   is as it was (marked again if this command lifted it). */
+gboolean easel_canvas_transform_selection (EaselCanvas *self, EaselOp op);
+/* Whether a Pan drag is held (REQ-0018-01: the Image commands wait for it, as for a stroke). */
+gboolean easel_canvas_is_panning (EaselCanvas *self);
 
 /* Cancels a stroke in progress, restoring the picture, and ignores the rest of that mouse press (REQ-0002-09). */
 void easel_canvas_cancel_stroke (EaselCanvas *self);

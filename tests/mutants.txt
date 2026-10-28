@@ -74,11 +74,13 @@ test: core-resize
 file: src/ui/window.c
 test: ui-0004 ui-0005
 --- find
+  easel_canvas_deselect (self->canvas);           /* Undo or Redo removes a marked selection (REQ-0013-12) */
   if (self->picture->width != old_w || self->picture->height != old_h)
     picture_size_changed (self);
   else
     easel_canvas_update (self->canvas);
 --- replace
+  easel_canvas_deselect (self->canvas);           /* Undo or Redo removes a marked selection (REQ-0013-12) */
   easel_canvas_update (self->canvas);
 
 === REQ-0004-26 a refused undo or redo shows no error
@@ -3603,8 +3605,14 @@ file: src/ui/canvas.c
 test: ui-0013
 --- find
                                 FALSE, hole_color (self), self->sel_lift_max) != EASEL_SELECTION_DONE)
+        {
+          g_signal_emit (self, signals[SIGNAL_SELECTION_FAILED], 0, 0);
+          return TRUE;
 --- replace
                                 FALSE, self->background, self->sel_lift_max) != EASEL_SELECTION_DONE)
+        {
+          g_signal_emit (self, signals[SIGNAL_SELECTION_FAILED], 0, 0);
+          return TRUE;
 
 === REQ-0013-18 the other button cancels the whole floating selection, not only the drag
 file: src/ui/canvas.c
@@ -4487,10 +4495,16 @@ file: src/ui/canvas.c
 test: ui-0014
 --- find
 self->sel_w, self->sel_h, self->sel_mask,
-                                FALSE, hole_color (self), self->sel_lift_max)
+                                FALSE, hole_color (self), self->sel_lift_max) != EASEL_SELECTION_DONE)
+        {
+          g_signal_emit (self, signals[SIGNAL_SELECTION_FAILED], 0, 0);
+          return TRUE;
 --- replace
 self->sel_w, self->sel_h, NULL,
-                                FALSE, hole_color (self), self->sel_lift_max)
+                                FALSE, hole_color (self), self->sel_lift_max) != EASEL_SELECTION_DONE)
+        {
+          g_signal_emit (self, signals[SIGNAL_SELECTION_FAILED], 0, 0);
+          return TRUE;
 
 === REQ-0014-08 a Ctrl drag of a shape moves it
 file: src/ui/canvas.c
@@ -5006,27 +5020,27 @@ test: ui-0014
 file: src/core/selection.c
 test: core-selection
 --- find
-          int si = (int) (((2LL * i + 1) * o->w) / (2LL * W));
+        si = (int) (((2LL * sx + 1) * o->w) / (2LL * pw));
 --- replace
-          int si = (int) (((long long) i * o->w) / W);
+        si = (int) (((long long) sx * o->w) / pw);
 
 === REQ-0015-05 the rows are sampled at the top edge of the new pixel
 file: src/core/selection.c
 test: core-selection
 --- find
-      int sj = (int) (((2LL * j + 1) * o->h) / (2LL * H));
+        sj = (int) (((2LL * sy + 1) * o->h) / (2LL * ph));
 --- replace
-      int sj = (int) (((long long) j * o->h) / H);
+        sj = (int) (((long long) sy * o->h) / ph);
 
 === REQ-0015-06 a shape stretched to nothing is empty
 file: src/core/selection.c
 test: core-selection
 --- find
-  if (scale_region (&o, W, H, op, om, 0, 0, W, H) == 0 && om != NULL)
-    keep_one_pixel (&o, W, H, op, om);
+  else if (scale_region (&o, W, H, orient, op, om, 0, 0, W, H) == 0 && om != NULL)
+    keep_one_pixel (&o, W, H, orient, op, om);
 --- replace
-  if (scale_region (&o, W, H, op, om, 0, 0, W, H) < 0 && om != NULL)
-    keep_one_pixel (&o, W, H, op, om);
+  else if (scale_region (&o, W, H, orient, op, om, 0, 0, W, H) < 0 && om != NULL)
+    keep_one_pixel (&o, W, H, orient, op, om);
 
 === REQ-0015-06 the kept pixel is the last shape pixel of its footprint, not the first
 file: src/core/selection.c
@@ -5042,9 +5056,9 @@ test: core-selection
 file: src/core/selection.c
 test: core-selection
 --- find
-              om[(size_t) j * (size_t) W + (size_t) i] = o->mask[from] != 0;
+            om[(size_t) j * (size_t) W + (size_t) i] = o->mask[from] != 0;
 --- replace
-              om[(size_t) j * (size_t) W + (size_t) i] = 1;
+            om[(size_t) j * (size_t) W + (size_t) i] = 1;
 
 === REQ-0015-09 the mask is not counted against the memory limit
 file: src/core/selection.c
@@ -5090,41 +5104,43 @@ test: core-selection
 file: src/core/selection.c
 test: core-selection
 --- find
-      bool width_leads = fabs (fw - 1) >= fabs (fh - 1);
+  bool width_leads = fabs (fw - 1) >= fabs (fh - 1);
 --- replace
-      bool width_leads = fabs (fw - 1) > fabs (fh - 1);
+  bool width_leads = fabs (fw - 1) > fabs (fh - 1);
 
 === REQ-0015-07 the side that differs less from 1 leads
 file: src/core/selection.c
 test: core-selection
 --- find
-      bool width_leads = fabs (fw - 1) >= fabs (fh - 1);
+  bool width_leads = fabs (fw - 1) >= fabs (fh - 1);
 --- replace
-      bool width_leads = fabs (fw - 1) <= fabs (fh - 1);
+  bool width_leads = fabs (fw - 1) <= fabs (fh - 1);
 
 === REQ-0015-07 halves round down
 file: src/core/selection.c
 test: core-selection
 --- find
-      long long other = (long long) floor (old_other * f + 0.5);
+  long long other = (long long) floor (old_other * f + 0.5);
 --- replace
-      long long other = (long long) ceil (old_other * f - 0.5);
+  long long other = (long long) ceil (old_other * f - 0.5);
 
 === REQ-0015-07 an edge handle keeps the ratio too
 file: src/core/selection.c
 test: core-selection
 --- find
+  drag_side (top, bottom, y, h, dy, ny, nh);
   if (keep_ratio && corner)
 --- replace
+  drag_side (top, bottom, y, h, dy, ny, nh);
   if (keep_ratio && (corner || left || right))
 
 === REQ-0015-07 at the limit the ratio is broken
 file: src/core/selection.c
 test: core-selection
 --- find
-          lead = (int) floor ((double) (width_leads ? w : h) * STRETCH_MAX / old_other + 0.5);
+      lead = (int) floor ((double) (width_leads ? w : h) * STRETCH_MAX / old_other + 0.5);
 --- replace
-          lead = (int) (width_leads ? w : h);
+      lead = (int) (width_leads ? w : h);
 
 === REQ-0015-07 the top-left corner keeps its own place, not the opposite corner's
 file: src/core/selection.c
@@ -5192,9 +5208,9 @@ test: core-selection
 file: src/core/selection.c
 test: core-selection
 --- find
-  r = easel_selection_scale (orig.px, orig.mask, orig.w, orig.h, W, H, &npx, orig.mask != NULL ? &nmask : NULL, max_bytes);
+    r = scale_oriented (orig.px, orig.mask, orig.w, orig.h, W, H, orient, &npx, orig.mask != NULL ? &nmask : NULL, max_bytes);
 --- replace
-  r = easel_selection_scale (orig.px, orig.mask, orig.w, orig.h, W, H, &npx, orig.mask != NULL ? &nmask : NULL, SIZE_MAX);
+    r = scale_oriented (orig.px, orig.mask, orig.w, orig.h, W, H, orient, &npx, orig.mask != NULL ? &nmask : NULL, SIZE_MAX);
 
 === REQ-0015-09 a refused stretch moves the float anyway
 file: src/core/selection.c
@@ -5385,11 +5401,11 @@ test: ui-0015
 file: src/ui/canvas.c
 test: ui-0015
 --- find
-  easel_stretch_rect ((EaselSelHandle) self->stretch_handle, self->stretch_sx, self->stretch_sy, self->stretch_sw, self->stretch_sh, dx, dy,
-                      self->shift, &nx, &ny, &nw, &nh);
+  easel_stretch_rect_mirror ((EaselSelHandle) self->stretch_handle, self->stretch_sx, self->stretch_sy, self->stretch_sw, self->stretch_sh,
+                             dx, dy, self->shift, &nx, &ny, &nw, &nh, &mirror_x, &mirror_y);
 --- replace
-  easel_stretch_rect ((EaselSelHandle) self->stretch_handle, self->sel_x, self->sel_y, self->sel_w, self->sel_h, dx, dy,
-                      self->shift, &nx, &ny, &nw, &nh);
+  easel_stretch_rect_mirror ((EaselSelHandle) self->stretch_handle, self->sel_x, self->sel_y, self->sel_w, self->sel_h,
+                             dx, dy, self->shift, &nx, &ny, &nw, &nh, &mirror_x, &mirror_y);
 
 === REQ-0015-04 a marked selection is not lifted by a stretch
 file: src/ui/canvas.c
@@ -5410,7 +5426,7 @@ file: src/ui/canvas.c
 test: ui-0015
 --- find
   if (nx == self->sel_x && ny == self->sel_y && nw == self->sel_w && nh == self->sel_h)
-    return;                                       /* no movement to another size */
+    return;                                       /* no movement to another size (a mirrored rectangle is never the same one) */
 --- replace
   if (0)
     return;
@@ -5508,9 +5524,9 @@ test: core-selection
 file: src/ui/canvas.c
 test: ui-0015
 --- find
-  if ((self->zoom >= 100 ? easel_selection_stretch_lazy (&self->sel_float, nx, ny, nw, nh, self->sel_lift_max)
+  if ((self->zoom >= 100 ? easel_selection_stretch_lazy_oriented (&self->sel_float, nx, ny, nw, nh, orient, self->sel_lift_max)
 --- replace
-  if ((self->zoom >= 1000 ? easel_selection_stretch_lazy (&self->sel_float, nx, ny, nw, nh, self->sel_lift_max)
+  if ((self->zoom >= 1000 ? easel_selection_stretch_lazy_oriented (&self->sel_float, nx, ny, nw, nh, orient, self->sel_lift_max)
 
 === REQ-0015-05 the tiles in view are laid without making their part of the image
 file: src/ui/canvas.c
@@ -5567,10 +5583,10 @@ test: ui-0015
 file: src/ui/canvas.c
 test: ui-0015
 --- find
-  self->stretch_sh = self->sel_h;
+  self->stretch_orient0 = self->sel_state == 2 ? self->sel_float.orient : EASEL_ORIENT_IDENTITY;
   self->sel_copy = self->ctrl;
 --- replace
-  self->stretch_sh = self->sel_h;
+  self->stretch_orient0 = self->sel_state == 2 ? self->sel_float.orient : EASEL_ORIENT_IDENTITY;
   self->sel_copy = FALSE;
 
 === REQ-0015-04 a Ctrl stretch of a floating selection leaves no copy
@@ -5625,9 +5641,9 @@ test: ui-0015
 file: src/ui/canvas.c
 test: ui-0015
 --- find
-      if (!easel_lasso_scale_path (&self->sel_path0, self->sel_p0_x, self->sel_p0_y, self->sel_p0_w, self->sel_p0_h, nx, ny, nw, nh,
+  if (!easel_lasso_scale_path (src, sx, sy, sw, sh, nx, ny, pw, ph, &scaled, self->sel_lift_max))
 --- replace
-      if (!easel_lasso_scale_path (&self->sel_path0, self->sel_p0_x, self->sel_p0_y, self->sel_p0_w - 1, self->sel_p0_h, nx, ny, nw, nh,
+  if (!easel_lasso_scale_path (src, sx, sy, sw - 1, sh, nx, ny, pw, ph, &scaled, self->sel_lift_max))
 
 === REQ-0015-06 the scaled line is not placed at the selection
 file: src/ui/canvas.c
@@ -5669,9 +5685,9 @@ test: core-lasso
 file: src/ui/canvas.c
 test: ui-0015
 --- find
-                      self->shift, &nx, &ny, &nw, &nh);
+                             dx, dy, self->shift, &nx, &ny, &nw, &nh, &mirror_x, &mirror_y);
 --- replace
-                      FALSE, &nx, &ny, &nw, &nh);
+                             dx, dy, FALSE, &nx, &ny, &nw, &nh, &mirror_x, &mirror_y);
 
 === REQ-0015-07 the ratio does not follow Shift released or pressed during the drag
 file: src/ui/canvas.c
@@ -5699,9 +5715,10 @@ test: ui-0015
 file: src/ui/canvas.c
 test: ui-0015
 --- find
-      if ((self->sel_float.w != self->stretch_sw || self->sel_float.h != self->stretch_sh)
-          && easel_selection_stretch (&self->sel_float, self->stretch_sx, self->stretch_sy, self->stretch_sw, self->stretch_sh,
-                                      self->sel_lift_max) != EASEL_SELECTION_DONE)
+      if ((self->sel_float.w != self->stretch_sw || self->sel_float.h != self->stretch_sh
+           || self->sel_float.orient != self->stretch_orient0)
+          && easel_selection_stretch_oriented (&self->sel_float, self->stretch_sx, self->stretch_sy, self->stretch_sw, self->stretch_sh,
+                                               self->stretch_orient0, self->sel_lift_max) != EASEL_SELECTION_DONE)
 --- replace
       if (FALSE)
 
@@ -5769,11 +5786,12 @@ test: ui-0015
 file: src/ui/canvas.c
 test: ui-0015
 --- find
-      if ((self->sel_float.w != self->stretch_sw || self->sel_float.h != self->stretch_sh)
-          && easel_selection_stretch
+      if ((self->sel_float.w != self->stretch_sw || self->sel_float.h != self->stretch_sh
+           || self->sel_float.orient != self->stretch_orient0)
+          && easel_selection_stretch_oriented
 --- replace
       if (TRUE
-          && easel_selection_stretch
+          && easel_selection_stretch_oriented
 
 # ---- selection handles over the picture's handle areas (0015, JOD 2026-10-22) ----
 
@@ -9197,3 +9215,1233 @@ test: ui-0017
 --- replace
           if (rich[r].size_pt >= 0)
             st.size_pt = rich[r].size_pt;
+
+=== REQ-0018-04 Rotate 90 turns the other way
+file: src/core/transform.c
+test: core-transform
+--- find
+      return EASEL_ORIENT_TRANSPOSE | EASEL_ORIENT_FLIP_X;
+    case EASEL_OP_ROTATE_180:
+--- replace
+      return EASEL_ORIENT_TRANSPOSE | EASEL_ORIENT_FLIP_Y;
+    case EASEL_OP_ROTATE_180:
+
+=== REQ-0018-04 Rotate 270 turns the other way
+file: src/core/transform.c
+test: core-transform
+--- find
+    case EASEL_OP_ROTATE_270:
+      return EASEL_ORIENT_TRANSPOSE | EASEL_ORIENT_FLIP_Y;
+--- replace
+    case EASEL_OP_ROTATE_270:
+      return EASEL_ORIENT_TRANSPOSE | EASEL_ORIENT_FLIP_X;
+
+=== REQ-0018-04 Flip Horizontal mirrors y
+file: src/core/transform.c
+test: core-transform
+--- find
+    case EASEL_OP_FLIP_H:
+      return EASEL_ORIENT_FLIP_X;
+--- replace
+    case EASEL_OP_FLIP_H:
+      return EASEL_ORIENT_FLIP_Y;
+
+=== REQ-0018-04 Rotate 180 is a flip
+file: src/core/transform.c
+test: core-transform
+--- find
+      return EASEL_ORIENT_FLIP_X | EASEL_ORIENT_FLIP_Y;
+--- replace
+      return EASEL_ORIENT_FLIP_X;
+
+=== REQ-0018-04 a mirrored x is off by one
+file: src/core/transform.c
+test: core-transform
+--- find
+  if (o & EASEL_ORIENT_FLIP_X)
+    ax = ow - 1 - dx;
+--- replace
+  if (o & EASEL_ORIENT_FLIP_X)
+    ax = ow - 2 - dx;
+
+=== REQ-0018-04 a mirrored row is copied forwards
+file: src/core/transform.c
+test: core-transform
+--- find
+              out[dx] = row[ow - 1 - dx];
+--- replace
+              out[dx] = row[dx];
+
+=== REQ-0018-04 a transposing copy stops at the first block
+file: src/core/transform.c
+test: core-transform
+--- find
+  for (int by = 0; by < oh; by += BLOCK)
+--- replace
+  for (int by = 0; by < oh && by < BLOCK; by += BLOCK)
+
+=== REQ-0018-04 an orientation's inverse is the identity
+file: src/core/transform.c
+test: core-transform
+--- find
+    if (easel_orient_compose (o, c) == EASEL_ORIENT_IDENTITY)
+--- replace
+    if (c == EASEL_ORIENT_IDENTITY)
+
+=== REQ-0018-04 two orientations compose to the second
+file: src/core/transform.c
+test: core-transform
+--- find
+          same = ex == cx && ey == cy && w == cw && h == ch;
+--- replace
+          same = ex == cx && w == cw && h == ch;
+
+=== REQ-0018-05 Invert Colors inverts alpha too
+file: src/core/transform.c
+test: core-transform
+--- find
+        px[i] = img->px[i] ^ 0x00FFFFFFu;
+--- replace
+        px[i] = img->px[i] ^ 0xFFFFFFFFu;
+
+=== REQ-0018-05 Invert Colors keeps the blue channel
+file: src/core/transform.c
+test: core-transform
+--- find
+        px[i] = img->px[i] ^ 0x00FFFFFFu;
+--- replace
+        px[i] = img->px[i] ^ 0x00FFFF00u;
+
+=== REQ-0018-06 Clear Image clears to transparent in the buffer
+file: src/core/transform.c
+test: core-transform
+--- find
+        px[i] = background;
+--- replace
+        px[i] = 0;
+
+=== REQ-0018-06 Clear Image logs a wrong new color
+file: src/core/transform.c
+test: core-transform
+--- find
+    case EASEL_OP_CLEAR:
+      return background;
+--- replace
+    case EASEL_OP_CLEAR:
+      return background & 0xFFFFFFFEu;
+
+=== REQ-0018-09 a command that changes nothing adds a step
+file: src/core/transform.c
+test: core-transform
+--- find
+  if (changed == 0)
+    return EASEL_TRANSFORM_NOTHING;
+--- replace
+  if (changed == 0 && quarter)
+    return EASEL_TRANSFORM_NOTHING;
+
+=== REQ-0018-09 a square quarter turn is always a change
+file: src/core/transform.c
+test: core-transform
+--- find
+  if (quarter && w != hgt)
+    changed = total;
+--- replace
+  if (quarter)
+    changed = total;
+
+=== REQ-0018-09 the log is always used
+file: src/core/transform.c
+test: core-transform
+--- find
+  if (!quarter && changed <= total / 3)
+--- replace
+  if (!quarter)
+
+=== REQ-0018-09 a buffer step is always used
+file: src/core/transform.c
+test: core-transform
+--- find
+  if (!quarter && changed <= total / 3)
+--- replace
+  if (0)
+
+=== REQ-0018-09 a quarter turn may be a log
+file: src/core/transform.c
+test: core-transform
+--- find
+  if (!quarter && changed <= total / 3)
+--- replace
+  if (changed <= total / 3)
+
+=== REQ-0018-09 a buffer step does not mark the picture dirty
+file: src/core/transform.c
+test: core-transform
+--- find
+    img->dirty = (EaselRect) { 0, 0, nw, nh };
+--- replace
+    img->dirty = (EaselRect) { 0, 0, 0, 0 };
+
+=== REQ-0018-09 Undo of a buffer step does not mark the picture dirty
+file: src/core/history.c
+test: core-transform
+--- find
+      img->dirty = (EaselRect) { 0, 0, img->width, img->height };
+      return true;
+--- replace
+      return true;
+
+=== REQ-0018-09 Undo of a buffer step keeps the size
+file: src/core/history.c
+test: core-transform
+--- find
+      img->width = s->buf_w;
+      img->height = s->buf_h;
+--- replace
+      img->width = s->buf_h;
+      img->height = s->buf_w;
+
+=== REQ-0018-09 a buffer step counts no pixels
+file: src/core/history.c
+test: core-transform
+--- find
+    return (size_t) s->buf_w * (size_t) s->buf_h * sizeof (uint32_t) + BYTES_PER_STEP;
+--- replace
+    return BYTES_PER_STEP;
+
+=== REQ-0018-10 a log larger than the limit is made
+file: src/core/transform.c
+test: core-transform
+--- find
+      if (changed * sizeof *log > max_bytes || (log = malloc (changed * sizeof *log)) == NULL)
+--- replace
+      if ((log = malloc (changed * sizeof *log)) == NULL)
+
+=== REQ-0018-10 new pixels larger than the limit are made
+file: src/core/transform.c
+test: core-transform
+--- find
+    if (total * sizeof *px > max_bytes || (px = malloc (total * sizeof *px)) == NULL)
+--- replace
+    if ((px = malloc (total * sizeof *px)) == NULL)
+
+=== REQ-0018-09 the count stops before a log is exact
+file: src/core/transform.c
+test: core-transform
+--- find
+      size_t cap = quarter ? 0 : total / 3;
+--- replace
+      size_t cap = quarter ? 0 : total / 4;
+
+=== REQ-0018-09 the log may be one entry short
+file: src/core/transform.c
+test: core-transform
+--- find
+            if (next != now && n < changed)
+--- replace
+            if (next != now && n < changed - 1)
+
+=== REQ-0018-03 an Image command leaves a pending polygon pending
+file: src/ui/window.c
+test: ui-0018
+--- find
+  if (!put_down_for_action (self, FALSE))
+    return;
+  old_w = self->picture->width;
+--- replace
+  old_w = self->picture->width;
+
+=== REQ-0018-03 an Image command goes on when the text box could not be put down
+file: src/ui/window.c
+test: ui-0018
+--- find
+  if (!put_down_for_action (self, FALSE))
+    return;
+  old_w = self->picture->width;
+--- replace
+  put_down_for_action (self, FALSE);
+  old_w = self->picture->width;
+
+=== REQ-0018-01 an Image command acts during a held stroke
+file: src/ui/window.c
+test: ui-0018
+--- find
+  if (!view_actions_allowed (self) || easel_canvas_is_panning (self->canvas))
+--- replace
+  if (easel_canvas_is_panning (self->canvas))
+
+=== REQ-0018-01 an Image command acts during a Pan drag
+file: src/ui/window.c
+test: ui-0018
+--- find
+  if (!view_actions_allowed (self) || easel_canvas_is_panning (self->canvas))
+--- replace
+  if (!view_actions_allowed (self))
+
+=== REQ-0018-04 a quarter turn does not rebuild the view
+file: src/ui/window.c
+test: ui-0018
+--- find
+  if (r != EASEL_TRANSFORM_DONE)
+    return;
+  if (self->picture->width != old_w || self->picture->height != old_h)
+    picture_size_changed (self);
+  else
+    easel_canvas_update (self->canvas);
+--- replace
+  if (r != EASEL_TRANSFORM_DONE)
+    return;
+  easel_canvas_update (self->canvas);
+
+=== REQ-0018-09 an Image command does not sync Undo and the title
+file: src/ui/window.c
+test: ui-0018
+--- find
+  if (r != EASEL_TRANSFORM_DONE)
+    return;
+  if (self->picture->width != old_w || self->picture->height != old_h)
+    picture_size_changed (self);
+  else
+    easel_canvas_update (self->canvas);
+  sync_history_ui (self);
+--- replace
+  if (r != EASEL_TRANSFORM_DONE)
+    return;
+  if (self->picture->width != old_w || self->picture->height != old_h)
+    picture_size_changed (self);
+  else
+    easel_canvas_update (self->canvas);
+
+=== REQ-0018-04 Flip Horizontal flips vertically
+file: src/ui/window.c
+test: ui-0018
+--- find
+  image_action (user_data, EASEL_OP_FLIP_H);
+--- replace
+  image_action (user_data, EASEL_OP_FLIP_V);
+
+=== REQ-0018-04 Flip Vertical flips horizontally
+file: src/ui/window.c
+test: ui-0018
+--- find
+  image_action (user_data, EASEL_OP_FLIP_V);
+--- replace
+  image_action (user_data, EASEL_OP_FLIP_H);
+
+=== REQ-0018-04 Rotate 90 rotates 270
+file: src/ui/window.c
+test: ui-0018
+--- find
+  image_action (user_data, EASEL_OP_ROTATE_90);
+--- replace
+  image_action (user_data, EASEL_OP_ROTATE_270);
+
+=== REQ-0018-04 Rotate 180 rotates 90
+file: src/ui/window.c
+test: ui-0018
+--- find
+  image_action (user_data, EASEL_OP_ROTATE_180);
+--- replace
+  image_action (user_data, EASEL_OP_ROTATE_90);
+
+=== REQ-0018-04 Rotate 270 rotates 90
+file: src/ui/window.c
+test: ui-0018
+--- find
+  image_action (user_data, EASEL_OP_ROTATE_270);
+--- replace
+  image_action (user_data, EASEL_OP_ROTATE_90);
+
+=== REQ-0018-05 Invert Colors clears
+file: src/ui/window.c
+test: ui-0018
+--- find
+  image_action (user_data, EASEL_OP_INVERT);
+--- replace
+  image_action (user_data, EASEL_OP_CLEAR);
+
+=== REQ-0018-06 Clear Image inverts
+file: src/ui/window.c
+test: ui-0018
+--- find
+  image_action (user_data, EASEL_OP_CLEAR);
+--- replace
+  image_action (user_data, EASEL_OP_INVERT);
+
+=== REQ-0018-06 Clear Image takes black, not the background
+file: src/ui/window.c
+test: ui-0018
+--- find
+  r = easel_image_transform (self->picture, self->history, op, self->background, self->transform_limit);
+--- replace
+  r = easel_image_transform (self->picture, self->history, op, 0xFF000000u, self->transform_limit);
+
+=== REQ-0018-10 an Image command ignores the memory limit
+file: src/ui/window.c
+test: ui-0018
+--- find
+  r = easel_image_transform (self->picture, self->history, op, self->background, self->transform_limit);
+--- replace
+  r = easel_image_transform (self->picture, self->history, op, self->background, G_MAXSIZE);
+
+=== REQ-0018-10 a refused Image command shows no dialog
+file: src/ui/window.c
+test: ui-0018
+--- find
+  if (r == EASEL_TRANSFORM_NO_MEMORY)
+    show_transform_error (self, op);
+--- replace
+  (void) 0;
+
+=== REQ-0018-10 an Invert that could not be made says Flip
+file: src/ui/window.c
+test: ui-0018
+--- find
+  const char *heading = op == EASEL_OP_INVERT ? "Could Not Invert the Colors"
+--- replace
+  const char *heading = op == EASEL_OP_INVERT ? "Could Not Flip the Picture"
+
+=== REQ-0018-10 a Clear Image that could not be made says Rotate
+file: src/ui/window.c
+test: ui-0018
+--- find
+                        : op == EASEL_OP_CLEAR ? "Could Not Clear the Picture"
+--- replace
+                        : op == EASEL_OP_CLEAR ? "Could Not Rotate the Picture"
+
+=== REQ-0018-10 a Flip that could not be made says Rotate
+file: src/ui/window.c
+test: ui-0018
+--- find
+                        : (op == EASEL_OP_FLIP_H || op == EASEL_OP_FLIP_V) ? "Could Not Flip the Picture"
+--- replace
+                        : (op == EASEL_OP_FLIP_H) ? "Could Not Flip the Picture"
+
+=== REQ-0018-10 the memory dialog has another body
+file: src/ui/window.c
+test: ui-0018
+--- find
+  show_save_error (self, heading, "There is not enough memory for this change.");
+--- replace
+  show_save_error (self, heading, "There is not enough memory.");
+
+=== REQ-0018-01 Ctrl+I does not invert when no text box is open
+file: src/ui/window.c
+test: ui-0018
+--- find
+      image_action (self, EASEL_OP_INVERT);
+      return GDK_EVENT_STOP;
+--- replace
+      return GDK_EVENT_STOP;
+
+=== REQ-0018-01 Shift+Ctrl+I inverts too
+file: src/ui/window.c
+test: ui-0018
+--- find
+  if ((keyval == GDK_KEY_i || keyval == GDK_KEY_I) && (state & (GDK_CONTROL_MASK | GDK_SHIFT_MASK | GDK_ALT_MASK)) == GDK_CONTROL_MASK)
+--- replace
+  if ((keyval == GDK_KEY_i || keyval == GDK_KEY_I) && (state & GDK_CONTROL_MASK))
+
+=== REQ-0018-01 Rotate 90 is on Ctrl+T
+file: src/ui/application.c
+test: ui-0018
+--- find
+"win.rotate-90", (const char *[]) { "<Control>r", NULL });
+--- replace
+"win.rotate-90", (const char *[]) { "<Control>t", NULL });
+
+=== REQ-0018-01 Rotate 270 is on Ctrl+R
+file: src/ui/application.c
+test: ui-0018
+--- find
+"win.rotate-270", (const char *[]) { "<Control>l", NULL });
+--- replace
+"win.rotate-270", (const char *[]) { "<Control>r", NULL });
+
+=== REQ-0018-01 Clear Image is on Ctrl+N
+file: src/ui/application.c
+test: ui-0018
+--- find
+"win.clear-image", (const char *[]) { "<Control><Shift>n", NULL });
+--- replace
+"win.clear-image", (const char *[]) { "<Control>n", NULL });
+
+=== REQ-0018-01 the Invert Colors item does not show Ctrl+I
+file: src/ui/window.ui
+test: ui-0018
+--- find
+        <attribute name="action">win.invert</attribute>
+        <attribute name="accel">&lt;Control&gt;i</attribute>
+      </item>
+    </section>
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">Attributes…</attribute>
+--- replace
+        <attribute name="action">win.invert</attribute>
+      </item>
+    </section>
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">Attributes…</attribute>
+
+=== REQ-0018-02 the canvas menu has no Clear Image
+file: src/ui/window.ui
+test: ui-0018 ui-0016
+--- find
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">_Clear Image</attribute>
+        <attribute name="action">win.clear-image</attribute>
+      </item>
+    </section>
+  </menu>
+  <menu id="primary_menu">
+--- replace
+  </menu>
+  <menu id="primary_menu">
+
+=== REQ-0018-01 a command acts with the focus in a field of the font card
+file: src/ui/window.c
+test: ui-0018
+--- find
+  if (card_field_focus (self) != NULL)
+    return;                                     /* the focus is in a field of the font card: the key is the field's (REQ-0018-01) */
+--- replace
+  (void) 0;
+
+=== REQ-0018-01 a key of another layout is not taken for its Latin place
+file: src/ui/window.c
+test: ui-0018
+--- find
+        found = keyvals[i];
+--- replace
+        found = keyval;
+
+=== REQ-0018-01 a Ctrl+Alt key of another layout is taken for its Latin place
+file: src/ui/window.c
+test: ui-0018
+--- find
+  if (!(state & GDK_CONTROL_MASK) || (state & GDK_ALT_MASK) || keyval < 0x80 || keycode == 0
+--- replace
+  if (!(state & GDK_CONTROL_MASK) || keyval < 0x80 || keycode == 0
+
+=== REQ-0018-07 a second command forgets the first's orientation
+file: src/core/selection.c
+test: core-selection
+--- find
+                     easel_orient_compose (f->orient, step));
+--- replace
+                     step);
+
+=== REQ-0018-07 a quarter turn of a float keeps its width and height
+file: src/core/selection.c
+test: core-selection
+--- find
+  return stretch_to (f, f->x, f->y, quarter ? f->h : f->w, quarter ? f->w : f->h, max_bytes, false,
+--- replace
+  return stretch_to (f, f->x, f->y, f->w, f->h, max_bytes, false,
+
+=== REQ-0018-07 a command moves the float to the origin
+file: src/core/selection.c
+test: core-selection
+--- find
+  return stretch_to (f, f->x, f->y, quarter ? f->h : f->w, quarter ? f->w : f->h, max_bytes, false,
+--- replace
+  return stretch_to (f, 0, 0, quarter ? f->h : f->w, quarter ? f->w : f->h, max_bytes, false,
+
+=== REQ-0018-07 the shown image is not oriented
+file: src/core/selection.c
+test: core-selection
+--- find
+              easel_orient_source (orient, pw, ph, i, j, &sx, &sy);
+--- replace
+              (void) pw;
+
+=== REQ-0018-07 the size before a quarter turn is not swapped
+file: src/core/selection.c
+test: core-selection
+--- find
+  int pw = easel_orient_swaps (orient) ? H : W, ph = easel_orient_swaps (orient) ? W : H;
+--- replace
+  int pw = W, ph = H;
+
+=== REQ-0018-07 the one pixel a shape keeps is not oriented
+file: src/core/selection.c
+test: core-selection
+--- find
+              easel_orient_target (orient, PW, PH, bi, bj, &tx, &ty);
+--- replace
+              tx = bi;
+              ty = bj;
+
+=== REQ-0018-07 a stretch of an oriented float forgets the orientation
+file: src/core/selection.c
+test: core-selection
+--- find
+  return stretch_to (f, x, y, W, H, max_bytes, false, f->orient);
+--- replace
+  return stretch_to (f, x, y, W, H, max_bytes, false, EASEL_ORIENT_IDENTITY);
+
+=== REQ-0018-07 a lazy stretch of an oriented float forgets the orientation
+file: src/core/selection.c
+test: core-selection
+--- find
+  return stretch_to (f, x, y, W, H, max_bytes, true, f->orient);
+--- replace
+  return stretch_to (f, x, y, W, H, max_bytes, true, EASEL_ORIENT_IDENTITY);
+
+=== REQ-0018-07 the lazily made blocks of an oriented float are not oriented
+file: src/core/selection.c
+test: core-selection
+--- find
+        f->kept_px += scale_region (&orig, f->w, f->h, f->orient, f->px, f->mask, ax, ay, bx1, by1);
+--- replace
+        f->kept_px += scale_region (&orig, f->w, f->h, EASEL_ORIENT_IDENTITY, f->px, f->mask, ax, ay, bx1, by1);
+
+=== REQ-0018-07 the completed lazy shape keeps its one pixel unoriented
+file: src/core/selection.c
+test: core-selection
+--- find
+    keep_one_pixel (&orig, f->w, f->h, f->orient, f->px, f->mask);
+--- replace
+    keep_one_pixel (&orig, f->w, f->h, EASEL_ORIENT_IDENTITY, f->px, f->mask);
+
+=== REQ-0018-05 Invert Colors of a float inverts alpha too
+file: src/core/selection.c
+test: core-selection
+--- find
+    npx[i] = f->px[i] ^ 0x00FFFFFFu;
+--- replace
+    npx[i] = f->px[i] ^ 0xFFFFFFFFu;
+
+=== REQ-0018-05 Invert Colors of a float leaves the lifted pixels
+file: src/core/selection.c
+test: core-selection
+--- find
+      for (size_t i = 0; i < n_orig; i++)
+        norig[i] = f->orig_px[i] ^ 0x00FFFFFFu;
+--- replace
+      for (size_t i = 0; i < n_orig; i++)
+        norig[i] = f->orig_px[i];
+
+=== REQ-0018-07 Invert Colors changes the copies left before
+file: src/core/selection.c
+test: core-selection
+--- find
+      uses_current = uses_current || id == EASEL_IMAGE_CURRENT;
+--- replace
+      uses_current = false;
+
+=== REQ-0018-07 Invert Colors changes the copies made with the lifted pixels
+file: src/core/selection.c
+test: core-selection
+--- find
+      uses_orig = uses_orig || id == EASEL_IMAGE_ORIGINAL;
+--- replace
+      uses_orig = false;
+
+=== REQ-0018-10 Invert Colors of a float ignores the memory limit
+file: src/core/selection.c
+test: core-selection
+--- find
+  r = image_alloc (uses_current && f->mask != NULL, f->w, f->h, max_bytes, false, &npx, &nmask);
+--- replace
+  r = image_alloc (uses_current && f->mask != NULL, f->w, f->h, SIZE_MAX, false, &npx, &nmask);
+
+=== REQ-0018-03 a selection is put down by a command instead of changed
+file: src/ui/window.c
+test: ui-0018
+--- find
+  if (op != EASEL_OP_CLEAR && easel_canvas_transform_selection (self->canvas, op))
+--- replace
+  if (0 && easel_canvas_transform_selection (self->canvas, op))
+
+=== REQ-0018-07 a turned selection keeps its old size in the rectangle
+file: src/ui/canvas.c
+test: ui-0018
+--- find
+  self->sel_w = self->sel_float.w;
+  self->sel_h = self->sel_float.h;
+  self->sel_epoch++;
+--- replace
+  self->sel_epoch++;
+
+=== REQ-0018-07 a command leaves no hole where the selection was lifted
+file: src/ui/canvas.c
+test: ui-0018
+--- find
+                                FALSE, hole_color (self), self->sel_lift_max) != EASEL_SELECTION_DONE)
+        {
+          g_signal_emit (self, signals[SIGNAL_SELECTION_FAILED], 0, 0);      /* REQ-0013-19: the selection stays marked */
+--- replace
+                                TRUE, hole_color (self), self->sel_lift_max) != EASEL_SELECTION_DONE)
+        {
+          g_signal_emit (self, signals[SIGNAL_SELECTION_FAILED], 0, 0);      /* REQ-0013-19: the selection stays marked */
+
+=== REQ-0018-10 a refused lift for a command shows the stretch's dialog
+file: src/ui/canvas.c
+test: ui-0018
+--- find
+          g_signal_emit (self, signals[SIGNAL_SELECTION_FAILED], 0, 0);      /* REQ-0013-19: the selection stays marked */
+--- replace
+          g_signal_emit (self, signals[SIGNAL_SELECTION_FAILED], 0, 3);      /* REQ-0013-19: the selection stays marked */
+
+=== REQ-0018-10 an Invert that cannot be made says Flip for a selection
+file: src/ui/canvas.c
+test: ui-0018
+--- find
+  int kind = op == EASEL_OP_INVERT ? 6 : (op == EASEL_OP_FLIP_H || op == EASEL_OP_FLIP_V) ? 4 : 5;
+--- replace
+  int kind = op == EASEL_OP_INVERT ? 4 : (op == EASEL_OP_FLIP_H || op == EASEL_OP_FLIP_V) ? 4 : 5;
+
+=== REQ-0018-10 a Rotate that cannot be made says Flip for a selection
+file: src/ui/canvas.c
+test: ui-0018
+--- find
+  int kind = op == EASEL_OP_INVERT ? 6 : (op == EASEL_OP_FLIP_H || op == EASEL_OP_FLIP_V) ? 4 : 5;
+--- replace
+  int kind = op == EASEL_OP_INVERT ? 6 : (op == EASEL_OP_FLIP_H || op == EASEL_OP_FLIP_V) ? 4 : 4;
+
+=== REQ-0018-10 a Flip that cannot be made says Rotate for a selection
+file: src/ui/canvas.c
+test: ui-0018
+--- find
+  int kind = op == EASEL_OP_INVERT ? 6 : (op == EASEL_OP_FLIP_H || op == EASEL_OP_FLIP_V) ? 4 : 5;
+--- replace
+  int kind = op == EASEL_OP_INVERT ? 6 : (op == EASEL_OP_FLIP_H || op == EASEL_OP_FLIP_V) ? 5 : 5;
+
+=== REQ-0018-10 the selection dialog of a refused command has another body
+file: src/ui/window.c
+test: ui-0018
+--- find
+    show_save_error (self, "Could Not Rotate the Selection", "There is not enough memory for this change.");
+--- replace
+    show_save_error (self, "Could Not Rotate the Selection", "There is not enough memory to rotate this selection.");
+
+=== REQ-0018-02 the selection menu has no Invert Colors
+file: src/ui/window.ui
+test: ui-0018
+--- find
+      <item>
+        <attribute name="label" translatable="yes">_Invert Colors</attribute>
+        <attribute name="action">win.invert</attribute>
+        <attribute name="accel">&lt;Control&gt;i</attribute>
+      </item>
+    </section>
+  </menu>
+  <menu id="text_menu">
+--- replace
+    </section>
+  </menu>
+  <menu id="text_menu">
+
+=== REQ-0018-10 Invert Colors of a float ignores the memory limit for the lifted image
+file: src/core/selection.c
+test: core-selection
+--- find
+      r = image_alloc (uses_orig && f->orig_mask != NULL, f->ow, f->oh, max_bytes, false, &norig, &norig_mask);
+--- replace
+      r = image_alloc (uses_orig && f->orig_mask != NULL, f->ow, f->oh, SIZE_MAX, false, &norig, &norig_mask);
+
+=== REQ-0018-07 Invert Colors changes the copies' images in place
+file: src/core/selection.c
+test: core-selection
+--- find
+  if (!uses_current && !uses_orig)
+    {
+      /* No copy uses either image
+--- replace
+  if (1)
+    {
+      /* No copy uses either image
+
+=== REQ-0018-05 an Invert Colors in place leaves the lifted pixels
+file: src/core/selection.c
+test: core-selection
+--- find
+          f->orig_px[i] ^= 0x00FFFFFFu;
+--- replace
+          f->orig_px[i] ^= 0;
+
+=== REQ-0018-05 an Invert Colors in place leaves the shown pixels
+file: src/core/selection.c
+test: core-selection
+--- find
+        f->px[i] ^= 0x00FFFFFFu;
+--- replace
+        f->px[i] ^= 0;
+
+=== REQ-0018-07 a float at its lifted width takes the unscaled copy whatever its height
+file: src/core/selection.c
+test: core-selection
+--- find
+  if ((easel_orient_swaps (orient) ? H : W) == w && (easel_orient_swaps (orient) ? W : H) == h)
+--- replace
+  if ((easel_orient_swaps (orient) ? H : W) == w)
+
+=== REQ-0018-07 the shape is not oriented with the unscaled copy
+file: src/core/selection.c
+test: core-selection
+--- find
+      if (om != NULL)
+        orient_bytes (mask, w, h, orient, om);
+--- replace
+      if (om != NULL)
+        memcpy (om, mask, (size_t) W * (size_t) H);
+
+=== REQ-0018-07 the x mirror has the wrong sign
+file: src/core/lasso.c
+test: core-lasso
+--- find
+        u = pw - u;
+--- replace
+        u = u - pw;
+
+=== REQ-0018-07 the y mirror has the wrong sign
+file: src/core/lasso.c
+test: core-lasso
+--- find
+        v = ph - v;
+--- replace
+        v = v - ph;
+
+=== REQ-0018-07 the x mirror uses the width before the turn
+file: src/core/lasso.c
+test: core-lasso
+--- find
+        u = pw - u;
+--- replace
+        u = w - u;
+
+=== REQ-0018-07 the y mirror uses the height before the turn
+file: src/core/lasso.c
+test: core-lasso
+--- find
+        v = ph - v;
+--- replace
+        v = h - v;
+
+=== REQ-0018-07 the x and y of a quarter turn are not exchanged
+file: src/core/lasso.c
+test: core-lasso
+--- find
+      if (transposed)
+        {
+          long long t = u;
+--- replace
+      if (0)
+        {
+          long long t = u;
+
+=== REQ-0018-07 a quarter turn exchanges x into y but not y into x
+file: src/core/lasso.c
+test: core-lasso
+--- find
+          u = v;
+          v = t;
+--- replace
+          u = v;
+          v = u;
+
+=== REQ-0018-07 the box after a turn is the box before it
+file: src/core/lasso.c
+test: core-lasso
+--- find
+  long long pw = transposed ? h : w, ph = transposed ? w : h;
+--- replace
+  long long pw = w, ph = h;
+
+=== REQ-0018-07 the left of the box is not subtracted
+file: src/core/lasso.c
+test: core-lasso
+--- find
+      long long u = (long long) src->xy[2 * i] - x, v = (long long) src->xy[2 * i + 1] - y;
+--- replace
+      long long u = (long long) src->xy[2 * i], v = (long long) src->xy[2 * i + 1] - y;
+
+=== REQ-0018-07 the top of the box is not subtracted
+file: src/core/lasso.c
+test: core-lasso
+--- find
+      long long u = (long long) src->xy[2 * i] - x, v = (long long) src->xy[2 * i + 1] - y;
+--- replace
+      long long u = (long long) src->xy[2 * i] - x, v = (long long) src->xy[2 * i + 1];
+
+=== REQ-0018-07 the left of the box is not added back
+file: src/core/lasso.c
+test: core-lasso
+--- find
+      if (!easel_path_add (&p, (int) (x + u), (int) (y + v), max_bytes))
+--- replace
+      if (!easel_path_add (&p, (int) u, (int) (y + v), max_bytes))
+
+=== REQ-0018-07 the top of the box is not added back
+file: src/core/lasso.c
+test: core-lasso
+--- find
+      if (!easel_path_add (&p, (int) (x + u), (int) (y + v), max_bytes))
+--- replace
+      if (!easel_path_add (&p, (int) (x + u), (int) v, max_bytes))
+
+=== REQ-0018-07 the oriented line ignores the memory limit
+file: src/core/lasso.c
+test: core-lasso
+--- find
+      if (!easel_path_add (&p, (int) (x + u), (int) (y + v), max_bytes))
+--- replace
+      if (!easel_path_add (&p, (int) (x + u), (int) (y + v), SIZE_MAX))
+
+=== REQ-0018-07 a command leaves the line of a free-form selection
+file: src/ui/canvas.c
+test: ui-0018
+--- find
+  if (line.n > 0)
+    {
+      if (self->sel_path0.n == 0)
+--- replace
+  if (0)
+    {
+      if (self->sel_path0.n == 0)
+
+=== REQ-0018-07 the line of a command is not turned
+file: src/ui/canvas.c
+test: ui-0018
+--- find
+  ok = easel_lasso_orient_path (&scaled, nx, ny, pw, ph, orient, out, self->sel_lift_max);
+--- replace
+  ok = easel_lasso_orient_path (&scaled, nx, ny, pw, ph, EASEL_ORIENT_IDENTITY, out, self->sel_lift_max);
+
+=== REQ-0018-07 the line is scaled to the size after the turn, not before it
+file: src/ui/canvas.c
+test: ui-0018
+--- find
+  int pw = easel_orient_swaps (orient) ? nh : nw, ph = easel_orient_swaps (orient) ? nw : nh;
+  EaselPath scaled = { 0 };
+--- replace
+  int pw = nw, ph = nh;
+  EaselPath scaled = { 0 };
+
+=== REQ-0018-07 the line is scaled from the line shown, not the path as traced
+file: src/ui/canvas.c
+test: ui-0018
+--- find
+  gboolean has0 = self->sel_path0.n > 0;
+--- replace
+  gboolean has0 = FALSE;
+
+=== REQ-0018-07 the line of a moved selection keeps its old anchor
+file: src/ui/canvas.c
+test: ui-0018
+--- find
+      self->sel_path_x = self->sel_x;
+      self->sel_path_y = self->sel_y;
+    }
+  self->sel_w = self->sel_float.w;
+--- replace
+      self->sel_path_x = self->sel_path_x;
+      self->sel_path_y = self->sel_path_y;
+    }
+  self->sel_w = self->sel_float.w;
+
+=== REQ-0018-07 a second command forgets the first one's turn in the line
+file: src/ui/canvas.c
+test: ui-0018
+--- find
+      EaselOrient step = easel_op_orient (op), o2 = easel_orient_compose (self->sel_float.orient, step);
+--- replace
+      EaselOrient step = easel_op_orient (op), o2 = step;
+
+=== REQ-0018-07 the line of a quarter turn is made for the box before it
+file: src/ui/canvas.c
+test: ui-0018
+--- find
+      if (!oriented_line (self, o2, self->sel_x, self->sel_y, quarter ? self->sel_h : self->sel_w, quarter ? self->sel_w : self->sel_h,
+                          &line))
+--- replace
+      if (!oriented_line (self, o2, self->sel_x, self->sel_y, self->sel_w, self->sel_h,
+                          &line))
+
+=== REQ-0018-07 a stretch of a turned selection scales the line without the turn
+file: src/ui/canvas.c
+test: ui-0018
+--- find
+      if (!oriented_line (self, orient, nx, ny, nw, nh, &scaled))
+--- replace
+      if (!oriented_line (self, EASEL_ORIENT_IDENTITY, nx, ny, nw, nh, &scaled))
+
+=== REQ-0018-07 a cancelled stretch of a turned selection gives back the unturned line
+file: src/ui/canvas.c
+test: ui-0018
+--- find
+      || !oriented_line (self, self->stretch_orient0, self->stretch_sx, self->stretch_sy,
+--- replace
+      || !oriented_line (self, EASEL_ORIENT_IDENTITY, self->stretch_sx, self->stretch_sy,
+
+=== REQ-0018-07 a turned selection is limited to the picture
+file: src/ui/canvas.c
+test: ui-0018
+--- find
+  self->sel_w = self->sel_float.w;
+  self->sel_h = self->sel_float.h;
+  self->sel_epoch++;
+--- replace
+  self->sel_w = self->sel_float.w;
+  self->sel_h = MIN (self->sel_float.h, self->img->height - self->sel_y);
+  self->sel_epoch++;
+
+=== REQ-0018-07 the status bar does not follow a command on the selection
+file: src/ui/canvas.c
+test: ui-0018
+--- find
+  self->sel_epoch++;
+  g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);
+  gtk_widget_queue_draw (GTK_WIDGET (self));
+  return TRUE;
+}
+
+--- replace
+  self->sel_epoch++;
+  gtk_widget_queue_draw (GTK_WIDGET (self));
+  return TRUE;
+}
+
+
+=== REQ-0018-11 on the opposite edge counts as past it
+file: src/core/selection.c
+test: core-selection
+--- find
+  *mirrored = d < 0;
+--- replace
+  *mirrored = d <= 0;
+
+=== REQ-0018-11 a drag past the opposite edge is not mirrored
+file: src/core/selection.c
+test: core-selection
+--- find
+  *mirrored = d < 0;
+--- replace
+  *mirrored = false;
+
+=== REQ-0018-11 a side past the opposite edge is 0 big
+file: src/core/selection.c
+test: core-selection
+--- find
+  d = d < 0 ? -d : d;
+--- replace
+  d = d < 0 ? 0 : d;
+
+=== REQ-0018-11 the mirrored side is not limited to 10000
+file: src/core/selection.c
+test: core-selection
+--- find
+  *size = (int) (d < 1 ? 1 : d > STRETCH_MAX ? STRETCH_MAX : d);
+--- replace
+  *size = (int) (d < 1 ? 1 : d);
+
+=== REQ-0018-11 the least side is 2
+file: src/core/selection.c
+test: core-selection
+--- find
+  *size = (int) (d < 1 ? 1 : d > STRETCH_MAX ? STRETCH_MAX : d);
+--- replace
+  *size = (int) (d < 2 ? 2 : d > STRETCH_MAX ? STRETCH_MAX : d);
+
+=== REQ-0018-11 the distance is taken the wrong way
+file: src/core/selection.c
+test: core-selection
+--- find
+  long long d = high ? e - o : o - e;
+--- replace
+  long long d = high ? o - e : e - o;
+
+=== REQ-0018-11 a mirrored side starts on the wrong side
+file: src/core/selection.c
+test: core-selection
+--- find
+  return (int) (high != mirrored ? o : o - size);
+--- replace
+  return (int) (high == mirrored ? o : o - size);
+
+=== REQ-0018-11 the fixed edge of a right handle is its right edge
+file: src/core/selection.c
+test: core-selection
+--- find
+  long long ox = right ? x : (long long) x + w, oy = bottom ? y : (long long) y + h;
+--- replace
+  long long ox = right ? (long long) x + w : x, oy = bottom ? y : (long long) y + h;
+
+=== REQ-0018-11 the fixed edge of a bottom handle is its bottom edge
+file: src/core/selection.c
+test: core-selection
+--- find
+  long long ox = right ? x : (long long) x + w, oy = bottom ? y : (long long) y + h;
+--- replace
+  long long ox = right ? x : (long long) x + w, oy = bottom ? (long long) y + h : y;
+
+=== REQ-0018-11 the ratio's follower is not mirrored in x
+file: src/core/selection.c
+test: core-selection
+--- find
+      *nx = mirror_start (right, mx, ox, *nw);
+      *ny = mirror_start (bottom, my, oy, *nh);
+    }
+  *mirror_x = mx;
+--- replace
+      *nx = mirror_start (right, false, ox, *nw);
+      *ny = mirror_start (bottom, my, oy, *nh);
+    }
+  *mirror_x = mx;
+
+=== REQ-0018-11 the ratio's follower is not mirrored in y
+file: src/core/selection.c
+test: core-selection
+--- find
+      *nx = mirror_start (right, mx, ox, *nw);
+      *ny = mirror_start (bottom, my, oy, *nh);
+    }
+  *mirror_x = mx;
+--- replace
+      *nx = mirror_start (right, mx, ox, *nw);
+      *ny = mirror_start (bottom, false, oy, *nh);
+    }
+  *mirror_x = mx;
+
+=== REQ-0018-11 x is never reported mirrored
+file: src/core/selection.c
+test: core-selection
+--- find
+  *mirror_x = mx;
+--- replace
+  *mirror_x = false;
+
+=== REQ-0018-11 y is never reported mirrored
+file: src/core/selection.c
+test: core-selection
+--- find
+  *mirror_y = my;
+--- replace
+  *mirror_y = false;
+
+=== REQ-0018-11 the oriented stretch keeps the old orientation
+file: src/core/selection.c
+test: core-selection
+--- find
+  return stretch_to (f, x, y, W, H, max_bytes, false, orient);
+--- replace
+  return stretch_to (f, x, y, W, H, max_bytes, false, f->orient);
+
+=== REQ-0018-11 the lazy oriented stretch keeps the old orientation
+file: src/core/selection.c
+test: core-selection
+--- find
+  return stretch_to (f, x, y, W, H, max_bytes, true, orient);
+--- replace
+  return stretch_to (f, x, y, W, H, max_bytes, true, f->orient);
+
+=== REQ-0018-11 a mirror in x is not applied
+file: src/ui/canvas.c
+test: ui-0018
+--- find
+  if (mirror_x)
+    orient
+--- replace
+  if (FALSE && mirror_x)
+    orient
+
+=== REQ-0018-11 a mirror in y is not applied
+file: src/ui/canvas.c
+test: ui-0018
+--- find
+  if (mirror_y)
+    orient
+--- replace
+  if (FALSE && mirror_y)
+    orient
+
+=== REQ-0018-11 a mirror in x is applied as one in y
+file: src/ui/canvas.c
+test: ui-0018
+--- find
+orient = easel_orient_compose (orient, EASEL_ORIENT_FLIP_X);
+--- replace
+orient = easel_orient_compose (orient, EASEL_ORIENT_FLIP_Y);
+
+=== REQ-0018-11 the drag starts from the identity, not the orientation at the press
+file: src/ui/canvas.c
+test: ui-0018
+--- find
+  EaselOrient orient = self->stretch_orient0;
+--- replace
+  EaselOrient orient = EASEL_ORIENT_IDENTITY;
+
+=== REQ-0018-11 a cancelled drag does not restore the orientation
+file: src/ui/canvas.c
+test: ui-0018
+--- find
+      if ((self->sel_float.w != self->stretch_sw || self->sel_float.h != self->stretch_sh
+           || self->sel_float.orient != self->stretch_orient0)
+--- replace
+      if ((self->sel_float.w != self->stretch_sw || self->sel_float.h != self->stretch_sh)
+
+=== REQ-0018-11 a cancelled drag restores the identity
+file: src/ui/canvas.c
+test: ui-0018
+--- find
+                                               self->stretch_orient0, self->sel_lift_max)
+--- replace
+                                               EASEL_ORIENT_IDENTITY, self->sel_lift_max)
+
+=== REQ-0018-11 the press does not remember the orientation
+file: src/ui/canvas.c
+test: ui-0018
+--- find
+  self->stretch_orient0 = self->sel_state == 2 ? self->sel_float.orient : EASEL_ORIENT_IDENTITY;
+--- replace
+  self->stretch_orient0 = EASEL_ORIENT_IDENTITY;
+
+=== REQ-0018-08 a transform of a selection adds a history step of its own
+file: src/ui/canvas.c
+test: ui-0018
+--- find
+  self->sel_h = self->sel_float.h;
+  self->sel_epoch++;
+  g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);
+--- replace
+  self->sel_h = self->sel_float.h;
+  self->sel_epoch++;
+  {
+    uint32_t *copy = g_memdup2 (self->img->px, (gsize) self->img->width * self->img->height * sizeof (uint32_t));
+    if (copy != NULL && !easel_history_push_buffer (self->history, self->img->width, self->img->height, copy))
+      g_free (copy);
+  }
+  g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);
+
+=== REQ-0018-03 Clear Image keeps a marked selection
+file: src/ui/window.c
+test: ui-0018
+--- find
+  if (!put_down_for_action (self, FALSE))
+    return;
+  old_w = self->picture->width;
+--- replace
+  if (!put_down_for_action (self, TRUE))
+    return;
+  old_w = self->picture->width;
+
+=== REQ-0018-03 Clear Image stops when the floating selection could not be put down
+file: src/ui/window.c
+test: ui-0018
+--- find
+  return ok || !easel_canvas_text_box (self->canvas, &x, &y, &w, &h);
+--- replace
+  (void) x; (void) y; (void) w; (void) h;
+  return ok;
+
+=== REQ-0018-01 a Latin letter with a diacritic is mapped to the key at its place
+file: src/ui/window.c
+test: ui-0018
+--- find
+      || !keyval_of_non_latin_script (keyval)
+--- replace
+      || FALSE

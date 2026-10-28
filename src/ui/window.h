@@ -55,6 +55,9 @@ void easel_window_set_clipboard_timeout (EaselWindow *self, guint ms);
 /* Tests only (REQ-0017-19, REQ-0017-20): rich text (HTML) written for Copy or read for Paste that is longer than `bytes` fails as when
    its memory cannot be had. G_MAXSIZE, the start, is off: the production path is unchanged. */
 void easel_window_set_rich_text_limit (EaselWindow *self, gsize bytes);
+/* Tests only (REQ-0018-10): an allocation of an Image command (the new pixels, the log of its step) above `bytes` fails as when its
+   memory cannot be had. G_MAXSIZE, the start, is off: the production path is unchanged. */
+void easel_window_set_transform_limit (EaselWindow *self, gsize bytes);
 /* The zoom as the View menu's row shows it, for example "100%" (REQ-0004-01). */
 const char *easel_window_get_zoom_text (EaselWindow *self);
 

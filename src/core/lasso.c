@@ -64,6 +64,38 @@ scale_corner (int v, int s0, int s, int o, int n)
 }
 
 bool
+easel_lasso_orient_path (const EaselPath *src, int x, int y, int w, int h, EaselOrient o, EaselPath *out, size_t max_bytes)
+{
+  EaselPath p = { 0 };
+  bool transposed = easel_orient_swaps (o);
+  long long pw = transposed ? h : w, ph = transposed ? w : h;      /* the box after the transpose */
+
+  for (size_t i = 0; i < src->n; i++)
+    {
+      long long u = (long long) src->xy[2 * i] - x, v = (long long) src->xy[2 * i + 1] - y;
+
+      if (transposed)
+        {
+          long long t = u;
+
+          u = v;
+          v = t;
+        }
+      if (o & EASEL_ORIENT_FLIP_X)
+        u = pw - u;
+      if (o & EASEL_ORIENT_FLIP_Y)
+        v = ph - v;
+      if (!easel_path_add (&p, (int) (x + u), (int) (y + v), max_bytes))
+        {
+          easel_path_free (&p);
+          return false;
+        }
+    }
+  *out = p;
+  return true;
+}
+
+bool
 easel_lasso_scale_path (const EaselPath *src, int sx, int sy, int sw, int sh, int nx, int ny, int nw, int nh, EaselPath *out,
                         size_t max_bytes)
 {

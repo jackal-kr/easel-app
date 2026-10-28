@@ -19,6 +19,7 @@
 #include "tool-options.h"
 #include "view.h"
 #include "text-render.h"
+#include "transform.h"
 #include "window.h"
 
 #include "font-card.h"
@@ -36,6 +37,7 @@ struct _EaselWindow
   guint card_focus_idle;
   gint64 tab_time;                              /* when Tab or Shift+Tab was last pressed: keyboard navigation */
   gsize rich_limit;                             /* tests: rich text longer than this fails as for memory; G_MAXSIZE is off */
+  gsize transform_limit;                        /* tests: an Image command's allocation above this fails as for memory; G_MAXSIZE is off */
   EaselCanvas *canvas;
   EaselPaletteBar *palette_bar;
   EaselStatusBar *status_bar;
@@ -1634,6 +1636,12 @@ easel_window_set_rich_text_limit (EaselWindow *self, gsize bytes)
   self->rich_limit = bytes;
 }
 
+void
+easel_window_set_transform_limit (EaselWindow *self, gsize bytes)
+{
+  self->transform_limit = bytes;
+}
+
 /* A secondary press with a select tool not on the selection: the canvas menu at the pointer (REQ-0016-14). */
 static void
 on_canvas_menu (EaselWindow *self, double x, double y)
@@ -1945,6 +1953,93 @@ attributes_activated (GSimpleAction *action, GVariant *parameter, gpointer user_
                                    attributes_applied, self);
 }
 
+/* ---- Image Transforms on the whole picture (REQ-0018-01 to REQ-0018-06, REQ-0018-09, REQ-0018-10) ---- */
+
+/* The dialog of a command whose memory could not be had, with its action's heading (REQ-0018-10). */
+static void
+show_transform_error (EaselWindow *self, EaselOp op)
+{
+  const char *heading = op == EASEL_OP_INVERT ? "Could Not Invert the Colors"
+                        : op == EASEL_OP_CLEAR ? "Could Not Clear the Picture"
+                        : (op == EASEL_OP_FLIP_H || op == EASEL_OP_FLIP_V) ? "Could Not Flip the Picture"
+                        : "Could Not Rotate the Picture";
+
+  show_save_error (self, heading, "There is not enough memory for this change.");
+}
+
+/* The one function every Image command goes through: nothing before the picture exists, with a dialog open or while a button is held
+   (REQ-0004-03); what is open is put down first (a pending curve, polygon or gradient, a floating selection, a text box, or the
+   command is not done when the box cannot be put down, REQ-0017-18); then the command on the whole picture as one step. */
+static void
+image_action (EaselWindow *self, EaselOp op)
+{
+  EaselTransformResult r;
+  int old_w, old_h;
+
+  if (!view_actions_allowed (self) || easel_canvas_is_panning (self->canvas))
+    return;
+  if (card_field_focus (self) != NULL)
+    return;                                     /* the focus is in a field of the font card: the key is the field's (REQ-0018-01) */
+  if (op != EASEL_OP_CLEAR && easel_canvas_transform_selection (self->canvas, op))
+    return;                                     /* a selection: the command is its own, it is not put down (REQ-0018-03) */
+  if (!put_down_for_action (self, FALSE))
+    return;
+  old_w = self->picture->width;
+  old_h = self->picture->height;
+  r = easel_image_transform (self->picture, self->history, op, self->background, self->transform_limit);
+  if (r == EASEL_TRANSFORM_NO_MEMORY)
+    show_transform_error (self, op);
+  if (r != EASEL_TRANSFORM_DONE)
+    return;
+  if (self->picture->width != old_w || self->picture->height != old_h)
+    picture_size_changed (self);
+  else
+    easel_canvas_update (self->canvas);
+  sync_history_ui (self);
+}
+
+static void
+flip_horizontal_activated (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+  image_action (user_data, EASEL_OP_FLIP_H);
+}
+
+static void
+flip_vertical_activated (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+  image_action (user_data, EASEL_OP_FLIP_V);
+}
+
+static void
+rotate_90_activated (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+  image_action (user_data, EASEL_OP_ROTATE_90);
+}
+
+static void
+rotate_180_activated (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+  image_action (user_data, EASEL_OP_ROTATE_180);
+}
+
+static void
+rotate_270_activated (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+  image_action (user_data, EASEL_OP_ROTATE_270);
+}
+
+static void
+invert_activated (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+  image_action (user_data, EASEL_OP_INVERT);
+}
+
+static void
+clear_image_activated (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+  image_action (user_data, EASEL_OP_CLEAR);
+}
+
 /* Undo and redo change only the picture: the view, tool and colors stay (REQ-0002-08). */
 static void
 step_history (EaselWindow *self, gboolean undo)
@@ -2063,10 +2158,50 @@ format_key (EaselWindow *self, guint keyval, guint keycode, GdkModifierType stat
   return FALSE;
 }
 
+/* Whether a key writes a letter of a script that is not Latin (Cyrillic, Greek, ...): only those are mapped to the Latin key at their place;
+   a Latin letter with a diacritic (a Czech ú, ě, š), a symbol and a dead key are not (REQ-0018-01, the check's F4). */
+static gboolean
+keyval_of_non_latin_script (guint keyval)
+{
+  gunichar c = gdk_keyval_to_unicode (keyval);
+  GUnicodeScript script = c != 0 ? g_unichar_get_script (c) : G_UNICODE_SCRIPT_UNKNOWN;
+
+  return script != G_UNICODE_SCRIPT_LATIN && script != G_UNICODE_SCRIPT_COMMON && script != G_UNICODE_SCRIPT_INHERITED
+         && script != G_UNICODE_SCRIPT_UNKNOWN;
+}
+
+/* With Ctrl held, a key that writes a letter of a script that is not Latin counts as the key at the same place that writes a Latin letter
+   or symbol in a layout the user also has: on a Ukrainian or Russian layout the key of Ctrl+I reports "ш", and the shortcuts are still
+   those of the Latin keys (REQ-0018-01; also Ctrl+B, U, [, ] and F of the text box, REQ-0017-12). The Latin keyval of the key's level,
+   else the one given. */
+static guint
+shortcut_keyval (EaselWindow *self, guint keyval, guint keycode, GdkModifierType state)
+{
+  GdkKeymapKey *keys = NULL;
+  guint *keyvals = NULL;
+  guint found = keyval;
+  int n = 0;
+
+  if (!(state & GDK_CONTROL_MASK) || (state & GDK_ALT_MASK) || keyval < 0x80 || keycode == 0
+      || !keyval_of_non_latin_script (keyval)
+      || !gdk_display_map_keycode (gtk_widget_get_display (GTK_WIDGET (self)), keycode, &keys, &keyvals, &n))
+    return keyval;
+  for (int i = 0; i < n; i++)
+    if (keys[i].level == ((state & GDK_SHIFT_MASK) ? 1 : 0) && keyvals[i] != 0 && keyvals[i] < 0x80)
+      {
+        found = keyvals[i];
+        break;
+      }
+  g_free (keys);
+  g_free (keyvals);
+  return found;
+}
+
 /* Esc cancels a handle drag (REQ-0004-19); at any other time it is not ours. */
 static gboolean
 on_key_pressed (EaselWindow *self, guint keyval, guint keycode, GdkModifierType state, GtkEventControllerKey *controller)
 {
+  keyval = shortcut_keyval (self, keyval, keycode, state);
   if (keyval == GDK_KEY_Tab || keyval == GDK_KEY_ISO_Left_Tab || keyval == GDK_KEY_KP_Tab)
     self->tab_time = g_get_monotonic_time ();   /* a focus Tab carries into the card does not stay there (REQ-0017-14) */
   if (menu_is_open (self))
@@ -2092,6 +2227,12 @@ on_key_pressed (EaselWindow *self, guint keyval, guint keycode, GdkModifierType 
          unless it is on the ISO Level 3 shift (AltGr, which some setups report as Ctrl+Alt): the Polish ą ć ę ł ń ó ś ź ż are typed so */
       if ((!shortcut && easel_canvas_text_filter (self->canvas, event)) || easel_canvas_text_key (self->canvas, keyval, state))
         return GDK_EVENT_STOP;
+    }
+  if ((keyval == GDK_KEY_i || keyval == GDK_KEY_I) && (state & (GDK_CONTROL_MASK | GDK_SHIFT_MASK | GDK_ALT_MASK)) == GDK_CONTROL_MASK)
+    {
+      /* Ctrl+I is Invert Colors unless an open text box took it for Italic above (REQ-0017-12, REQ-0018-01) */
+      image_action (self, EASEL_OP_INVERT);
+      return GDK_EVENT_STOP;
     }
   if ((keyval == GDK_KEY_Delete || keyval == GDK_KEY_KP_Delete) && !dialog_is_open (self)
       && easel_canvas_clear_selection (self->canvas))
@@ -2261,6 +2402,12 @@ show_selection_error (gpointer data)
     show_save_error (self, "Could Not Make the Selection", "There is not enough memory to make this selection.");
   else if (kind == 3)
     show_save_error (self, "Could Not Stretch the Selection", "There is not enough memory to stretch this selection.");
+  else if (kind == 4)
+    show_save_error (self, "Could Not Flip the Selection", "There is not enough memory for this change.");
+  else if (kind == 5)
+    show_save_error (self, "Could Not Rotate the Selection", "There is not enough memory for this change.");
+  else if (kind == 6)
+    show_save_error (self, "Could Not Invert the Selection", "There is not enough memory for this change.");
   else
     show_save_error (self, "Could Not Move the Selection", "There is not enough memory to move this selection.");
   g_object_unref (self);
@@ -3101,6 +3248,13 @@ static const GActionEntry win_actions[] = {
   { .name = "grid", .state = "false", .change_state = grid_state_changed },
   { .name = "grid-dialog", .activate = grid_dialog_activated },
   { .name = "attributes", .activate = attributes_activated },
+  { .name = "flip-horizontal", .activate = flip_horizontal_activated },
+  { .name = "flip-vertical", .activate = flip_vertical_activated },
+  { .name = "rotate-90", .activate = rotate_90_activated },
+  { .name = "rotate-180", .activate = rotate_180_activated },
+  { .name = "rotate-270", .activate = rotate_270_activated },
+  { .name = "invert", .activate = invert_activated },
+  { .name = "clear-image", .activate = clear_image_activated },
   { .name = "show-toolbox", .state = "true", .change_state = show_panel_state_changed },
   { .name = "show-colorbox", .state = "true", .change_state = show_panel_state_changed },
   { .name = "show-statusbar", .state = "true", .change_state = show_panel_state_changed },
@@ -3333,6 +3487,7 @@ easel_window_init (EaselWindow *self)
 
   self->clipboard_timeout_ms = 5000;
   self->rich_limit = G_MAXSIZE;
+  self->transform_limit = G_MAXSIZE;
   easel_settings_file_load (settings_path, &self->settings);
   self->tool = EASEL_TOOL_PAN;
   self->foreground = 0xFF000000u;

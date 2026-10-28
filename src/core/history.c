@@ -11,6 +11,7 @@ typedef enum
   STEP_RESIZE,            /* a new size: the fields below */
   STEP_FILL,              /* a fill: old_color becomes new_color in every pixel of the spans */
   STEP_GROW,              /* a growth from old_w x old_h to new_w x new_h with fill, then the changes (0016: a paste's put-down) */
+  STEP_BUFFER,            /* a whole picture buffer, swapped with the picture's by undo and redo (0018: a turn, a flip, an invert) */
 } StepKind;
 
 typedef struct
@@ -28,6 +29,10 @@ typedef struct
   EaselSpan *spans;
   size_t n_spans;
   uint32_t old_color, new_color;
+  /* A buffer step: the other state's pixels and size (the picture's own buffer is the one that is not here; undo and redo swap them,
+     so the pixel count, and the bytes the step counts, never change). */
+  uint32_t *buf;
+  int buf_w, buf_h;
 } Step;
 
 struct _EaselHistory
@@ -67,6 +72,8 @@ free_step (Step *s)
   free (s->changes);
   free (s->removed);
   free (s->spans);
+  free (s->buf);
+  s->buf = NULL;
   s->changes = NULL;
   s->removed = NULL;
   s->spans = NULL;
@@ -99,6 +106,8 @@ step_bytes (const Step *s)
     return s->n_removed * sizeof (uint32_t) + BYTES_PER_STEP;
   if (s->kind == STEP_FILL)
     return s->n_spans * sizeof (EaselSpan) + BYTES_PER_STEP;
+  if (s->kind == STEP_BUFFER)
+    return (size_t) s->buf_w * (size_t) s->buf_h * sizeof (uint32_t) + BYTES_PER_STEP;
   return s->n * BYTES_PER_CHANGE + BYTES_PER_STEP;
 }
 
@@ -208,6 +217,15 @@ easel_history_push_fill (EaselHistory *h, uint32_t old_value, uint32_t new_value
   return true;
 }
 
+bool
+easel_history_push_buffer (EaselHistory *h, int w, int hgt, uint32_t *px)
+{
+  if (w < 1 || hgt < 1 || (size_t) w * (size_t) hgt > (SIZE_MAX - BYTES_PER_STEP) / sizeof (uint32_t) || !make_room (h))
+    return false;
+  commit_step (h, (Step) { .kind = STEP_BUFFER, .buf = px, .buf_w = w, .buf_h = hgt });
+  return true;
+}
+
 EaselResizeResult
 easel_resize_edit (EaselImage *img, EaselHistory *h, int width, int height, uint32_t fill)
 {
@@ -258,8 +276,25 @@ easel_resize_edit (EaselImage *img, EaselHistory *h, int width, int height, uint
    had when the step was recorded, so the indexes of a change step are valid (Plan, "A size change and the undo
    history"). False only if a resize cannot allocate the new buffer; then nothing changed. */
 static bool
-apply_step (const Step *s, EaselImage *img, bool undo)
+apply_step (Step *s, EaselImage *img, bool undo)
 {
+  if (s->kind == STEP_BUFFER)
+    {
+      /* The picture's buffer and size and the step's change places: nothing is allocated, so this cannot fail; the whole picture shows
+         again. */
+      uint32_t *px = img->px;
+      int w = img->width, hgt = img->height;
+
+      img->px = s->buf;
+      img->width = s->buf_w;
+      img->height = s->buf_h;
+      s->buf = px;
+      s->buf_w = w;
+      s->buf_h = hgt;
+      img->dirty = (EaselRect) { 0, 0, img->width, img->height };
+      return true;
+    }
+
   if (s->kind == STEP_RESIZE)
     {
       if (!undo)
@@ -322,7 +357,7 @@ apply_step (const Step *s, EaselImage *img, bool undo)
 static bool
 move (EaselHistory *h, EaselImage *img, size_t i, bool undo)
 {
-  const Step *s = &h->steps[i];
+  Step *s = &h->steps[i];
 
   h->refused = false;
   if (apply_step (s, img, undo))

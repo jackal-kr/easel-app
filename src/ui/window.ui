@@ -403,9 +403,52 @@
   </template>
   <menu id="image_menu">
     <section>
+      <submenu>
+        <attribute name="label" translatable="yes">_Flip</attribute>
+        <section>
+          <item>
+            <attribute name="label" translatable="yes">Flip _Horizontal</attribute>
+            <attribute name="action">win.flip-horizontal</attribute>
+          </item>
+          <item>
+            <attribute name="label" translatable="yes">Flip _Vertical</attribute>
+            <attribute name="action">win.flip-vertical</attribute>
+          </item>
+        </section>
+      </submenu>
+      <submenu>
+        <attribute name="label" translatable="yes">_Rotate</attribute>
+        <section>
+          <item>
+            <attribute name="label" translatable="yes">Rotate _90°</attribute>
+            <attribute name="action">win.rotate-90</attribute>
+          </item>
+          <item>
+            <attribute name="label" translatable="yes">Rotate 1_80°</attribute>
+            <attribute name="action">win.rotate-180</attribute>
+          </item>
+          <item>
+            <attribute name="label" translatable="yes">Rotate _270°</attribute>
+            <attribute name="action">win.rotate-270</attribute>
+          </item>
+        </section>
+      </submenu>
+    </section>
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">_Invert Colors</attribute>
+        <attribute name="action">win.invert</attribute>
+        <attribute name="accel">&lt;Control&gt;i</attribute>
+      </item>
+    </section>
+    <section>
       <item>
         <attribute name="label" translatable="yes">Attributes…</attribute>
         <attribute name="action">win.attributes</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">_Clear Image</attribute>
+        <attribute name="action">win.clear-image</attribute>
       </item>
     </section>
   </menu>
@@ -483,6 +526,43 @@
         <attribute name="action">win.copy-to</attribute>
       </item>
     </section>
+    <section>
+      <submenu>
+        <attribute name="label" translatable="yes">_Flip</attribute>
+        <section>
+          <item>
+            <attribute name="label" translatable="yes">Flip _Horizontal</attribute>
+            <attribute name="action">win.flip-horizontal</attribute>
+          </item>
+          <item>
+            <attribute name="label" translatable="yes">Flip _Vertical</attribute>
+            <attribute name="action">win.flip-vertical</attribute>
+          </item>
+        </section>
+      </submenu>
+      <submenu>
+        <attribute name="label" translatable="yes">_Rotate</attribute>
+        <section>
+          <item>
+            <attribute name="label" translatable="yes">Rotate _90°</attribute>
+            <attribute name="action">win.rotate-90</attribute>
+          </item>
+          <item>
+            <attribute name="label" translatable="yes">Rotate 1_80°</attribute>
+            <attribute name="action">win.rotate-180</attribute>
+          </item>
+          <item>
+            <attribute name="label" translatable="yes">Rotate _270°</attribute>
+            <attribute name="action">win.rotate-270</attribute>
+          </item>
+        </section>
+      </submenu>
+      <item>
+        <attribute name="label" translatable="yes">_Invert Colors</attribute>
+        <attribute name="action">win.invert</attribute>
+        <attribute name="accel">&lt;Control&gt;i</attribute>
+      </item>
+    </section>
   </menu>
   <menu id="text_menu">
     <section>
@@ -537,6 +617,12 @@
       <item>
         <attribute name="label" translatable="yes">_Normal Size</attribute>
         <attribute name="action">win.zoom-normal</attribute>
+      </item>
+    </section>
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">_Clear Image</attribute>
+        <attribute name="action">win.clear-image</attribute>
       </item>
     </section>
   </menu>
