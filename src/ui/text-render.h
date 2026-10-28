@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
-/* Text laid out at picture scale (feature 0017, the Plan): 1 pixel is 1 picture pixel, 96 dpi, hinting and hint metrics off, so the
-   lines wrap the same at every zoom and on every screen. */
+/* Text laid out at picture scale (feature 0017, the Plan): 1 pixel is 1 picture pixel, 96 dpi, glyphs drawn 1-bit on the grid with
+   whole-pixel metrics and positions (REQ-0017-28), so the lines wrap the same at every zoom and on every screen and a letter is the same
+   bitmap wherever it falls. */
 #pragma once
 
 #include <pango/pangocairo.h>

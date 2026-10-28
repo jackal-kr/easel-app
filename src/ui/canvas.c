@@ -1610,120 +1610,144 @@ text_drag_end (EaselCanvas *self, gboolean cancel)
   gtk_widget_queue_draw (GTK_WIDGET (self));
 }
 
+/* The part of the picture an open box's drawing covers: the box and its ink, limited to the picture and to the part in view, so that a
+   frame costs the view's size, not the box's (T010: an 8000-wide box took two frames, most of them composing pixels out of view). FALSE
+   when there is no box or none of it is in view. */
+static gboolean
+text_box_area (EaselCanvas *self, double l, int *bx, int *by, int *x0, int *y0, int *x1, int *y1)
+{
+  const EaselTextInk *ink = &self->text_ink;
+  int bw, bh;
+  graphene_rect_t seen;
+
+  if (self->tool != EASEL_TOOL_TEXT || !easel_canvas_text_box (self, bx, by, &bw, &bh))
+    return FALSE;
+  *x0 = *bx;
+  *y0 = *by;
+  *x1 = *bx + bw;
+  *y1 = *by + bh;
+  if (ink->mask != NULL)
+    {
+      *x0 = MIN (*x0, ink->x);
+      *y0 = MIN (*y0, ink->y);
+      *x1 = MAX (*x1, ink->x + ink->w);
+      *y1 = MAX (*y1, ink->y + ink->h);
+    }
+  *x0 = MAX (*x0, 0);
+  *y0 = MAX (*y0, 0);
+  *x1 = MIN (*x1, self->img->width);
+  *y1 = MIN (*y1, self->img->height);
+  if (gtk_widget_compute_bounds (gtk_widget_get_parent (GTK_WIDGET (self)), GTK_WIDGET (self), &seen))
+    {
+      *x0 = MAX (*x0, (int) floor (seen.origin.x / l) - 1);
+      *y0 = MAX (*y0, (int) floor (seen.origin.y / l) - 1);
+      *x1 = MIN (*x1, (int) ceil ((seen.origin.x + seen.size.width) / l) + 1);
+      *y1 = MIN (*y1, (int) ceil ((seen.origin.y + seen.size.height) / l) + 1);
+    }
+  return *x0 < *x1 && *y0 < *y1;
+}
+
 /* The open box as the pixels its put-down will write (REQ-0017-05, REQ-0017-16): the picture's pixels under it, the background over the
-   box in Opaque mode, the ink's masked pixels; the selected text's accent behind the letters, at 35 %. One texture over the tiles,
-   drawn with their filter, so that it is the picture's look at every zoom (the Plan). */
+   box in Opaque mode, the ink's masked pixels. One texture over the tiles, drawn with their filter, so that it is the picture's look at
+   every zoom (the Plan); drawn before the grid, the tint and the selected text's highlight (REQ-0017-05's order). */
 static void
 append_text_box (EaselCanvas *self, GtkSnapshot *snapshot, double l)
 {
   const EaselTextInk *ink = &self->text_ink;
   int bx, by, bw, bh, x0, y0, x1, y1, rw, rh;
   uint32_t *px;
-  size_t from = 0, to = 0;
   g_autoptr (GBytes) data = NULL;
   g_autoptr (GdkTexture) texture = NULL;
-  g_autoptr (GdkRGBA) accent = NULL;
-  uint8_t *selected = NULL;
 
-  if (self->tool != EASEL_TOOL_TEXT || !easel_canvas_text_box (self, &bx, &by, &bw, &bh))
-    return;
-  x0 = bx;
-  y0 = by;
-  x1 = bx + bw;
-  y1 = by + bh;
-  if (ink->mask != NULL)
-    {
-      x0 = MIN (x0, ink->x);
-      y0 = MIN (y0, ink->y);
-      x1 = MAX (x1, ink->x + ink->w);
-      y1 = MAX (y1, ink->y + ink->h);
-    }
-  x0 = MAX (x0, 0);
-  y0 = MAX (y0, 0);
-  x1 = MIN (x1, self->img->width);
-  y1 = MIN (y1, self->img->height);
-  {
-    /* Only the part in view is composed, so that a frame costs the view's size, not the box's (T010: an 8000-wide box took two frames,
-       most of them composing pixels out of view) */
-    graphene_rect_t seen;
-
-    if (gtk_widget_compute_bounds (gtk_widget_get_parent (GTK_WIDGET (self)), GTK_WIDGET (self), &seen))
-      {
-        x0 = MAX (x0, (int) floor (seen.origin.x / l) - 1);
-        y0 = MAX (y0, (int) floor (seen.origin.y / l) - 1);
-        x1 = MIN (x1, (int) ceil ((seen.origin.x + seen.size.width) / l) + 1);
-        y1 = MIN (y1, (int) ceil ((seen.origin.y + seen.size.height) / l) + 1);
-      }
-  }
-  if (x0 >= x1 || y0 >= y1)
+  if (!text_box_area (self, l, &bx, &by, &x0, &y0, &x1, &y1) || !easel_canvas_text_box (self, &bx, &by, &bw, &bh))
     return;
   rw = x1 - x0;
   rh = y1 - y0;
   px = g_try_malloc ((gsize) rw * rh * sizeof *px);
   if (px == NULL)
     return;
-  /* The selected text's area, from the layout's lines (REQ-0017-05) */
-  if (easel_text_buffer_selection (self->text_buf, &from, &to) && self->text_layout != NULL)
-    {
-      PangoLayoutIter *it = pango_layout_get_iter (self->text_layout);
-
-      selected = g_try_malloc0 ((gsize) rw * rh);
-      do
-        {
-          PangoLayoutLine *line = pango_layout_iter_get_line_readonly (it);
-          PangoRectangle lr;
-          int *ranges = NULL, n = 0;
-          int a = MAX ((int) from, line->start_index), z = MIN ((int) to, line->start_index + line->length);
-
-          if (selected == NULL || a >= z)
-            continue;
-          pango_layout_iter_get_line_extents (it, NULL, &lr);
-          pango_layout_line_get_x_ranges (line, a, z, &ranges, &n);
-          for (int k = 0; k < n; k++)
-            for (int yy = by + (int) floor ((double) lr.y / PANGO_SCALE); yy < by + (int) ceil ((double) (lr.y + lr.height) / PANGO_SCALE); yy++)
-              for (int xx = bx + (int) floor ((double) ranges[2 * k] / PANGO_SCALE);
-                   xx < bx + (int) ceil ((double) ranges[2 * k + 1] / PANGO_SCALE); xx++)
-                if (xx >= x0 && xx < x1 && yy >= y0 && yy < y1)
-                  selected[(gsize) (yy - y0) * rw + (xx - x0)] = 1;
-          g_free (ranges);
-        }
-      while (pango_layout_iter_next_line (it));
-      pango_layout_iter_free (it);
-      accent = adw_style_manager_get_accent_color_rgba (adw_style_manager_get_default ());
-    }
   for (int j = 0; j < rh; j++)
     for (int i = 0; i < rw; i++)
       {
         int x = x0 + i, y = y0 + j;
         uint32_t c = easel_image_get (self->img, x, y);
-        gboolean inked = FALSE;
 
         if (self->text_opaque && x >= bx && x < bx + bw && y >= by && y < by + bh)
           c = self->background;
         if (ink->mask != NULL && x >= ink->x && x < ink->x + ink->w && y >= ink->y && y < ink->y + ink->h
             && ink->mask[(size_t) (y - ink->y) * ink->w + (x - ink->x)])
-          {
-            c = ink->color[(size_t) (y - ink->y) * ink->w + (x - ink->x)];
-            inked = TRUE;
-          }
-        if (!inked && selected != NULL && selected[(gsize) j * rw + i])
-          {
-            /* the accent at 35 % over what is under it, opaque where the picture is */
-            double a = 0.35;
-            unsigned r = (unsigned) lround (((c >> 16) & 255) * (1 - a) + accent->red * 255 * a);
-            unsigned g = (unsigned) lround (((c >> 8) & 255) * (1 - a) + accent->green * 255 * a);
-            unsigned b = (unsigned) lround ((c & 255) * (1 - a) + accent->blue * 255 * a);
-            unsigned al = (unsigned) lround ((c >> 24) * (1 - a) + 255 * a);
-
-            c = al << 24 | r << 16 | g << 8 | b;
-          }
+          c = ink->color[(size_t) (y - ink->y) * ink->w + (x - ink->x)];
         px[(gsize) j * rw + i] = c;
       }
-  g_free (selected);
   data = g_bytes_new_take (px, (gsize) rw * rh * sizeof *px);
   texture = gdk_memory_texture_new (rw, rh, PICTURE_FORMAT, data, (gsize) rw * sizeof *px);
   gtk_snapshot_append_scaled_texture (snapshot, texture, GSK_SCALING_FILTER_NEAREST,
                                       &GRAPHENE_RECT_INIT ((float) (x0 * l), (float) (y0 * l), (float) (rw * l), (float) (rh * l)));
+}
+
+/* The selected text's highlight (REQ-0017-05): the accent at 35 % over the selected text's line area, except the pixels set in the
+   text, which keep the letter's own color; drawn on top of the tint, one rectangle per run of a picture row. */
+static void
+append_text_highlight (EaselCanvas *self, GtkSnapshot *snapshot, double l)
+{
+  const EaselTextInk *ink = &self->text_ink;
+  int bx, by, x0, y0, x1, y1, rw, rh;
+  size_t from = 0, to = 0;
+  g_autoptr (GdkRGBA) accent = NULL;
+  g_autofree uint8_t *selected = NULL;
+  PangoLayoutIter *it;
+  GdkRGBA color;
+
+  if (self->text_layout == NULL || !easel_text_buffer_selection (self->text_buf, &from, &to)
+      || !text_box_area (self, l, &bx, &by, &x0, &y0, &x1, &y1))
+    return;
+  rw = x1 - x0;
+  rh = y1 - y0;
+  selected = g_try_malloc0 ((gsize) rw * rh);
+  if (selected == NULL)
+    return;
+  /* The selected text's area, from the layout's lines */
+  it = pango_layout_get_iter (self->text_layout);
+  do
+    {
+      PangoLayoutLine *line = pango_layout_iter_get_line_readonly (it);
+      PangoRectangle lr;
+      int *ranges = NULL, n = 0;
+      int a = MAX ((int) from, line->start_index), z = MIN ((int) to, line->start_index + line->length);
+
+      if (a >= z)
+        continue;
+      pango_layout_iter_get_line_extents (it, NULL, &lr);
+      pango_layout_line_get_x_ranges (line, a, z, &ranges, &n);
+      for (int k = 0; k < n; k++)
+        for (int yy = by + (int) floor ((double) lr.y / PANGO_SCALE); yy < by + (int) ceil ((double) (lr.y + lr.height) / PANGO_SCALE); yy++)
+          for (int xx = bx + (int) floor ((double) ranges[2 * k] / PANGO_SCALE);
+               xx < bx + (int) ceil ((double) ranges[2 * k + 1] / PANGO_SCALE); xx++)
+            if (xx >= x0 && xx < x1 && yy >= y0 && yy < y1
+                && !(ink->mask != NULL && xx >= ink->x && xx < ink->x + ink->w && yy >= ink->y && yy < ink->y + ink->h
+                     && ink->mask[(size_t) (yy - ink->y) * ink->w + (xx - ink->x)]))
+              selected[(gsize) (yy - y0) * rw + (xx - x0)] = 1;
+      g_free (ranges);
+    }
+  while (pango_layout_iter_next_line (it));
+  pango_layout_iter_free (it);
+  accent = adw_style_manager_get_accent_color_rgba (adw_style_manager_get_default ());
+  color = (GdkRGBA) { accent->red, accent->green, accent->blue, 0.35f };
+  for (int j = 0; j < rh; j++)
+    for (int i = 0; i < rw;)
+      {
+        int i0 = i;
+
+        if (!selected[(gsize) j * rw + i])
+          {
+            i++;
+            continue;
+          }
+        while (i < rw && selected[(gsize) j * rw + i])
+          i++;
+        gtk_snapshot_append_color (snapshot, &color,
+                                   &GRAPHENE_RECT_INIT ((float) ((x0 + i0) * l), (float) ((y0 + j) * l), (float) ((i - i0) * l), (float) l));
+      }
 }
 
 /* The caret at the place of the next character, in the color of the style at the caret, as tall as its line's text, 1 logical pixel
@@ -1815,14 +1839,22 @@ append_float_outside (EaselCanvas *self, GtkSnapshot *snapshot, double l)
   }
 }
 
-/* Do the dashes of a selection's line move now (REQ-0014-17 c)? A marked or floating selection with the button up, the guides shown
-   and animations on in the user's settings. */
+/* Do the dashes of a selection's line move now (REQ-0014-17 c)? A marked or floating selection, or an open text box (REQ-0017-05), with
+   the button up, the guides shown and animations on in the user's settings. */
 static gboolean
 ants_active (EaselCanvas *self)
 {
   gboolean on = TRUE;
+  int x, y, w, h;
 
-  if (self->sel_state == 0 || self->sel_moving || self->guides_hidden)
+  if (self->guides_hidden)
+    return FALSE;
+  if (self->tool == EASEL_TOOL_TEXT)
+    {
+      if (!easel_canvas_text_box (self, &x, &y, &w, &h) || self->text_drag != 0 || self->text_selecting || self->selecting)
+        return FALSE;                           /* no box, or a button held on it (a move, a resize, a selection of its text) */
+    }
+  else if (self->sel_state == 0 || self->sel_moving)
     return FALSE;                               /* (a path traced or a rectangle dragged out is no selection yet) */
   g_object_get (gtk_widget_get_settings (GTK_WIDGET (self)), "gtk-enable-animations", &on, NULL);
   return on;
@@ -2037,7 +2069,7 @@ ring_dashes (const RingStrip *s, double d, double phase, GtkSnapshot *snapshot)
     }
 }
 
-/* The tint over the pixels of a selection (REQ-0014-17 b): the accent color of the system's settings at 28 %, over the picture and the grid and under the line, for
+/* The tint over the pixels of a selection (REQ-0014-17 b): the accent color of the system's settings at 12 %, over the picture and the grid and under the line, for
    the rectangle (marked, floating or being dragged out) and, for a free-form selection, the pixels of its shape; not for a path that
    is being traced; where the guides are hidden, not at all. */
 /* The shape of the selection now: the float's (it changes by a stretch) while it floats, else the canvas's own copy of what was marked;
@@ -2052,7 +2084,7 @@ static void
 append_selection_tint (EaselCanvas *self, GtkSnapshot *snapshot)
 {
   g_autoptr (GdkRGBA) accent = adw_style_manager_get_accent_color_rgba (adw_style_manager_get_default ());
-  GdkRGBA tint = { accent->red, accent->green, accent->blue, 0.28f };      /* the system's accent at 28 % */
+  GdkRGBA tint = { accent->red, accent->green, accent->blue, 0.12f };      /* the system's accent at 12 % (JOD, 2026-10-28) */
   double l = logical_per_pixel (self);
   const uint8_t *mask = selection_mask (self);
   int x, y, w, h;
@@ -2060,6 +2092,13 @@ append_selection_tint (EaselCanvas *self, GtkSnapshot *snapshot)
 
   if (self->guides_hidden)
     return;                                       /* (a path being traced is no selection yet: nothing is tinted) */
+  if (self->tool == EASEL_TOOL_TEXT)
+    {
+      /* An open box is tinted as a selection is, over its whole rectangle (REQ-0017-05) */
+      if (easel_canvas_text_box (self, &x, &y, &w, &h))
+        gtk_snapshot_append_color (snapshot, &tint, &GRAPHENE_RECT_INIT ((float) (x * l), (float) (y * l), (float) (w * l), (float) (h * l)));
+      return;
+    }
   if (self->selecting ? !drag_rect (self, &x, &y, &w, &h) : !easel_canvas_get_selection (self, &x, &y, &w, &h, &floating))
     return;
   self->tint_rects = 0;
@@ -2166,8 +2205,8 @@ append_selection_outline (EaselCanvas *self, GtkSnapshot *snapshot)
     for (int i = 0; i < 4; i++)
       gtk_snapshot_append_color (snapshot, &white, &GRAPHENE_RECT_INIT ((float) ring[i].x, (float) ring[i].y, (float) ring[i].w, (float) ring[i].h));
     {
-      /* A text box's line stands still (REQ-0017-05) */
-      double phase = self->tool == EASEL_TOOL_TEXT ? 0 : ants_phase (self, 2 * d);
+      /* A text box's dashes move as a selection's (REQ-0017-05) */
+      double phase = ants_phase (self, 2 * d);
 
       for (int i = 0; i < 4; i++)
         ring_dashes (&ring[i], d, phase, snapshot);
@@ -3968,15 +4007,16 @@ easel_canvas_snapshot (GtkWidget *widget, GtkSnapshot *snapshot)
         g_clear_object (&preview[i]);                /* the render node keeps its own references */
       g_free (preview);
     }
+  append_text_box (self, snapshot, l);           /* the box's pixels, under the grid and the tint (REQ-0017-05) */
   append_shape_preview (self, snapshot);
   if (easel_canvas_grid_is_drawn (self))
     append_grid (self, snapshot);
   append_gradient_markers (self, snapshot);
   append_handles (self, snapshot);                /* the picture's handles lie under the selection's pixels and tint (REQ-0015-01) */
-  append_text_box (self, snapshot, l);
   append_float_outside (self, snapshot, l);
   if (!self->probe_no_tint)
     append_selection_tint (self, snapshot);
+  append_text_highlight (self, snapshot, l);      /* on top of the tint (REQ-0017-05) */
   if (!self->probe_no_line)
     append_selection_outline (self, snapshot);
   append_selection_handles (self, snapshot);
@@ -5410,7 +5450,11 @@ easel_canvas_release (EaselCanvas *self, guint button)
       update_cursor (self);
     }
   if (button == GDK_BUTTON_PRIMARY)
-    self->text_selecting = FALSE;
+    {
+      if (self->text_selecting)
+        gtk_widget_queue_draw (GTK_WIDGET (self));  /* the frame that starts the box's dashes again (REQ-0017-05) */
+      self->text_selecting = FALSE;
+    }
   if (self->text_drag != 0 && button == self->sel_button)
     text_drag_end (self, FALSE);
   if (self->selecting && button == self->sel_button)

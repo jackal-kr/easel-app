@@ -18283,11 +18283,13 @@ text_metrics (int *line_h, int *twenty_zeros)
   PangoFontDescription *fd = pango_font_description_from_string ("DejaVu Sans 12");
   PangoRectangle logical;
 
-  cairo_font_options_set_hint_style (fo, CAIRO_HINT_STYLE_NONE);
-  cairo_font_options_set_hint_metrics (fo, CAIRO_HINT_METRICS_OFF);
+  /* the settings of REQ-0017-28: 1-bit glyphs, hinted, whole-pixel metrics and positions */
+  cairo_font_options_set_antialias (fo, CAIRO_ANTIALIAS_NONE);
+  cairo_font_options_set_hint_style (fo, CAIRO_HINT_STYLE_FULL);
+  cairo_font_options_set_hint_metrics (fo, CAIRO_HINT_METRICS_ON);
   pango_cairo_context_set_font_options (ctx, fo);
   pango_cairo_context_set_resolution (ctx, 96);
-  pango_context_set_round_glyph_positions (ctx, FALSE);
+  pango_context_set_round_glyph_positions (ctx, TRUE);
   layout = pango_layout_new (ctx);
   pango_layout_set_font_description (layout, fd);
   pango_layout_set_text (layout, "0", -1);
@@ -18299,11 +18301,12 @@ text_metrics (int *line_h, int *twenty_zeros)
   cairo_font_options_destroy (fo);
   g_clear_object (&layout);
   g_object_unref (ctx);
-  /* DejaVu Sans 12 points (16 pixels to the em): a line of about 19 pixels, a "0" about 10 */
-  g_assert_cmpint (*line_h, >=, 16);
-  g_assert_cmpint (*line_h, <=, 22);
-  g_assert_cmpint (*twenty_zeros, >=, 180);
-  g_assert_cmpint (*twenty_zeros, <=, 230);
+  /* DejaVu Sans 12 points is 16 pixels to the em (2048 units): by hand from the font's tables, the ascent 1901 units is 14.85 pixels and
+     the descent 483 is 3.77, each rounded to a whole pixel with hinted metrics, 15 + 4 = a line of 19; the "0" advances 1303 units, 10.18
+     pixels, a whole 10, so twenty of them are 200 (before REQ-0017-28: a line of 18.625, ceil 19, and 204) */
+  g_assert_cmpint (*line_h, ==, 19);
+  g_assert_cmpint (*twenty_zeros, ==, 200);
+  g_assert_cmpfloat (text_line_exact, ==, 19.0);
 }
 
 static gboolean
@@ -18326,7 +18329,50 @@ no_box (EaselWindow *win)
   return !easel_canvas_text_box (easel_window_get_canvas (win), &bx, &by, &bw, &bh);
 }
 
-/* AS-2 (REQ-0017-03, REQ-0017-01): a drag from (10, 10) to (110, 50) opens the box (10, 10, 101, 41), its size in the status bar; dragged
+/* The selection's tint (the accent at 28 %, REQ-0013-05) and the selected text's highlight (the accent at 35 % on top of the tint,
+   REQ-0017-05) over an opaque color, as the canvas draws them; and two colors equal within the renderer's rounding (2 a channel). */
+static uint32_t
+over_accent (uint32_t c, double a)
+{
+  g_autoptr (GdkRGBA) accent = adw_style_manager_get_accent_color_rgba (adw_style_manager_get_default ());
+  uint32_t r = (uint32_t) lround (((c >> 16) & 255) * (1 - a) + accent->red * 255 * a);
+  uint32_t g = (uint32_t) lround (((c >> 8) & 255) * (1 - a) + accent->green * 255 * a);
+  uint32_t b = (uint32_t) lround ((c & 255) * (1 - a) + accent->blue * 255 * a);
+
+  return 0xFF000000u | r << 16 | g << 8 | b;
+}
+
+static uint32_t tinted (uint32_t base);          /* the selection's tint (0014's helper, below) */
+static void type_keys (EaselWindow *win, const char *s);   /* below, with the typing of T011 */
+static uint32_t grid_line_over (uint32_t base);  /* the grid's line over a color (0014's helper, below) */
+
+static uint32_t
+highlighted (uint32_t c)
+{
+  return over_accent (tinted (c), 0.35);
+}
+
+static gboolean
+near_color (uint32_t got, uint32_t want)
+{
+  for (int shift = 0; shift <= 24; shift += 8)
+    if (abs ((int) ((got >> shift) & 255) - (int) ((want >> shift) & 255)) > 2)
+      return FALSE;
+  return TRUE;
+}
+
+static void
+assert_near (uint32_t got, uint32_t want)
+{
+  if (!near_color (got, want))
+    {
+      g_test_message ("rendered #%08X, want #%08X (within 2 a channel)", got, want);
+      g_assert_cmphex (got, ==, want);                                             /* fails, as an assertion of the test */
+    }
+}
+
+/* AS-2 (REQ-0017-03, REQ-0017-01, REQ-0017-05): a drag from (10, 10) to (110, 50) opens the box (10, 10, 101, 41), tinted as a selection
+   is, its size in the status bar; dragged
    the other way, the same box; dragged past the picture, the box stops at its edges. (The outline, handles, caret and card: T009 and
    T016.) */
 static void
@@ -18346,6 +18392,16 @@ as2_drag_box (void)
   shape_release (win, 1);
   g_assert_true (box_is (win, 10, 10, 101, 41));
   g_assert_cmpstr (easel_status_bar_get_text (bar, EASEL_STATUS_SELECTION), ==, "101 × 41");
+  {
+    /* the open box, still empty, has the tint of a selection over the picture's pixels (AS-2, REQ-0017-05) */
+    g_autofree uint32_t *px = NULL;
+    int w, h, cx, cy;
+
+    wait_for_next_frame (win);
+    px = render_pixels (win, &w, &h, &cx, &cy);
+    assert_near (rendered_pixel (px, w, cx, cy, 60, 30), tinted (easel_image_get (easel_window_get_picture (win), 60, 30)));
+    assert_near (rendered_pixel (px, w, cx, cy, 150, 30), easel_image_get (easel_window_get_picture (win), 150, 30));   /* outside: none */
+  }
   /* a press outside the open box closes it and makes no new box */
   shape_press_move (win, 1, 200, 150, 200, 150);
   shape_release (win, 1);
@@ -18557,6 +18613,81 @@ caret_blink (gboolean on)
   g_object_set (gtk_settings_get_default (), "gtk-cursor-blink", on, NULL);
 }
 
+/* AS-28 (REQ-0017-28): "hhhhhh" and on the next line "kkkkkk", in each of Ubuntu Sans, DejaVu Sans and DejaVu Serif that the session has,
+   regular, bold and italic, at 8, 12 and 24 points, laid out and rasterized as the put-down writes them (the ink of REQ-0017-16): every
+   letter starts on a whole pixel, and the four letters inside each line (the first and the last have one neighbour only, which an italic
+   letter can reach into) have the same pixels, column window for column window. */
+static void
+as28_same_letter_same_pixels (void)
+{
+  static const char *families[] = { "Ubuntu Sans", "DejaVu Sans", "DejaVu Serif" };
+  static const uint8_t flags[] = { 0, EASEL_TEXT_BOLD, EASEL_TEXT_ITALIC };
+  static const int sizes[] = { 8, 12, 24 };
+  const char *text = "hhhhhh\nkkkkkk";
+  int tried = 0;
+
+  for (guint f = 0; f < G_N_ELEMENTS (families); f++)
+    {
+      if (easel_text_render_find_family (families[f]) == NULL)
+        continue;
+      for (guint st_i = 0; st_i < G_N_ELEMENTS (flags); st_i++)
+        for (guint z = 0; z < G_N_ELEMENTS (sizes); z++)
+          {
+            EaselTextStyle st = { families[f], sizes[z], flags[st_i], 0xFF000000u };
+            EaselTextBuffer *b = easel_text_buffer_new (&st);
+            PangoLayout *layout;
+            EaselTextInk ink = { 0 };
+
+            st.family = easel_text_buffer_intern (b, families[f]);
+            g_assert_true (easel_text_buffer_insert (b, text, strlen (text), &st, EASEL_TEXT_EDIT_TYPING));
+            layout = easel_text_render_layout (b, 10000);
+            g_assert_true (easel_text_render_ink (layout, b, 0, 0, SIZE_MAX, &ink));
+            for (int line = 0; line < 2; line++)
+              {
+                int first = line * 7, x[7], y0 = 0, y1 = 0;
+                PangoRectangle pos;
+
+                for (int i = 0; i <= 6; i++)
+                  {
+                    pango_layout_index_to_pos (layout, first + i, &pos);
+                    if (i < 6)
+                      {
+                        g_assert_cmpint (pos.x % PANGO_SCALE, ==, 0);                    /* the letter starts on a whole pixel */
+                        y0 = pos.y / PANGO_SCALE;
+                        y1 = (pos.y + pos.height) / PANGO_SCALE;
+                      }
+                    x[i] = (int) floor ((double) pos.x / PANGO_SCALE);
+                  }
+                for (int i = 2; i <= 4; i++)
+                  {
+                    g_assert_cmpint (x[i + 1] - x[i], ==, x[2] - x[1]);                  /* the same advance */
+                    for (int yy = y0; yy < y1; yy++)
+                      for (int dx = 0; dx < x[2] - x[1]; dx++)
+                        {
+                          int c1 = x[1] + dx - ink.x, ci = x[i] + dx - ink.x, r = yy - ink.y;
+                          gboolean a = r >= 0 && r < ink.h && c1 >= 0 && c1 < ink.w && ink.mask[(gsize) r * ink.w + c1];
+                          gboolean bb = r >= 0 && r < ink.h && ci >= 0 && ci < ink.w && ink.mask[(gsize) r * ink.w + ci];
+
+                          if (a != bb)
+                            {
+                              g_test_message ("%s %s %d pt, line %d: letter %d differs from letter 1 at (%d, %d)", families[f],
+                                              flags[st_i] == 0 ? "regular" : flags[st_i] == EASEL_TEXT_BOLD ? "bold" : "italic",
+                                              sizes[z], line, i, dx, yy - y0);
+                              g_assert_cmpint (a, ==, bb);
+                            }
+                        }
+                  }
+              }
+            g_free ((gpointer) ink.color);
+            g_free ((gpointer) ink.mask);
+            g_object_unref (layout);
+            easel_text_buffer_free (b);
+            tried++;
+          }
+    }
+  g_assert_cmpint (tried, >, 0);
+}
+
 /* `text` added at the end of the open box's text in the style at the caret, the caret after it, as typing would leave it (the typing
    itself: T011). */
 static void
@@ -18647,8 +18778,8 @@ as16_box_shows_put_down_pixels (void)
 
         if (x >= ink.x && x < ink.x + ink.w && y >= ink.y && y < ink.y + ink.h && ink.mask[(y - ink.y) * ink.w + (x - ink.x)])
           want = ink.color[(y - ink.y) * ink.w + (x - ink.x)];
-        g_assert_cmphex (got, ==, want);
-        black += got == 0xFF000000u;
+        assert_near (got, tinted (want));                                         /* under the selection's tint (AS-16) */
+        black += near_color (got, tinted (0xFF000000u));
       }
   g_assert_cmpint (black, >, 50);                                                /* "Hi" is there */
   for (int y = by + 2; y < by + 20; y++)
@@ -18691,7 +18822,7 @@ as16_box_shows_put_down_pixels (void)
           continue;
         if (x >= ink.x && x < ink.x + ink.w && y >= ink.y && y < ink.y + ink.h && ink.mask[(y - ink.y) * ink.w + (x - ink.x)])
           want = ink.color[(y - ink.y) * ink.w + (x - ink.x)];
-        g_assert_cmphex (px[(gsize) sy * w + sx], ==, want);
+        assert_near (px[(gsize) sy * w + sx], tinted (want));
       }
   /* scrolled on by 40 picture pixels, rendered with no redraw asked for: the part of the box now in view is drawn too (only the part in
      view is composed, T010) */
@@ -18724,7 +18855,7 @@ as16_box_shows_put_down_pixels (void)
             continue;                                                            /* the part in the view only */
           if (x >= ink.x && x < ink.x + ink.w && y >= ink.y && y < ink.y + ink.h && ink.mask[(y - ink.y) * ink.w + (x - ink.x)])
             want = ink.color[(y - ink.y) * ink.w + (x - ink.x)];
-          g_assert_cmphex (px[(gsize) sy * w + sx], ==, want);
+          assert_near (px[(gsize) sy * w + sx], tinted (want));
           compared++;
           inked_seen += want != 0xFFFFFFFFu;
         }
@@ -18734,7 +18865,7 @@ as16_box_shows_put_down_pixels (void)
   /* the caret 2 device pixels wide at 800 %, at the box's left */
   g_assert_cmphex (px[(gsize) (cy + (by + 3) * 8) * w + cx + bx * 8], ==, 0xFF000000u);
   g_assert_cmphex (px[(gsize) (cy + (by + 3) * 8) * w + cx + bx * 8 + 1], ==, 0xFF000000u);
-  g_assert_cmphex (px[(gsize) (cy + (by + 3) * 8) * w + cx + bx * 8 + 3], ==, 0xFFFFFFFFu);
+  assert_near (px[(gsize) (cy + (by + 3) * 8) * w + cx + bx * 8 + 3], tinted (0xFFFFFFFFu));
   /* back at 100 %: the selected text has the accent behind it, its letters black; Opaque fills the box with the background color */
   easel_canvas_set_zoom (canvas, 100);
   easel_text_buffer_select (easel_canvas_text_buffer (canvas), 0, 2);           /* "Hi" */
@@ -18744,10 +18875,6 @@ as16_box_shows_put_down_pixels (void)
   wait_for_next_frame (win);
   px = render_pixels (win, &w, &h, &cx, &cy);
   {
-    g_autoptr (GdkRGBA) accent = adw_style_manager_get_accent_color_rgba (adw_style_manager_get_default ());
-    uint32_t tinted = 0xFF000000u | (uint32_t) lround (255 * 0.65 + accent->red * 255 * 0.35) << 16
-                      | (uint32_t) lround (255 * 0.65 + accent->green * 255 * 0.35) << 8
-                      | (uint32_t) lround (255 * 0.65 + accent->blue * 255 * 0.35);
     int behind = 0, letters = 0;
 
     for (int y = ink.y; y < ink.y + ink.h; y++)
@@ -18756,10 +18883,10 @@ as16_box_shows_put_down_pixels (void)
           uint32_t got = rendered_pixel (px, w, cx, cy, x, y);
 
           if (ink.mask[(y - ink.y) * ink.w + (x - ink.x)])
-            letters += got == 0xFF000000u;
+            letters += near_color (got, tinted (0xFF000000u));                      /* a letter keeps its color, under the tint */
           else
             {
-              behind += got == tinted;
+              behind += near_color (got, highlighted (0xFFFFFFFFu));                 /* the highlight on top of the tint */
 
             }
         }
@@ -18773,10 +18900,214 @@ as16_box_shows_put_down_pixels (void)
   g_clear_pointer (&px, g_free);
   wait_for_next_frame (win);
   px = render_pixels (win, &w, &h, &cx, &cy);
-  g_assert_cmphex (rendered_pixel (px, w, cx, cy, bx + bw - 2, by + bh - 2), ==, 0xFFFFFF00u);
+  assert_near (rendered_pixel (px, w, cx, cy, bx + bw - 2, by + bh - 2), tinted (0xFFFFFF00u));
   g_assert_cmphex (rendered_pixel (px, w, cx, cy, bx - 2, by + 1), ==, 0xFFFFFFFFu);   /* outside the box (not under the card): the picture */
   caret_blink (blink_at_start);
   close_windows ();
+}
+
+/* AS-27 (REQ-0017-05, REQ-0004-12): at 800 % with the grid on, a box drawn in the order picture, fill, text, grid, tint, highlight: a
+   new, empty box shows the tint over its pixels and the grid's line under the tint; with "Hi" and "H" selected, a pixel set in "H" is the
+   letter's color under the tint with no highlight, a pixel of "H"'s area not set in it is the highlight on top of the tint, a box pixel
+   off the selection the tint alone and a pixel on a grid line inside the box the grid's color under the tint, in Opaque (a yellow fill)
+   and Transparent mode (the white picture), also after a key is typed; and a floating selection shows its pixels and the grid's line
+   under the tint. A pixel is sampled at the middle of its 8 x 8 square, a grid line on the square's first column. */
+static void
+as27_box_tint_grid_highlight (void)
+{
+  for (int opaque = 0; opaque < 2; opaque++)
+    {
+      EaselWindow *win;
+      EaselCanvas *canvas;
+      EaselTextInk ink;
+      g_autofree uint32_t *px = NULL;
+      int w, h, cx, cy, bx, by, bw, bh, row = -1, x0 = -1, x1 = -1;
+      uint32_t base = opaque ? 0xFFFFFF00u : 0xFFFFFFFFu;
+
+      write_settings ("[new-picture]\nwidth=120\nheight=80\ncanvas-color=#FFFFFF\n\n[text]\nfont=DejaVu Sans\nsize=24\n");
+      win = start_window ();
+      canvas = easel_window_get_canvas (win);
+      wait_for_layout (win);
+      easel_canvas_set_zoom (canvas, 800);
+      wait_for_layout (win);
+      g_action_group_activate_action (G_ACTION_GROUP (win), "grid", NULL);
+      g_assert_true (easel_canvas_grid_is_drawn (canvas));
+      use_tool (win, "text");
+      easel_canvas_set_colors (canvas, 0xFF000000u, 0xFFFFFF00u);
+      easel_canvas_set_text_opaque (canvas, opaque);
+      shape_press_move (win, 1, 5, 5, 70, 30);
+      shape_release (win, 1);
+      g_assert_true (easel_canvas_text_box (canvas, &bx, &by, &bw, &bh));
+      /* the new, empty box */
+      wait_for_next_frame (win);
+      px = render_pixels (win, &w, &h, &cx, &cy);
+#define MID(x, y) px[(gsize) (cy + (y) * 8 + 4) * w + cx + (x) * 8 + 4]
+#define LINE(x, y) px[(gsize) (cy + (y) * 8 + 4) * w + cx + (x) * 8]
+      assert_near (MID (bx + 20, by + 10), tinted (base));
+      assert_near (LINE (bx + 20, by + 10), tinted (grid_line_over (base)));
+      /* "Hi", "H" selected */
+      box_text (win, "Hi");
+      easel_text_buffer_select (easel_canvas_text_buffer (canvas), 0, 1);
+      easel_canvas_text_edited (canvas);
+      g_assert_true (easel_canvas_text_box (canvas, &bx, &by, &bw, &bh));
+      g_assert_true (easel_canvas_text_ink (canvas, &ink));
+      for (int y = 0; y < ink.h && row < 0; y++)
+        for (int x = 0; x < ink.w / 2 && row < 0; x++)                             /* the top row of "H" (the dot of "i" is higher) */
+          if (ink.mask[(gsize) y * ink.w + x])
+            row = y;
+      for (int x = 0; x < ink.w; x++)
+        if (x0 < 0 && ink.mask[(gsize) row * ink.w + x])
+          x0 = x;
+        else if (x0 >= 0 && !ink.mask[(gsize) row * ink.w + x])
+          {
+            x1 = x;                                                                /* between the two stems of "H" */
+            break;
+          }
+      g_assert_cmpint (x1, >, x0);
+      g_clear_pointer (&px, g_free);
+      wait_for_next_frame (win);
+      px = render_pixels (win, &w, &h, &cx, &cy);
+      assert_near (MID (ink.x + x0, ink.y + row), tinted (0xFF000000u));           /* a letter: its color under the tint, no highlight */
+      assert_near (MID (ink.x + x1, ink.y + row), highlighted (base));              /* the highlight on top of the tint */
+      assert_near (MID (bx + bw - 3, by + bh - 3), tinted (base));                  /* off the selection: the tint alone */
+      assert_near (LINE (bx + bw - 3, by + bh - 3), tinted (grid_line_over (base))); /* the grid's line under the tint */
+      /* a key typed: still tinted */
+      easel_text_buffer_select (easel_canvas_text_buffer (canvas), 2, 2);
+      type_keys (win, "x");
+      g_clear_pointer (&px, g_free);
+      wait_for_next_frame (win);
+      px = render_pixels (win, &w, &h, &cx, &cy);
+      assert_near (MID (bx + bw - 3, by + bh - 3), tinted (base));
+      assert_near (LINE (bx + bw - 3, by + bh - 3), tinted (grid_line_over (base)));
+      close_windows ();
+    }
+  {
+    /* a floating selection: a red block moved one pixel right */
+    EaselWindow *win;
+    EaselCanvas *canvas;
+    EaselImage *img;
+    g_autofree uint32_t *px = NULL;
+    int w, h, cx, cy;
+
+    write_settings ("[new-picture]\nwidth=120\nheight=80\ncanvas-color=#FFFFFF\n");
+    win = start_window ();
+    canvas = easel_window_get_canvas (win);
+    img = (EaselImage *) easel_window_get_picture (win);
+    wait_for_layout (win);
+    for (int y = 30; y < 34; y++)
+      for (int x = 30; x < 36; x++)
+        easel_image_set (img, x, y, 0xFFFF0000u);
+    easel_canvas_update (canvas);
+    easel_canvas_set_zoom (canvas, 800);
+    wait_for_layout (win);
+    g_action_group_activate_action (G_ACTION_GROUP (win), "grid", NULL);
+    use_select (win);
+    shape_press_move (win, 1, 30, 30, 35, 33);
+    shape_release (win, 1);
+    g_assert_true (key_taken (win, GDK_KEY_Right, 0));
+    wait_for_next_frame (win);
+    px = render_pixels (win, &w, &h, &cx, &cy);
+    assert_near (MID (33, 31), tinted (0xFFFF0000u));
+    assert_near (LINE (33, 31), tinted (grid_line_over (0xFFFF0000u)));
+#undef MID
+#undef LINE
+    close_windows ();
+  }
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* The pixel the window's own renderer makes from an opaque grey v, drawn as the canvas draws picture pixels (a tile and the box's texture
+   over it), under the accent at `first` and then at `second` alpha: the order of REQ-0017-05 rendered by the nodes the canvas appends. */
+static uint32_t
+two_layers (GskRenderer *r, int v, float first, float second)
+{
+  g_autoptr (GdkRGBA) accent = adw_style_manager_get_accent_color_rgba (adw_style_manager_get_default ());
+  GtkSnapshot *s = gtk_snapshot_new ();
+  GdkRGBA a = { accent->red, accent->green, accent->blue, first }, b = { accent->red, accent->green, accent->blue, second };
+  graphene_rect_t one = GRAPHENE_RECT_INIT (0, 0, 1, 1);
+  uint32_t grey = 0xFF000000u | (uint32_t) v << 16 | (uint32_t) v << 8 | (uint32_t) v;
+  g_autoptr (GBytes) bytes = g_bytes_new (&grey, 4);
+  g_autoptr (GdkTexture) picture = gdk_memory_texture_new (1, 1, GDK_MEMORY_B8G8R8A8, bytes, 4);   /* as the canvas's tiles */
+  g_autoptr (GskRenderNode) node = NULL;
+  g_autoptr (GdkTexture) tex = NULL;
+  guchar px[4];
+
+  gtk_snapshot_append_scaled_texture (s, picture, GSK_SCALING_FILTER_NEAREST, &one);
+  gtk_snapshot_append_scaled_texture (s, picture, GSK_SCALING_FILTER_NEAREST, &one);     /* the box's texture over the tile */
+  gtk_snapshot_append_color (s, &a, &one);
+  gtk_snapshot_append_color (s, &b, &one);
+  node = gtk_snapshot_free_to_node (s);
+  tex = gsk_renderer_render_texture (r, node, &one);
+  gdk_texture_download (tex, px, 4);
+  return (uint32_t) px[3] << 24 | (uint32_t) px[2] << 16 | (uint32_t) px[1] << 8 | px[0];
+}
+
+/* AS-27 (REQ-0017-05), the order exactly: the tint (12 %) under the selected text's highlight (35 %), both the accent, gives a pixel that
+   differs by 1 in some channel from the other order for some greys (a brute force over every grey, the nine accents of the desktop and
+   GSK's renderers found such differences in about a fifth of the bytes, the largest 1). The test finds a grey v where the two orders
+   differ for this session's accent, paints the picture with it, and checks that a highlighted pixel of a Transparent box over it is
+   exactly the tint-then-highlight pixel, not the other. */
+static void
+as27_highlight_over_tint_exact (void)
+{
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  EaselImage *img;
+  EaselTextInk ink;
+  g_autofree uint32_t *px = NULL;
+  int w, h, cx, cy, bx, by, bw, bh, v = -1, row = -1, x0 = -1, x1 = -1;
+  uint32_t right = 0, wrong = 0;
+
+  write_settings ("[new-picture]\nwidth=120\nheight=80\ncanvas-color=#FFFFFF\n\n[text]\nfont=DejaVu Sans\nsize=24\n");
+  win = start_window ();
+  wait_for_layout (win);
+  for (int g = 0; g < 256 && v < 0; g++)
+    {
+      GskRenderer *r = gtk_native_get_renderer (GTK_NATIVE (win));
+
+      right = two_layers (r, g, 0.12f, 0.35f);                                        /* the tint, then the highlight */
+      wrong = two_layers (r, g, 0.35f, 0.12f);
+      if (right != wrong)
+        v = g;
+    }
+  g_assert_cmpint (v, >=, 0);
+  canvas = easel_window_get_canvas (win);
+  img = (EaselImage *) easel_window_get_picture (win);
+  wait_for_layout (win);
+  for (int i = 0; i < 120 * 80; i++)
+    img->px[i] = 0xFF000000u | (uint32_t) v << 16 | (uint32_t) v << 8 | (uint32_t) v;
+  img->dirty = (EaselRect) { 0, 0, 120, 80 };
+  easel_canvas_update (canvas);
+  easel_canvas_set_zoom (canvas, 800);
+  wait_for_layout (win);
+  use_tool (win, "text");
+  easel_canvas_set_text_opaque (canvas, FALSE);
+  shape_press_move (win, 1, 5, 5, 70, 30);
+  shape_release (win, 1);
+  box_text (win, "Hi");
+  easel_text_buffer_select (easel_canvas_text_buffer (canvas), 0, 1);
+  easel_canvas_text_edited (canvas);
+  g_assert_true (easel_canvas_text_box (canvas, &bx, &by, &bw, &bh));
+  g_assert_true (easel_canvas_text_ink (canvas, &ink));
+  for (int y = 0; y < ink.h && row < 0; y++)
+    for (int x = 0; x < ink.w / 2 && row < 0; x++)
+      if (ink.mask[(gsize) y * ink.w + x])
+        row = y;
+  for (int x = 0; x < ink.w; x++)
+    if (x0 < 0 && ink.mask[(gsize) row * ink.w + x])
+      x0 = x;
+    else if (x0 >= 0 && !ink.mask[(gsize) row * ink.w + x])
+      {
+        x1 = x;
+        break;
+      }
+  g_assert_cmpint (x1, >, x0);
+  wait_for_next_frame (win);
+  px = render_pixels (win, &w, &h, &cx, &cy);
+  g_assert_cmphex (px[(gsize) (cy + (ink.y + row) * 8 + 4) * w + cx + (ink.x + x1) * 8 + 4], ==, right);
+  g_assert_cmphex (right, !=, wrong);
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
 }
 
 /* The pixels a pass of DejaVu Sans 72 "_j" ("_" plain, "j" italic) covers at least half, with only the character `only` (0 or 1) shown:
@@ -18796,12 +19127,12 @@ underscore_j_pass (int only, int margin, int w, int h)
   guint8 *m = g_malloc0 ((gsize) w * h);
   const guint8 *d;
 
-  cairo_font_options_set_antialias (fo, CAIRO_ANTIALIAS_GRAY);
-  cairo_font_options_set_hint_style (fo, CAIRO_HINT_STYLE_NONE);
-  cairo_font_options_set_hint_metrics (fo, CAIRO_HINT_METRICS_OFF);
+  cairo_font_options_set_antialias (fo, CAIRO_ANTIALIAS_NONE);           /* REQ-0017-28's settings */
+  cairo_font_options_set_hint_style (fo, CAIRO_HINT_STYLE_FULL);
+  cairo_font_options_set_hint_metrics (fo, CAIRO_HINT_METRICS_ON);
   pango_cairo_context_set_font_options (ctx, fo);
   pango_cairo_context_set_resolution (ctx, 96);
-  pango_context_set_round_glyph_positions (ctx, FALSE);
+  pango_context_set_round_glyph_positions (ctx, TRUE);
   layout = pango_layout_new (ctx);
   pango_layout_set_font_description (layout, fd);
   pango_layout_set_text (layout, "_j", -1);
@@ -19431,12 +19762,12 @@ text_height_at (const char *text, int width)
   PangoFontDescription *fd = pango_font_description_from_string ("DejaVu Sans 12");
   PangoRectangle logical;
 
-  cairo_font_options_set_antialias (fo, CAIRO_ANTIALIAS_GRAY);
-  cairo_font_options_set_hint_style (fo, CAIRO_HINT_STYLE_NONE);
-  cairo_font_options_set_hint_metrics (fo, CAIRO_HINT_METRICS_OFF);
+  cairo_font_options_set_antialias (fo, CAIRO_ANTIALIAS_NONE);           /* REQ-0017-28's settings */
+  cairo_font_options_set_hint_style (fo, CAIRO_HINT_STYLE_FULL);
+  cairo_font_options_set_hint_metrics (fo, CAIRO_HINT_METRICS_ON);
   pango_cairo_context_set_font_options (ctx, fo);
   pango_cairo_context_set_resolution (ctx, 96);
-  pango_context_set_round_glyph_positions (ctx, FALSE);
+  pango_context_set_round_glyph_positions (ctx, TRUE);
   layout = pango_layout_new (ctx);
   pango_layout_set_font_description (layout, fd);
   pango_layout_set_text (layout, text, -1);
@@ -19569,8 +19900,11 @@ as10_box_handles (void)
   shape_press_move (win, 1, 50, 50, 149, 89);
   shape_release (win, 1);
   type_keys (win, AS10_TEXT);
-  g_assert_cmpint (text_height_at (AS10_TEXT, 100), <=, 40);
-  g_assert_cmpint (text_height_at (AS10_TEXT, 50), >, 40);
+  /* by hand: "a" 1255 units is 9.80 pixels, "b" 1300 is 10.16, the space 651 is 5.09, each a whole 10, 10 and 5 with hinted metrics, so
+     "ab " is 25: at 100 wide "ab ab ab ab" (95) fits and the line breaks after it, two lines, 38 pixels; at 50, "ab ab" (45) a line,
+     three lines, 57 (before REQ-0017-28: three lines of 18.625, 56) */
+  g_assert_cmpint (text_height_at (AS10_TEXT, 100), ==, 38);
+  g_assert_cmpint (text_height_at (AS10_TEXT, 50), ==, 57);
   g_assert_true (box_is (win, 50, 50, 100, 40));
   /* the right handle by -50 */
   box_handle_center (win, EASEL_SEL_HANDLE_R, &x, &y);
@@ -19927,17 +20261,17 @@ as13_text_color (void)
   g_assert_true (easel_canvas_text_box (canvas, &bx, &by, &bw, &bh));
   wait_for_next_frame (win);
   px = render_pixels (win, &w, &h, &cx, &cy);
-  g_assert_cmphex (rendered_pixel (px, w, cx, cy, bx + bw - 2, by + bh - 2), ==, 0xFFFFFF00u);
+  assert_near (rendered_pixel (px, w, cx, cy, bx + bw - 2, by + bh - 2), tinted (0xFFFFFF00u));
   easel_palette_bar_press (pal, 19, 3, 1);                                       /* green background */
   g_clear_pointer (&px, g_free);
   wait_for_next_frame (win);
   px = render_pixels (win, &w, &h, &cx, &cy);
-  g_assert_cmphex (rendered_pixel (px, w, cx, cy, bx + bw - 2, by + bh - 2), ==, 0xFF00FF00u);
+  assert_near (rendered_pixel (px, w, cx, cy, bx + bw - 2, by + bh - 2), tinted (0xFF00FF00u));
   easel_canvas_set_text_opaque (canvas, FALSE);
   g_clear_pointer (&px, g_free);
   wait_for_next_frame (win);
   px = render_pixels (win, &w, &h, &cx, &cy);
-  g_assert_cmphex (rendered_pixel (px, w, cx, cy, bx + bw - 2, by + bh - 2), ==, 0xFFFFFFFFu);
+  assert_near (rendered_pixel (px, w, cx, cy, bx + bw - 2, by + bh - 2), tinted (0xFFFFFFFFu));
   /* the background picks set no color for the text typed next: a "z" at the start takes the style at the caret, the red "r"'s */
   type_keys (win, "z");
   g_assert_cmphex (run_style_at (win, 0).color, ==, 0xFFFF0000u);
@@ -22311,7 +22645,7 @@ as23_line_thickness_by_zoom (void)
 
 static void run_for_ms (int ms);
 
-/* A picture color with the tint of REQ-0014-17 b over it: the system's accent color at 28 %, per channel, as the window shows it. */
+/* A picture color with the tint of REQ-0014-17 b over it: the system's accent color at 12 %, per channel, as the window shows it. */
 static uint32_t
 tinted (uint32_t base)
 {
@@ -22323,7 +22657,7 @@ tinted (uint32_t base)
     {
       uint32_t v = (base >> shift) & 0xFF;
 
-      c |= ((v * 72 + tint[shift / 8] * 28 + 50) / 100) << shift;
+      c |= ((v * 88 + tint[shift / 8] * 12 + 50) / 100) << shift;              /* 12 % (JOD, 2026-10-28; it was 28) */
     }
   return c;
 }
@@ -22453,6 +22787,53 @@ run_for_ms (int ms)
    dragged out (the button is held), and once the button is released they move: 0.3 s later the black dashes of the line are in other
    places, the white strip and the tint where they were; with animations off they never move and no frame is asked for; with no
    selection (after Esc) no frame is asked for any more. The rectangle's ring is one line counted clockwise from its top-left corner. */
+/* AS-2 (REQ-0017-05, REQ-0014-17 c): an open text box's dashes move as a selection's do: with animations on they move once the box is
+   made, stand still while a button is held (the box being dragged out, text being selected in it) and stop with animations off. */
+static void
+as2_box_dashes_move (void)
+{
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  g_autofree uint32_t *a = NULL, *b = NULL;
+  int w, h, cx, cy, w2, h2, cx2, cy2, changed = 0;
+
+  write_settings ("[new-picture]\nwidth=300\nheight=200\ncanvas-color=#FFFFFF\n\n[text]\nfont=DejaVu Sans\nsize=12\n");
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  wait_for_layout (win);
+  animations (TRUE);
+  use_tool (win, "text");
+  shape_press_move (win, 1, 10, 10, 60, 30);
+  run_for_ms (100);
+  g_assert_false (easel_canvas_get_ants_running (canvas));                        /* the box being dragged out */
+  shape_release (win, 1);
+  run_for_ms (100);
+  g_assert_true (easel_canvas_get_ants_running (canvas));
+  /* the top side of the box's line, 0.3 s apart: not the same pixels */
+  wait_for_next_frame (win);
+  a = render_pixels (win, &w, &h, &cx, &cy);
+  run_for_ms (300);
+  wait_for_next_frame (win);
+  b = render_pixels (win, &w2, &h2, &cx2, &cy2);
+  g_assert_cmpint (cx, ==, cx2);
+  for (int x = cx + 12; x < cx + 58; x++)
+    changed += a[(gsize) (cy + 9) * w + x] != b[(gsize) (cy + 9) * w + x];
+  g_assert_cmpint (changed, >, 0);
+  /* a press inside the box that selects text: they stand still while the button is held */
+  easel_canvas_press (canvas, 1, 30.5 * logical_per_pixel (canvas), 20.5 * logical_per_pixel (canvas));
+  run_for_ms (200);
+  g_assert_false (easel_canvas_get_ants_running (canvas));
+  easel_canvas_release (canvas, 1);
+  run_for_ms (100);
+  g_assert_true (easel_canvas_get_ants_running (canvas));
+  /* animations off: they stop */
+  animations (FALSE);
+  run_for_ms (200);
+  g_assert_false (easel_canvas_get_ants_running (canvas));
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
 static void
 as25_dashes_move (void)
 {
@@ -23990,6 +24371,10 @@ main (int argc, char **argv)
   g_test_add_func ("/0017/as4_box_drag_cancel", as4_box_drag_cancel);
   g_test_add_func ("/0017/as5_wrap_grow_shrink", as5_wrap_grow_shrink);
   g_test_add_func ("/0017/as16_box_shows_put_down_pixels", as16_box_shows_put_down_pixels);
+  g_test_add_func ("/0017/as28_same_letter_same_pixels", as28_same_letter_same_pixels);
+  g_test_add_func ("/0017/as27_box_tint_grid_highlight", as27_box_tint_grid_highlight);
+  g_test_add_func ("/0017/as2_box_dashes_move", as2_box_dashes_move);
+  g_test_add_func ("/0017/as27_highlight_over_tint_exact", as27_highlight_over_tint_exact);
   g_test_add_func ("/0017/as16_later_character_wins", as16_later_character_wins);
   g_test_add_func ("/0017/as25_line_starts", as25_line_starts);
   g_test_add_func ("/0017/as26_format_keys", as26_format_keys);

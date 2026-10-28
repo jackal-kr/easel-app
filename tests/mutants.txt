@@ -4366,9 +4366,9 @@ test: ui-0014
 file: src/ui/canvas.c
 test: ui-0014
 --- find
-  GdkRGBA tint = { accent->red, accent->green, accent->blue, 0.28f };      /* the system's accent at 28 % */
+  GdkRGBA tint = { accent->red, accent->green, accent->blue, 0.12f };      /* the system's accent at 12 % (JOD, 2026-10-28) */
 --- replace
-  GdkRGBA tint = { accent->red, accent->green, accent->blue, 0.0f };      /* the system's accent at 28 % */
+  GdkRGBA tint = { accent->red, accent->green, accent->blue, 0.0f };      /* the system's accent at 12 % (JOD, 2026-10-28) */
 
 === REQ-0014-17 the tint is drawn where the guides are hidden
 file: src/ui/canvas.c
@@ -4376,13 +4376,11 @@ test: ui-0014
 --- find
   if (self->guides_hidden)
     return;                                       /* (a path being traced is no selection yet: nothing is tinted) */
-  if (self->selecting ? !drag_rect (self, &x, &y, &w, &h) : !easel_canvas_get_selection (self, &x, &y, &w, &h, &floating))
-    return;
+  if (self->tool == EASEL_TOOL_TEXT)
 --- replace
   if (0)
     return;                                       /* (a path being traced is no selection yet: nothing is tinted) */
-  if (self->selecting ? !drag_rect (self, &x, &y, &w, &h) : !easel_canvas_get_selection (self, &x, &y, &w, &h, &floating))
-    return;
+  if (self->tool == EASEL_TOOL_TEXT)
 
 === REQ-0014-17 the whole box of a free-form selection is tinted
 file: src/ui/canvas.c
@@ -4433,9 +4431,9 @@ test: ui-0014
 file: src/ui/canvas.c
 test: ui-0014
 --- find
-  GdkRGBA tint = { accent->red, accent->green, accent->blue, 0.28f };      /* the system's accent at 28 % */
+  GdkRGBA tint = { accent->red, accent->green, accent->blue, 0.12f };      /* the system's accent at 12 % (JOD, 2026-10-28) */
 --- replace
-  GdkRGBA tint = { 0.208f, 0.518f, 0.894f, 0.28f };      /* the system's accent at 28 % */
+  GdkRGBA tint = { 0.208f, 0.518f, 0.894f, 0.12f };      /* the system's accent at 12 % (JOD, 2026-10-28) */
 
 === REQ-0014-17 the canvas is not drawn again when the accent changes
 file: src/ui/canvas.c
@@ -5457,10 +5455,8 @@ file: src/ui/canvas.c
 test: ui-0015
 --- find
   append_handles (self, snapshot);                /* the picture's handles lie under the selection's pixels and tint (REQ-0015-01) */
-  append_text_box (self, snapshot, l);
   append_float_outside (self, snapshot, l);
 --- replace
-  append_text_box (self, snapshot, l);
   append_float_outside (self, snapshot, l);
   append_handles (self, snapshot);
 
@@ -7514,10 +7510,11 @@ test: ui-0017
 file: src/ui/canvas.c
 test: ui-0017
 --- find
-            c = ink->color[(size_t) (y - ink->y) * ink->w + (x - ink->x)];
-            inked = TRUE;
+          c = ink->color[(size_t) (y - ink->y) * ink->w + (x - ink->x)];
+        px[(gsize) j * rw + i] = c;
 --- replace
-            inked = TRUE;
+          (void) 0;
+        px[(gsize) j * rw + i] = c;
 
 === REQ-0017-05 an Opaque box shows no background
 file: src/ui/canvas.c
@@ -7533,17 +7530,9 @@ test: ui-0017
 file: src/ui/canvas.c
 test: ui-0017
 --- find
-        if (!inked && selected != NULL && selected[(gsize) j * rw + i])
+  color = (GdkRGBA) { accent->red, accent->green, accent->blue, 0.35f };
 --- replace
-        if (0)
-
-=== REQ-0017-05 the accent covers the selected letters too
-file: src/ui/canvas.c
-test: ui-0017
---- find
-        if (!inked && selected != NULL && selected[(gsize) j * rw + i])
---- replace
-        if (selected != NULL && selected[(gsize) j * rw + i])
+  color = (GdkRGBA) { accent->red, accent->green, accent->blue, 0.0f };
 
 === REQ-0017-05 the box has no handles
 file: src/ui/canvas.c
@@ -10445,3 +10434,113 @@ test: ui-0018
       || !keyval_of_non_latin_script (keyval)
 --- replace
       || FALSE
+
+=== REQ-0017-28 glyphs are antialiased (gray coverage cut at half)
+file: src/ui/text-render.c
+test: ui-0017
+--- find
+  cairo_font_options_set_antialias (fo, CAIRO_ANTIALIAS_NONE);
+--- replace
+  cairo_font_options_set_antialias (fo, CAIRO_ANTIALIAS_GRAY);
+
+=== REQ-0017-28 the outlines are not fitted to the pixels
+file: src/ui/text-render.c
+test: ui-0017
+--- find
+  cairo_font_options_set_hint_style (fo, CAIRO_HINT_STYLE_FULL);
+--- replace
+  cairo_font_options_set_hint_style (fo, CAIRO_HINT_STYLE_NONE);
+
+=== REQ-0017-28 the metrics are not whole pixels
+file: src/ui/text-render.c
+test: ui-0017
+--- find
+  cairo_font_options_set_hint_metrics (fo, CAIRO_HINT_METRICS_ON);
+--- replace
+  cairo_font_options_set_hint_metrics (fo, CAIRO_HINT_METRICS_OFF);
+
+=== REQ-0017-28 the glyph positions are not rounded to whole pixels
+file: src/ui/text-render.c
+test: ui-0017
+--- find
+  pango_context_set_round_glyph_positions (ctx, TRUE);
+--- replace
+  pango_context_set_round_glyph_positions (ctx, FALSE);
+
+=== REQ-0017-05 the tint is drawn over the selected text's highlight
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+  if (!self->probe_no_tint)
+    append_selection_tint (self, snapshot);
+  append_text_highlight (self, snapshot, l);
+--- replace
+  append_text_highlight (self, snapshot, l);
+  if (!self->probe_no_tint)
+    append_selection_tint (self, snapshot);
+
+=== REQ-0017-05 the highlight also covers the pixels set in the text
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+                && !(ink->mask != NULL && xx >= ink->x
+--- replace
+                && (TRUE || ink->mask != NULL && xx >= ink->x
+
+=== REQ-0004-12 the grid is drawn under the text box's pixels
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+  append_text_box (self, snapshot, l);           /* the box's pixels, under the grid and the tint (REQ-0017-05) */
+  append_shape_preview (self, snapshot);
+  if (easel_canvas_grid_is_drawn (self))
+    append_grid (self, snapshot);
+--- replace
+  append_shape_preview (self, snapshot);
+  if (easel_canvas_grid_is_drawn (self))
+    append_grid (self, snapshot);
+  append_text_box (self, snapshot, l);
+
+=== REQ-0017-05 the box is not tinted
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+      if (easel_canvas_text_box (self, &x, &y, &w, &h))
+        gtk_snapshot_append_color (snapshot, &tint,
+--- replace
+      if (FALSE && easel_canvas_text_box (self, &x, &y, &w, &h))
+        gtk_snapshot_append_color (snapshot, &tint,
+
+=== REQ-0014-17 the tint is 28 % as before
+file: src/ui/canvas.c
+test: ui-0014
+--- find
+  GdkRGBA tint = { accent->red, accent->green, accent->blue, 0.12f };
+--- replace
+  GdkRGBA tint = { accent->red, accent->green, accent->blue, 0.28f };
+
+=== REQ-0017-05 the box's dashes stand still
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+      double phase = ants_phase (self, 2 * d);
+--- replace
+      double phase = self->tool == EASEL_TOOL_TEXT ? 0 : ants_phase (self, 2 * d);
+
+=== REQ-0017-05 the box's dashes move while its text is being selected
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+      if (!easel_canvas_text_box (self, &x, &y, &w, &h) || self->text_drag != 0 || self->text_selecting || self->selecting)
+--- replace
+      if (!easel_canvas_text_box (self, &x, &y, &w, &h) || self->text_drag != 0 || self->selecting)
+
+=== REQ-0017-05 the box's dashes do not start again after a selection of its text
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+      if (self->text_selecting)
+        gtk_widget_queue_draw (GTK_WIDGET (self));  /* the frame that starts the box's dashes again (REQ-0017-05) */
+--- replace
+      if (self->text_selecting)
+        (void) 0;

@@ -11,14 +11,15 @@ easel_text_render_context (void)
   PangoContext *ctx = pango_font_map_create_context (pango_cairo_font_map_get_default ());
   cairo_font_options_t *fo = cairo_font_options_create ();
 
-  /* Gray antialiasing gives each pixel its coverage, which the put-down's rule reads (R1); no hinting, so positions do not snap to a
-     screen's pixels. */
-  cairo_font_options_set_antialias (fo, CAIRO_ANTIALIAS_GRAY);
-  cairo_font_options_set_hint_style (fo, CAIRO_HINT_STYLE_NONE);
-  cairo_font_options_set_hint_metrics (fo, CAIRO_HINT_METRICS_OFF);
+  /* 1-bit glyphs on the grid (REQ-0017-28): no antialiasing, the outlines fitted to the pixels, the metrics and the glyph positions in
+     whole pixels, so the same letter is the same bitmap wherever it falls in a line; the resolution is fixed, so the layout does not
+     depend on the screen (the probe `probe-text-hinting`, its setting G). */
+  cairo_font_options_set_antialias (fo, CAIRO_ANTIALIAS_NONE);
+  cairo_font_options_set_hint_style (fo, CAIRO_HINT_STYLE_FULL);
+  cairo_font_options_set_hint_metrics (fo, CAIRO_HINT_METRICS_ON);
   pango_cairo_context_set_font_options (ctx, fo);
   pango_cairo_context_set_resolution (ctx, 96);
-  pango_context_set_round_glyph_positions (ctx, FALSE);
+  pango_context_set_round_glyph_positions (ctx, TRUE);
   cairo_font_options_destroy (fo);
   return ctx;
 }
