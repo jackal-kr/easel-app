@@ -19,7 +19,8 @@
 # A test that meson reports skipped (exit 77, no display) is the same: no verdict, never "survived".
 # A kill is two failures of the same case: one that does not repeat is "UNREPEATED", counted apart and failing the run. The case that
 # last killed a mutant (kept in .scratch/mutate-last-kills.tsv) runs first, alone; when it passes, the mutant's tests run in full.
-# Each of those cases first runs alone on the clean sources: one that fails there is named and not used.
+# Each of those cases first runs alone on the clean sources: one that fails there is named and not used. A core or io test that a mutant
+# names runs on the clean sources too: one that fails there would "kill" every mutant, so the run stops with status 2 and no verdicts.
 # Format of the list and how to add a mutant: docs/engineering.md, "Mutation tool".
 set -u
 cd "$(dirname "$0")/.."
@@ -350,13 +351,15 @@ run_worker () {
   touch "$W/ready"
 
   # Each kept case alone on the clean sources, shared out like the mutants; no mutant starts before they have run. A case with no
-  # result (its worker died, or it ran out the wait) is not used.
+  # result (its worker died, or it ran out the wait) is not used. A line with no case is a whole core or io test.
   total=$(wc -l < "$SCRATCH/cases.tsv")
   while IFS=$'\t' read -r test case; do
     k=$((k + 1))
     mkdir "$SCRATCH/claim/case-$k" 2>/dev/null || continue
     if [ ! -f "$TESTS/$test.exe" ]; then
       :
+    elif [ -z "$case" ]; then
+      meson test -C "$BUILD" --no-rebuild "$test" >"$LOG" 2>&1 || printf '%s\n' "$test" >> "$SCRATCH/clean-test-failed"
     elif run_case "$test" "$case"; then
       printf 'clean-case %s %s passed\n' "$test" "$case" >> "$TRACE"
       printf '%s\t%s\n' "$test" "$case" >> "$SCRATCH/clean-ok"
@@ -370,6 +373,7 @@ run_worker () {
     [ "$(ls "$SCRATCH/case-done" | wc -l)" -ge "$total" ] && break
     sleep 0.5
   done
+  [ -s "$SCRATCH/clean-test-failed" ] && exit 0
 
   while IFS=$'\t' read -r n req file tests name; do
     mkdir "$SCRATCH/claim/$n" 2>/dev/null || continue
@@ -417,6 +421,8 @@ with open(scratch + "/first.tsv", "w", encoding="utf-8") as f:
 with open(scratch + "/cases.tsv", "w", encoding="utf-8") as f:
     for row in sorted({row[1:] for row in first}):
         f.write("\t".join(row) + "\n")
+    for test in sorted({t for r in queue for t in r[3].split() if not t.startswith("ui-")}):
+        f.write(test + "\t\n")
 PY
 while IFS=$'\t' read -r n req file tests name; do
   long_only=$((long_only + 1))
@@ -537,6 +543,12 @@ done
 wait "${pids[@]}" 2>/dev/null
 take_news
 
+# A core or io test that fails with no mutant says nothing about the mutants.
+if [ -s "$SCRATCH/clean-test-failed" ]; then
+  sort -u "$SCRATCH/clean-test-failed" | sed 's/^/a test fails on the clean sources: /'
+  echo "no verdicts: fix that test first" >&2
+  exit 2
+fi
 # No worker came up: nothing has run, and the reason is theirs.
 if [ "$finished" -eq 0 ] && [ "$TOTAL" -gt 0 ] && ! ls "$SCRATCH"/w*/ready >/dev/null 2>&1; then
   cat "$SCRATCH"/w*/failed 2>/dev/null
