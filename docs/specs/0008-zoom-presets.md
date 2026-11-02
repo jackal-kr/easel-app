@@ -194,7 +194,7 @@ D. The numbers
   Result: measurement, no test: `perf-0001` start to the first frame 201.6 ms against the 0.5 s budget; numbers in the Plan's Measurements
 
 Change of 2026-10-28 (JOD, 2026-10-27): the zoom reaches 1600 % (REQ-0001-16, REQ-0004-02, -07, -08, REQ-0007-02, -03, REQ-0008-01, -02,
--03, -06; 0004's AS-3 and AS-31, 0007's AS-1, AS-2 and AS-11, 0008's AS-1 and AS-5). The Eraser's cursor at 1600 % was probed first (0006's
+-03, -06; 0004's AS-3 and AS-31, 0007's AS-1, AS-2 and AS-19, 0008's AS-1 and AS-5). The Eraser's cursor at 1600 % was probed first (0006's
 Plan, 2026-10-28: no cap).
 - [x] T009 1600 % as a level, a preset, a step and a Magnifier level, Fit to Window still capped at 800 % - done when core `test-view`
   (the levels, the presets, Zoom In from 800 % and none from 1600 %, the Fit cap at 800 %, the pinch's stop at 1600 %) and
@@ -207,7 +207,7 @@ Plan, 2026-10-28: no cap).
   said 800 % was the end failed with the new levels and were brought to the new wording (0001's `as13_zoom_keeps_point_under_pointer`,
   0004's `as3_zoom_buttons`, 0008's `as1_zoom_submenu_and_lens_levels`, 0016's `as13_canvas_menu`), with the six levels in
   `as2_magnifier_level_kept`, the lens layout (16x under the Magnifier's button) and 0008's toolbox width; `as19_magnifier_16x` (0007's
-  AS-11) is new. AS-31 (`as10_grid_covers_the_view_after_zoom_and_pan`, up to 1600 %) failed once on its own helper: after the zoom the
+  AS-19) is new. AS-31 (`as10_grid_covers_the_view_after_zoom_and_pan`, up to 1600 %) failed once on its own helper: after the zoom the
   view stood at the picture's right edge, where the last column's far side is the picture's edge and has no line (REQ-0004-12), so the
   check now looks at the cell before it. The menus and the lens follow the lists in the code, so no ui code changed. Mutants: the levels
   stopping at 800 %, 1600 % not a preset, Fit to Window up to 1600 %, and three re-anchored; `mutate.sh` for the twelve changed REQ ids:
@@ -227,6 +227,11 @@ Plan, 2026-10-28: no cap).
   memory. The slow first pencil motion (64 to 73 ms) comes only in the first block of each run, at 800 %, never at 1600 % nor in the
   second 800 % block: the first stroke of the process, not the zoom. The gate: full isolated `meson test` 51 of 51, mutants above,
   `--lint` and the spec lints below.
+  perf-0004 with the grid at 8000 × 8000, 2026-11-02, Vulkan, 3 runs each interleaved with `e5bbe7e`, load 0.63 to 0.75 (pointer position and
+  other windows were not checked; indicative): at 800 %, cell 1 16.6 to 16.7 / 18.1 to 19.1 ms against 16.6 to 16.8 / 18.9 to 19.5 ms, and
+  axonometric cell 4 16.6 to 16.8 / 18.9 to 30.8 ms against 16.6 / 18.3 to 19.1 ms; at 1600 %, on HEAD alone, 16.6 to 16.7 / 18.9 to 19.4 ms and
+  16.6 to 16.7 / 18.2 to 19.1 ms. Peak memory 605 to 606 MB against 605 MB. No slow case comes from the zoom. A median at the display's 16.6 ms
+  cannot show a cost under one frame.
 
 ## Check
 - Date and commit: 2026-10-18, `5bd6583` plus the uncommitted work of 0008

@@ -212,8 +212,9 @@ the presets are constants by the owner's recorded decision (P6, REQ-0006-03); te
   5 × 5 minimum of REQ-0006-16 stays. Not probed: scale 2; it joins the open HiDPI check (it is not known whether GDK
   takes a cursor texture's pixels as device or as logical pixels), and the canvas uses scale 1 until then.
   **Probe, 2026-10-28** (the 1600 % zoom; JOD's screen at scale 1): the Eraser 10's outline at 800 % (82 px), at 1600 % (162 px) and as
-  made for scale 2 (322 px) all show whole, as square outlines, at their full size; no cap, no overlay (JOD). The cursor is known at scale
-  1 only: a real scale-2 screen stays the open HiDPI item.
+  made for scale 2 (322 px) all show whole, as square outlines, at their full size; no cap, no overlay (JOD). Two points stay open. The cursor is known at
+  scale 1 only: a real scale-2 screen stays the open HiDPI item. The size-matched cursor is not snapped to picture pixels: it follows the
+  pointer, so at a high zoom its outline can lie across pixels, while the tool writes whole pixels.
 - **Keypad accelerators with Num Lock off:** GTK may report KP_Add / KP_Subtract either way; `as10_numpad_steps` sends
   both, and M1 checks a real keyboard with Num Lock on and off.
 - **Icons:** drawn for this app; M1 checks they read well in light and dark themes.
