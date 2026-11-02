@@ -5,6 +5,7 @@
 #include <stdlib.h>
 
 #include "lattice.h"
+#include "stretch-skew.h"
 
 static inline int
 imax (int a, int b)
@@ -74,6 +75,16 @@ easel_lasso_orient_path (const EaselPath *src, int x, int y, int w, int h, Easel
     {
       long long u = (long long) src->xy[2 * i] - x, v = (long long) src->xy[2 * i + 1] - y;
 
+      if (src->xy[2 * i] == EASEL_PATH_BREAK)
+        {
+          if (!easel_path_add (&p, EASEL_PATH_BREAK, EASEL_PATH_BREAK, max_bytes))
+            {
+              easel_path_free (&p);
+              return false;
+            }
+          continue;
+        }
+
       if (transposed)
         {
           long long t = u;
@@ -104,13 +115,122 @@ easel_lasso_scale_path (const EaselPath *src, int sx, int sy, int sw, int sh, in
   if (sw <= 0 || sh <= 0 || nw <= 0 || nh <= 0)
     return false;
   for (size_t i = 0; i < src->n; i++)
-    if (!easel_path_add (&p, scale_corner (src->xy[2 * i], sx, sw, nx, nw), scale_corner (src->xy[2 * i + 1], sy, sh, ny, nh), max_bytes))
+    if (!(src->xy[2 * i] == EASEL_PATH_BREAK ? easel_path_add (&p, EASEL_PATH_BREAK, EASEL_PATH_BREAK, max_bytes)
+          : easel_path_add (&p, scale_corner (src->xy[2 * i], sx, sw, nx, nw), scale_corner (src->xy[2 * i + 1], sy, sh, ny, nh), max_bytes)))
       {
         easel_path_free (&p);
         return false;
       }
   *out = p;
   return true;
+}
+
+const int *
+easel_path_next_part (const EaselPath *p, size_t *at, size_t *n)
+{
+  size_t first = *at, i = first;
+
+  if (first >= p->n)
+    return NULL;
+  while (i < p->n && p->xy[2 * i] != EASEL_PATH_BREAK)
+    i++;
+  *n = i - first;
+  *at = i + 1;
+  return p->xy + 2 * first;
+}
+
+/* Whether (x, y) of the mask is a pixel of the shape; outside the mask it is not. */
+static bool
+in_mask (const uint8_t *mask, int w, int h, int x, int y)
+{
+  return x >= 0 && x < w && y >= 0 && y < h && mask[(size_t) y * w + x];
+}
+
+bool
+easel_lasso_outline (const uint8_t *mask, int w, int h, int x, int y, EaselPath *out, size_t max_bytes)
+{
+  enum { EAST, SOUTH, WEST, NORTH };
+  size_t total = (size_t) w * (size_t) h;
+  uint8_t *seen;                               /* the pixels whose top edge a line has taken */
+  EaselPath p = { 0 };
+  bool first_part = true;
+
+  if (total > max_bytes || (seen = calloc (total, 1)) == NULL)
+    return false;
+  for (int y0 = 0; y0 < h; y0++)
+    for (int x0 = 0; x0 < w; x0++)
+      {
+        int cx = x0, cy = y0, dir = EAST;
+
+        if (seen[(size_t) y0 * w + x0] || !in_mask (mask, w, h, x0, y0) || in_mask (mask, w, h, x0, y0 - 1))
+          continue;
+        if ((!first_part && !easel_path_add (&p, EASEL_PATH_BREAK, EASEL_PATH_BREAK, max_bytes))
+            || !easel_path_add (&p, x + cx, y + cy, max_bytes))
+          goto no_memory;
+        first_part = false;
+        /* Along the edge with the shape on the right, so that at a corner it turns to stay with the pixel it follows: a part that touches
+           only at that corner is another line. */
+        do
+          {
+            bool ahead_right, ahead_left;
+            int turned;
+
+            if (dir == EAST)
+              {
+                seen[(size_t) cy * w + cx] = 1;
+                cx++;
+                ahead_right = in_mask (mask, w, h, cx, cy);
+                ahead_left = in_mask (mask, w, h, cx, cy - 1);
+              }
+            else if (dir == SOUTH)
+              {
+                cy++;
+                ahead_right = in_mask (mask, w, h, cx - 1, cy);
+                ahead_left = in_mask (mask, w, h, cx, cy);
+              }
+            else if (dir == WEST)
+              {
+                cx--;
+                ahead_right = in_mask (mask, w, h, cx - 1, cy - 1);
+                ahead_left = in_mask (mask, w, h, cx - 1, cy);
+              }
+            else
+              {
+                cy--;
+                ahead_right = in_mask (mask, w, h, cx, cy - 1);
+                ahead_left = in_mask (mask, w, h, cx - 1, cy - 1);
+              }
+            turned = !ahead_right ? (dir + 1) % 4 : ahead_left ? (dir + 3) % 4 : dir;
+            if (turned != dir && !(cx == x0 && cy == y0 && turned == EAST)
+                && !easel_path_add (&p, x + cx, y + cy, max_bytes))
+              goto no_memory;
+            dir = turned;
+          }
+        while (!(cx == x0 && cy == y0 && dir == EAST));
+      }
+  free (seen);
+  *out = p;
+  return true;
+no_memory:
+  free (seen);
+  easel_path_free (&p);
+  return false;
+}
+
+bool
+easel_lasso_skew_line (const EaselFloat *f, int amount_h, int amount_v, EaselPath *out, size_t max_bytes)
+{
+  int out_w = f->w + abs (amount_h), out_h = f->h + abs (amount_v);
+  size_t n = (size_t) out_w * (size_t) out_h;
+  uint8_t *shape;
+  bool ok;
+
+  if (n > max_bytes || (shape = malloc (n)) == NULL)
+    return false;
+  ok = easel_ss_make (NULL, f->mask, f->w, f->h, f->w, f->h, amount_h, amount_v, 0, NULL, shape)
+       && easel_lasso_outline (shape, out_w, out_h, f->x, f->y, out, max_bytes);
+  free (shape);
+  return ok;
 }
 
 /* A grid segment: for a horizontal one, the lattice row y and the column x it covers; for a vertical one, the pixel row y it is in

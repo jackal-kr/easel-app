@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 #include "selection.h"
+#include "stretch-skew.h"
 
 #include <math.h>
 #include <stdlib.h>
@@ -30,6 +31,15 @@ original_view (const EaselFloat *f)
   if (f->orig_px == NULL)
     return current_view (f);
   return (ImageView) { f->ow, f->oh, f->orig_px, f->orig_mask, f->skip_clear };
+}
+
+/* The hole's size and shape: the image as lifted, until a skew (0019) makes a new one. */
+static ImageView
+hole_view (const EaselFloat *f)
+{
+  if (f->hole_fixed)
+    return (ImageView) { f->hole_w, f->hole_h, NULL, f->hole_mask, false };
+  return original_view (f);
 }
 
 /* The image the copy k was made with. */
@@ -192,7 +202,7 @@ void
 easel_selection_lay_range (const EaselFloat *f, size_t first, size_t last, bool with_float, const EaselImage *img, int x0, int y0,
                            int w, int h, uint32_t *dst, size_t dst_stride, bool with_base)
 {
-  ImageView hole = original_view (f), cur = current_view (f), sv;
+  ImageView hole = hole_view (f), cur = current_view (f), sv;
 
   for (int j = 0; with_base && j < h; j++)
     {
@@ -230,7 +240,7 @@ easel_selection_bounds (const EaselFloat *f, bool with_float, const EaselImage *
 
   if (f->hole)
     {
-      ImageView hv = original_view (f);
+      ImageView hv = hole_view (f);
 
       ax0 = f->hx;
       ay0 = f->hy;
@@ -403,6 +413,7 @@ easel_float_free (EaselFloat *f)
   free (f->mask);
   free (f->orig_px);
   free (f->orig_mask);
+  free (f->hole_mask);
   for (size_t i = 0; i < f->n_kept; i++)
     {
       free (f->kept[i].px);
@@ -1061,6 +1072,121 @@ easel_selection_transform (EaselFloat *f, EaselOp op, size_t max_bytes)
      it the command of what was shown, whatever the stretch (REQ-0018-07). The place stays; a quarter turn swaps the size. */
   return stretch_to (f, f->x, f->y, quarter ? f->h : f->w, quarter ? f->w : f->h, max_bytes, false,
                      easel_orient_compose (f->orient, step));
+}
+
+EaselSelectionResult
+easel_selection_skew (EaselFloat *f, int amount_h, int amount_v, size_t max_bytes)
+{
+  int out_w = f->w + abs (amount_h), out_h = f->h + abs (amount_v);
+  size_t n = (size_t) out_w * (size_t) out_h;
+  bool same_image = f->orig_px == NULL, uses_current = false, uses_orig = false;
+  ImageView hole = hole_view (f);
+  uint32_t *npx = NULL;
+  uint8_t *nmask = NULL, *hole_mask = NULL;
+  int *img = NULL;
+  EaselKept *kept = NULL;
+  EaselSelectionResult r;
+
+  if (amount_h == 0 && amount_v == 0)
+    return EASEL_SELECTION_NOTHING;
+  r = image_alloc (true, out_w, out_h, max_bytes, false, &npx, &nmask);
+  if (r != EASEL_SELECTION_DONE)
+    return r;
+  if (f->hole && !f->hole_fixed && hole.mask != NULL)
+    {
+      size_t hole_n = (size_t) hole.w * (size_t) hole.h;
+
+      if (hole_n > max_bytes || (hole_mask = malloc (hole_n)) == NULL)
+        goto no_memory;
+      memcpy (hole_mask, hole.mask, hole_n);
+    }
+  for (size_t k = 0; k < f->n_stamps; k++)
+    {
+      int id = f->stamp_img != NULL ? f->stamp_img[k] : EASEL_IMAGE_CURRENT;
+
+      uses_current = uses_current || id == EASEL_IMAGE_CURRENT || (same_image && id == EASEL_IMAGE_ORIGINAL);
+      uses_orig = uses_orig || (!same_image && id == EASEL_IMAGE_ORIGINAL);
+    }
+  if (f->n_stamps > 0 && f->stamp_img == NULL)
+    {
+      if (f->cap > SIZE_MAX / (sizeof *f->stamps + sizeof *img) || f->cap * (sizeof *f->stamps + sizeof *img) > max_bytes)
+        goto no_memory;
+      img = malloc (f->cap * sizeof *img);
+      if (img == NULL)
+        goto no_memory;
+    }
+  if (uses_current || uses_orig)
+    {
+      kept = realloc (f->kept, (f->n_kept + 2) * sizeof *kept);
+      if (kept == NULL)
+        goto no_memory;
+      f->kept = kept;                       /* still valid with its old contents, if a later step were to fail */
+    }
+  easel_selection_complete (f);             /* the shown image is whole before it is skewed */
+  if (!easel_ss_make (f->px, f->mask, f->w, f->h, f->w, f->h, amount_h, amount_v, 0, npx, nmask))
+    goto no_memory;
+
+  /* Everything is had: from here nothing fails. */
+  if (img != NULL)
+    {
+      f->stamp_img = img;
+      for (size_t k = 0; k < f->n_stamps; k++)
+        f->stamp_img[k] = EASEL_IMAGE_CURRENT;
+    }
+  if (uses_current)
+    {
+      int id = (int) f->n_kept;
+
+      f->kept[f->n_kept++] = (EaselKept) { f->w, f->h, f->px, f->mask };
+      for (size_t k = 0; k < f->n_stamps; k++)
+        if (f->stamp_img[k] == EASEL_IMAGE_CURRENT || (same_image && f->stamp_img[k] == EASEL_IMAGE_ORIGINAL))
+          f->stamp_img[k] = id;
+    }
+  else
+    {
+      free (f->px);
+      free (f->mask);
+    }
+  if (uses_orig)
+    {
+      int id = (int) f->n_kept;
+
+      f->kept[f->n_kept++] = (EaselKept) { f->ow, f->oh, f->orig_px, f->orig_mask };
+      for (size_t k = 0; k < f->n_stamps; k++)
+        if (f->stamp_img[k] == EASEL_IMAGE_ORIGINAL)
+          f->stamp_img[k] = id;
+    }
+  else if (!same_image)
+    {
+      free (f->orig_px);
+      free (f->orig_mask);
+    }
+  if (f->hole && !f->hole_fixed)
+    {
+      f->hole_fixed = true;
+      f->hole_w = hole.w;
+      f->hole_h = hole.h;
+      f->hole_mask = hole_mask;
+    }
+  free (f->fill);
+  f->fill = NULL;
+  f->fill_cols = f->fill_rows = 0;
+  f->made_px = n;
+  f->kept_px = 0;
+  f->px = npx;
+  f->mask = nmask;
+  f->w = f->ow = out_w;
+  f->h = f->oh = out_h;
+  f->orig_px = NULL;
+  f->orig_mask = NULL;
+  f->orient = EASEL_ORIENT_IDENTITY;
+  return EASEL_SELECTION_DONE;
+no_memory:
+  free (npx);
+  free (nmask);
+  free (hole_mask);
+  free (img);
+  return EASEL_SELECTION_NO_MEMORY;
 }
 
 EaselSelectionResult

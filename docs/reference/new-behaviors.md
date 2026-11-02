@@ -16,7 +16,7 @@ belongs to (see `docs/specs/INDEX.md`). Behavior only.
 ## Editing
 - Undo and redo have no fixed step limit; they are bounded only by a memory budget the user sets. Redo is Ctrl+Y or Ctrl+Shift+Z.
 - Pasting a picture larger than the canvas asks: Resize Canvas to Picture (the canvas grows to the picture's size where the picture is bigger, never shrinking: 0016), Fit Picture to Canvas (the picture is resized to fit, keeping its aspect ratio), or Cancel. Paste also accepts copied picture files from the clipboard. After any paste the app switches to the Select tool with the pasted picture selected (for an oversize picture: already resized to fit the canvas with its aspect ratio kept, or with the canvas already resized to the picture's size, according to the choice made in the popup), so it can be moved before it is put down. A picture that is not larger than the canvas is inserted with its top-left corner at the top-left picture pixel in view (the canvas's top-left corner when it is in view: 0016), as a selection that can be dragged to the right place and resized, like any selection.
-- Stretch and Skew accept percent or exact pixels, with a Keep aspect ratio option.
+- Stretch accepts percent or exact pixels, with a Keep aspect ratio option; Skew accepts degrees or exact pixels (JOD, 2026-11-02).
 - Right-click menus: on a selection (selection menu), on a text box (Cut, Copy, Paste, Paste as Plain Text, Select All), and with a select tool outside any selection (Paste menu and canvas actions).
 - Ctrl+Shift+X swaps the foreground and background colors.
 

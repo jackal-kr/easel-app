@@ -57,6 +57,9 @@ typedef struct
   int fill_cols, fill_rows;
   size_t made_px, kept_px;         /* the pixels of the current image made so far, and those of them in the shape */
   bool skip_clear;                 /* a paste (0016): its fully transparent pixels are neither laid nor put down, nor its copies' */
+  bool hole_fixed;                 /* after a skew (0019): the hole is hole_w x hole_h, in the shape hole_mask (NULL: all), since the lifted image has changed */
+  int hole_w, hole_h;
+  uint8_t *hole_mask;
   EaselOrient orient;              /* the flips and turns made to it (0018): the shown image is the lifted one scaled to the size before
                                       them, then oriented (REQ-0018-07); the identity until the first */
 } EaselFloat;
@@ -115,6 +118,11 @@ EaselSelectionResult easel_selection_stretch (EaselFloat *f, int x, int y, int W
    then). What lays, puts down or copies the float reads an image that is whole or filled where it reads: the caller fills or completes
    first (easel_selection_stamp completes by itself). The next stretch replaces the image; a copy never uses an unfinished image. */
 EaselSelectionResult easel_selection_stretch_lazy (EaselFloat *f, int x, int y, int W, int H, size_t max_bytes);
+
+/* The float skewed by the two amounts of easel_ss_size (REQ-0019-12), at its place: the shown image, with its shape, becomes the new image as
+   lifted, the orientation starts again, and what no row or column reaches is outside the shape. The hole and the copies made before keep
+   theirs. NOTHING with no amount; NO_MEMORY, with the float as it was, past max_bytes (each allocation) or if one cannot be had. */
+EaselSelectionResult easel_selection_skew (EaselFloat *f, int amount_h, int amount_v, size_t max_bytes);
 
 /* The same two stretches with an orientation given (REQ-0018-11): the float's orientation becomes `orient`, the shown image being the
    lifted pixels scaled to W x H before it and then oriented; the plain ones keep the float's own. */

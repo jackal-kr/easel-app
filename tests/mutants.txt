@@ -4318,9 +4318,9 @@ test: ui-0014
 file: src/ui/canvas.c
 test: ui-0014
 --- find
-                        self->sel_y - self->sel_path_y, TRUE, ants_phase (self, 8 * line_thickness (self)));
+self->sel_y - self->sel_path_y, TRUE,
 --- replace
-                        self->sel_y - self->sel_path_y, FALSE, ants_phase (self, 8 * line_thickness (self)));
+self->sel_y - self->sel_path_y, FALSE,
 
 === REQ-0014-17 the line is always one logical pixel thick
 file: src/ui/canvas.c
@@ -5190,7 +5190,7 @@ test: core-selection
 file: src/core/selection.c
 test: core-selection
 --- find
-      ImageView hv = original_view (f);
+      ImageView hv = hole_view (f);
 --- replace
       ImageView hv = current_view (f);
 
@@ -5198,7 +5198,7 @@ test: core-selection
 file: src/core/selection.c
 test: core-selection
 --- find
-  ImageView hole = original_view (f), cur = current_view (f), sv;
+  ImageView hole = hole_view (f), cur = current_view (f), sv;
 --- replace
   ImageView hole = current_view (f), cur = current_view (f), sv;
 
@@ -5833,9 +5833,9 @@ test: core-selection
 file: src/core/selection.c
 test: core-selection
 --- find
-f->cap * (sizeof *f->stamps + sizeof *img) > max_bytes)
+          if (f->cap > SIZE_MAX / (sizeof *f->stamps + sizeof *img) || f->cap * (sizeof *f->stamps + sizeof *img) > max_bytes)
 --- replace
-f->cap * (sizeof *f->stamps + sizeof *img) >= max_bytes)
+          if (f->cap > SIZE_MAX / (sizeof *f->stamps + sizeof *img) || f->cap * (sizeof *f->stamps + sizeof *img) >= max_bytes)
 
 === REQ-0015-09 the copies' list made at the first stretch is not counted against the limit (in the window)
 file: src/core/selection.c
@@ -10192,17 +10192,12 @@ test: ui-0018
 file: src/ui/canvas.c
 test: ui-0018
 --- find
+  self->sel_h = self->sel_float.h;
   self->sel_epoch++;
   g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);
-  gtk_widget_queue_draw (GTK_WIDGET (self));
-  return TRUE;
-}
-
 --- replace
+  self->sel_h = self->sel_float.h;
   self->sel_epoch++;
-  gtk_widget_queue_draw (GTK_WIDGET (self));
-  return TRUE;
-}
 
 
 === REQ-0018-11 on the opposite edge counts as past it
@@ -10832,3 +10827,341 @@ test: ui-0025
       { X0 - th, Y0, th, hl, FALSE, -1, 2 * wl + hl, hl },             /* the left side, up */
 --- replace
       { X0 - th, Y0, self->sel_state == 2 ? 3 * th : th, hl, FALSE, -1, 2 * wl + hl, hl },             /* the left side, up */
+
+# ---- 0019 Stretch and Skew: the core ----
+
+=== REQ-0019-04 a percent rounds down
+file: src/core/stretch-skew.c
+test: core-stretch-skew
+--- find
+easel_ss_percent (int size, int pct)
+{
+  int64_t v = round_div ((int64_t) size * pct, 100);
+--- replace
+easel_ss_percent (int size, int pct)
+{
+  int64_t v = (int64_t) size * pct / 100;
+
+=== REQ-0019-04 a percent can be 0 pixels
+file: src/core/stretch-skew.c
+test: core-stretch-skew
+--- find
+  return v < 1 ? 1 : v > EASEL_SS_MAX_SIZE ? EASEL_SS_MAX_SIZE : (int) v;
+--- replace
+  return v > EASEL_SS_MAX_SIZE ? EASEL_SS_MAX_SIZE : (int) v;
+
+=== REQ-0019-07 New size is limited as the field is
+file: src/core/stretch-skew.c
+test: core-stretch-skew
+--- find
+  return v < 1 ? 1 : (int) v;
+--- replace
+  return v < 1 ? 1 : v > EASEL_SS_MAX_SIZE ? EASEL_SS_MAX_SIZE : (int) v;
+
+=== REQ-0019-04 a conversion to percent can pass 500
+file: src/core/stretch-skew.c
+test: core-stretch-skew
+--- find
+  return v < 1 ? 1 : v > 500 ? 500 : (int) v;
+--- replace
+  return v < 1 ? 1 : (int) v;
+
+=== REQ-0019-05 the other side keeps its size
+file: src/core/stretch-skew.c
+test: core-stretch-skew
+--- find
+  int64_t v = round_div ((int64_t) other * changed, from);
+--- replace
+  int64_t v = other;
+
+=== REQ-0019-05 a side may pass the limit with the ratio kept
+file: src/core/stretch-skew.c
+test: core-stretch-skew
+--- find
+  if (easel_ss_ratio_other (changed, from, other) <= EASEL_SS_MAX_SIZE)
+    return changed;
+--- replace
+  if (changed > 0)
+    return changed;
+
+=== REQ-0019-10 the angle does not take its sign
+file: src/core/stretch-skew.c
+test: core-stretch-skew
+--- find
+  return degrees < 0 ? -s : s;
+--- replace
+  return s;
+
+=== REQ-0019-10 the amount is counted on n rows, not n - 1
+file: src/core/stretch-skew.c
+test: core-stretch-skew
+--- find
+  s = (int) floor ((n - 1) * tangent[d] + 0.5);
+--- replace
+  s = (int) floor (n * tangent[d] + 0.5);
+
+=== REQ-0019-04 pixels to degrees does not round
+file: src/core/stretch-skew.c
+test: core-stretch-skew
+--- find
+  while (d < 89 && ratio >= tangent_half[d])
+--- replace
+  while (d < 89 && ratio >= tangent[d + 1])
+
+=== REQ-0019-10 a negative amount shifts as a positive one
+file: src/core/stretch-skew.c
+test: core-stretch-skew
+--- find
+  return s < 0 ? magnitude - shift : shift;
+--- replace
+  return shift;
+
+=== REQ-0019-10 the shift rounds down
+file: src/core/stretch-skew.c
+test: core-stretch-skew
+--- find
+  shift = (int) round_div ((int64_t) i * magnitude, n - 1);
+--- replace
+  shift = (int) ((int64_t) i * magnitude / (n - 1));
+
+=== REQ-0019-08 the vertical skew uses the width before the horizontal one
+file: src/core/stretch-skew.c
+test: core-stretch-skew
+--- find
+  int av = w <= 1 ? 0 : sv_degrees ? easel_ss_skew_amount (w, sv) : sv;
+--- replace
+  int av = W <= 1 ? 0 : sv_degrees ? easel_ss_skew_amount (W, sv) : sv;
+
+=== REQ-0019-10 pixels on one row still grow it
+file: src/core/stretch-skew.c
+test: core-stretch-skew
+--- find
+  int ah = H <= 1 ? 0 : sh_degrees ? easel_ss_skew_amount (H, sh) : sh;
+--- replace
+  int ah = sh_degrees ? easel_ss_skew_amount (H, sh) : sh;
+
+=== REQ-0019-07 10000 is too large
+file: src/core/stretch-skew.c
+test: core-stretch-skew
+--- find
+  return w > EASEL_SS_MAX_SIZE || h > EASEL_SS_MAX_SIZE;
+--- replace
+  return w >= EASEL_SS_MAX_SIZE || h >= EASEL_SS_MAX_SIZE;
+
+=== REQ-0019-09 the stretch takes the old pixel at the new pixel's left, not its center
+file: src/core/stretch-skew.c
+test: core-stretch-skew
+--- find
+    from_x[k] = (int) (((int64_t) 2 * k + 1) * w / (2 * (int64_t) W));
+--- replace
+    from_x[k] = (int) ((int64_t) k * w / (int64_t) W);
+
+=== REQ-0019-09 the stretch takes the old row at the new row's top, not its center
+file: src/core/stretch-skew.c
+test: core-stretch-skew
+--- find
+    from_y[k] = (int) (((int64_t) 2 * k + 1) * h / (2 * (int64_t) H));
+--- replace
+    from_y[k] = (int) ((int64_t) k * h / (int64_t) H);
+
+=== REQ-0019-11 the exposed pixels are not the background
+file: src/core/stretch-skew.c
+test: core-stretch-skew
+--- find
+          else if (row != NULL)
+            row[X] = background;
+--- replace
+          else if (row != NULL)
+            row[X] = 0;
+
+=== REQ-0019-12 a pixel outside the shape counts as reached
+file: src/core/stretch-skew.c
+test: core-stretch-skew
+--- find
+              reached = mask == NULL || mask[at];
+--- replace
+              reached = true;
+
+=== REQ-0019-11 the vertical skew is not undone first
+file: src/core/stretch-skew.c
+test: core-stretch-skew
+--- find
+          int y = Y - shift_v[X];
+--- replace
+          int y = Y;
+
+=== REQ-0019-13 no change still adds a step
+file: src/core/stretch-skew.c
+test: core-stretch-skew
+--- find
+  if (W == img->width && H == img->height && amount_h == 0 && amount_v == 0)
+    return EASEL_TRANSFORM_NOTHING;
+--- replace
+  if (W == img->width && H == img->height && amount_h == 0 && amount_v == 0 && max_bytes == 0)
+    return EASEL_TRANSFORM_NOTHING;
+
+=== REQ-0019-15 the new pixels are not counted against the limit
+file: src/core/stretch-skew.c
+test: core-stretch-skew
+--- find
+  if (total > max_bytes / sizeof *px || (px = malloc (total * sizeof *px)) == NULL)
+    return EASEL_TRANSFORM_NO_MEMORY;
+  if (!easel_ss_make (img->px
+--- replace
+  if ((px = malloc (total * sizeof *px)) == NULL)
+    return EASEL_TRANSFORM_NO_MEMORY;
+  if (!easel_ss_make (img->px
+
+=== REQ-0019-14 the picture keeps its old size after the skew
+file: src/core/stretch-skew.c
+test: core-stretch-skew
+--- find
+  img->width = out_w;
+  img->height = out_h;
+  img->dirty = (EaselRect) { 0, 0, out_w, out_h };
+--- replace
+  img->width = out_w;
+  img->height = out_h;
+  img->dirty = (EaselRect) { 0, 0, 0, 0 };
+
+=== REQ-0019-12 a skew changes the hole's shape
+file: src/core/selection.c
+test: core-stretch-skew
+--- find
+  if (f->hole_fixed)
+    return (ImageView) { f->hole_w, f->hole_h, NULL, f->hole_mask, false };
+  return original_view (f);
+--- replace
+  return original_view (f);
+
+=== REQ-0019-12 a free-form hole is not copied before the skew
+file: src/core/selection.c
+test: core-stretch-skew
+--- find
+  if (f->hole && !f->hole_fixed && hole.mask != NULL)
+    {
+--- replace
+  if (false)
+    {
+
+=== REQ-0019-12 the flips and turns go on after a skew
+file: src/core/selection.c
+test: core-stretch-skew
+--- find
+  f->orig_mask = NULL;
+  f->orient = EASEL_ORIENT_IDENTITY;
+  return EASEL_SELECTION_DONE;
+--- replace
+  f->orig_mask = NULL;
+  return EASEL_SELECTION_DONE;
+
+=== REQ-0019-12 a copy left before the skew takes the skewed image
+file: src/core/selection.c
+test: core-stretch-skew
+--- find
+      f->kept[f->n_kept++] = (EaselKept) { f->w, f->h, f->px, f->mask };
+      for (size_t k = 0; k < f->n_stamps; k++)
+        if (f->stamp_img[k] == EASEL_IMAGE_CURRENT || (same_image && f->stamp_img[k] == EASEL_IMAGE_ORIGINAL))
+          f->stamp_img[k] = id;
+--- replace
+      f->kept[f->n_kept++] = (EaselKept) { f->w, f->h, f->px, f->mask };
+      for (size_t k = 0; k < f->n_stamps; k++)
+        if (f->stamp_img[k] == EASEL_IMAGE_ORIGINAL)
+          f->stamp_img[k] = id;
+
+=== REQ-0019-12 a copy of the image as lifted takes the skewed image
+file: src/core/selection.c
+test: core-stretch-skew
+--- find
+      f->kept[f->n_kept++] = (EaselKept) { f->ow, f->oh, f->orig_px, f->orig_mask };
+      for (size_t k = 0; k < f->n_stamps; k++)
+        if (f->stamp_img[k] == EASEL_IMAGE_ORIGINAL)
+          f->stamp_img[k] = id;
+    }
+  else if (!same_image)
+--- replace
+      f->kept[f->n_kept++] = (EaselKept) { f->ow, f->oh, f->orig_px, f->orig_mask };
+      for (size_t k = 0; k < f->n_stamps; k++)
+        if (f->stamp_img[k] == EASEL_IMAGE_ORIGINAL)
+          f->stamp_img[k] = EASEL_IMAGE_CURRENT;
+    }
+  else if (!same_image)
+
+=== REQ-0019-15 a skew past the limit is made all the same
+file: src/core/selection.c
+test: core-stretch-skew
+--- find
+  r = image_alloc (true, out_w, out_h, max_bytes, false, &npx, &nmask);
+  if (r != EASEL_SELECTION_DONE)
+    return r;
+  if (f->hole && !f->hole_fixed
+--- replace
+  r = image_alloc (true, out_w, out_h, SIZE_MAX, false, &npx, &nmask);
+  if (r != EASEL_SELECTION_DONE)
+    return r;
+  if (f->hole && !f->hole_fixed
+
+=== REQ-0019-12 parts touching at a corner are one line
+file: src/core/lasso.c
+test: core-stretch-skew
+--- find
+            turned = !ahead_right ? (dir + 1) % 4 : ahead_left ? (dir + 3) % 4 : dir;
+--- replace
+            turned = ahead_left ? (dir + 3) % 4 : !ahead_right ? (dir + 1) % 4 : dir;
+
+=== REQ-0019-12 the parts have no break between them
+file: src/core/lasso.c
+test: core-stretch-skew
+--- find
+        if ((!first_part && !easel_path_add (&p, EASEL_PATH_BREAK, EASEL_PATH_BREAK, max_bytes))
+            || !easel_path_add (&p, x + cx, y + cy, max_bytes))
+--- replace
+        if (!easel_path_add (&p, x + cx, y + cy, max_bytes))
+
+=== REQ-0019-12 the line is not at the selection's place
+file: src/core/lasso.c
+test: core-stretch-skew
+--- find
+  ok = easel_ss_make (NULL, f->mask, f->w, f->h, f->w, f->h, amount_h, amount_v, 0, NULL, shape)
+       && easel_lasso_outline (shape, out_w, out_h, f->x, f->y, out, max_bytes);
+--- replace
+  ok = easel_ss_make (NULL, f->mask, f->w, f->h, f->w, f->h, amount_h, amount_v, 0, NULL, shape)
+       && easel_lasso_outline (shape, out_w, out_h, 0, 0, out, max_bytes);
+
+=== REQ-0019-12 a scaled line loses its break
+file: src/core/lasso.c
+test: core-stretch-skew
+--- find
+    if (!(src->xy[2 * i] == EASEL_PATH_BREAK ? easel_path_add (&p, EASEL_PATH_BREAK, EASEL_PATH_BREAK, max_bytes)
+          : easel_path_add
+--- replace
+    if (!(src->xy[2 * i] == EASEL_PATH_BREAK ? true
+          : easel_path_add
+
+=== REQ-0019-12 a turned line loses its break
+file: src/core/lasso.c
+test: core-stretch-skew
+--- find
+          if (!easel_path_add (&p, EASEL_PATH_BREAK, EASEL_PATH_BREAK, max_bytes))
+            {
+              easel_path_free (&p);
+              return false;
+            }
+          continue;
+--- replace
+          continue;
+
+=== REQ-0019-15 the outline leaves a half-made line when it is refused
+file: src/core/lasso.c
+test: core-stretch-skew
+accepted: JOD's rule of 2026-11-02, a survivor with no user-visible bug: the only caller frees the line on a refusal
+--- find
+no_memory:
+  free (seen);
+  easel_path_free (&p);
+  return false;
+--- replace
+no_memory:
+  free (seen);
+  *out = p;
+  return false;

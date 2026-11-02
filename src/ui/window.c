@@ -7,6 +7,8 @@
 
 #include "config.h"
 #include "attributes-dialog.h"
+#include "stretch-skew-dialog.h"
+#include "stretch-skew.h"
 #include "grid-dialog.h"
 #include "magnifier.h"
 #include "canvas.h"
@@ -2028,6 +2030,49 @@ rotate_270_activated (GSimpleAction *action, GVariant *parameter, gpointer user_
   image_action (user_data, EASEL_OP_ROTATE_270);
 }
 
+/* ---- Stretch and Skew (0019) ---- */
+
+/* OK: the one function every Stretch and Skew goes through; the dialog has closed. */
+static void
+stretch_skew_applied (int W, int H, int amount_h, int amount_v, gpointer data)
+{
+  EaselWindow *self = data;
+  EaselTransformResult r;
+
+  if (easel_canvas_stretch_skew_selection (self->canvas, W, H, amount_h, amount_v))
+    {
+      sync_history_ui (self);
+      return;
+    }
+  r = easel_image_stretch_skew (self->picture, self->history, W, H, amount_h, amount_v, self->background, self->transform_limit);
+  if (r == EASEL_TRANSFORM_NO_MEMORY)
+    show_save_error (self, "Could Not Stretch or Skew the Picture", "There is not enough memory for this change.");
+  if (r != EASEL_TRANSFORM_DONE)
+    return;
+  picture_size_changed (self);
+  sync_history_ui (self);
+}
+
+/* The item and Ctrl+T (REQ-0019-01): opening the dialog puts down what waits, as Attributes does, and leaves a selection as it is (REQ-0019-06). */
+static void
+stretch_skew_activated (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+  EaselWindow *self = user_data;
+  int x, y, w, h;
+  gboolean floating;
+
+  if (!view_actions_allowed (self) || easel_canvas_is_panning (self->canvas) || card_field_focus (self) != NULL)
+    return;
+  if (!easel_canvas_get_selection (self->canvas, &x, &y, &w, &h, &floating))
+    {
+      if (!put_down_for_action (self, FALSE))
+        return;
+      w = self->picture->width;
+      h = self->picture->height;
+    }
+  easel_stretch_skew_dialog_present (GTK_WIDGET (self), w, h, stretch_skew_applied, self);
+}
+
 static void
 invert_activated (GSimpleAction *action, GVariant *parameter, gpointer user_data)
 {
@@ -2408,6 +2453,8 @@ show_selection_error (gpointer data)
     show_save_error (self, "Could Not Rotate the Selection", "There is not enough memory for this change.");
   else if (kind == 6)
     show_save_error (self, "Could Not Invert the Selection", "There is not enough memory for this change.");
+  else if (kind == 7)
+    show_save_error (self, "Could Not Stretch or Skew the Selection", "There is not enough memory for this change.");
   else
     show_save_error (self, "Could Not Move the Selection", "There is not enough memory to move this selection.");
   g_object_unref (self);
@@ -3253,6 +3300,7 @@ static const GActionEntry win_actions[] = {
   { .name = "rotate-90", .activate = rotate_90_activated },
   { .name = "rotate-180", .activate = rotate_180_activated },
   { .name = "rotate-270", .activate = rotate_270_activated },
+  { .name = "stretch-skew", .activate = stretch_skew_activated },
   { .name = "invert", .activate = invert_activated },
   { .name = "clear-image", .activate = clear_image_activated },
   { .name = "show-toolbox", .state = "true", .change_state = show_panel_state_changed },

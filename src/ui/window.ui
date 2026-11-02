@@ -433,6 +433,11 @@
           </item>
         </section>
       </submenu>
+      <item>
+        <attribute name="label" translatable="yes">Stretch and _Skew…</attribute>
+        <attribute name="action">win.stretch-skew</attribute>
+        <attribute name="accel">&lt;Control&gt;t</attribute>
+      </item>
     </section>
     <section>
       <item>
@@ -557,6 +562,11 @@
           </item>
         </section>
       </submenu>
+      <item>
+        <attribute name="label" translatable="yes">Stretch and _Skew…</attribute>
+        <attribute name="action">win.stretch-skew</attribute>
+        <attribute name="accel">&lt;Control&gt;t</attribute>
+      </item>
       <item>
         <attribute name="label" translatable="yes">_Invert Colors</attribute>
         <attribute name="action">win.invert</attribute>

@@ -4,6 +4,7 @@
    pixels that the path encloses (the union of its loops), limited to the picture. */
 #pragma once
 
+#include <limits.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -17,10 +18,25 @@ typedef struct
   size_t n, cap;
 } EaselPath;
 
+/* Between the parts of a line of several (0019): a position (EASEL_PATH_BREAK, EASEL_PATH_BREAK). A traced path never has one. */
+#define EASEL_PATH_BREAK INT_MIN
+
 /* Adds a position. FALSE, with the path as it was, if it would need more than max_bytes or cannot grow. */
 bool easel_path_add (EaselPath *p, int x, int y, size_t max_bytes);
 
 void easel_path_free (EaselPath *p);
+
+/* The next part of a path from the position *at, its corners (x, y pairs) and their number in *n, moving *at past it; NULL after the last. */
+const int *easel_path_next_part (const EaselPath *p, size_t *at, size_t *n);
+
+/* The outline of a shape along the grid lines (REQ-0019-12): for a mask of w x h bytes (1 for a pixel of the shape) whose top-left is at (x, y),
+   only the corners, one closed line for each part, each from its top-left corner, with EASEL_PATH_BREAK between; parts touching only at a
+   corner are two, and a hole in a part is a line of its own. FALSE, with out untouched, if it would need more than max_bytes or cannot grow. */
+bool easel_lasso_outline (const uint8_t *mask, int w, int h, int x, int y, EaselPath *out, size_t max_bytes);
+
+/* The line the float will have after easel_selection_skew (REQ-0019-12), at its place, made first so that a refusal leaves everything as it
+   was. FALSE, with out untouched, past max_bytes or if an allocation fails. */
+bool easel_lasso_skew_line (const EaselFloat *f, int amount_h, int amount_v, EaselPath *out, size_t max_bytes);
 
 /* The path of a shape stretched (feature 0015, REQ-0015-06): the corners of src, which traced the shape box (sx, sy, sw, sh), as they lie
    when the shape is the box (nx, ny, nw, nh). A corner inside the box [sx, sx + sw] keeps its relative place (halves go to the larger

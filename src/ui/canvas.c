@@ -2216,8 +2216,13 @@ append_selection_outline (EaselCanvas *self, GtkSnapshot *snapshot)
     }
   if (self->sel_state != 0 && selection_mask (self) != NULL)
     {
-      append_path_line (self, snapshot, self->sel_path.xy, self->sel_path.n, self->sel_x - self->sel_path_x,
-                        self->sel_y - self->sel_path_y, TRUE, ants_phase (self, 8 * line_thickness (self)));
+      /* A line for each part: only a skew makes more than one (REQ-0019-12). */
+      size_t at = 0, n;
+      const int *part;
+
+      while ((part = easel_path_next_part (&self->sel_path, &at, &n)) != NULL)
+        append_path_line (self, snapshot, part, n, self->sel_x - self->sel_path_x, self->sel_y - self->sel_path_y, TRUE,
+                          ants_phase (self, 8 * line_thickness (self)));
       return;
     }
   if (self->selecting ? !drag_rect (self, &x, &y, &w, &h)
@@ -2424,6 +2429,84 @@ transform_refused (EaselCanvas *self, gboolean lifted_here, int kind)
       g_signal_emit (self, signals[SIGNAL_PENDING_CHANGED], 0);
     }
   g_signal_emit (self, signals[SIGNAL_SELECTION_FAILED], 0, kind);
+}
+
+gboolean
+easel_canvas_stretch_skew_selection (EaselCanvas *self, int W, int H, int amount_h, int amount_v)
+{
+  gboolean lifted_here = FALSE, stretched, skewed = amount_h != 0 || amount_v != 0;
+  EaselFloat *f = &self->sel_float;
+  EaselPath line = { 0 };
+  int old_w, old_h;
+  EaselOrient old_orient;
+
+  if (self->sel_state == 0 || self->img == NULL)
+    return FALSE;
+  if (W == self->sel_w && H == self->sel_h && !skewed)
+    return TRUE;
+  if (self->sel_state == 1)
+    {
+      if (easel_selection_lift (f, self->img, self->sel_x, self->sel_y, self->sel_w, self->sel_h, self->sel_mask, FALSE, hole_color (self),
+                                self->sel_lift_max) != EASEL_SELECTION_DONE)
+        {
+          g_signal_emit (self, signals[SIGNAL_SELECTION_FAILED], 0, 0);      /* the lift's own dialog, REQ-0013-19 */
+          return TRUE;
+        }
+      self->sel_state = 2;
+      lifted_here = TRUE;
+      g_signal_emit (self, signals[SIGNAL_PENDING_CHANGED], 0);
+    }
+  old_w = f->w;
+  old_h = f->h;
+  old_orient = f->orient;
+  stretched = W != old_w || H != old_h;
+  /* The stretch alone: a free-form line follows, made first, so that a refusal leaves everything as it was. */
+  if (!skewed && (self->sel_path.n > 0 || self->sel_path0.n > 0)
+      && !oriented_line (self, f->orient, self->sel_x, self->sel_y, W, H, &line))
+    {
+      transform_refused (self, lifted_here, 7);
+      return TRUE;
+    }
+  if (stretched && easel_selection_stretch_oriented (f, self->sel_x, self->sel_y, W, H, f->orient, self->sel_lift_max) != EASEL_SELECTION_DONE)
+    {
+      easel_path_free (&line);
+      transform_refused (self, lifted_here, 7);
+      return TRUE;
+    }
+  if (skewed && (!easel_lasso_skew_line (f, amount_h, amount_v, &line, self->sel_lift_max)
+                 || easel_selection_skew (f, amount_h, amount_v, self->sel_lift_max) != EASEL_SELECTION_DONE))
+    {
+      easel_path_free (&line);
+      /* As before OK: the shown image is made afresh from the same lifted pixels, at most the size it was. */
+      if (stretched)
+        easel_selection_stretch_oriented (f, self->sel_x, self->sel_y, old_w, old_h, old_orient, SIZE_MAX);
+      transform_refused (self, lifted_here, 7);
+      return TRUE;
+    }
+  if (line.n > 0)
+    {
+      if (skewed)
+        easel_path_free (&self->sel_path0);          /* the skewed shape is the new one to scale from */
+      else if (self->sel_path0.n == 0)
+        {
+          self->sel_path0 = self->sel_path;          /* the path as traced, kept to scale afresh from (REQ-0015-06) */
+          self->sel_path = (EaselPath) { 0 };
+          self->sel_p0_x = self->sel_path_x;
+          self->sel_p0_y = self->sel_path_y;
+          self->sel_p0_w = self->sel_w;
+          self->sel_p0_h = self->sel_h;
+        }
+      easel_path_free (&self->sel_path);
+      self->sel_path = line;
+      self->sel_path_x = self->sel_x;
+      self->sel_path_y = self->sel_y;
+    }
+  self->sel_w = f->w;
+  self->sel_h = f->h;
+  self->sel_epoch++;
+  g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);
+  gtk_widget_queue_draw (GTK_WIDGET (self));
+  return TRUE;
 }
 
 gboolean

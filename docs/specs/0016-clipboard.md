@@ -54,7 +54,7 @@ selection marked with Select, and a pasted one (REQ-0016-06), has every pixel of
   it left; if the paste grew the picture (REQ-0016-07), the growth stays, as one undo step with the copies' put-down, and Undo takes
   the picture back to its size (JOD, 2026-10-22, as XP). If the put-down or the apply that Paste starts with fails for memory (REQ-0013-19, REQ-0011-12), its dialog shows after
   the paste, which goes on.
-- REQ-0016-06 A pasted picture shall be a rectangle selection of its size (JOD, 2026-10-22): its outline is the rectangle of
+- REQ-0016-06 (Pointer note, Stretch and Skew, 2026-11-02: a skewed paste has a shape, REQ-0019-12.) A pasted picture shall be a rectangle selection of its size (JOD, 2026-10-22): its outline is the rectangle of
   REQ-0013-05 round it, its size is shown in the status bar (REQ-0013-06), it is tinted and pressed as a rectangle is, and its handles
   stretch it as a rectangle (0015), from the pixels as pasted (after Fit, the fitted ones), also when it was copied from a free-form
   selection. Its fully transparent pixels (alpha 0) leave the picture as it is: they are not laid over the picture while it floats and

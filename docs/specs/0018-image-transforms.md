@@ -12,7 +12,7 @@ features (JOD, 2026-10-27).
 
 ## Requirements
 ### Menus and keys
-- REQ-0018-01 The Image menu (REQ-0004-01) shall hold, in three sections (JOD, 2026-10-27): Flip › (Flip Horizontal, Flip
+- REQ-0018-01 (Pointer note, Stretch and Skew, 2026-11-02: its item follows Rotate ›, REQ-0019-01.) The Image menu (REQ-0004-01) shall hold, in three sections (JOD, 2026-10-27): Flip › (Flip Horizontal, Flip
   Vertical) and Rotate › (Rotate 90°, Ctrl+R; Rotate 180°; Rotate 270°, Ctrl+L: XP's three angles, each clockwise, JOD,
   2026-10-27; Ctrl+L because Shift+Ctrl+R is the desktop's, JOD, 2026-10-27); Invert Colors (Ctrl+I); Attributes… (Ctrl+E) and Clear Image (Shift+Ctrl+N). Each item shows its key as the menu writes
   it where it has one; the flips and Rotate 180° have none. The items and keys follow REQ-0004-03: they act wherever the focus is in
@@ -24,7 +24,7 @@ features (JOD, 2026-10-27).
   for the text box's Ctrl+B, Ctrl+I, Ctrl+U, Ctrl+[, Ctrl+] and Ctrl+Shift+F too, but not with Alt (AltGr). While a text box is open Ctrl+I is Italic (REQ-0017-12) and the menu's Invert
   Colors still inverts.
 - REQ-0018-02 The selection menu (REQ-0013-17, with Select or Free-Form Select) shall hold in its third section Flip ›, Rotate › and
-  Invert Colors (Ctrl+I), the same submenus and items as the Image menu (JOD, 2026-10-27, in place of the mock-up's direct Flip items);
+  Invert Colors (Ctrl+I), the same submenus and items as the Image menu (JOD, 2026-10-27, in place of the mock-up's direct Flip items; pointer note, Stretch and Skew, 2026-11-02: both menus also hold its item, REQ-0019-01);
   the canvas menu (REQ-0016-14) shall hold in its third section Clear Image (Shift+Ctrl+N). Each acts as its Image menu item does.
 
 ### What is changed

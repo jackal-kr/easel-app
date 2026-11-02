@@ -16,6 +16,8 @@
 #include "selection.h"
 #include "magnifier.h"
 #include "palette-bar.h"
+#include "lasso.h"
+#include "stretch-skew.h"
 #include "memory-clipboard.h"
 #include "picture-file.h"
 #include "palette-file.h"
@@ -23111,7 +23113,7 @@ as1_image_menus (void)
   i0 = describe_section (im, 0);
   i1 = describe_section (im, 1);
   i2 = describe_section (im, 2);
-  g_assert_cmpstr (i0, ==, "_Flip|(null); _Rotate|(null)");
+  g_assert_cmpstr (i0, ==, "_Flip|(null); _Rotate|(null); Stretch and _Skew…|win.stretch-skew");       /* its item: REQ-0019-01 */
   g_assert_cmpstr (i1, ==, "_Invert Colors|win.invert");
   g_assert_cmpstr (i2, ==, "Attributes…|win.attributes; _Clear Image|win.clear-image");
   section0 = g_menu_model_get_item_link (im, 0, G_MENU_LINK_SECTION);
@@ -23734,7 +23736,7 @@ as1_selection_menu (void)
 
   g_assert_cmpint (g_menu_model_get_n_items (sel), ==, 3);
   s2 = describe_section (sel, 2);
-  g_assert_cmpstr (s2, ==, "_Flip|(null); _Rotate|(null); _Invert Colors|win.invert");
+  g_assert_cmpstr (s2, ==, "_Flip|(null); _Rotate|(null); Stretch and _Skew…|win.stretch-skew; _Invert Colors|win.invert");
   section = g_menu_model_get_item_link (sel, 2, G_MENU_LINK_SECTION);
   flip = g_menu_model_get_item_link (section, 0, G_MENU_LINK_SUBMENU);
   rotate = g_menu_model_get_item_link (section, 1, G_MENU_LINK_SUBMENU);
@@ -23742,7 +23744,7 @@ as1_selection_menu (void)
   r = describe_section (rotate, 0);
   g_assert_cmpstr (f, ==, "Flip _Horizontal|win.flip-horizontal; Flip _Vertical|win.flip-vertical");
   g_assert_cmpstr (r, ==, "Rotate _90°|win.rotate-90; Rotate 1_80°|win.rotate-180; Rotate _270°|win.rotate-270");
-  g_assert_true (g_menu_model_get_item_attribute (section, 2, "accel", "s", &accel));
+  g_assert_true (g_menu_model_get_item_attribute (section, 3, "accel", "s", &accel));
   g_assert_cmpstr (accel, ==, "<Control>i");
   /* it opens on a selection of either tool */
   use_select (win);
@@ -26207,6 +26209,919 @@ overlay_sides_at_fractional_zoom (void)
   g_assert_cmpint (worst_all, ==, 0);
 }
 
+/* ---- 0019 Stretch and Skew ---- */
+
+/* The widget named `name` under root (the unit buttons, the New size line). */
+static GtkWidget *
+find_named (GtkWidget *root, const char *name)
+{
+  for (GtkWidget *child = gtk_widget_get_first_child (root); child; child = gtk_widget_get_next_sibling (child))
+    {
+      GtkWidget *found;
+
+      if (g_strcmp0 (gtk_widget_get_name (child), name) == 0)
+        return child;
+      found = find_named (child, name);
+      if (found != NULL)
+        return found;
+    }
+  return NULL;
+}
+
+static GtkWidget *
+find_check_button (GtkWidget *root, const char *label)
+{
+  for (GtkWidget *child = gtk_widget_get_first_child (root); child; child = gtk_widget_get_next_sibling (child))
+    {
+      GtkWidget *found;
+
+      if (GTK_IS_CHECK_BUTTON (child) && g_strcmp0 (gtk_check_button_get_label (GTK_CHECK_BUTTON (child)), label) == 0)
+        return child;
+      found = find_check_button (child, label);
+      if (found != NULL)
+        return found;
+    }
+  return NULL;
+}
+
+typedef struct
+{
+  AdwAlertDialog *dialog;
+  GtkEditable *width, *height, *horizontal, *vertical;
+} SkewDialog;
+
+static SkewDialog
+open_stretch_skew (EaselWindow *win)
+{
+  SkewDialog d;
+
+  g_action_group_activate_action (G_ACTION_GROUP (win), "stretch-skew", NULL);
+  wait_for_dialogs (win, 1);
+  d.dialog = open_alert (win);
+  g_assert_nonnull (d.dialog);
+  g_assert_cmpstr (adw_alert_dialog_get_heading (d.dialog), ==, "Stretch and Skew");
+  d.width = find_row (GTK_WIDGET (d.dialog), "Width");
+  d.height = find_row (GTK_WIDGET (d.dialog), "Height");
+  d.horizontal = find_row (GTK_WIDGET (d.dialog), "Horizontal");
+  d.vertical = find_row (GTK_WIDGET (d.dialog), "Vertical");
+  g_assert_nonnull (d.width);
+  g_assert_nonnull (d.height);
+  g_assert_nonnull (d.horizontal);
+  g_assert_nonnull (d.vertical);
+  return d;
+}
+
+static void
+press_unit (const SkewDialog *d, const char *name)
+{
+  GtkWidget *button = find_named (GTK_WIDGET (d->dialog), name);
+
+  g_assert_nonnull (button);
+  gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (button), TRUE);
+}
+
+static void
+set_keep (const SkewDialog *d, gboolean on)
+{
+  GtkWidget *keep = find_check_button (GTK_WIDGET (d->dialog), "Keep aspect ratio");
+
+  g_assert_nonnull (keep);
+  gtk_check_button_set_active (GTK_CHECK_BUTTON (keep), on);
+}
+
+static const char *
+size_line (const SkewDialog *d)
+{
+  GtkWidget *line = find_named (GTK_WIDGET (d->dialog), "new-size");
+
+  g_assert_nonnull (line);
+  return gtk_label_get_text (GTK_LABEL (line));
+}
+
+static void
+press_ok (EaselWindow *win, const SkewDialog *d)
+{
+  g_assert_true (adw_alert_dialog_get_response_enabled (d->dialog, "ok"));
+  respond (win, "ok");
+}
+
+static EaselWindow *
+window_of (int w, int h)
+{
+  g_autofree char *settings = g_strdup_printf ("[new-picture]\nwidth=%d\nheight=%d\ncanvas-color=#FFFFFF\nbackground=#FFFFFF\n", w, h);
+  EaselWindow *win;
+
+  write_settings (settings);
+  win = start_window ();
+  wait_for_layout (win);
+  return win;
+}
+
+/* AS-1 (REQ-0019-01): the menus (0018's test reads them) and the key's accelerator; not during a stroke and not over a dialog. GTK's own
+   accelerator matches the key on another layout, which no synthetic key reaches: M1's. */
+static void
+as1_stretch_skew_opens (void)
+{
+  EaselWindow *win = window_of (60, 40);
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  AdwDialog *ignored = NULL;
+
+  g_assert_true (has_accel ("win.stretch-skew", GDK_KEY_t, GDK_CONTROL_MASK));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "stretch-skew", NULL);
+  wait_for_dialogs (win, 1);
+  g_assert_cmpint (count_alert_dialogs (GTK_WIDGET (win), &ignored), ==, 1);
+  /* Over its own dialog: no second one. */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "stretch-skew", NULL);
+  g_assert_cmpint (count_alert_dialogs (GTK_WIDGET (win), &ignored), ==, 1);
+  respond (win, "cancel");
+  /* A stroke held. */
+  use_tool (win, "pencil");
+  easel_canvas_press (canvas, 1, 5.5, 5.5);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "stretch-skew", NULL);
+  g_assert_cmpint (count_alert_dialogs (GTK_WIDGET (win), &ignored), ==, 0);
+  easel_canvas_release (canvas, 1);
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* AS-2 (REQ-0019-02): it opens fresh every time; Esc changes nothing. */
+static void
+as2_dialog_starts_fresh (void)
+{
+  EaselWindow *win = window_of (60, 40);
+
+  for (int round = 0; round < 2; round++)
+    {
+      SkewDialog d = open_stretch_skew (win);
+      GtkWidget *percent = find_named (GTK_WIDGET (d.dialog), "stretch-percent"), *degrees = find_named (GTK_WIDGET (d.dialog), "skew-degrees");
+      int w = round == 0 ? 60 : 120, h = round == 0 ? 40 : 40;
+      g_autofree char *line = g_strdup_printf ("New size: %d × %d", w, h);
+
+      g_assert_true (gtk_toggle_button_get_active (GTK_TOGGLE_BUTTON (percent)));
+      g_assert_true (gtk_toggle_button_get_active (GTK_TOGGLE_BUTTON (degrees)));
+      g_assert_true (gtk_check_button_get_active (GTK_CHECK_BUTTON (find_check_button (GTK_WIDGET (d.dialog), "Keep aspect ratio"))));
+      g_assert_cmpint (field_value (d.width), ==, 100);
+      g_assert_cmpint (field_value (d.height), ==, 100);
+      g_assert_cmpstr (gtk_editable_get_text (d.width), ==, "100 %");
+      g_assert_cmpstr (gtk_editable_get_text (d.height), ==, "100 %");
+      g_assert_cmpstr (gtk_editable_get_text (d.horizontal), ==, "0°");
+      g_assert_cmpstr (gtk_editable_get_text (d.vertical), ==, "0°");
+      g_assert_cmpint (field_value (d.horizontal), ==, 0);
+      g_assert_cmpint (field_value (d.vertical), ==, 0);
+      g_assert_cmpstr (size_line (&d), ==, line);
+      g_assert_cmpstr (adw_alert_dialog_get_close_response (d.dialog), ==, "cancel");
+      if (round == 0)
+        {
+          set_keep (&d, FALSE);
+          type_into (d.width, "200");
+          press_ok (win, &d);
+          assert_size (win, 120, 40);
+        }
+      else
+        {
+          type_into (d.width, "50");
+          adw_dialog_close (ADW_DIALOG (d.dialog));
+          wait_for_dialogs (win, 0);
+          assert_size (win, 120, 40);
+        }
+    }
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* AS-3 (REQ-0019-03): each field's limits in each unit, its steps, and what typing does. The wheel with a real mouse is M1's. */
+static void
+as3_field_limits (void)
+{
+  static const struct { const char *typed; int expected; } typed_width[] = {
+    { "99999", 500 }, { "-99999", 1 }, { "0", 1 }, { "250", 250 }, { "abc", 250 }, { "", 250 }, { "1.5", 250 },
+  };
+  EaselWindow *win = window_of (60, 40);
+  SkewDialog d = open_stretch_skew (win);
+  GtkAdjustment *w_adj = adw_spin_row_get_adjustment (ADW_SPIN_ROW (d.width));
+  GtkAdjustment *h_adj = adw_spin_row_get_adjustment (ADW_SPIN_ROW (d.horizontal));
+
+  set_keep (&d, FALSE);
+  g_assert_cmpfloat (gtk_adjustment_get_lower (w_adj), ==, 1);
+  g_assert_cmpfloat (gtk_adjustment_get_upper (w_adj), ==, 500);
+  g_assert_cmpfloat (gtk_adjustment_get_step_increment (w_adj), ==, 1);
+  g_assert_cmpfloat (gtk_adjustment_get_page_increment (w_adj), ==, 10);
+  g_assert_cmpfloat (gtk_adjustment_get_lower (h_adj), ==, -89);
+  g_assert_cmpfloat (gtk_adjustment_get_upper (h_adj), ==, 89);
+  g_assert_cmpfloat (gtk_adjustment_get_page_increment (h_adj), ==, 10);
+  for (guint i = 0; i < G_N_ELEMENTS (typed_width); i++)
+    {
+      type_into (d.width, typed_width[i].typed);
+      g_assert_cmpint (field_value (d.width), ==, typed_width[i].expected);
+    }
+  type_into (d.width, "120 %");
+  g_assert_cmpint (field_value (d.width), ==, 120);
+  type_into (d.width, "130%");
+  g_assert_cmpint (field_value (d.width), ==, 130);
+  g_assert_cmpstr (gtk_editable_get_text (d.width), ==, "130 %");
+  type_into (d.width, "140 px");                                /* another unit: it goes back */
+  g_assert_cmpint (field_value (d.width), ==, 130);
+  g_assert_cmpstr (gtk_editable_get_text (d.width), ==, "130 %");
+  type_into (d.horizontal, "12°");
+  g_assert_cmpint (field_value (d.horizontal), ==, 12);
+  type_into (d.horizontal, "-7 °");
+  g_assert_cmpint (field_value (d.horizontal), ==, -7);
+  type_into (d.horizontal, "99999");
+  g_assert_cmpint (field_value (d.horizontal), ==, 89);
+  type_into (d.horizontal, "-99999");
+  g_assert_cmpint (field_value (d.horizontal), ==, -89);
+  press_unit (&d, "stretch-pixels");
+  press_unit (&d, "skew-pixels");
+  g_assert_cmpfloat (gtk_adjustment_get_lower (w_adj), ==, 1);
+  g_assert_cmpfloat (gtk_adjustment_get_upper (w_adj), ==, 10000);
+  g_assert_cmpfloat (gtk_adjustment_get_lower (h_adj), ==, -9999);
+  g_assert_cmpfloat (gtk_adjustment_get_upper (h_adj), ==, 9999);
+  type_into (d.width, "99999");
+  g_assert_cmpint (field_value (d.width), ==, 10000);
+  g_assert_cmpstr (gtk_editable_get_text (d.width), ==, "10000 px");
+  type_into (d.width, "300px");
+  g_assert_cmpint (field_value (d.width), ==, 300);
+  type_into (d.horizontal, "-99999");
+  g_assert_cmpint (field_value (d.horizontal), ==, -9999);
+  g_assert_cmpstr (gtk_editable_get_text (d.horizontal), ==, "-9999 px");
+  adw_dialog_close (ADW_DIALOG (d.dialog));
+  wait_for_dialogs (win, 0);
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* AS-4 (REQ-0019-04): the units convert; a conversion may change the result, and New size shows it. */
+static void
+as4_units_convert (void)
+{
+  EaselWindow *win = window_of (400, 300);
+  SkewDialog d = open_stretch_skew (win);
+
+  set_keep (&d, FALSE);
+  type_into (d.width, "33");
+  press_unit (&d, "stretch-pixels");
+  g_assert_cmpint (field_value (d.width), ==, 132);
+  g_assert_cmpint (field_value (d.height), ==, 300);
+  press_unit (&d, "stretch-percent");
+  g_assert_cmpint (field_value (d.width), ==, 33);
+  g_assert_cmpint (field_value (d.height), ==, 100);
+  adw_dialog_close (ADW_DIALOG (d.dialog));
+  wait_for_dialogs (win, 0);
+  close_windows ();
+
+  win = window_of (50, 50);
+  d = open_stretch_skew (win);
+  set_keep (&d, FALSE);
+  type_into (d.width, "1");
+  g_assert_cmpstr (size_line (&d), ==, "New size: 1 × 50");
+  adw_dialog_close (ADW_DIALOG (d.dialog));
+  wait_for_dialogs (win, 0);
+  close_windows ();
+
+  win = window_of (8000, 300);
+  d = open_stretch_skew (win);
+  type_into (d.width, "500");
+  g_assert_cmpint (field_value (d.height), ==, 500);
+  press_unit (&d, "stretch-pixels");
+  g_assert_cmpint (field_value (d.width), ==, 10000);
+  g_assert_cmpint (field_value (d.height), ==, 375);
+  adw_dialog_close (ADW_DIALOG (d.dialog));
+  wait_for_dialogs (win, 0);
+  close_windows ();
+
+  win = window_of (10000, 2);
+  d = open_stretch_skew (win);
+  set_keep (&d, FALSE);
+  press_unit (&d, "stretch-pixels");
+  type_into (d.width, "1");
+  g_assert_cmpstr (gtk_editable_get_text (d.width), ==, "1 px");
+  press_unit (&d, "stretch-percent");
+  g_assert_cmpint (field_value (d.width), ==, 1);
+  g_assert_cmpstr (gtk_editable_get_text (d.width), ==, "1 %");                /* the same number in the other unit */
+  g_assert_cmpstr (size_line (&d), ==, "New size: 100 × 2");
+  /* On 2 rows, 9 pixels is 84 degrees, which is 10 pixels. */
+  press_unit (&d, "skew-pixels");
+  type_into (d.horizontal, "9");
+  press_unit (&d, "skew-degrees");
+  g_assert_cmpint (field_value (d.horizontal), ==, 84);
+  press_unit (&d, "skew-pixels");
+  g_assert_cmpint (field_value (d.horizontal), ==, 10);
+  adw_dialog_close (ADW_DIALOG (d.dialog));
+  wait_for_dialogs (win, 0);
+  close_windows ();
+
+  win = window_of (60, 1);
+  d = open_stretch_skew (win);
+  press_unit (&d, "skew-pixels");
+  type_into (d.horizontal, "5");
+  g_assert_cmpstr (size_line (&d), ==, "New size: 60 × 1");
+  press_unit (&d, "skew-degrees");
+  g_assert_cmpint (field_value (d.horizontal), ==, 0);
+  adw_dialog_close (ADW_DIALOG (d.dialog));
+  wait_for_dialogs (win, 0);
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* AS-5 (REQ-0019-05): Keep aspect ratio. */
+static void
+as5_keep_aspect (void)
+{
+  EaselWindow *win = window_of (400, 300);
+  SkewDialog d = open_stretch_skew (win);
+
+  type_into (d.width, "50");
+  g_assert_cmpint (field_value (d.height), ==, 50);
+  press_unit (&d, "stretch-pixels");
+  type_into (d.width, "800");
+  g_assert_cmpint (field_value (d.height), ==, 600);
+  type_into (d.height, "150");
+  g_assert_cmpint (field_value (d.width), ==, 200);
+  set_keep (&d, FALSE);
+  type_into (d.width, "800");
+  type_into (d.height, "50");
+  g_assert_cmpint (field_value (d.width), ==, 800);
+  set_keep (&d, TRUE);
+  g_assert_cmpint (field_value (d.height), ==, 600);
+  adw_dialog_close (ADW_DIALOG (d.dialog));
+  wait_for_dialogs (win, 0);
+  close_windows ();
+
+  win = window_of (1, 10000);
+  d = open_stretch_skew (win);
+  press_unit (&d, "stretch-pixels");
+  gtk_adjustment_set_value (adw_spin_row_get_adjustment (ADW_SPIN_ROW (d.width)), 2);
+  g_assert_cmpint (field_value (d.width), ==, 1);
+  g_assert_cmpint (field_value (d.height), ==, 10000);
+  adw_dialog_close (ADW_DIALOG (d.dialog));
+  wait_for_dialogs (win, 0);
+  close_windows ();
+
+  win = window_of (300, 400);
+  d = open_stretch_skew (win);
+  set_keep (&d, FALSE);
+  press_unit (&d, "stretch-pixels");
+  type_into (d.width, "10000");
+  set_keep (&d, TRUE);
+  g_assert_cmpint (field_value (d.width), ==, 7500);
+  g_assert_cmpint (field_value (d.height), ==, 10000);
+  adw_dialog_close (ADW_DIALOG (d.dialog));
+  wait_for_dialogs (win, 0);
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* AS-7 (REQ-0019-07): Too large, also for a typed value and Enter. */
+static void
+as7_too_large (void)
+{
+  EaselWindow *win = window_of (8000, 300);
+  SkewDialog d = open_stretch_skew (win);
+  AdwDialog *ignored = NULL;
+
+  press_unit (&d, "skew-pixels");
+  type_into (d.horizontal, "2000");
+  g_assert_cmpstr (size_line (&d), ==, "New size: 10000 × 300");
+  g_assert_true (adw_alert_dialog_get_response_enabled (d.dialog, "ok"));
+  type_into (d.horizontal, "2001");
+  g_assert_cmpstr (size_line (&d), ==, "Too large: 10001 × 300; the most is 10000 × 10000");
+  g_assert_false (adw_alert_dialog_get_response_enabled (d.dialog, "ok"));
+  /* Typed and not committed: nothing follows it until the field is left or Enter is pressed. */
+  type_into (d.horizontal, "2000");
+  g_assert_true (adw_alert_dialog_get_response_enabled (d.dialog, "ok"));
+  gtk_editable_set_text (d.horizontal, "2001");
+  g_assert_cmpstr (size_line (&d), ==, "New size: 10000 × 300");
+  g_signal_emit_by_name (gtk_editable_get_delegate (d.horizontal), "activate");
+  g_assert_cmpstr (size_line (&d), ==, "Too large: 10001 × 300; the most is 10000 × 10000");
+  g_assert_cmpint (count_alert_dialogs (GTK_WIDGET (win), &ignored), ==, 1);
+  assert_size (win, 8000, 300);
+  /* A percent can ask for more than a field shows. */
+  type_into (d.horizontal, "0");
+  type_into (d.width, "500");
+  g_assert_cmpstr (size_line (&d), ==, "Too large: 40000 × 1500; the most is 10000 × 10000");
+  g_assert_false (adw_alert_dialog_get_response_enabled (d.dialog, "ok"));
+  adw_dialog_close (ADW_DIALOG (d.dialog));
+  wait_for_dialogs (win, 0);
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* AS-10 (REQ-0019-11): the exposed pixels are the background exactly; the zoom stays and the status bar shows the new size. Enter is OK. */
+static void
+as10_exposed_is_background (void)
+{
+  EaselWindow *win = window_of (100, 100);
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img;
+  SkewDialog d;
+
+  g_action_group_activate_action (G_ACTION_GROUP (win), "swap-colors", NULL);       /* a black background; every channel: the core test */
+  easel_canvas_set_zoom (canvas, 200);
+  wait_for_layout (win);
+  d = open_stretch_skew (win);
+  type_into (d.horizontal, "45");
+  g_signal_emit_by_name (gtk_editable_get_delegate (d.horizontal), "activate");
+  wait_for_dialogs (win, 0);
+  assert_size (win, 199, 100);
+  img = easel_window_get_picture (win);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 200);
+  g_assert_cmphex (easel_image_get (img, 198, 0), ==, 0xFF000000u);
+  g_assert_cmphex (easel_image_get (img, 0, 99), ==, 0xFF000000u);
+  g_assert_cmphex (easel_image_get (img, 0, 0), ==, 0xFFFFFFFFu);
+  g_assert_cmphex (easel_image_get (img, 99, 99), ==, 0xFFFFFFFFu);
+  g_assert_true (easel_window_get_modified (win));
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* AS-12 (REQ-0019-13): nothing changes: no step, no mark. 1 degree on 2 rows and 5 pixels on one row have no amount. */
+static void
+as12_nothing_changes (void)
+{
+  EaselWindow *win = window_of (60, 40);
+  SkewDialog d = open_stretch_skew (win);
+
+  press_ok (win, &d);
+  g_assert_false (action_enabled (win, "undo"));
+  g_assert_false (easel_window_get_modified (win));
+  assert_size (win, 60, 40);
+  close_windows ();
+
+  win = window_of (60, 2);
+  d = open_stretch_skew (win);
+  type_into (d.horizontal, "1");
+  press_ok (win, &d);
+  g_assert_false (action_enabled (win, "undo"));
+  assert_size (win, 60, 2);
+  close_windows ();
+
+  win = window_of (60, 1);
+  d = open_stretch_skew (win);
+  press_unit (&d, "skew-pixels");
+  type_into (d.horizontal, "5");
+  press_ok (win, &d);
+  g_assert_false (action_enabled (win, "undo"));
+  g_assert_false (easel_window_get_modified (win));
+  assert_size (win, 60, 1);
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* AS-13 (REQ-0019-14): Undo and Redo through the window, with the background changed between. */
+static void
+as13_undo_redo_window (void)
+{
+  EaselWindow *win = window_of (40, 30);
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  EaselImage *img = (EaselImage *) easel_window_get_picture (win);
+  SkewDialog d;
+
+  easel_image_set (img, 3, 4, 0xFFFF0000u);
+  easel_canvas_update (canvas);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "swap-colors", NULL);
+  d = open_stretch_skew (win);
+  press_unit (&d, "skew-pixels");
+  type_into (d.horizontal, "10");
+  press_ok (win, &d);
+  assert_size (win, 50, 30);
+  g_assert_cmphex (easel_image_get (easel_window_get_picture (win), 49, 0), ==, 0xFF000000u);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  wait_for_layout (win);
+  assert_size (win, 40, 30);
+  g_assert_cmphex (easel_image_get (easel_window_get_picture (win), 3, 4), ==, 0xFFFF0000u);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "swap-colors", NULL);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "redo", NULL);
+  wait_for_layout (win);
+  assert_size (win, 50, 30);
+  g_assert_cmphex (easel_image_get (easel_window_get_picture (win), 49, 0), ==, 0xFF000000u);     /* the fill of the first time */
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* AS-14 (REQ-0019-15): the dialog has closed, the error shows, and the picture and the history are as they were. */
+static void
+as14_error_dialogs (void)
+{
+  EaselWindow *win = window_of (40, 30);
+  SkewDialog d = open_stretch_skew (win);
+
+  easel_window_set_transform_limit (win, 3);
+  type_into (d.width, "200");
+  respond (win, "ok");
+  wait_for_dialogs (win, 1);
+  assert_alert (win, "Could Not Stretch or Skew the Picture", "There is not enough memory for this change.");
+  assert_size (win, 40, 30);
+  g_assert_false (action_enabled (win, "undo"));
+  g_assert_false (easel_window_get_modified (win));
+  easel_window_set_transform_limit (win, G_MAXSIZE);
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* AS-6 (REQ-0019-06): what waits is put down when the dialog opens and stays down; a selection is left until OK, and acted on then. */
+static void
+as6_what_waits_and_acts (void)
+{
+  EaselWindow *win = window_of (60, 40);
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  SkewDialog d;
+  int x, y, w, h;
+  gboolean floating = TRUE;
+
+  /* A marked selection: Cancel leaves it marked, OK floats it with the result, at its place, and the picture's size stays. */
+  use_tool (win, "select");
+  shape_press_move (win, 1, 10, 10, 19, 14);
+  shape_release (win, 1);
+  g_assert_true (selection_is (win, 10, 10, 10, 5));
+  d = open_stretch_skew (win);
+  g_assert_cmpstr (size_line (&d), ==, "New size: 10 × 5");
+  respond (win, "cancel");
+  g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  g_assert_false (floating);
+  d = open_stretch_skew (win);
+  type_into (d.width, "200");
+  press_ok (win, &d);
+  g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  g_assert_true (floating);
+  g_assert_true (selection_is (win, 10, 10, 20, 10));
+  assert_size (win, 60, 40);
+  g_assert_nonnull (strstr (easel_status_bar_get_text (easel_window_get_status_bar (win), EASEL_STATUS_SELECTION), "20 × 10"));
+  /* A float: Cancel leaves it floating. */
+  d = open_stretch_skew (win);
+  g_assert_cmpstr (size_line (&d), ==, "New size: 20 × 10");
+  respond (win, "cancel");
+  g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  g_assert_true (floating);
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+  close_windows ();
+
+  /* A waiting curve is put down when the dialog opens, and stays down on Cancel. */
+  win = window_of (60, 40);
+  canvas = easel_window_get_canvas (win);
+  use_tool (win, "curve");
+  shape_press_move (win, 1, 5, 5, 30, 5);
+  shape_release (win, 1);
+  g_assert_true (easel_canvas_is_pending (canvas));
+  d = open_stretch_skew (win);
+  g_assert_false (easel_canvas_is_pending (canvas));
+  respond (win, "cancel");
+  g_assert_false (easel_canvas_is_pending (canvas));
+  g_assert_true (easel_window_get_modified (win));
+  close_windows ();
+
+  /* An open box likewise; one that cannot get its memory stays open and no dialog opens. */
+  write_settings ("[new-picture]\nwidth=60\nheight=40\n\n[text]\nfont=DejaVu Sans\nsize=8\n");
+  win = start_window ();
+  wait_for_layout (win);
+  canvas = easel_window_get_canvas (win);
+  use_tool (win, "text");
+  shape_press_move (win, 1, 5, 5, 50, 30);
+  shape_release (win, 1);
+  type_keys (win, "ab");
+  g_assert_false (key_taken (win, GDK_KEY_t, GDK_CONTROL_MASK));               /* an open box leaves Ctrl+T to the accelerator */
+  easel_canvas_set_text_step_limit (canvas, 1);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "stretch-skew", NULL);
+  g_assert_true (easel_canvas_text_box (canvas, &x, &y, &w, &h));
+  easel_canvas_set_text_step_limit (canvas, SIZE_MAX);
+  /* The refusal has its own dialog (REQ-0017-18), which is not this one. */
+  wait_for_dialogs (win, 1);
+  g_assert_cmpstr (adw_alert_dialog_get_heading (open_alert (win)), !=, "Stretch and Skew");
+  adw_dialog_close (ADW_DIALOG (open_alert (win)));
+  wait_for_dialogs (win, 0);
+  d = open_stretch_skew (win);
+  g_assert_false (easel_canvas_text_box (canvas, &x, &y, &w, &h));
+  respond (win, "cancel");
+  g_assert_false (easel_canvas_text_box (canvas, &x, &y, &w, &h));
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* AS-7 (REQ-0019-07): a selection's new size has the same limit. */
+static void
+as7_too_large_selection (void)
+{
+  EaselWindow *win = window_of (9000, 20);
+  SkewDialog d;
+
+  g_action_group_activate_action (G_ACTION_GROUP (win), "select-all", NULL);
+  wait_for_layout (win);
+  d = open_stretch_skew (win);
+  press_unit (&d, "skew-pixels");
+  type_into (d.horizontal, "1001");
+  g_assert_cmpstr (size_line (&d), ==, "Too large: 10001 × 20; the most is 10000 × 10000");
+  g_assert_false (adw_alert_dialog_get_response_enabled (d.dialog, "ok"));
+  adw_dialog_close (ADW_DIALOG (d.dialog));
+  wait_for_dialogs (win, 0);
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* AS-11 (REQ-0019-12): a skewed rectangle: what lies under the exposed pixels stays, its line follows the shape, a press there is outside;
+   a shape of two parts has two lines. Drawn with no tint and no handles. */
+static void
+as11_skewed_selection (void)
+{
+  EaselWindow *win = window_of (40, 30);
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  EaselImage *img = (EaselImage *) easel_window_get_picture (win);
+  SkewDialog d;
+  g_autofree uint32_t *px = NULL;
+  const int *line;
+  size_t n, breaks = 0;
+  int dx, dy, w, h, cx, cy, sx, sy, sw, sh;
+  gboolean floating;
+
+  for (int y = 0; y < 30; y++)
+    for (int x = 0; x < 40; x++)
+      easel_image_set (img, x, y, x >= 10 && x < 14 && y >= 10 && y < 14 ? 0xFF0000FFu : 0xFFFF0000u);
+  easel_canvas_update (canvas);
+  use_tool (win, "select");
+  shape_press_move (win, 1, 10, 10, 13, 13);
+  shape_release (win, 1);
+  d = open_stretch_skew (win);
+  press_unit (&d, "skew-pixels");
+  type_into (d.horizontal, "3");
+  press_ok (win, &d);
+  g_assert_true (selection_is (win, 10, 10, 7, 4));
+  g_assert_true (easel_canvas_get_selection (canvas, &sx, &sy, &sw, &sh, &floating));
+  g_assert_true (floating);
+  g_assert_nonnull (strstr (easel_status_bar_get_text (easel_window_get_status_bar (win), EASEL_STATUS_SELECTION), "7 × 4"));
+  line = easel_canvas_get_selection_path (canvas, &n, &dx, &dy);
+  g_assert_nonnull (line);
+  g_assert_cmpint (n, >=, 4);
+  for (size_t i = 0; i < n; i++)
+    breaks += line[2 * i] == EASEL_PATH_BREAK;
+  g_assert_cmpint (breaks, ==, 0);
+  /* The frame: the exposed corners show what is under them, here the hole (white background) and red; the shape shows blue. */
+  easel_canvas_set_selection_handles_shown (canvas, FALSE);
+  easel_canvas_set_overlay_probe (canvas, FALSE, FALSE);
+  wait_for_next_frame (win);
+  px = render_pixels (win, &w, &h, &cx, &cy);
+  g_assert_cmphex (px[(gsize) (cy + 10) * w + cx + 10], ==, 0xFF0000FFu);
+  g_assert_cmphex (px[(gsize) (cy + 10) * w + cx + 15], ==, 0xFFFF0000u);       /* exposed, top right: red under it */
+  g_assert_cmphex (px[(gsize) (cy + 13) * w + cx + 16], ==, 0xFF0000FFu);
+  g_assert_cmphex (px[(gsize) (cy + 13) * w + cx + 10], ==, 0xFFFFFFFFu);       /* exposed, bottom left: the hole under it */
+  easel_canvas_set_overlay_probe (canvas, TRUE, TRUE);
+  /* A press on the exposed pixels is outside: the selection is put down, and the corner there stays. */
+  shape_press_move (win, 1, 16, 10, 16, 10);
+  shape_release (win, 1);
+  g_assert_false (easel_canvas_get_selection (canvas, &sx, &sy, &sw, &sh, &floating));
+  g_assert_cmphex (easel_image_get (img = (EaselImage *) easel_window_get_picture (win), 15, 10), ==, 0xFFFF0000u);
+  g_assert_cmphex (easel_image_get (img, 13, 13), ==, 0xFF0000FFu);
+  close_windows ();
+
+  /* 3 x 2 with S = 5: two parts, two lines. */
+  win = window_of (40, 30);
+  canvas = easel_window_get_canvas (win);
+  use_tool (win, "select");
+  shape_press_move (win, 1, 5, 5, 7, 6);
+  shape_release (win, 1);
+  d = open_stretch_skew (win);
+  press_unit (&d, "skew-pixels");
+  type_into (d.horizontal, "5");
+  press_ok (win, &d);
+  g_assert_true (selection_is (win, 5, 5, 8, 2));
+  line = easel_canvas_get_selection_path (canvas, &n, &dx, &dy);
+  g_assert_nonnull (line);
+  breaks = 0;
+  for (size_t i = 0; i < n; i++)
+    breaks += line[2 * i] == EASEL_PATH_BREAK;
+  g_assert_cmpint (breaks, ==, 1);
+  wait_for_next_frame (win);
+  g_free (render_pixels (win, &w, &h, &cx, &cy));               /* the line of two parts is drawn */
+  /* A later stretch and a flip take the line with them. */
+  d = open_stretch_skew (win);
+  set_keep (&d, FALSE);
+  type_into (d.width, "200");
+  press_ok (win, &d);
+  g_assert_true (selection_is (win, 5, 5, 16, 2));
+  line = easel_canvas_get_selection_path (canvas, &n, &dx, &dy);
+  breaks = 0;
+  for (size_t i = 0; i < n; i++)
+    breaks += line[2 * i] == EASEL_PATH_BREAK;
+  g_assert_cmpint (breaks, ==, 1);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "flip-horizontal", NULL);
+  wait_for_next_frame (win);
+  g_free (render_pixels (win, &w, &h, &cx, &cy));
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* AS-12 (REQ-0019-13), a selection: no amount and no change leave a marked one marked. */
+static void
+as12_selection_stays_marked (void)
+{
+  EaselWindow *win = window_of (60, 40);
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  SkewDialog d;
+  int x, y, w, h;
+  gboolean floating = TRUE;
+
+  use_tool (win, "select");
+  shape_press_move (win, 1, 10, 10, 19, 11);
+  shape_release (win, 1);
+  d = open_stretch_skew (win);
+  press_ok (win, &d);
+  g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  g_assert_false (floating);
+  d = open_stretch_skew (win);
+  type_into (d.horizontal, "1");                                /* 1 degree on 2 rows: S = 0 */
+  press_ok (win, &d);
+  g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  g_assert_false (floating);
+  g_assert_false (easel_window_get_modified (win));
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* AS-13 (REQ-0019-14): on a float it joins the one step: Undo while it floats forgets it all. */
+static void
+as13_undo_float (void)
+{
+  EaselWindow *win = window_of (40, 30);
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  SkewDialog d;
+  int x, y, w, h;
+  gboolean floating;
+
+  use_tool (win, "select");
+  shape_press_move (win, 1, 5, 5, 8, 8);
+  shape_release (win, 1);
+  d = open_stretch_skew (win);
+  type_into (d.horizontal, "45");
+  press_ok (win, &d);
+  g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  g_assert_true (floating);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  wait_for_layout (win);
+  g_assert_false (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  g_assert_false (action_enabled (win, "undo"));
+  g_assert_false (easel_window_get_modified (win));
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* AS-14 (REQ-0019-15), a selection: the error of its own, as before OK, marked again if OK lifted it; a stretch that succeeded is taken back
+   when the skew after it cannot get its memory. */
+static void
+as14_selection_errors (void)
+{
+  EaselWindow *win = window_of (40, 30);
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  SkewDialog d;
+  int x, y, w, h;
+  gboolean floating = TRUE;
+  size_t limit;
+
+  use_tool (win, "select");
+  shape_press_move (win, 1, 5, 5, 8, 8);                        /* 4 x 4 */
+  shape_release (win, 1);
+  /* The lift itself succeeds (64 bytes); the skew's image cannot be had. */
+  limit = 4 * 4 * 4;
+  easel_canvas_set_selection_lift_limit (canvas, limit);
+  d = open_stretch_skew (win);
+  type_into (d.horizontal, "45");
+  respond (win, "ok");
+  assert_alert (win, "Could Not Stretch or Skew the Selection", "There is not enough memory for this change.");
+  g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  g_assert_false (floating);
+  g_assert_true (selection_is (win, 5, 5, 4, 4));
+  easel_canvas_set_selection_lift_limit (canvas, SIZE_MAX);
+  /* A float stretched in the same OK: as before OK. */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "flip-horizontal", NULL);
+  wait_for_layout (win);
+  g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  g_assert_true (floating);
+  easel_canvas_set_selection_lift_limit (canvas, 8 * 8 * 4);
+  d = open_stretch_skew (win);
+  type_into (d.width, "200");
+  type_into (d.horizontal, "45");
+  respond (win, "ok");
+  assert_alert (win, "Could Not Stretch or Skew the Selection", "There is not enough memory for this change.");
+  g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  g_assert_true (floating);
+  g_assert_true (selection_is (win, 5, 5, 4, 4));
+  easel_canvas_set_selection_lift_limit (canvas, SIZE_MAX);
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* AS-16 (REQ-0019-17): the result depends only on the picture and the numbers: the same at any zoom and scroll, and on this screen, as the
+   core makes it from them; every new pixel is its old pixel or the background exactly. A float after OK shows what its put-down writes. */
+static void
+same_input_same_pixels (void)
+{
+  static const int zooms[] = { 100, 800, 129, 50 };
+  enum { W = 200, H = 150, NW = 300, NH = 75, SHIFT = 20, NEW_W = NW + SHIFT };
+  g_autofree uint32_t *expected = g_new (uint32_t, (gsize) NEW_W * NH);
+  g_autofree uint32_t *source = g_new (uint32_t, (gsize) W * H);
+
+  for (int y = 0; y < H; y++)
+    for (int x = 0; x < W; x++)
+      source[(gsize) y * W + x] = place_color (x, y);
+  g_assert_true (easel_ss_make (source, NULL, W, H, NW, NH, SHIFT, 0, 0xFFFFFFFFu, expected, NULL));
+  for (guint z = 0; z < G_N_ELEMENTS (zooms); z++)
+    {
+      EaselWindow *win = window_of (W, H);
+      EaselCanvas *canvas = easel_window_get_canvas (win);
+      SkewDialog d;
+      const EaselImage *img;
+
+      fill_with_places (win);
+      easel_canvas_set_zoom (canvas, zooms[z]);
+      wait_for_layout (win);
+      g_assert_cmpint (easel_window_get_zoom (win), ==, zooms[z]);
+      scroll_to (win, 7, 7);
+      d = open_stretch_skew (win);
+      set_keep (&d, FALSE);
+      type_into (d.width, "150");
+      type_into (d.height, "50");
+      press_unit (&d, "skew-pixels");
+      type_into (d.horizontal, "20");
+      g_assert_cmpstr (size_line (&d), ==, "New size: 320 × 75");
+      press_ok (win, &d);
+      img = easel_window_get_picture (win);
+      g_assert_cmpint (img->width, ==, NEW_W);
+      g_assert_cmpint (img->height, ==, NH);
+      g_assert_cmpint (memcmp (img->px, expected, (gsize) NEW_W * NH * sizeof (uint32_t)), ==, 0);
+      close_windows ();
+    }
+  /* Each new pixel is one old pixel or the background. */
+  for (gsize i = 0; i < (gsize) NEW_W * NH; i++)
+    if (expected[i] != 0xFFFFFFFFu)
+      {
+        int x = (expected[i] >> 12) & 0xfff, y = expected[i] & 0xfff;
+
+        g_assert_cmpint (x, <, W);
+        g_assert_cmpint (y, <, H);
+      }
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* AS-16: a float after OK at 129 %: each device pixel of the shape is the put-down's pixel of the cell the edges put there. */
+static void
+as16_float_shows_put_down (void)
+{
+  enum { ZOOM = 129 };
+  EaselWindow *win = window_of (60, 40);
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  SkewDialog d;
+  ViewFrame f;
+  const EaselImage *img;
+  const uint8_t *mask;
+  int sx, sy, sw, sh, mw, mh, wrong = 0, seen = 0;
+  gboolean floating;
+
+  fill_with_places (win);
+  easel_canvas_set_zoom (canvas, ZOOM);
+  wait_for_layout (win);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, ZOOM);
+  use_tool (win, "select");
+  shape_press_move (win, 1, 5, 5, 24, 16);
+  shape_release (win, 1);
+  d = open_stretch_skew (win);
+  press_unit (&d, "skew-pixels");
+  type_into (d.horizontal, "6");
+  press_ok (win, &d);
+  g_assert_true (easel_canvas_get_selection (canvas, &sx, &sy, &sw, &sh, &floating));
+  g_assert_true (floating);
+  easel_canvas_set_selection_handles_shown (canvas, FALSE);
+  easel_canvas_set_overlay_probe (canvas, FALSE, FALSE);
+  easel_canvas_set_guides_hidden (canvas, TRUE);
+  wait_for_next_frame (win);
+  f = view_frame (win);
+  mask = easel_canvas_get_selection_mask (canvas, &mw, &mh);
+  g_assert_nonnull (mask);
+  /* The picture after the put-down, read before anything is drawn again. */
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+  img = easel_window_get_picture (win);
+  for (int y = sy; y < sy + sh; y++)
+    for (int x = sx; x < sx + sw; x++)
+      {
+        int dx0 = easel_view_edge (x, ZOOM), dx1 = easel_view_edge (x + 1, ZOOM);
+        int dy0 = easel_view_edge (y, ZOOM), dy1 = easel_view_edge (y + 1, ZOOM);
+
+        for (int dy = dy0; dy < dy1; dy++)
+          for (int dx = dx0; dx < dx1; dx++)
+            {
+              seen++;
+              wrong += f.px[(gsize) (f.oy + dy) * f.w + f.ox + dx] != easel_image_get (img, x, y);
+            }
+      }
+  g_assert_cmpint (seen, >, 0);
+  g_assert_cmpint (wrong, ==, 0);
+  g_free (f.px);
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+static void
+as16_at_scale_2 (void)
+{
+  if (session_of_scale_2 ())
+    same_input_same_pixels ();
+}
+
 int
 main (int argc, char **argv)
 {
@@ -26647,6 +27562,25 @@ main (int argc, char **argv)
   g_test_add_func ("/0025/as2_same_figure_at_any_zoom", as2_same_figure_at_any_zoom);
   g_test_add_func ("/0025/as2b_pointer_inside_pixel", as2b_pointer_inside_pixel);
   g_test_add_func ("/0025/as2c_pointer_hits_the_drawn_pixel", as2c_pointer_hits_the_drawn_pixel);
+  g_test_add_func ("/0019/as1_stretch_skew_opens", as1_stretch_skew_opens);
+  g_test_add_func ("/0019/as2_dialog_starts_fresh", as2_dialog_starts_fresh);
+  g_test_add_func ("/0019/as3_field_limits", as3_field_limits);
+  g_test_add_func ("/0019/as4_units_convert", as4_units_convert);
+  g_test_add_func ("/0019/as5_keep_aspect", as5_keep_aspect);
+  g_test_add_func ("/0019/as7_too_large", as7_too_large);
+  g_test_add_func ("/0019/as10_exposed_is_background", as10_exposed_is_background);
+  g_test_add_func ("/0019/as12_nothing_changes", as12_nothing_changes);
+  g_test_add_func ("/0019/as13_undo_redo_window", as13_undo_redo_window);
+  g_test_add_func ("/0019/as14_error_dialogs", as14_error_dialogs);
+  g_test_add_func ("/0019/as6_what_waits_and_acts", as6_what_waits_and_acts);
+  g_test_add_func ("/0019/as7_too_large_selection", as7_too_large_selection);
+  g_test_add_func ("/0019/as11_skewed_selection", as11_skewed_selection);
+  g_test_add_func ("/0019/as12_selection_stays_marked", as12_selection_stays_marked);
+  g_test_add_func ("/0019/as13_undo_float", as13_undo_float);
+  g_test_add_func ("/0019/as14_selection_errors", as14_selection_errors);
+  g_test_add_func ("/0019/as16_same_input_same_pixels", same_input_same_pixels);
+  g_test_add_func ("/0019/as16_float_shows_put_down", as16_float_shows_put_down);
+  g_test_add_func ("/0019-scale2/as16_at_scale_2", as16_at_scale_2);
   g_test_add_func ("/0025/as3_overlays_change_nothing", as3_overlays_change_nothing);
   g_test_add_func ("/0025/as3b_overlays_show_through", as3b_overlays_show_through);
   g_test_add_func ("/0025/as4_shown_equals_put_down", as4_shown_equals_put_down);

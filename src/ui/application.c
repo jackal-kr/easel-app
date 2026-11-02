@@ -84,6 +84,7 @@ easel_application_new (void)
      the window's key handler decides before an action could fire, so the handler also runs Invert Colors when no box is open. */
   gtk_application_set_accels_for_action (GTK_APPLICATION (app), "win.rotate-90", (const char *[]) { "<Control>r", NULL });
   gtk_application_set_accels_for_action (GTK_APPLICATION (app), "win.rotate-270", (const char *[]) { "<Control>l", NULL });
+  gtk_application_set_accels_for_action (GTK_APPLICATION (app), "win.stretch-skew", (const char *[]) { "<Control>t", NULL });
   gtk_application_set_accels_for_action (GTK_APPLICATION (app), "win.clear-image", (const char *[]) { "<Control><Shift>n", NULL });
   gtk_application_set_accels_for_action (GTK_APPLICATION (app), "win.close", (const char *[]) { "<Control>w", NULL });
   gtk_application_set_accels_for_action (GTK_APPLICATION (app), "app.quit", (const char *[]) { "<Control>q", NULL });
