@@ -27,7 +27,7 @@ cmd_status() {
   done
 }
 
-# Every REQ needs a scenario that mentions it; every scenario needs "Verified by:";
+# Every REQ needs a scenario that mentions it; every scenario needs "Verified by:"; no two scenarios of a spec share a number (AS-1 and AS-1b differ);
 # an accepted/implemented spec may have no open "- [NEEDS CLARIFICATION" lines; an accepted one needs a "Reviewed:" line.
 # Draft specs only get warnings; the exit code is 1 only for accepted/implemented specs.
 cmd_lint() {
@@ -39,6 +39,9 @@ cmd_lint() {
       grep -E '^- AS-[0-9]+' "$s" | grep -q "$r" || problems+=("$r has no scenario")
     done
     grep -E '^- AS-[0-9]+' "$s" | grep -vq 'Verified by:' && problems+=("a scenario has no 'Verified by:'")
+    for r in $(grep -oE '^- AS-[0-9]+[A-Za-z]*' "$s" | sed 's/- //' | sort | uniq -d); do
+      problems+=("$r is used by more than one scenario")
+    done
     if [ "$st" != draft ] && grep -q '^- \[NEEDS CLARIFICATION' "$s"; then
       problems+=("open NEEDS CLARIFICATION in a $st spec")
     fi
@@ -56,7 +59,7 @@ cmd_lint() {
 }
 
 # Every test named in backticks in the scenario-to-test map of one spec must be registered in tests/ (a core test as
-# `RUN (name)`, a ui or io test as `"/NNNN/name"` or, in a long suite, `"/long/NNNN/name"`): the names drift when a test is split or
+# `RUN (name)`, a ui or io test as `"/NNNN/name"`, `"/NNNN-part/name"` or, in a long suite, `"/long/NNNN/name"`): the names drift when a test is split or
 # moved. The map ends at the next heading of any level (the Tasks follow it, and their Result lines name helpers too). Run by /sdd-check; the
 # plain lint does not do it, because a Plan names its tests before they are written.
 cmd_names() {
@@ -65,7 +68,7 @@ cmd_names() {
   f=$(ls docs/specs/"$n"-*.md 2>/dev/null | head -1)
   [ -n "$f" ] || { echo "no spec $n"; return 1; }
   for t in $(sed -n '/^### Scenario-to-test map/,/^##/p' "$f" | grep -oE '`[a-z][a-z0-9]*_[a-z0-9_]*`' | tr -d '`' | sort -u); do
-    if ! grep -rqE "(RUN \\(|\"/(long/)?[0-9]{4}/)$t\\b" tests/; then
+    if ! grep -rqE "(RUN \\(|\"/(long/)?[0-9]{4}(-[a-z0-9]+)?/)$t\\b" tests/; then
       echo "$f: the scenario map names a test that is not registered: $t"
       rc=1
     fi
