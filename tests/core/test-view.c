@@ -14,9 +14,10 @@ as13_zoom_steps_and_anchor (void)
   double acc = 0;
 
   CHECK (easel_view_zoom_step (100, 1) == 200);
-  CHECK (easel_view_zoom_step (100, 21) == 800);
+  CHECK (easel_view_zoom_step (100, 21) == 1600);
   CHECK (easel_view_zoom_step (100, -20) == 10);
-  CHECK (easel_view_zoom_step (800, 1) == 800);
+  CHECK (easel_view_zoom_step (800, 1) == 1600);                 /* 1600 % after 800 % (JOD, 2026-10-27) */
+  CHECK (easel_view_zoom_step (1600, 1) == 1600);
   CHECK (easel_view_zoom_step (10, -1) == 10);
   CHECK (easel_view_zoom_step (50, 2) == 200);
   CHECK (easel_view_zoom_step (400, -3) == 100);
@@ -106,14 +107,14 @@ as2_window_size (void)
 static void
 as3_zoom_levels (void)
 {
-  static const int levels[] = { 10, 25, 50, 100, 200, 300, 400, 600, 800 };
+  static const int levels[] = { 10, 25, 50, 100, 200, 300, 400, 600, 800, 1600 };
 
   for (int i = 0; i + 1 < 9; i++)
     {
       CHECK (easel_view_zoom_step (levels[i], 1) == levels[i + 1]);
       CHECK (easel_view_zoom_step (levels[i + 1], -1) == levels[i]);
     }
-  CHECK (easel_view_zoom_step (800, 1) == 800);   /* Zoom In has nothing to do at 800 % */
+  CHECK (easel_view_zoom_step (1600, 1) == 1600); /* Zoom In has nothing to do at 1600 % */
   CHECK (easel_view_zoom_step (10, -1) == 10);    /* and Zoom Out at 10 % */
 }
 
@@ -121,10 +122,10 @@ as3_zoom_levels (void)
 static void
 as1_presets_list_and_index (void)
 {
-  static const int expected[] = { 100, 200, 400, 600, 800 };
+  static const int expected[] = { 100, 200, 400, 600, 800, 1600 };
 
-  CHECK (EASEL_VIEW_N_PRESETS == 5);
-  for (int i = 0; i < 5; i++)
+  CHECK (EASEL_VIEW_N_PRESETS == 6);
+  for (int i = 0; i < 6; i++)
     {
       CHECK (easel_view_presets[i] == expected[i]);
       CHECK (easel_view_preset_index (expected[i]) == i);
@@ -137,6 +138,7 @@ as1_presets_list_and_index (void)
   CHECK (easel_view_preset_index (0) == -1);
   CHECK (easel_view_preset_index (9) == -1);
   CHECK (easel_view_preset_index (801) == -1);
+  CHECK (easel_view_preset_index (1599) == -1);
 }
 
 /* 0008 AS-5 (REQ-0008-06): every preset is a zoom step, so Zoom In from 100 % reaches every preset in order, with 300 %
@@ -214,7 +216,7 @@ as5_zoom_anchor_center (void)
 static void
 as6_fit_zoom (void)
 {
-  /* The largest whole percent that fits, 10 to 800 (REQ-0004-07), in the area less two margins of 12 (amended by 0009,
+  /* The largest whole percent that fits, 10 to 800 (REQ-0004-07: Fit stops at 800 % though the zoom reaches 1600 %), in the area less two margins of 12 (amended by 0009,
      REQ-0009-05): a 1390 x 853 area leaves 1366 x 829. */
   CHECK (easel_view_fit_zoom (1390, 853, 800, 600, 1.0) == 138);        /* 829 / 600 = 1.381 */
   CHECK (easel_view_fit_zoom (1390, 853, 3000, 2000, 1.0) == 41);       /* 829 / 2000 = 0.414 */
@@ -258,7 +260,9 @@ as6_levels_from_a_fit_zoom (void)
   CHECK (easel_view_zoom_step (42, -1) == 25);
   CHECK (easel_view_zoom_step (25, 1) == 50);                      /* on a level: the next one */
   CHECK (easel_view_zoom_step (10, -1) == 10);
-  CHECK (easel_view_zoom_step (800, 1) == 800);
+  CHECK (easel_view_zoom_step (800, 1) == 1600);
+  CHECK (easel_view_zoom_step (1600, 1) == 1600);
+  CHECK (easel_view_zoom_step (1600, -1) == 800);
 }
 
 /* REQ-0004-08: one level per 1.5x of the pinch since the last level change; the scale starts again after each change,
@@ -278,11 +282,14 @@ as7_pinch_accumulator (void)
   base = 1.0;
   CHECK (easel_view_pinch (&base, 4.0, 100) == 1 && base == 4.0);
 
-  /* At 800 % a further pinch out does nothing and starts the scale again, so reversing needs a normal 1.5x. */
+  /* At 800 % a pinch out still reaches 1600 %; at 1600 % a further pinch out does nothing and starts the scale again, so reversing needs
+     a normal 1.5x. */
   base = 1.0;
-  CHECK (easel_view_pinch (&base, 1.6, 800) == 0 && base == 1.6);
-  CHECK (easel_view_pinch (&base, 1.2, 800) == 0 && base == 1.6);
-  CHECK (easel_view_pinch (&base, 1.0, 800) == -1 && base == 1.0);
+  CHECK (easel_view_pinch (&base, 1.6, 800) == 1 && base == 1.6);
+  base = 1.0;
+  CHECK (easel_view_pinch (&base, 1.6, 1600) == 0 && base == 1.6);
+  CHECK (easel_view_pinch (&base, 1.2, 1600) == 0 && base == 1.6);
+  CHECK (easel_view_pinch (&base, 1.0, 1600) == -1 && base == 1.0);
   /* Same at 10 %: a pinch in does nothing there and restarts the scale; 1.5x from that point zooms in. */
   base = 1.0;
   CHECK (easel_view_pinch (&base, 0.6, 10) == 0 && base == 0.6);

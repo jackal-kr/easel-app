@@ -87,4 +87,6 @@ benchmark('perf-0017', executable('perf-0017', 'perf/perf-0017.c', dependencies:
   timeout: 600)
 benchmark('perf-0018', executable('perf-0018', 'perf/perf-0018.c', dependencies: easel_ui_dep), env: perf_env,
   timeout: 900)
+benchmark('perf-0008', executable('perf-0008', 'perf/perf-0008.c', dependencies: easel_ui_dep), env: perf_env,
+  timeout: 600)
 

@@ -4,10 +4,10 @@
 
 #include "view.h"
 
-static const int zoom_levels[] = { 10, 25, 50, 100, 200, 300, 400, 600, 800 };
+static const int zoom_levels[] = { 10, 25, 50, 100, 200, 300, 400, 600, 800, 1600 };   /* 1600: JOD, 2026-10-27 */
 #define N_LEVELS ((int) (sizeof zoom_levels / sizeof zoom_levels[0]))
 
-const int easel_view_presets[EASEL_VIEW_N_PRESETS] = { 100, 200, 400, 600, 800 };
+const int easel_view_presets[EASEL_VIEW_N_PRESETS] = { 100, 200, 400, 600, 800, 1600 };
 
 int
 easel_view_preset_index (int pct)
@@ -118,7 +118,7 @@ easel_view_fit_zoom (int area_w, int area_h, int pic_w, int pic_h, double scale)
     zoom = (long) area_h * 100 / pic_h;
   if (zoom < zoom_levels[0])
     return zoom_levels[0];
-  return zoom > zoom_levels[N_LEVELS - 1] ? zoom_levels[N_LEVELS - 1] : (int) zoom;
+  return zoom > EASEL_VIEW_FIT_MAX ? EASEL_VIEW_FIT_MAX : (int) zoom;          /* Fit stops at 800 % (REQ-0004-07) */
 }
 
 int

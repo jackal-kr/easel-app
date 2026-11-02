@@ -208,7 +208,7 @@ as13_zoom_keeps_point_under_pointer (void)
   g_assert_cmpint (py, ==, (int) ((30.5 - EASEL_VIEW_MARGIN) * scale));
 
   easel_canvas_zoom_at (canvas, 20, 0, 0);
-  g_assert_cmpint (easel_window_get_zoom (win), ==, 800);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 1600);                   /* the last level (REQ-0001-16) */
   easel_canvas_zoom_at (canvas, -20, 0, 0);
   g_assert_cmpint (easel_window_get_zoom (win), ==, 10);
 
@@ -1740,20 +1740,23 @@ as3_zoom_buttons (void)
   g_assert_cmpint (easel_window_get_zoom (win), ==, 200);
   g_assert_cmpstr (easel_window_get_zoom_text (win), ==, "200%");
 
-  /* Up to 800 %: Zoom In becomes insensitive and does nothing. */
-  for (int i = 0; i < 5; i++)
+  /* Up to 1600 %, through 800 %: Zoom In becomes insensitive and does nothing. */
+  for (int i = 0; i < 4; i++)
     g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-in", NULL);
   g_assert_cmpint (easel_window_get_zoom (win), ==, 800);
-  g_assert_cmpstr (easel_window_get_zoom_text (win), ==, "800%");
+  g_assert_true (action_enabled (win, "zoom-in"));                            /* 800 % is no longer the end */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-in", NULL);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 1600);
+  g_assert_cmpstr (easel_window_get_zoom_text (win), ==, "1600%");
   g_assert_false (action_enabled (win, "zoom-in"));
   g_assert_false (gtk_widget_is_sensitive (GTK_WIDGET (zoom_in)));
   g_assert_true (gtk_widget_is_sensitive (GTK_WIDGET (zoom_out)));
   g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-in", NULL);
-  g_assert_cmpint (easel_window_get_zoom (win), ==, 800);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 1600);
 
   /* And down to 10 %. */
   g_signal_emit_by_name (zoom_out, "clicked");
-  g_assert_cmpint (easel_window_get_zoom (win), ==, 600);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 800);
   for (int i = 0; i < 10; i++)
     g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-out", NULL);
   g_assert_cmpint (easel_window_get_zoom (win), ==, 10);
@@ -5561,13 +5564,13 @@ magnifier_level (EaselWindow *win)
   return g_variant_get_int32 (state);
 }
 
-static const char *const magnifier_tips[5] = { "100 %", "200 %", "400 %", "600 %", "800 %" };
+static const char *const magnifier_tips[6] = { "100 %", "200 %", "400 %", "600 %", "800 %", "1600 %" };
 
-/* AS-2 (REQ-0007-02, amended by REQ-0008-02): the Magnifier's five levels, 2x selected, choosing one zooms nothing, and the choice is kept. */
+/* AS-2 (REQ-0007-02, amended by REQ-0008-02): the Magnifier's six levels, 2x selected, choosing one zooms nothing, and the choice is kept. */
 static void
 as2_magnifier_level_kept (void)
 {
-  static const char *const labels[5] = { "1x", "2x", "4x", "6x", "8x" };
+  static const char *const labels[6] = { "1x", "2x", "4x", "6x", "8x", "16x" };
   EaselWindow *win = start_window ();
   EaselToolOptions *options = easel_window_get_tool_options (win);
 
@@ -5576,14 +5579,14 @@ as2_magnifier_level_kept (void)
   use_tool (win, "magnifier");
   wait_for_layout (win);
   g_assert_true (gtk_widget_get_mapped (GTK_WIDGET (options)));
-  g_assert_cmpint (check_presets (win, magnifier_tips, 5, 2), ==, 1);        /* 1x 2x / 4x 6x / 8x; 2x is on */
-  for (int i = 0; i < 5; i++)
+  g_assert_cmpint (check_presets (win, magnifier_tips, 6, 2), ==, 1);        /* 1x 2x / 4x 6x / 8x 16x; 2x is on */
+  for (int i = 0; i < 6; i++)
     g_assert_cmpstr (gtk_button_get_label (GTK_BUTTON (find_by_tooltip (GTK_WIDGET (win), magnifier_tips[i]))), ==, labels[i]);
   g_assert_false (on_screen (win, "Circle, 4 pixels"));                      /* only its own group */
 
   choose_preset (win, "800 %");
   g_assert_cmpint (easel_window_get_zoom (win), ==, 100);                    /* choosing zooms nothing */
-  g_assert_cmpint (check_presets (win, magnifier_tips, 5, 2), ==, 4);
+  g_assert_cmpint (check_presets (win, magnifier_tips, 6, 2), ==, 4);
   g_assert_cmpint (magnifier_level (win), ==, 800);
   choose_preset (win, "100 %");
   g_assert_cmpint (easel_window_get_zoom (win), ==, 100);
@@ -5603,7 +5606,7 @@ as2_magnifier_level_kept (void)
   g_assert_false (on_screen (win, "800 %"));
   use_tool (win, "magnifier");
   wait_for_layout (win);
-  g_assert_cmpint (check_presets (win, magnifier_tips, 5, 2), ==, 4);        /* kept */
+  g_assert_cmpint (check_presets (win, magnifier_tips, 6, 2), ==, 4);        /* kept */
   g_assert_cmpint (magnifier_level (win), ==, 800);
   close_windows ();
 }
@@ -5967,6 +5970,35 @@ click_pixel (EaselWindow *win, guint button, double px, double py)
   easel_canvas_press (canvas, button, x, y);
   easel_canvas_release (canvas, button);
   wait_for_layout (win);
+}
+
+/* 0007's AS-19 (REQ-0007-03): with 8x at 800 % a press returns to 100 %; with 16x, a press at 100 % gives 1600 % and the next one 100 %. */
+static void
+as19_magnifier_16x (void)
+{
+  EaselWindow *win;
+  EaselCanvas *canvas;
+
+  write_settings ("[new-picture]\nwidth=3000\nheight=2000\nbackground=#FFFF00\n");
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  wait_for_layout (win);
+  use_tool (win, "magnifier");
+  choose_preset (win, "800 %");
+  g_assert_cmpint (magnifier_level (win), ==, 800);
+  click_pixel (win, 1, 1000, 700);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 800);
+  click_pixel (win, 1, 1000, 700);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 100);                    /* already at the level: back to 100 % */
+  choose_preset (win, "1600 %");
+  g_assert_cmpint (magnifier_level (win), ==, 1600);
+  click_pixel (win, 1, 1000, 700);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 1600);
+  click_pixel (win, 1, 1000, 700);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 100);
+  (void) canvas;
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
 }
 
 /* AS-3, AS-4 (REQ-0007-03, REQ-0007-11): the zoom a press gives, the focus at the center of the view, and nothing edited. */
@@ -6698,7 +6730,7 @@ zoom_submenu (EaselWindow *win, int *section_index, int *item_index)
 static void
 as1_zoom_submenu_and_lens_levels (void)
 {
-  static const int presets[] = { 100, 200, 400, 600, 800 };
+  static const int presets[] = { 100, 200, 400, 600, 800, 1600 };
   EaselWindow *win = start_window ();
   GMenuModel *menu = gtk_menu_button_get_menu_model (easel_window_get_view_button (win));
   g_autoptr (GMenuModel) sub = NULL;
@@ -6707,8 +6739,8 @@ as1_zoom_submenu_and_lens_levels (void)
   wait_for_layout (win);
   sub = zoom_submenu (win, &s, &i);
   g_assert_nonnull (sub);
-  g_assert_cmpint (g_menu_model_get_n_items (sub), ==, 5);
-  for (int k = 0; k < 5; k++)
+  g_assert_cmpint (g_menu_model_get_n_items (sub), ==, 6);
+  for (int k = 0; k < 6; k++)
     {
       g_autofree char *label = NULL, *action = NULL, *expected = g_strdup_printf ("%d %%", presets[k]);
       g_autoptr (GVariant) target = NULL;
@@ -6731,16 +6763,16 @@ as1_zoom_submenu_and_lens_levels (void)
     g_assert_cmpstr (next, ==, "win.zoom-normal");
     g_assert_cmpint (g_menu_model_get_n_items (section), ==, 4);
   }
-  /* The Magnifier's options: the same five levels, in the same order, labelled 1x to 8x (REQ-0008-02); no others. */
+  /* The Magnifier's options: the same six levels, in the same order, labelled 1x to 16x (REQ-0008-02); no others. */
   {
-    static const char *const labels[] = { "1x", "2x", "4x", "6x", "8x" };
+    static const char *const labels[] = { "1x", "2x", "4x", "6x", "8x", "16x" };
 
     use_tool (win, "magnifier");
     wait_for_layout (win);
     g_assert_null (find_by_tooltip (GTK_WIDGET (win), "10 %"));
     g_assert_null (find_by_tooltip (GTK_WIDGET (win), "25 %"));
     g_assert_null (find_by_tooltip (GTK_WIDGET (win), "50 %"));
-    for (int k = 0; k < 5; k++)
+    for (int k = 0; k < 6; k++)
       {
         g_autofree char *tip = g_strdup_printf ("%d %%", presets[k]);
         GtkWidget *b = find_by_tooltip (GTK_WIDGET (win), tip);
@@ -6877,12 +6909,12 @@ assert_options_fit (EaselWindow *win, const char *const *tips, int n)
     }
 }
 
-/* The Magnifier's level buttons are laid out as the tool buttons are (REQ-0008-07): 1x, 4x and 8x under Pan, 2x and 6x
+/* The Magnifier's level buttons are laid out as the tool buttons are (REQ-0008-07): 1x, 4x and 8x under Pan, 2x, 6x and 16x
    under the Magnifier tool button, as wide as a tool button, their labels at the window's own text size. */
 static void
 assert_lens_like_tool_buttons (EaselWindow *win)
 {
-  static const char *const left[] = { "100 %", "400 %", "800 %" }, *const right[] = { "200 %", "600 %" };
+  static const char *const left[] = { "100 %", "400 %", "800 %" }, *const right[] = { "200 %", "600 %", "1600 %" };
   GtkWidget *panel = toolbox_panel (win);
   graphene_rect_t pan = bounds_in (find_by_tooltip (GTK_WIDGET (win), "Pan"), panel);
   graphene_rect_t mag = bounds_in (find_by_tooltip (GTK_WIDGET (win), "Magnifier"), panel);
@@ -6912,7 +6944,7 @@ as6_toolbox_width_is_the_same_for_every_tool (void)
 {
   static const char *const tools[] = { "pan", "pencil", "brush", "airbrush", "eraser", "magnifier", "select", "free-select", "pick", "fill", "gradient",
                                        "line", "curve", "rectangle", "rounded-rectangle", "ellipse", "polygon" };
-  static const char *const lens[] = { "100 %", "200 %", "400 %", "600 %", "800 %" };
+  static const char *const lens[] = { "100 %", "200 %", "400 %", "600 %", "800 %", "1600 %" };
   GtkSettings *st = gtk_settings_get_default ();
   EaselWindow *win = start_window ();
   int dpi;
@@ -22232,8 +22264,8 @@ as13_canvas_menu (void)
   shape_release (win, 3);
   shape_release (win, 1);
   g_assert_false (canvas_menu_shown (win));
-  /* At 800 % Zoom In is insensitive. */
-  zoom_in_to (win, 800);
+  /* At 1600 % Zoom In is insensitive. */
+  zoom_in_to (win, 1600);
   g_assert_false (action_enabled (win, "zoom-in"));
   g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-normal", NULL);
   wait_for_layout (win);
@@ -22272,16 +22304,26 @@ grid_near_ok (const uint32_t *px, int w, int cx, int cy, int zoom, int cell, uin
 
 /* The grid over the whole visible part of the picture: at the four corners (24 pixels in), the four middles of the sides and the
    center of the view. FALSE for the first point that has none. */
+/* Whether the window point at w along one axis falls on the picture's last column (or row) of n, whose far side is the picture's own edge,
+   which has no grid line (REQ-0004-12): the check then looks at the cell before it. */
+static gboolean
+last_cell (int c, int zoom, double w, int n)
+{
+  return (int) ((w - c) / (zoom / 100)) >= n - 1;
+}
+
 static gboolean
 grid_over_the_whole_view (EaselWindow *win, const uint32_t *px, int w, int cx, int cy, int zoom, uint32_t base)
 {
   graphene_rect_t a = bounds_in (view_of (win).scroller, GTK_WIDGET (win));
+  int pw = easel_window_get_picture (win)->width, ph = easel_window_get_picture (win)->height;
   double xs[3] = { a.origin.x + 24, a.origin.x + a.size.width / 2, a.origin.x + a.size.width - 24 };
   double ys[3] = { a.origin.y + 24, a.origin.y + a.size.height / 2, a.origin.y + a.size.height - 24 };
 
   for (int j = 0; j < 3; j++)
     for (int i = 0; i < 3; i++)
-      if (!grid_near_ok (px, w, cx, cy, zoom, 1, base, (int) xs[i], (int) ys[j]))
+      if (!grid_near_ok (px, w, cx, cy, zoom, 1, base, (int) xs[i] - (last_cell (cx, zoom, xs[i], pw) ? zoom / 100 : 0),
+                         (int) ys[j] - (last_cell (cy, zoom, ys[j], ph) ? zoom / 100 : 0)))
         {
           g_test_message ("no grid near the window point (%d, %d) of the view (%d, %d, %d x %d)", (int) xs[i], (int) ys[j],
                           (int) a.origin.x, (int) a.origin.y, (int) a.size.width, (int) a.size.height);
@@ -22294,7 +22336,7 @@ grid_over_the_whole_view (EaselWindow *win, const uint32_t *px, int w, int cx, i
   return TRUE;
 }
 
-/* Zoom In until the zoom is z (the levels of REQ-0004-04: 100, 200, 400, 600, 800). */
+/* Zoom In until the zoom is z (the levels of REQ-0004-04: 100, 200, 300, 400, 600, 800, 1600). */
 static void
 zoom_in_to (EaselWindow *win, int z)
 {
@@ -22331,7 +22373,7 @@ as10_grid_covers_the_view_after_zoom_and_pan (void)
   int w, h, cx, cy;
   gint64 t0, deadline;
 
-  /* JOD's steps: the start-up picture (800 x 600), the grid switched on, then Zoom In (+) up to 800 %. */
+  /* JOD's steps: the start-up picture (800 x 600), the grid switched on, then Zoom In (+) up to 1600 % (AS-31, since 2026-10-28). */
   write_settings ("[new-picture]\nwidth=800\nheight=600\nbackground=#FFFFFF\n");
   win = start_window ();
   view = view_of (win);
@@ -22340,29 +22382,29 @@ as10_grid_covers_the_view_after_zoom_and_pan (void)
   g_action_group_activate_action (G_ACTION_GROUP (win), "grid", NULL);
   g_assert_true (easel_canvas_get_grid_on (easel_window_get_canvas (win)));
   t0 = g_get_monotonic_time ();
-  zoom_in_to (win, 800);
+  zoom_in_to (win, 1600);
   /* After the zoom: how long until the grid is everywhere (up to 6 seconds), then the checks as they must hold at once. */
   deadline = t0 + 6 * G_USEC_PER_SEC;
   for (;;)
     {
       g_clear_pointer (&px, g_free);
       px = render_as_is (win, &w, &h, &cx, &cy);
-      if (grid_over_the_whole_view (win, px, w, cx, cy, 800, 0xFFFFFFFFu) || g_get_monotonic_time () > deadline)
+      if (grid_over_the_whole_view (win, px, w, cx, cy, 1600, 0xFFFFFFFFu) || g_get_monotonic_time () > deadline)
         break;
     }
   fprintf (stderr, "grid covers the view %.0f ms after the zoom\n", (g_get_monotonic_time () - t0) / 1000.0);
   g_clear_pointer (&px, g_free);
   g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-out", NULL);
-  zoom_in_to (win, 800);
+  zoom_in_to (win, 1600);
   px = render_as_is (win, &w, &h, &cx, &cy);
-  g_assert_true (grid_over_the_whole_view (win, px, w, cx, cy, 800, 0xFFFFFFFFu));
+  g_assert_true (grid_over_the_whole_view (win, px, w, cx, cy, 1600, 0xFFFFFFFFu));
   g_clear_pointer (&px, g_free);
   for (int dir = 0; dir < 4; dir++)
     {
       pan_pages (win, dir, dir < 2 ? 1.5 : 3.0);
       g_assert_cmpfloat (gtk_adjustment_get_value (view.h) + gtk_adjustment_get_page_size (view.h), >, 0);
       px = render_as_is (win, &w, &h, &cx, &cy);
-      g_assert_true (grid_over_the_whole_view (win, px, w, cx, cy, 800, 0xFFFFFFFFu));
+      g_assert_true (grid_over_the_whole_view (win, px, w, cx, cy, 1600, 0xFFFFFFFFu));
       g_clear_pointer (&px, g_free);
     }
   close_windows ();
@@ -24273,6 +24315,7 @@ main (int argc, char **argv)
   g_test_add_func ("/0007/as13_pick_cancel_and_focus", as13_pick_cancel_and_focus);
   g_test_add_func ("/0007/as16_tool_change_ignored_during_pick", as16_tool_change_ignored_during_pick);
   g_test_add_func ("/0007/as3_magnifier_click", as3_magnifier_click);
+  g_test_add_func ("/0007/as19_magnifier_16x", as19_magnifier_16x);
   g_test_add_func ("/0007/as4_magnifier_edges", as4_magnifier_edges);
   g_test_add_func ("/0007/as1_cursors_follow_tool", as1_cursors_follow_tool);
   g_test_add_func ("/0007/as5_box_follows_pointer", as5_box_follows_pointer);

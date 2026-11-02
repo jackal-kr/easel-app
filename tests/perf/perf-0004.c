@@ -43,9 +43,8 @@ measure_grid (EaselWindow *win, int w, int h)
   EaselCanvas *canvas = easel_window_get_canvas (win);
   double ms[N_FRAMES], work[N_FRAMES];
 
-  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-fit", NULL);
-  for (int i = 0; i < 8; i++)
-    g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-in", NULL);
+  /* at 800 %, as the cases' names say (Zoom In from Fit would now go on to 1600 %) */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-to", g_variant_new_int32 (800));
   wait_for_paint (win);
   for (guint c = 0; c < G_N_ELEMENTS (cases); c++)
     {

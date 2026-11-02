@@ -4,7 +4,7 @@
 
 #include "view.h"
 
-/* The zoom levels the Magnifier offers: 1x, 2x, 4x, 6x and 8x; 2x is the default (REQ-0007-02). They are the zoom presets
+/* The zoom levels the Magnifier offers: 1x, 2x, 4x, 6x, 8x and 16x; 2x is the default (REQ-0007-02). They are the zoom presets
    (REQ-0008-02): one list, so the Magnifier's options and the View > Zoom submenu cannot differ. */
 enum { EASEL_MAGNIFIER_N_LEVELS = EASEL_VIEW_N_PRESETS, EASEL_MAGNIFIER_DEFAULT = 1 };
 #define easel_magnifier_levels easel_view_presets

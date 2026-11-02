@@ -6,12 +6,15 @@
 /* Initial window size: 75 % of the monitor in each direction (REQ-0001-41). */
 void easel_view_window_size (int monitor_width, int monitor_height, int *width, int *height);
 
-/* The zoom levels in percent: 10, 25, 50, 100, 200, 300, 400, 600, 800. */
+/* The zoom levels in percent: 10, 25, 50, 100, 200, 300, 400, 600, 800, 1600 (1600: JOD, 2026-10-27). */
 int easel_view_zoom_step (int pct, int notches);
 
 /* The zoom presets (REQ-0008-01): the levels the Magnifier's options and the View > Zoom submenu offer, in this order.
    Every preset is a zoom level (REQ-0008-06); 10, 25, 50 and 300 % are levels and not presets. */
-enum { EASEL_VIEW_N_PRESETS = 5 };
+enum { EASEL_VIEW_N_PRESETS = 6 };
+
+/* The largest zoom Fit to Window gives (REQ-0004-07); the levels go on to 1600 % (REQ-0001-16). */
+enum { EASEL_VIEW_FIT_MAX = 800 };
 extern const int easel_view_presets[EASEL_VIEW_N_PRESETS];
 
 /* The index of pct in easel_view_presets, or -1 when it is not a preset (10, 25, 50, 300, a Fit to Window zoom such as 42). */
@@ -33,13 +36,13 @@ double easel_view_anchor (double scroll, double pointer, int old_pct, int new_pc
                           double view_size);
 
 /* Fit to Window (REQ-0004-07): the largest whole percent at which a pic_w x pic_h picture fits in an area_w x area_h
-   canvas area, all in device pixels with no scrollbars counted, limited to 10 to 800 (10 if even that is too big). It
+   canvas area, all in device pixels with no scrollbars counted, limited to 10 to EASEL_VIEW_FIT_MAX, 800 (10 if even that is too big). It
    is usually not one of the zoom levels; easel_view_zoom_step steps from it to the level above or below. */
 int easel_view_fit_zoom (int area_w, int area_h, int pic_w, int pic_h, double scale);
 
 /* The pinch (REQ-0004-08). *base is the gesture's scale at the last level change (1.0 when a gesture begins); scale
    is its scale now; pct is the current zoom. Returns +1 or -1 when the scale has changed by 1.5x since *base and the
-   zoom can move that way, else 0; on a 1.5x change *base becomes scale, also when the zoom cannot move (at 800 % or
+   zoom can move that way, else 0; on a 1.5x change *base becomes scale, also when the zoom cannot move (at 1600 % or
    10 %). */
 int easel_view_pinch (double *base, double scale, int pct);
 

@@ -13,8 +13,8 @@ as3_magnifier_zoom_rule (void)
 {
   /* 1x, 2x, 4x, 6x and 8x (REQ-0007-02 as amended by REQ-0008-02: no reduction levels). */
   CHECK (easel_magnifier_levels[0] == 100 && easel_magnifier_levels[1] == 200 && easel_magnifier_levels[2] == 400
-         && easel_magnifier_levels[3] == 600 && easel_magnifier_levels[4] == 800);
-  CHECK (EASEL_MAGNIFIER_N_LEVELS == 5);
+         && easel_magnifier_levels[3] == 600 && easel_magnifier_levels[4] == 800 && easel_magnifier_levels[5] == 1600);
+  CHECK (EASEL_MAGNIFIER_N_LEVELS == 6);
   CHECK (easel_magnifier_levels[EASEL_MAGNIFIER_DEFAULT] == 200);               /* 2x at start-up */
   CHECK (easel_magnifier_zoom (100, 200) == 200);
   CHECK (easel_magnifier_zoom (200, 200) == 100);                  /* the same level again goes back */
@@ -25,6 +25,9 @@ as3_magnifier_zoom_rule (void)
   CHECK (easel_magnifier_zoom (42, 200) == 200);                   /* the fit zoom of a 3000 x 2000 picture */
   CHECK (easel_magnifier_zoom (300, 400) == 400);
   CHECK (easel_magnifier_zoom (800, 800) == 100);
+  CHECK (easel_magnifier_zoom (1600, 1600) == 100);              /* 16x at 1600 %: back to 100 % (0007's AS-19) */
+  CHECK (easel_magnifier_zoom (100, 1600) == 1600);
+  CHECK (easel_magnifier_zoom (1600, 200) == 200);
   CHECK (easel_magnifier_zoom (800, 200) == 200);
   CHECK (easel_magnifier_zoom (10, 600) == 600);
   CHECK (easel_magnifier_zoom (100, 100) == 100);                  /* 1x: back to 100 %, and at 100 % nothing changes */
