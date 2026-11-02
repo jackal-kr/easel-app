@@ -1,6 +1,6 @@
 # 0025 Pixel contract tests
 
-Status: accepted
+Status: implemented
 Reviewed: spec-reviewer, 2026-10-28 (changes after the review shown to JOD old/new, not reviewed again)
 Depends on: 0001, 0004, 0006, 0007, 0009, 0010, 0012, 0013, 0014, 0015, 0016, 0017, 0018 (the features whose pixels the contract covers)
 
@@ -26,7 +26,7 @@ device pixel is one dot of the screen. P7.2 is stated from 100 % up, where a pic
   size or the picture's size), and it shall be at most half a device pixel from k × zoom/100. A scroll of N device pixels moves every edge by exactly N. Which way
   an edge exactly halfway between two device pixels goes is not specified. (A fractional screen
   scale is not tested yet: it waits for a real screen, see Out of scope.)
-- REQ-0025-03 (P7.3) A preview, a floating selection and a text box shall show exactly the pixels the put-down writes, made by the same
+- REQ-0025-03 (P7.3) A preview, a floating selection and a text box shall show exactly the pixels the put-down writes (a pending Polygon shows the sides drawn so far; the closing side is written only when it closes, so it is not part of this comparison), made by the same
   rules, in Opaque and Transparent mode, at any zoom and scroll position (the overlays of REQ-0025-05 excepted). The one exception: while
   the view shows more than 3000 picture rows (far below 100 %), a shape's preview draws one row in every few, so that a frame costs what
   the view costs (REQ-0010-05); the put-down writes every row.
@@ -47,6 +47,7 @@ device pixel is one dot of the screen. P7.2 is stated from 100 % up, where a pic
 ## Scenarios
 - AS-1 (REQ-0025-02) Given a 200 × 150 picture in which every pixel has a color different from its four neighbours, When the canvas is drawn, for every combination, at 100, 200, 300, 400, 600, 800 and 1600 % in canvas areas of 1390 × 853, 1001 × 777 and 514 × 366 logical pixels (the smallest the window allows with its panels showing), scrolled to the start, by 1 logical pixel, by 7 logical pixels, to the middle and to the far corner (where the picture is larger than the area; else it stays at its place), Then each visible picture pixel (x, y) is drawn on every device pixel of one square of zoom/100 device pixels on a side and on no other, the squares of neighbouring pixels touch with no gap and no overlap, and moving the scroll by one logical pixel moves every square by one logical pixel and changes no square's size; Given an 8000 × 8000 picture at 800 % and at 1600 % scrolled to its far corner, Then the pixel (7999, 7999) is drawn as one square of the same size | Verified by: automated (ui, a rendered window)
 - AS-1b (REQ-0025-02) Given the same as AS-1 on a screen of scale 2, Then each picture pixel is drawn as a square of zoom/100 device pixels on a side, as on a screen of scale 1 | Verified by: automated (ui, a rendered window, on a session of scale 2)
+- AS-1e (REQ-0001-18) Given black and white columns, a checkerboard and a picture with every pixel different, on a screen of scale 2, at 10, 25, 33, 50 and 75 %, Then every device pixel is exactly one picture pixel's color | Verified by: automated (ui, a rendered window, scale 2)
 - AS-1c (REQ-0025-02) Given a 757 × 100 picture and a 900 × 100 picture in which every pixel has a color different from its neighbours, When Fit to Window is chosen in a canvas area 1001 wide for the first (129 %) and 1374 wide for the second (150 %), the area is then made 514 wide with the zoom kept, and the canvas is drawn scrolled to the start, by 1 logical pixel, by 7 logical pixels and to the far end, Then, with the edges read from the drawn pixels on every row and column: each square is the floor or the ceiling of the zoom's size, neighbours share an edge, each edge is at most half a device pixel from k × zoom/100, a scroll of N device pixels moves every edge by exactly N, and the first 757 edges at 129 % are the same as those of the first 757 pixels of a 900 × 100 picture at 129 % (Fit to Window in 1185 wide) | Verified by: automated (ui, a rendered window)
 - AS-1d (REQ-0025-02, REQ-0025-05) Given each picture of AS-1c at its zoom with a grid cell of 4, When the canvas is drawn with the grid off and on at each scroll position of AS-1c, Then every vertical grid line lies on the device column where the square of picture pixel 4k starts, every horizontal one on the row where the square of 4k starts, both read from the frame with the grid off, and no line falls inside a square | Verified by: automated (ui, a rendered window)
 - AS-2 (REQ-0025-04, REQ-0025-06) Given a 200 × 150 picture with the grid off, When a drag from the picture pixel (20, 30) to (150, 100) is made with the Pencil, the Brush, the Eraser, the Line (width 3), the Rectangle (width 2, filled), the Ellipse (width 4) and the Gradient, a Curve (the end points (20, 30) and (150, 100) and the control points (60, 120) and (110, 10)), a Polygon (the corners (20, 30), (150, 100), (30, 140), closed by a click on the first corner), and a Fill is clicked at (60, 60) inside a filled Rectangle drawn first from (40, 40) to (90, 90), once at 100 %, once at 129 %, once at 400 % and once at 800 %, with the pointer at the centre of each pixel, and once at 25 % and once at 50 % with each pointer position at the left and top edge of its pixel (the pixel's coordinates × zoom/100, which maps back to the same pixel), Then the picture's pixels are identical to those of the 100 % run in each of the other runs (all 30 000 of them) | Verified by: automated (ui)
@@ -61,10 +62,11 @@ device pixel is one dot of the screen. P7.2 is stated from 100 % up, where a pic
 
 ## Edge cases
 - A picture smaller than the canvas area: its squares are as in AS-1; the margin and the shadow around it (REQ-0009-01) are not picture pixels and are not counted.
-- A zoom below 100 % (Fit to Window): REQ-0025-02 does not apply, REQ-0025-04 and REQ-0025-06 do (AS-2's 25 % and 50 % runs). A zoom that is not a multiple of 100 % (Fit to Window's 129 % for a 757-pixel picture in 1001, say) follows REQ-0025-02's rule for a fractional zoom: AS-1c.
+- A zoom below 100 % (Fit to Window): REQ-0025-02 does not apply, REQ-0025-04 and REQ-0025-06 do (AS-2's 25 % and 50 % runs). On a screen of scale 2, REQ-0001-18 holds as at scale 1: AS-1e. A zoom that is not a multiple of 100 % (Fit to Window's 129 % for a 757-pixel picture in 1001, say) follows REQ-0025-02's rule for a fractional zoom: AS-1c.
 - A named exception: the 4 logical pixels at the view's border are the scrolled window's own shading, drawn over a scrolled view, and are not counted in AS-1 to AS-1d (found from where the pixels sat, not from GTK's code).
 - The overlay scrollbars lie over the view's far sides once the picture outgrows the area; they are the window's, and what they cover is not counted in AS-1 to AS-1d.
-- At a fractional zoom the tint, the outline and the box's frame may lie up to 2 device pixels off the drawn cell edges (JOD, 2026-11-02: accepted; the test overlay_sides_at_fractional_zoom stays under /0025-open/ as a known-red record).
+- At a fractional zoom the tint, the outline, the box's frame and the picture's far-edge resize handles may lie up to 2 device pixels off the drawn cell edges (JOD, 2026-11-02: accepted; the test overlay_sides_at_fractional_zoom stays under /0025-open/ as a known-red record).
+- If there is no memory for a view built on the drawn edges, that frame is drawn by the renderer's scaling instead: the picture and the undo steps are untouched, no dialog shows, and the next frame tries again (JOD, 2026-11-02).
 - A very large picture (8000 × 8000) at 800 % and 1600 % scrolled to its far corner: in AS-1.
 - A window resize or a zoom change while a preview, a float or a text box is shown: the shown pixels stay those the put-down writes; the cases are those of 0015 (zoom changes during a stretch) and 0017 (the view changing with a box open), and are not repeated here.
 - Undo and Redo of a put-down give the same pixels again (a case of REQ-0025-04, checked in AS-5's transforms and in the history tests of 0002).
@@ -146,7 +148,9 @@ The numbers (`probe-edge-drawing frames`, 2026-11-02, real session, `GskVulkanRe
 | AS | Test |
 |---|---|
 | AS-1 | `as1_squares_at_whole_zooms`, `as1_far_corner_of_8000` |
-| AS-1b | `as1b_squares_at_scale_2` |
+| AS-1b | `as1b_squares_at_scale_2`, `as1b_far_corner_of_8000` |
+| AS-1e | `as1e_no_blend_below_100_at_scale_2`, core `built_by_edges_at_any_zoom_on_a_scale_above_1` |
+| Edge case, no memory for the built view | `view_without_memory_falls_back` |
 | AS-1c | `as1c_edges_at_fractional_zoom`, core `as1c_edge_rule`, `draws_by_edges_only_where_a_square_is_fractional` |
 | AS-1d | `as1d_grid_on_cell_edges` |
 | AS-2 | `as2_same_figure_at_any_zoom` |
@@ -207,12 +211,23 @@ The numbers (`probe-edge-drawing frames`, 2026-11-02, real session, `GskVulkanRe
   Result: decided: not done (JOD, 2026-11-02: nothing visible at 129 %). The limit is in the edge cases; `overlay_sides_at_fractional_zoom` stays under `/0025-open/` as a known-red record.
 - [x] T016 AS-4: a float partly outside the picture at 129 % (REQ-0025-03; AS-4) - done when the case passes under cairo, ngl and vulkan and fails under a break
   Result: characterization: `as4_float_partly_outside` passed at its first run, since T010 had already put that part on the drawn edges (1352 device pixels outside the picture, 0 wrong, under all three). Made red by leaving that part to the renderer's scaling (77 wrong under cairo and under vulkan, the first at the picture's far edge, `ff868994` against `ff17203c`) and by moving it a pixel (1352 wrong), shown and reverted. Its mutant is in the list.
+- [x] T017 The first check's findings (REQ-0001-18, REQ-0017-14, REQ-0017-16, REQ-0025-02, REQ-0025-03, REQ-0025-05, REQ-0025-06; AS-1b, AS-1e, AS-3, AS-3b) - done when each finding is settled, with its test or JOD's decision, and the tests are green under the breaks named
+  Result: probe first: below 100 % on scale 2, black and white columns gave up to 263000 grey device pixels of 393750 at 75 % under cairo (all three renderers blend, none at scale 1), so REQ-0001-18 was broken there. `as1e_no_blend_below_100_at_scale_2` failed first with `wrong == 0: 43750`, core `built_by_edges_at_any_zoom_on_a_scale_above_1` with `CHECK failed: py == easel_view_cell_at (d, 75)`; green under cairo, ngl and vulkan once the view and the pointer use one rule (`easel_view_built_by_edges`). Characterizations, each passed at its first run and proven by a mutant: `as1b_far_corner_of_8000` (passed already; its cases share the code of `as1_far_corner_of_8000`), `view_without_memory_falls_back` (the four "no memory" mutants; two survived its first version, so its counts were tightened), the caret and the saved-file checks of AS-3 and the float and box of AS-3b (their mutants). Coverage values: a histogram over 5 fonts, 6 styles and 14 sizes gives no partial value on letters, and every value on a color emoji; the 102 and 154 of the survivor came from the ends of an underline under italic text, which REQ-0017-16 already names, so no defect: `as16_half_covered_underline_ends` kills both threshold mutants (64 and 192). The popover mutant of REQ-0017-14 is marked accepted (JOD, 2026-11-02; GTK 4.24 cannot kill it; re-decide at packaging-release). The long-only mutant of REQ-0014-16 was killed by hand by `as14_long_trace`, the same way twice.
+
+## Known gaps
+What stays open after this spec is in `docs/phase2-plan.md`: the overlay limit at a fractional zoom (accepted), fractional desktop scales, a real screen of scale 2, the frame times of fractional zooms, two small leftovers in the code and the benchmark, and the graphics path audit.
 
 ## Check
-(written by /sdd-check as its last step, about ten lines)
-- Date and commit: YYYY-MM-DD, `abc1234`
-- Tests: `meson test` N of N pass (the cases of this feature: M)
-- Mutants: K killed, C killed by crash (test gap), S survived, as `tools/mutate.sh` reports (seconds)
-- Warnings: 0
-- Scenarios: each AS with its test, marked C for a characterization with how it was proven (the mutant or the manual break that killed it)
-- Findings, each with how it was settled (fixed in T0NN, decided by the owner, left open and why)
+- Date and commit: 2026-11-02, on `9c72974` with T017, the tools and the rules in the working tree. Versions: GTK 4.24.1, Pango 1.58.0, Cairo 1.18.4, GNOME Shell 51.0 (GTK, Pango and the Shell changed on 2026-11-01).
+- Tests: `meson test` 54 of 54 through `tools/isolated.sh` (390 s); `--scale 2 ui-0025-scale2` 1 of 1; the cases of this feature: 14 in `/0025` and 3 in `/0025-scale2`.
+- Mutants, the whole list: 1140 mutants: 1138 killed, 0 killed by crash (test gap), 0 inconclusive (no snapshot or skipped), 0 survived, 0 errors, 1 accepted, 1 long-only (not run) in 733 s. The long-only mutant of REQ-0014-16 was killed by hand by `as14_long_trace`, the same way twice.
+- Warnings: 0 after a forced rebuild. `spec.sh lint`, `lint --names 0025` and `--names 0017`, `mutate.sh --lint`: clean.
+- Scenarios: as in the map. C marks, each proven by the probe, the mutant or the break in its Result: T001, T002, T003 (partly), T007, T009, T011, T012, T014, T016, the AS-2 and AS-2b part of T008, and in T017 `as1b_far_corner_of_8000`, `view_without_memory_falls_back` and the new checks of AS-3 and AS-3b. T007 and T014 are measurements; T014's "done when" was not fully met (shares not obtained), as its Result says, and JOD closed it (no more perf reruns). Each task's Result is in Tasks above.
+- Findings:
+  - F1 Below 100 % at scale 2 the view blended, against REQ-0001-18: fixed in T017, AS-1e.
+  - F2 REQ-0017-16's threshold survived (`e5bbe7e` made coverage almost all whole): the values 102 and 154 are the ends of an underline under italic text, no defect; test added in T017.
+  - F3 REQ-0017-14's popover guard survives on GTK 4.24: survivor, accepted, JOD 2026-11-02, re-decide at packaging-release.
+  - F4 AS-1b lacked the far corner: added in T017. F5 Aborting allocations in the view paths: soft, with a fallback, in T017. F6 Weak spots in AS-3 and AS-3b: fixed in T017.
+  - F7 REQ-0025-03's polygon wording and the far-edge handles' limit: worded (JOD, 2026-11-02). The limit stays open in `docs/phase2-plan.md`.
+  - F8 `tools/isolated.sh` let the session's services see the real accounts: fixed, with `tools/check-isolated-private.sh`.
+  - F9 `docs/engineering.md` was stale on scale 2, Vulkan, the skip counted as OK and the suite's time: fixed.

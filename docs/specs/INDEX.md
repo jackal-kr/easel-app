@@ -28,7 +28,7 @@ Vertical slices first (a thin end-to-end feature), breadth later.
 | 0021 | window-extras | Shortcuts window, thumbnail, frame time, print, context menus, About with acknowledgements (XP Paint, JS Paint) | Adds the View menu's Show Thumbnail item (not in 0004); Frame Time has no View item, only a Preferences setting (Preferences) |
 | 0022 | accessibility | Names/roles, keyboard-only drawing and palette | stretching a selection from the keyboard (0015 has the mouse only) |
 | 0023 | i18n | UI languages: cs, de, en, es, fr, hu, it, pl, pt (pt_BR), ro, ru, uk (uk_UA); English the default and fallback | Mark the 0001 strings (title, quit and save prompts, errors) translatable; deferred from the 0001 check. The language picker goes in Preferences; no right-to-left language |
-| 0024 | packaging-release | Flatpak, deb, AppImage, metadata | |
+| 0024 | packaging-release | Flatpak, deb, AppImage, metadata | Choose the minimum GTK, then re-decide the accepted mutant of REQ-0017-14 (JOD, 2026-11-02: GTK 4.24 cannot kill it) |
 | 0025 | pixel-contract-tests | The six points of P7 (ADR-0003) as requirements, one test per gap, and fixes for what the tests find wrong (fractional-zoom edges, the grid and the pointer on them): the picture as squares, the same drag at two zooms, overlays leaving the picture unchanged, shown equals put-down | Accepted 2026-10-28; runs in this order (JOD): /sdd-check 0018, the 0017 text and tint task, then this feature (its text-box cases fail until the 0017 fix lands); the number moves when it is placed in the order |
 
 ### Phase 2: Modern extras (optional, starts only after the core XP scope is delivered)
@@ -47,6 +47,9 @@ Vertical slices first (a thin end-to-end feature), breadth later.
 - After Gradient: a later change draws the picture and the gradient preview through one path below 100 %, so that the preview
   is exact and its memory bounded (today a gradient dragged at the fit zoom of an 8000 x 8000 picture takes about 390 ms a frame
   and holds the picture's size in memory; the same for a selection dragged at that zoom, about 165 to 173 ms a move and 470 MB, and for the put-down of the whole 8000 x 8000 picture, about 380 ms and 1.8 GB, accepted with 0013). It needs its own spec and Plan.
+
+## Last clean full mutation run
+2026-11-02, the commit of 0025's T017: 1140 mutants, 1 accepted, 1 long-only killed by hand. GTK 4.24.1, Pango 1.58.0, Cairo 1.18.4, GNOME Shell 51.0.
 
 ## Known flakes
 - `/0006/as6_airbrush_sprays` and `/0006/as6_airbrush_follows_the_pointer` (found in 0006, failed again in 0007 and 0008). Cause
