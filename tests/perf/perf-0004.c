@@ -36,18 +36,21 @@ static void
 measure_grid (EaselWindow *win, int w, int h)
 {
   enum { N_FRAMES = 30 };
-  static const struct { const char *what; int cell; gboolean axonometric; } cases[] = {
-    { "frame with the grid, cell 1 at 800 %", 1, FALSE },
-    { "frame with the axonometric grid, cell 4 at 800 %", 4, TRUE },
+  static const struct { const char *what; int zoom; int cell; gboolean axonometric; } cases[] = {
+    { "frame with the grid, cell 1 at 800 %", 800, 1, FALSE },
+    { "frame with the axonometric grid, cell 4 at 800 %", 800, 4, TRUE },
+    { "frame with the grid, cell 1 at 1600 %", 1600, 1, FALSE },
+    { "frame with the axonometric grid, cell 4 at 1600 %", 1600, 4, TRUE },
   };
   EaselCanvas *canvas = easel_window_get_canvas (win);
   double ms[N_FRAMES], work[N_FRAMES];
 
-  /* at 800 %, as the cases' names say (Zoom In from Fit would now go on to 1600 %) */
-  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-to", g_variant_new_int32 (800));
-  wait_for_paint (win);
   for (guint c = 0; c < G_N_ELEMENTS (cases); c++)
     {
+      /* at the zoom the case's name says (Zoom In from Fit would go on past 800 %) */
+      g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-to", g_variant_new_int32 (cases[c].zoom));
+      wait_for_paint (win);
+      g_assert_cmpint (easel_canvas_get_zoom (canvas), ==, cases[c].zoom);
       easel_canvas_set_grid (canvas, TRUE, cases[c].cell, cases[c].axonometric);
       wait_for_paint (win);
       for (int i = 0; i < N_FRAMES; i++)
