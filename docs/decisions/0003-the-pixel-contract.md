@@ -24,7 +24,8 @@ smoothing opt-in); its 1:1 sentence is now point 2. Each drawing feature's spec 
   caret (REQ-0017-05, REQ-0004-12): the grid shows over everything inside the picture.
 - Smooth text, lines, curves, shapes and brushes (Phase 2) stay opt-in and write whole pixels (partial alpha is a colour, not a
   sub-pixel position); they must still satisfy points 2 to 6.
-- Costs: a test per drawing feature for points 3 and 4 (a two-zoom comparison), and a HiDPI check for point 2 that the project cannot
-  run yet (no scale-2 screen; open since 0001, where the zoom is zoom x zoom logical pixels and fractional device sizes must be
-  rounded the same way for every cell).
+- Costs: a test per drawing feature for points 3 and 4 (a two-zoom comparison), and a HiDPI check for point 2. One picture pixel is
+  exactly zoom/100 device pixels on a side (JOD, 2026-11-02: 100 % is 1 device pixel on any screen, as REQ-0001-08 has said since 0001; the
+  first text of point 2 said zoom x zoom logical pixels); at a fractional zoom every edge is one position that depends only on k and the
+  zoom. A screen of scale 2 runs in the private session; no real one is available.
 - Not covered: how colors are chosen, blending rules (ADR-0002 and each spec), file formats.
