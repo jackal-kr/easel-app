@@ -215,10 +215,59 @@ as4_step_holds_what_it_counts (void)
   easel_image_free (img);
 }
 
+/* AS-5 (REQ-0025-01): each shape writes the given color exactly, alpha included, over white, and no other value. */
+static void
+as5_shapes_write_exact_colors (void)
+{
+  static const uint32_t colors[] = { 0x00000000u, 0x80FF0000u, 0xFF336699u };
+  static const int pts[] = { 20, 30, 150, 100, 30, 140 };
+  static const int curve[] = { 20, 30, 150, 100, 60, 120, 110, 10 };
+
+  for (size_t c = 0; c < sizeof colors / sizeof colors[0]; c++)
+    for (int shape = 0; shape < 5; shape++)
+      {
+        EaselImage *img = easel_image_new (200, 150, WHITE);
+        EaselFigure f = figure (EASEL_FIGURE_LINE, 20, 30, 150, 100, 3, EASEL_FIGURE_OUTLINE);
+        size_t changed = 0;
+        int written = 0;
+
+        CHECK (img != NULL);
+        if (shape == 1)
+          f = figure (EASEL_FIGURE_RECTANGLE, 20, 30, 150, 100, 2, EASEL_FIGURE_FILL_ONLY);
+        else if (shape == 2)
+          f = figure (EASEL_FIGURE_ELLIPSE, 20, 30, 150, 100, 4, EASEL_FIGURE_OUTLINE);
+        else if (shape == 3)
+          {
+            f.kind = EASEL_FIGURE_CURVE;
+            f.width = 1;
+            f.pts = curve;
+            f.n_pts = 4;
+          }
+        else if (shape == 4)
+          {
+            f.kind = EASEL_FIGURE_POLYGON;
+            f.width = 1;
+            f.pts = pts;
+            f.n_pts = 3;
+            f.closed = true;
+          }
+        CHECK (easel_figure_apply (img, NULL, &f, colors[c], WHITE, &changed) == EASEL_FIGURE_DONE);
+        for (int i = 0; i < img->width * img->height; i++)
+          {
+            CHECK (img->px[i] == WHITE || img->px[i] == colors[c]);
+            written += img->px[i] == colors[c];
+          }
+        CHECK (written > 0);
+        CHECK ((size_t) written == changed);
+        easel_image_free (img);
+      }
+}
+
 int
 main (void)
 {
   RUN (as10_clipped_and_exact_color);
+  RUN (as5_shapes_write_exact_colors);
   RUN (as13_step_undo_redo_and_nothing);
   RUN (as16_shape_memory_and_budget);
   RUN (as4_step_holds_what_it_counts);

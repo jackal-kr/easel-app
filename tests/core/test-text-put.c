@@ -2,6 +2,7 @@
 /* Putting a text box down, scenarios of feature 0017 (REQ-0017-16). */
 
 #include <malloc.h>
+#include <stdint.h>
 #include <stdlib.h>
 
 #include "check.h"
@@ -140,10 +141,37 @@ as16_step_holds_what_it_counts (void)
   easel_image_free (img);
 }
 
+/* AS-5 (REQ-0025-01, REQ-0017-16): a foreground of any alpha is written as it is, over white, in Transparent and in Opaque mode; never blended. */
+static void
+as5_text_writes_exact_colors (void)
+{
+  static const uint32_t colors[] = { 0x00000000u, HALF_RED, 0xFF336699u };
+
+  for (size_t c = 0; c < sizeof colors / sizeof colors[0]; c++)
+    for (int opaque = 0; opaque < 2; opaque++)
+      {
+        EaselImage *img = easel_image_new (10, 6, WHITE);
+        uint32_t color[6] = { colors[c], colors[c], colors[c], colors[c], colors[c], colors[c] };
+        uint8_t mask[6] = { 1, 1, 0, 0, 0, 1 };
+        EaselTextInk ink = { 3, 2, 3, 2, color, mask };
+
+        CHECK (img != NULL);
+        CHECK (easel_text_put_down (img, NULL, 2, 1, 5, 3, &ink, opaque, YELLOW, SIZE_MAX) == EASEL_SELECTION_DONE);
+        CHECK (easel_image_get (img, 3, 2) == colors[c]);
+        CHECK (easel_image_get (img, 4, 2) == colors[c]);
+        CHECK (easel_image_get (img, 5, 3) == colors[c]);
+        /* What has no ink: the background in Opaque mode, inside the box; otherwise what was there. */
+        CHECK (easel_image_get (img, 5, 2) == (opaque ? YELLOW : WHITE));
+        CHECK (easel_image_get (img, 0, 0) == WHITE);
+        easel_image_free (img);
+      }
+}
+
 int
 main (void)
 {
   RUN (as16_put_down_ink);
+  RUN (as5_text_writes_exact_colors);
   RUN (put_down_without_memory);
   RUN (as16_step_holds_what_it_counts);
   return 0;

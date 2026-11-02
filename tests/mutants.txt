@@ -2551,10 +2551,10 @@ test: ui-0012
 file: src/ui/canvas.c
 test: ui-0012
 --- find
-        if (preview != NULL && preview[ty * self->tile_cols + tx] != NULL)
-          tile = preview[ty * self->tile_cols + tx];
+          if (preview != NULL && preview[ty * self->tile_cols + tx] != NULL)
+            tile = preview[ty * self->tile_cols + tx];
 --- replace
-        if (preview != NULL && preview[ty * self->tile_cols + tx] != NULL)
+          if (preview != NULL && preview[ty * self->tile_cols + tx] != NULL)
           (void) tile;
 
 === REQ-0012-07 the preview is laid one pixel off its tile
@@ -10568,3 +10568,163 @@ test: core-view
   return zoom > EASEL_VIEW_FIT_MAX ? EASEL_VIEW_FIT_MAX : (int) zoom;          /* Fit stops at 800 % (REQ-0004-07) */
 --- replace
   return zoom > zoom_levels[N_LEVELS - 1] ? zoom_levels[N_LEVELS - 1] : (int) zoom;
+=== REQ-0025-01 a figure blends a half-transparent color with what is under it
+file: src/core/figure.c
+test: core-figure-apply
+--- find
+    if (!easel_change_log_set (l, img, x, y, color))
+--- replace
+    if (!easel_change_log_set (l, img, x, y, (color >> 24) == 0x80 ? 0xFFFF8080u : color))
+=== REQ-0025-01 a text foreground of #00000000 is written as white
+file: src/core/text-put.c
+test: core-text-put
+--- find
+        return ink->color[i];
+--- replace
+        return ink->color[i] == 0 ? 0xFFFFFFFFu : ink->color[i];
+=== REQ-0025-02 an edge is rounded down, not to the nearest device pixel
+file: src/core/view.c
+test: ui-0025
+--- find
+  return (int) floor ((double) k * pct / 100.0 + 0.5);
+--- replace
+  return (int) floor ((double) k * pct / 100.0);
+=== REQ-0025-02 a fractional zoom is left to the renderer's scaling
+file: src/core/view.c
+test: ui-0025
+--- find
+  return pct >= 100 && pct % 100 != 0;
+--- replace
+  return false;
+=== REQ-0025-02 a tile drawn 1 device pixel off its place
+file: src/ui/canvas.c
+test: ui-0025
+--- find
+r = GRAPHENE_RECT_INIT ((float) (tx * EASEL_CANVAS_TILE * l), (float) (ty * EASEL_CANVAS_TILE * l),
+--- replace
+r = GRAPHENE_RECT_INIT ((float) (tx * EASEL_CANVAS_TILE * l + 1), (float) (ty * EASEL_CANVAS_TILE * l),
+=== REQ-0025-02 the built view is kept across a scroll
+file: src/ui/canvas.c
+test: ui-0025
+--- find
+|| self->view_x != x0 || self->view_y != y0 ||
+--- replace
+|| self->view_y != y0 ||
+=== REQ-0025-02 the built view is kept across a change of the picture
+file: src/ui/canvas.c
+test: ui-0025
+--- find
+ || self->view_gen != self->tiles_gen ||
+--- replace
+ ||
+=== REQ-0025-02 an axis line of the grid floors its place, not the cell's edge
+file: src/ui/canvas.c
+test: ui-0025
+--- find
+GridDraw d = { NULL, l, scale, view_built_by_edges (self) ? self->zoom : 0 };
+--- replace
+GridDraw d = { NULL, l, scale, 0 };
+=== REQ-0025-03 a floating selection is left out of the built view
+file: src/ui/canvas.c
+test: ui-0025
+--- find
+                  if (preview[id] == NULL)
+--- replace
+                  if (TRUE)
+=== REQ-0025-03 the text box is left to the renderer's scaling at a fractional zoom
+file: src/ui/canvas.c
+test: ui-0025
+--- find
+  if (view_built_by_edges (self))
+    {
+      append_cells_by_edges (self, snapshot, px, x0, y0, rw, rh);
+--- replace
+  if (FALSE)
+    {
+      append_cells_by_edges (self, snapshot, px, x0, y0, rw, rh);
+=== REQ-0025-03 a shape's preview is placed at k x zoom, not on the drawn edges
+file: src/ui/canvas.c
+test: ui-0025
+--- find
+          if (by_edges)
+            {
+              /* On the squares drawn under it (REQ-0025-03). */
+--- replace
+          if (FALSE)
+            {
+              /* On the squares drawn under it (REQ-0025-03). */
+=== REQ-0025-03 a shape's preview run is one pixel short
+file: src/ui/canvas.c
+test: ui-0025
+--- find
+(float) ((easel_view_edge (x1 + 1, self->zoom) - ax) / scale),
+--- replace
+(float) ((easel_view_edge (x1, self->zoom) - ax) / scale),
+=== REQ-0025-04 the put-down of a text box depends on the zoom
+file: src/ui/canvas.c
+test: ui-0025
+--- find
+  r = easel_text_put_down (self->img, self->history, x, y, w, h, &self->text_ink,
+--- replace
+  self->text_ink.x += self->zoom > 100;
+  r = easel_text_put_down (self->img, self->history, x, y, w, h, &self->text_ink,
+=== REQ-0025-05 the grid writes into the picture's pixels
+file: src/ui/canvas.c
+test: ui-0025
+--- find
+  cairo_set_antialias (d.cr, CAIRO_ANTIALIAS_NONE);
+  cairo_set_source_rgba (d.cr, 0.5, 0.5, 0.5, 0.5);
+--- replace
+  self->img->px[0] = 0xFF808080u;
+  cairo_set_antialias (d.cr, CAIRO_ANTIALIAS_NONE);
+  cairo_set_source_rgba (d.cr, 0.5, 0.5, 0.5, 0.5);
+=== REQ-0025-05 the tint hides the pixels
+file: src/ui/canvas.c
+test: ui-0025
+--- find
+GdkRGBA tint = { accent->red, accent->green, accent->blue, 0.12f };
+--- replace
+GdkRGBA tint = { accent->red, accent->green, accent->blue, 1.0f };
+=== REQ-0025-05 the text box is drawn over the grid
+file: src/ui/canvas.c
+test: ui-0025
+--- find
+  append_text_box (self, snapshot, l);           /* the box's pixels, under the grid and the tint (REQ-0017-05) */
+  append_shape_preview (self, snapshot);
+  if (easel_canvas_grid_is_drawn (self))
+    append_grid (self, snapshot);
+--- replace
+  append_shape_preview (self, snapshot);
+  if (easel_canvas_grid_is_drawn (self))
+    append_grid (self, snapshot);
+  append_text_box (self, snapshot, l);
+=== REQ-0025-06 the pointer maps by the division at a fractional zoom
+file: src/core/view.c
+test: ui-0025
+--- find
+  if (easel_view_draws_by_edges (pct) && scale == floor (scale))
+--- replace
+  if (false)
+=== REQ-0025-06 a negative position is truncated toward zero
+file: src/core/view.c
+test: ui-0025
+--- find
+  *px = (int) floor (x / l);
+--- replace
+  *px = (int) (x / l);
+=== REQ-0025-06 the pointer is scaled by the zoom before it is mapped
+file: src/core/view.c
+test: ui-0025
+--- find
+  *py = (int) floor (y / l);
+--- replace
+  *py = (int) floor (y / l * (pct > 100 ? 2 : 1));
+=== REQ-0025-03 a float's part outside the picture is left to the renderer's scaling
+file: src/ui/canvas.c
+test: ui-0025
+--- find
+        if (by_edges)
+          append_cells_by_edges (self, snapshot, g_bytes_get_data (data, NULL), x0, y0, rw, rh);
+--- replace
+        if (FALSE)
+          append_cells_by_edges (self, snapshot, g_bytes_get_data (data, NULL), x0, y0, rw, rh);

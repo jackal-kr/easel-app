@@ -339,6 +339,110 @@ as17_size_from_movement (void)
   CHECK (w == 300 && h == 200);
 }
 
+/* REQ-0025-02, AS-1c: the place of a square's edge, ties included. */
+static void
+as1c_edge_rule (void)
+{
+  CHECK (easel_view_edge (0, 129) == 0);
+  CHECK (easel_view_edge (1, 129) == 1);          /* 1.29 */
+  CHECK (easel_view_edge (16, 129) == 21);        /* 20.64 */
+  CHECK (easel_view_edge (50, 129) == 65);        /* 64.5, the code's choice for a tie */
+  CHECK (easel_view_edge (3, 150) == 5);          /* 4.5 */
+  CHECK (easel_view_edge (-1, 129) == -1);        /* -1.29 */
+  CHECK (easel_view_edge (7, 800) == 56);
+  CHECK (easel_view_edge (8000, 1600) == 128000);
+  /* A square's size is the floor or the ceiling, and the neighbours touch. */
+  for (int k = -200; k < 3000; k++)
+    {
+      int w = easel_view_edge (k + 1, 129) - easel_view_edge (k, 129);
+
+      CHECK (w == 1 || w == 2);
+    }
+}
+
+/* REQ-0025-06, AS-2c: the inverse, for every device pixel of every square; on a border the square that starts there; a negative place is a
+   negative pixel. */
+static void
+as2c_cell_at_is_the_inverse (void)
+{
+  static const int zooms[] = { 100, 113, 129, 133, 150, 171, 200, 258, 300, 400, 800, 1600 };
+
+  for (size_t z = 0; z < sizeof zooms / sizeof zooms[0]; z++)
+    for (int k = -200; k < 3000; k++)
+      {
+        int a = easel_view_edge (k, zooms[z]), b = easel_view_edge (k + 1, zooms[z]);
+
+        for (int d = a; d < b; d++)
+          CHECK (easel_view_cell_at (d, zooms[z]) == k);
+      }
+  CHECK (easel_view_cell_at (-1, 129) == -1);
+  CHECK (easel_view_cell_at (20, 129) == 15);      /* the square of 16 starts at 21 */
+  CHECK (easel_view_cell_at (21, 129) == 16);
+  /* At a whole size it is the plain division, rounded down. */
+  for (int d = -500; d < 5000; d++)
+    {
+      int down = d >= 0 ? d / 4 : -((-d + 3) / 4);
+
+      CHECK (easel_view_cell_at (d, 400) == down);
+    }
+  CHECK (easel_view_cell_at (63999, 800) == 7999);
+  CHECK (easel_view_cell_at (127999, 1600) == 7999);
+}
+
+/* AS-2b: for every k up to 1000 at 129 %, the column where the square of k starts is the pixel k. */
+static void
+as2b_pointer_on_border (void)
+{
+  for (int k = 0; k <= 1000; k++)
+    {
+      int px, py;
+
+      easel_view_to_pixel (easel_view_edge (k, 129), easel_view_edge (k, 129), 129, 1, &px, &py);
+      CHECK (px == k && py == k);
+      /* The last device pixel before that border belongs to the square before it, on any row. */
+      if (k > 0)
+        {
+          easel_view_to_pixel (easel_view_edge (k, 129) - 0.25, 0, 129, 1, &px, &py);
+          CHECK (px == k - 1);
+        }
+    }
+  /* What matters is the square drawn there, not k x zoom: 16 x 1.29 is the device column 20, which shows the pixel 15. */
+  {
+    int px, py;
+
+    easel_view_to_pixel (16 * 1.29, 0, 129, 1, &px, &py);
+    CHECK (px == 15);
+    easel_view_to_pixel (-0.5, 30.5, 129, 1, &px, &py);
+    CHECK (px == -1);
+    /* A screen of scale 2: 0.5 logical pixels are one device pixel. */
+    easel_view_to_pixel (21 / 2.0, 0, 129, 2, &px, &py);
+    CHECK (px == 16);
+    /* A whole size and a zoom below 100 %: the division, unchanged. */
+    easel_view_to_pixel (21.0, -0.5, 400, 1, &px, &py);
+    CHECK (px == 5 && py == -1);
+    easel_view_to_pixel (21.0, 0, 50, 1, &px, &py);
+    CHECK (px == 42);
+    /* A fractional screen scale: unchanged too, untested on a real screen (the Plan). */
+    easel_view_to_pixel (1.0, 0, 129, 1.5, &px, &py);
+    CHECK (px == (int) floor (1.0 / (129 / 150.0)));
+  }
+}
+
+/* REQ-0025-02, the Plan: below 100 % and at a whole size the view stays as it is. */
+static void
+draws_by_edges_only_where_a_square_is_fractional (void)
+{
+  CHECK (easel_view_draws_by_edges (129));
+  CHECK (easel_view_draws_by_edges (150));
+  CHECK (easel_view_draws_by_edges (101));
+  CHECK (!easel_view_draws_by_edges (100));
+  CHECK (!easel_view_draws_by_edges (300));
+  CHECK (!easel_view_draws_by_edges (1600));
+  CHECK (!easel_view_draws_by_edges (99));
+  CHECK (!easel_view_draws_by_edges (75));
+  CHECK (!easel_view_draws_by_edges (50));
+}
+
 int
 main (void)
 {
@@ -356,5 +460,9 @@ main (void)
   RUN (as17_zoomed_click_maps_to_pixel);
   RUN (as17_size_from_movement);
   RUN (content_size_covers_picture);
+  RUN (as1c_edge_rule);
+  RUN (as2c_cell_at_is_the_inverse);
+  RUN (as2b_pointer_on_border);
+  RUN (draws_by_edges_only_where_a_square_is_fractional);
   return 0;
 }

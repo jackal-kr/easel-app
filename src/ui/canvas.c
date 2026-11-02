@@ -41,6 +41,10 @@ struct _EaselCanvas
   GdkTexture **tiles;     /* tile_cols x tile_rows textures, row by row; see EASEL_CANVAS_TILE */
   int tile_cols, tile_rows;
   gsize tiles_rebuilt;    /* test hook, see easel_canvas_get_tiles_rebuilt () */
+  GdkTexture *view_tex;   /* the view built by the edges (REQ-0025-02), kept for a repaint with nothing changed */
+  int view_x, view_y, view_w, view_h, view_zoom;
+  guint view_gen;
+  gboolean view_kept;
   guint tiles_gen;        /* counts every tile rebuilt or dropped: a cached preview of a selection is stale after it */
   /* The trail of a floating selection (0014 T023), per tile, NULL where not laid: the picture, the hole and the copies laid so far, and
      its texture; the float laid over a copy of it, for the tiles under the float; and what a frame draws in each tile (borrowed). */
@@ -266,6 +270,9 @@ static gboolean on_spray_tick (gpointer data);
    reach 5 + 2 pixels past the picture, inside the margin of EASEL_VIEW_MARGIN around it (REQ-0009-01). */
 #define HANDLE_SIZE 5.0
 #define HANDLE_HIT 9.0
+static gboolean view_built_by_edges (EaselCanvas *self);
+static void append_cells_by_edges (EaselCanvas *self, GtkSnapshot *snapshot, const uint32_t *px, int x0, int y0, int rw, int rh);
+
 #define TEXT_BAND 4.0          /* the width of a text box's move band, logical pixels (REQ-0017-09) */
 #define MARKER_SIZE 5.0          /* a gradient's marker: the size of a handle (REQ-0012-13) ... */
 #define MARKER_HIT 9.0           /* ... and its hit area */
@@ -316,6 +323,7 @@ free_tiles (EaselCanvas *self)
   for (int i = 0; self->tiles != NULL && i < self->tile_cols * self->tile_rows; i++)
     g_clear_object (&self->tiles[i]);
   g_clear_pointer (&self->tiles, g_free);
+  g_clear_object (&self->view_tex);
   self->tile_cols = self->tile_rows = 0;
 }
 
@@ -1679,6 +1687,12 @@ append_text_box (EaselCanvas *self, GtkSnapshot *snapshot, double l)
           c = ink->color[(size_t) (y - ink->y) * ink->w + (x - ink->x)];
         px[(gsize) j * rw + i] = c;
       }
+  if (view_built_by_edges (self))
+    {
+      append_cells_by_edges (self, snapshot, px, x0, y0, rw, rh);      /* on the squares drawn under it (REQ-0025-03) */
+      g_free (px);
+      return;
+    }
   data = g_bytes_new_take (px, (gsize) rw * rh * sizeof *px);
   texture = gdk_memory_texture_new (rw, rh, PICTURE_FORMAT, data, (gsize) rw * sizeof *px);
   gtk_snapshot_append_scaled_texture (snapshot, texture, GSK_SCALING_FILTER_NEAREST,
@@ -1783,6 +1797,7 @@ append_float_outside (EaselCanvas *self, GtkSnapshot *snapshot, double l)
   int vx0, vy0, vx1, vy1, x0, y0, x1, y1, rw, rh;
   float pw, ph;
   uint32_t *px;
+  gboolean by_edges;
   g_autoptr (GBytes) data = NULL;
   g_autoptr (GdkTexture) texture = NULL;
 
@@ -1817,8 +1832,9 @@ append_float_outside (EaselCanvas *self, GtkSnapshot *snapshot, double l)
       }
   data = g_bytes_new_take (px, (gsize) rw * rh * sizeof *px);
   texture = gdk_memory_texture_new (rw, rh, PICTURE_FORMAT, data, (gsize) rw * sizeof *px);
-  pw = (float) (self->img->width * l);
-  ph = (float) (self->img->height * l);
+  by_edges = view_built_by_edges (self);
+  pw = (float) (by_edges ? easel_view_edge (self->img->width, self->zoom) / easel_canvas_get_scale (self) : self->img->width * l);
+  ph = (float) (by_edges ? easel_view_edge (self->img->height, self->zoom) / easel_canvas_get_scale (self) : self->img->height * l);
   {
     const float big = 1e5f;                                  /* past any picture, and within the range Cairo can clip */
     const graphene_rect_t bands[] = {
@@ -1831,9 +1847,12 @@ append_float_outside (EaselCanvas *self, GtkSnapshot *snapshot, double l)
     for (guint b = 0; b < G_N_ELEMENTS (bands); b++)
       {
         gtk_snapshot_push_clip (snapshot, &bands[b]);
-        gtk_snapshot_append_scaled_texture (snapshot, texture, GSK_SCALING_FILTER_NEAREST,
-                                            &GRAPHENE_RECT_INIT ((float) (x0 * l), (float) (y0 * l), (float) (rw * l),
-                                                                 (float) (rh * l)));
+        if (by_edges)
+          append_cells_by_edges (self, snapshot, g_bytes_get_data (data, NULL), x0, y0, rw, rh);
+        else
+          gtk_snapshot_append_scaled_texture (snapshot, texture, GSK_SCALING_FILTER_NEAREST,
+                                              &GRAPHENE_RECT_INIT ((float) (x0 * l), (float) (y0 * l), (float) (rw * l),
+                                                                   (float) (rh * l)));
         gtk_snapshot_pop (snapshot);
       }
   }
@@ -3146,7 +3165,181 @@ typedef struct
   cairo_t *cr;
   double l;         /* logical pixels per picture pixel */
   double scale;     /* device pixels per logical pixel */
+  int edge_zoom;    /* not 0: the view is built by the edges at this zoom, and an axis line lies on a cell's edge (REQ-0025-02) */
 } GridDraw;
+
+/* Whether the view is built here, cell by cell, and not left to the renderer's scaling (REQ-0025-02). At a fractional zoom the renderers put
+   an edge halfway between two device pixels either way, by the row and the scroll (0025's Plan, the probes). On a screen of scale 2 a scaled
+   texture with NEAREST mixes neighbouring pixels at any zoom (a bare GTK program does it, under Cairo and Vulkan), and a plain one does not.
+   Below 100 % the view stays as it is, and so does a fractional screen scale, untested (the Plan). */
+static gboolean
+view_built_by_edges (EaselCanvas *self)
+{
+  double scale = easel_canvas_get_scale (self);
+
+  return self->zoom >= 100 && scale == floor (scale) && (easel_view_draws_by_edges (self->zoom) || scale != 1);
+}
+
+/* Pixels of the picture's grid (the rectangle x0, y0, rw, rh of px, which has rw pixels to a row) as device pixels on the drawn edges, only what
+   the view shows (REQ-0025-03): what lies over the picture falls on its squares. */
+static void
+append_cells_by_edges (EaselCanvas *self, GtkSnapshot *snapshot, const uint32_t *px, int x0, int y0, int rw, int rh)
+{
+  double scale = easel_canvas_get_scale (self);
+  int zoom = self->zoom;
+  graphene_rect_t seen;
+  int dx0, dy0, dx1, dy1, vw, vh, prev_y = INT_MIN;
+  uint32_t *dst;
+  int *xk;
+  g_autoptr (GBytes) bytes = NULL;
+  g_autoptr (GdkTexture) texture = NULL;
+
+  if (!gtk_widget_compute_bounds (gtk_widget_get_parent (GTK_WIDGET (self)), GTK_WIDGET (self), &seen))
+    return;
+  dx0 = MAX (easel_view_edge (x0, zoom), (int) floor (seen.origin.x * scale));
+  dy0 = MAX (easel_view_edge (y0, zoom), (int) floor (seen.origin.y * scale));
+  dx1 = MIN (easel_view_edge (x0 + rw, zoom), (int) ceil ((seen.origin.x + seen.size.width) * scale));
+  dy1 = MIN (easel_view_edge (y0 + rh, zoom), (int) ceil ((seen.origin.y + seen.size.height) * scale));
+  vw = dx1 - dx0;
+  vh = dy1 - dy0;
+  if (vw <= 0 || vh <= 0)
+    return;
+  dst = g_new (uint32_t, (gsize) vw * (gsize) vh);
+  xk = g_new (int, vw);
+  for (int i = 0; i < vw; i++)
+    xk[i] = easel_view_cell_at (dx0 + i, zoom) - x0;
+  for (int r = 0; r < vh; r++)
+    {
+      int ky = easel_view_cell_at (dy0 + r, zoom);
+      uint32_t *row = dst + (gsize) r * vw;
+
+      if (ky == prev_y)
+        memcpy (row, row - vw, (gsize) vw * sizeof (uint32_t));
+      else
+        {
+          const uint32_t *src = px + (gsize) (ky - y0) * rw;
+
+          for (int i = 0; i < vw; i++)
+            row[i] = src[xk[i]];
+        }
+      prev_y = ky;
+    }
+  g_free (xk);
+  bytes = g_bytes_new_take (dst, (gsize) vw * (gsize) vh * sizeof (uint32_t));
+  texture = gdk_memory_texture_new (vw, vh, PICTURE_FORMAT, bytes, (gsize) vw * sizeof (uint32_t));
+  gtk_snapshot_append_texture (snapshot, texture, &GRAPHENE_RECT_INIT ((float) (dx0 / scale), (float) (dy0 / scale), (float) (vw / scale), (float) (vh / scale)));
+}
+
+/* The part of the picture in view at device size, each device pixel from the cell the edge rule puts there, through a source index per device
+   column (0025's Plan, T001). While a preview replaces some tiles their pixels are read from those; a repaint with nothing changed reuses the
+   last texture. */
+static void
+append_view_by_edges (EaselCanvas *self, GtkSnapshot *snapshot, GdkTexture **preview)
+{
+  const EaselImage *img = self->img;
+  double scale = easel_canvas_get_scale (self);
+  int zoom = self->zoom;
+  graphene_rect_t seen;
+  int x0, y0, x1, y1, vw, vh;
+
+  if (!gtk_widget_compute_bounds (gtk_widget_get_parent (GTK_WIDGET (self)), GTK_WIDGET (self), &seen))
+    return;
+  x0 = MAX (0, (int) floor (seen.origin.x * scale));
+  y0 = MAX (0, (int) floor (seen.origin.y * scale));
+  x1 = MIN (easel_view_edge (img->width, zoom), (int) ceil ((seen.origin.x + seen.size.width) * scale));
+  y1 = MIN (easel_view_edge (img->height, zoom), (int) ceil ((seen.origin.y + seen.size.height) * scale));
+  vw = x1 - x0;
+  vh = y1 - y0;
+  if (vw <= 0 || vh <= 0)
+    return;
+  if (preview != NULL || !self->view_kept || self->view_tex == NULL || self->view_gen != self->tiles_gen || self->view_zoom != zoom
+      || self->view_x != x0 || self->view_y != y0 || self->view_w != vw || self->view_h != vh)
+    {
+      uint32_t *dst = g_new (uint32_t, (gsize) vw * (gsize) vh);
+      int *xk = g_new (int, vw);
+      int prev_y = -1;
+      int first_col = 0, n_cols = 0;
+      const uint32_t **from = NULL;
+      GBytes **held = NULL;
+      gsize *strides = NULL;
+      g_autoptr (GBytes) bytes = NULL;
+
+      for (int i = 0; i < vw; i++)
+        xk[i] = easel_view_cell_at (x0 + i, zoom);
+      if (preview != NULL)
+        {
+          first_col = xk[0] / EASEL_CANVAS_TILE;
+          n_cols = xk[vw - 1] / EASEL_CANVAS_TILE - first_col + 1;
+          from = g_new (const uint32_t *, n_cols);
+          held = g_new0 (GBytes *, (gsize) self->tile_cols * (gsize) self->tile_rows);
+          strides = g_new (gsize, (gsize) self->tile_cols * (gsize) self->tile_rows);
+        }
+      for (int r = 0; r < vh; r++)
+        {
+          int ky = easel_view_cell_at (y0 + r, zoom);
+          uint32_t *row = dst + (gsize) r * vw;
+
+          if (ky == prev_y)
+            memcpy (row, row - vw, (gsize) vw * sizeof (uint32_t));
+          else if (preview == NULL)
+            {
+              const uint32_t *src = img->px + (gsize) ky * img->width;
+
+              for (int i = 0; i < vw; i++)
+                row[i] = src[xk[i]];
+            }
+          else
+            {
+              int ty = ky / EASEL_CANVAS_TILE;
+
+              for (int c = 0; c < n_cols; c++)
+                {
+                  int id = ty * self->tile_cols + first_col + c;
+
+                  if (preview[id] == NULL)
+                    from[c] = img->px + (gsize) ky * img->width + (gsize) (first_col + c) * EASEL_CANVAS_TILE;
+                  else
+                    {
+                      if (held[id] == NULL)
+                        {
+                          g_autoptr (GdkTextureDownloader) dl = gdk_texture_downloader_new (preview[id]);
+
+                          gdk_texture_downloader_set_format (dl, PICTURE_FORMAT);
+                          held[id] = gdk_texture_downloader_download_bytes (dl, &strides[id]);
+                        }
+                      from[c] = (const uint32_t *) ((const guchar *) g_bytes_get_data (held[id], NULL)
+                                                    + (gsize) (ky % EASEL_CANVAS_TILE) * strides[id]);
+                    }
+                }
+              for (int i = 0; i < vw; i++)
+                row[i] = from[xk[i] / EASEL_CANVAS_TILE - first_col][xk[i] % EASEL_CANVAS_TILE];
+            }
+          prev_y = ky;
+        }
+      if (preview != NULL)
+        {
+          for (int i = 0; i < self->tile_cols * self->tile_rows; i++)
+            g_clear_pointer (&held[i], g_bytes_unref);
+          g_free (held);
+          g_free (strides);
+          g_free (from);
+        }
+      g_free (xk);
+      bytes = g_bytes_new_take (dst, (gsize) vw * (gsize) vh * sizeof (uint32_t));
+      g_clear_object (&self->view_tex);
+      self->view_tex = gdk_memory_texture_new (vw, vh, PICTURE_FORMAT, bytes, (gsize) vw * sizeof (uint32_t));
+      self->view_kept = preview == NULL;
+      self->view_gen = self->tiles_gen;
+      self->view_zoom = zoom;
+      self->view_x = x0;
+      self->view_y = y0;
+      self->view_w = vw;
+      self->view_h = vh;
+    }
+  /* A plain texture at whole device pixels: exact, where a scaled one with NEAREST is not on every screen. */
+  gtk_snapshot_append_texture (snapshot, self->view_tex,
+                               &GRAPHENE_RECT_INIT ((float) (x0 / scale), (float) (y0 / scale), (float) (vw / scale), (float) (vh / scale)));
+}
 
 /* Picture coordinates to canvas coordinates, putting the line on a whole device pixel: a vertical or horizontal line
    covers the device pixel that starts at the boundary, and any other line the pixels it passes through. */
@@ -3158,9 +3351,9 @@ grid_segment (double x0, double y0, double x1, double y1, void *data)
   double half = 0.5 / d->scale;
 
   if (x0 == x1)
-    ax = bx = floor (ax * d->scale) / d->scale + half;
+    ax = bx = (d->edge_zoom != 0 ? easel_view_edge ((int) lround (x0), d->edge_zoom) : floor (ax * d->scale)) / d->scale + half;
   else if (y0 == y1)
-    ay = by = floor (ay * d->scale) / d->scale + half;
+    ay = by = (d->edge_zoom != 0 ? easel_view_edge ((int) lround (y0), d->edge_zoom) : floor (ay * d->scale)) / d->scale + half;
   cairo_move_to (d->cr, ax, ay);
   cairo_line_to (d->cr, bx, by);
 }
@@ -3174,7 +3367,7 @@ append_grid (EaselCanvas *self, GtkSnapshot *snapshot)
   double l = self->zoom / (100.0 * scale);
   graphene_rect_t seen;
   double vx0, vy0, vx1, vy1;
-  GridDraw d = { NULL, l, scale };
+  GridDraw d = { NULL, l, scale, view_built_by_edges (self) ? self->zoom : 0 };
 
   /* The part of the picture the view shows, in the canvas's own coordinates: the viewport's bounds seen from the canvas,
      so that the margin around the picture (REQ-0009-01) needs no arithmetic here. */
@@ -3532,6 +3725,8 @@ append_shape_preview (EaselCanvas *self, GtkSnapshot *snapshot)
   EaselFigure f;
   EaselFigureRun *runs;
   graphene_rect_t seen, picture;
+  gboolean by_edges;
+  double scale;
   double l = self->zoom / (100.0 * easel_canvas_get_scale (self));
   int row0, row1, step;
 
@@ -3555,7 +3750,12 @@ append_shape_preview (EaselCanvas *self, GtkSnapshot *snapshot)
     return;
   if (!gtk_widget_compute_bounds (gtk_widget_get_parent (GTK_WIDGET (self)), GTK_WIDGET (self), &seen))
     return;
+  by_edges = view_built_by_edges (self);
+  scale = easel_canvas_get_scale (self);
   picture = GRAPHENE_RECT_INIT (0, 0, (float) (self->img->width * l), (float) (self->img->height * l));
+  if (by_edges)
+    picture = GRAPHENE_RECT_INIT (0, 0, (float) (easel_view_edge (self->img->width, self->zoom) / scale),
+                                  (float) (easel_view_edge (self->img->height, self->zoom) / scale));
   row0 = (int) floor (fmax (0, seen.origin.y) / l);
   row1 = (int) ceil (fmin (self->img->height * l, seen.origin.y + seen.size.height) / l) - 1;
   if (row1 > self->img->height - 1)
@@ -3592,6 +3792,14 @@ append_shape_preview (EaselCanvas *self, GtkSnapshot *snapshot)
           else
             continue;
           r = GRAPHENE_RECT_INIT ((float) (x0 * l), (float) (y * l), (float) ((x1 - x0 + 1) * l), (float) (step * l));
+          if (by_edges)
+            {
+              /* On the squares drawn under it (REQ-0025-03). */
+              int ax = easel_view_edge (x0, self->zoom), ay = easel_view_edge (y, self->zoom);
+
+              r = GRAPHENE_RECT_INIT ((float) (ax / scale), (float) (ay / scale), (float) ((easel_view_edge (x1 + 1, self->zoom) - ax) / scale),
+                                      (float) ((easel_view_edge (y + step, self->zoom) - ay) / scale));
+            }
           append_shape_run (snapshot, &r, &picture, color);
         }
     }
@@ -3975,6 +4183,7 @@ easel_canvas_snapshot (GtkWidget *widget, GtkSnapshot *snapshot)
   double l;
   graphene_rect_t bounds;
   GdkTexture **preview;
+  gboolean by_edges;
 
   if (self->tiles == NULL)
     return;
@@ -3982,25 +4191,36 @@ easel_canvas_snapshot (GtkWidget *widget, GtkSnapshot *snapshot)
   preview = self->sel_state == 2 ? selection_preview (self) : gradient_preview (self, l);
   if (self->sel_state != 2)
     free_trail (self);
+  by_edges = view_built_by_edges (self);
   bounds = GRAPHENE_RECT_INIT (0, 0, (float) (self->img->width * l), (float) (self->img->height * l));
+  if (by_edges)
+    {
+      double scale = easel_canvas_get_scale (self);
+
+      bounds.size.width = (float) (easel_view_edge (self->img->width, self->zoom) / scale);
+      bounds.size.height = (float) (easel_view_edge (self->img->height, self->zoom) / scale);
+    }
 
   /* Transparent pixels show the checkerboard (REQ-0001-11); nearest filtering keeps pixels hard-edged
      at every zoom (REQ-0001-18). Each tile is drawn where its pixels are; edges fall on whole device pixels. */
   easel_snapshot_append_checkerboard (snapshot, &bounds, CHECKER_SIZE);
-  for (int ty = 0; ty < self->tile_rows; ty++)
-    for (int tx = 0; tx < self->tile_cols; tx++)
-      {
-        GdkTexture *tile = self->tiles[ty * self->tile_cols + tx];
-        graphene_rect_t r;
+  if (by_edges)
+    append_view_by_edges (self, snapshot, preview);
+  else
+    for (int ty = 0; ty < self->tile_rows; ty++)
+      for (int tx = 0; tx < self->tile_cols; tx++)
+        {
+          GdkTexture *tile = self->tiles[ty * self->tile_cols + tx];
+          graphene_rect_t r;
 
-        if (preview != NULL && preview[ty * self->tile_cols + tx] != NULL)
-          tile = preview[ty * self->tile_cols + tx];
-        r = GRAPHENE_RECT_INIT ((float) (tx * EASEL_CANVAS_TILE * l), (float) (ty * EASEL_CANVAS_TILE * l),
-                                                (float) (gdk_texture_get_width (tile) * l),
-                                                (float) (gdk_texture_get_height (tile) * l));
+          if (preview != NULL && preview[ty * self->tile_cols + tx] != NULL)
+            tile = preview[ty * self->tile_cols + tx];
+          r = GRAPHENE_RECT_INIT ((float) (tx * EASEL_CANVAS_TILE * l), (float) (ty * EASEL_CANVAS_TILE * l),
+                                                  (float) (gdk_texture_get_width (tile) * l),
+                                                  (float) (gdk_texture_get_height (tile) * l));
 
-        gtk_snapshot_append_scaled_texture (snapshot, tile, GSK_SCALING_FILTER_NEAREST, &r);
-      }
+          gtk_snapshot_append_scaled_texture (snapshot, tile, GSK_SCALING_FILTER_NEAREST, &r);
+        }
   if (preview != NULL && preview != self->sel_tiles)
     {
       for (int i = 0; i < self->tile_cols * self->tile_rows; i++)

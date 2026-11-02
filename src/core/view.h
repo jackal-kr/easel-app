@@ -3,6 +3,8 @@
    zoom is in percent of device pixels, so at 100 % one picture pixel is one device pixel. */
 #pragma once
 
+#include <stdbool.h>
+
 /* Initial window size: 75 % of the monitor in each direction (REQ-0001-41). */
 void easel_view_window_size (int monitor_width, int monitor_height, int *width, int *height);
 
@@ -27,7 +29,15 @@ int easel_view_preset_index (int pct);
 /* Width or height in logical pixels that shows picture_size pixels, rounded up. */
 int easel_view_content_size (int picture_size, int pct, double scale);
 
-/* Picture pixel under a point given relative to the picture's top-left (negative left of or above it). */
+/* REQ-0025-02: where the square of picture pixel k starts, in device pixels from the picture's origin, on any screen; the same function for
+   the picture, the grid and the pointer. */
+int easel_view_edge (int k, int pct);
+/* The inverse: the picture pixel whose square covers the device pixel d (negative left of or above the picture). */
+int easel_view_cell_at (int d, int pct);
+/* Whether the view places its squares by those edges: from 100 % up, when a square is not a whole number of device pixels. */
+bool easel_view_draws_by_edges (int pct);
+
+/* Picture pixel under a point given relative to the picture's top-left (negative left of or above it); on a border, the square that starts there. */
 void easel_view_to_pixel (double x, double y, int pct, double scale, int *px, int *py);
 
 /* New scroll offset along one axis after a zoom, keeping the picture point under the pointer still

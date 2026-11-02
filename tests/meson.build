@@ -28,10 +28,20 @@ test_window = executable('test-window', 'ui/test-window.c', 'ui/memory-clipboard
 # registered as /0001/..., /0002/..., so every case is in exactly one of them); see docs/engineering.md, Testing.
 # Not parallel: run in parallel, the ui windows failed as5_zoom_keeps_center with a stale layout (598.25 against 1196.5)
 # in 2 of 3 runs. Earlier one-off failures of the ui tests, run as a single executable, are unexplained.
-foreach feature : ['0001', '0002', '0003', '0004', '0005', '0006', '0007', '0008', '0009', '0010', '0011', '0012', '0013', '0014', '0015', '0016', '0017', '0018']
+foreach feature : ['0001', '0002', '0003', '0004', '0005', '0006', '0007', '0008', '0009', '0010', '0011', '0012', '0013', '0014', '0015', '0016', '0017', '0018', '0025']
   test('ui-' + feature, test_window, args: ['-p', '/' + feature], env: ui_env, suite: 'ui', timeout: 180,
        is_parallel: false)
 endforeach
+# What 0025 asks of the picture's squares, under the renderer of a real session as well (under another where it has none).
+ui_vulkan_env = environment()
+ui_vulkan_env.set('GSK_RENDERER', 'vulkan')
+ui_vulkan_env.set('GTK_A11Y', 'none')
+ui_vulkan_env.set('EASEL_TEST_DATA', meson.current_source_dir() / 'data')
+ui_vulkan_env.set('GDK_DEBUG', 'no-portals')
+test('ui-0025-vulkan', test_window, args: ['-p', '/0025/as1_squares_at_whole_zooms', '-p', '/0025/as1c_edges_at_fractional_zoom', '-p', '/0025/as1d_grid_on_cell_edges', '-p', '/0025/as2c_pointer_hits_the_drawn_pixel'],
+     env: ui_vulkan_env, suite: 'ui', timeout: 180, is_parallel: false)
+# AS-1b of 0025 needs a screen of scale 2 and skips elsewhere: tools/isolated.sh --scale 2 meson test -C build ui-0025-scale2
+test('ui-0025-scale2', test_window, args: ['-p', '/0025-scale2'], env: ui_env, suite: 'ui', timeout: 180, is_parallel: false)
 # The cases that take more than about 15 s each (registered under /long/): run by the gate and /sdd-check, not by tools/mutate.sh,
 # which names the suites it runs (a mutant that only these can kill is listed in tests/mutants.txt with test: ui-0014-long).
 test('ui-0014-long', test_window, args: ['-p', '/long/0014'], env: ui_env, suite: ['ui', 'long'], timeout: 400, is_parallel: false)
@@ -46,6 +56,9 @@ executable('probe-clipboard-xproc', 'probe/probe-clipboard-xproc.c', dependencie
 # Feature 0017's risks R1 to R3: how Pango and Cairo draw text into an A8 surface at picture scale (no display needed).
 executable('probe-text-render', 'probe/probe-text-render.c', dependencies: easel_ui_dep)
 executable('probe-text-hinting', 'probe/probe-text-hinting.c', dependencies: easel_ui_dep)
+# Feature 0025, T001: the picture built at device size against the renderer's scaling, at a fractional zoom: edges under any renderer
+# (probe-edge-drawing edges, through tools/isolated.sh) and the cost of a frame (probe-edge-drawing frames, in the real session).
+executable('probe-edge-drawing', 'probe/probe-edge-drawing.c', dependencies: easel_ui_dep)
 # Feature 0018, T001: the memory peak and time of each command on the whole picture, one command a process: probe-transform-memory rot90 8000.
 executable('probe-transform-memory', 'probe/probe-transform-memory.c', dependencies: easel_core_dep)
 # Feature 0017's risk R6: what Writer and Firefox do with rich text on the clipboard: `own` (a click) and `read NAME`.
@@ -88,5 +101,7 @@ benchmark('perf-0017', executable('perf-0017', 'perf/perf-0017.c', dependencies:
 benchmark('perf-0018', executable('perf-0018', 'perf/perf-0018.c', dependencies: easel_ui_dep), env: perf_env,
   timeout: 900)
 benchmark('perf-0008', executable('perf-0008', 'perf/perf-0008.c', dependencies: easel_ui_dep), env: perf_env,
+  timeout: 600)
+benchmark('perf-0025', executable('perf-0025', 'perf/perf-0025.c', dependencies: easel_ui_dep), env: perf_env,
   timeout: 600)
 

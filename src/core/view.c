@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 
 #include <math.h>
+#include <stdint.h>
 
 #include "view.h"
 
@@ -54,11 +55,41 @@ easel_view_content_size (int picture_size, int pct, double scale)
   return size < 1 ? 1 : size;
 }
 
+int
+easel_view_edge (int k, int pct)
+{
+  /* The product first: it is whole, so a tie is exactly a half and the division cannot miss it. */
+  return (int) floor ((double) k * pct / 100.0 + 0.5);
+}
+
+int
+easel_view_cell_at (int d, int pct)
+{
+  /* The largest k with edge (k) <= d: k < (d + 1/2) / size, in whole numbers, rounded up then less one. */
+  int64_t a = ((int64_t) 2 * d + 1) * 50;
+
+  return (int) ((a > 0 ? (a + pct - 1) / pct : -(-a / pct)) - 1);
+}
+
+bool
+easel_view_draws_by_edges (int pct)
+{
+  return pct >= 100 && pct % 100 != 0;
+}
+
 void
 easel_view_to_pixel (double x, double y, int pct, double scale, int *px, int *py)
 {
   double l = logical_per_pixel (pct, scale);
 
+  /* The pixel whose square is drawn under the point (REQ-0025-06): the view's edges are the only rule, drawn and pointed. A fractional screen
+     scale stays with the division, untested (0025's Plan). */
+  if (easel_view_draws_by_edges (pct) && scale == floor (scale))
+    {
+      *px = easel_view_cell_at ((int) floor (x * scale), pct);
+      *py = easel_view_cell_at ((int) floor (y * scale), pct);
+      return;
+    }
   *px = (int) floor (x / l);
   *py = (int) floor (y / l);
 }
