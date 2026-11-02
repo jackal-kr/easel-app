@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Runs a command in a private session, so that a real pointer, the windows of the person at the keyboard and their desktop
 # services cannot touch the ui tests: a headless GNOME Shell with one virtual monitor and its own Wayland socket, in a private
-# D-Bus session, with a throwaway HOME and GSETTINGS_BACKEND=memory. EASEL_ISOLATED=1 is set for the command, which makes the
+# D-Bus session, with a throwaway HOME and runtime folder and GSETTINGS_BACKEND=memory. These are set before the D-Bus session
+# starts, so that the services it starts (online accounts, calendars, portals) see no real account either
+# (tools/check-isolated-private.sh checks that). EASEL_ISOLATED=1 is set for the command, which makes the
 # ui tests and tools/mutate.sh skip their "another Easel window" check (nothing else can be in this display).
 #
 #   tools/isolated.sh meson test -C build --print-errorlogs      all the tests, the ui ones in the isolated display
@@ -55,19 +57,38 @@ if [ "${1:-}" != "--inner" ]; then
       exit 69
     fi
   done
-  if [ -z "${XDG_RUNTIME_DIR:-}" ] || [ ! -d "$XDG_RUNTIME_DIR" ]; then
-    echo "tools/isolated.sh needs XDG_RUNTIME_DIR (the folder for the Wayland socket); it is not set." >&2
-    exit 69
-  fi
+  # The environment of the whole session, set here because the D-Bus session hands it to every service it starts: a throwaway HOME
+  # and runtime folder (the real keyring and bus sockets are in the real one), settings in memory, nothing of the real desktop, and no
+  # gvfs: its mounts and its network discovery (wsdd, which outlives the session and takes no signal from here) are not wanted.
+  HOME_DIR=$(mktemp -d /tmp/easel-isolated-home-XXXXXX) || exit 90
+  mkdir -m 700 "$HOME_DIR/runtime" || exit 90
+  export EASEL_ISOLATED_HOME="$HOME_DIR" HOME="$HOME_DIR" XDG_CONFIG_HOME="$HOME_DIR/.config" XDG_DATA_HOME="$HOME_DIR/.local/share" \
+         XDG_CACHE_HOME="$HOME_DIR/.cache" XDG_STATE_HOME="$HOME_DIR/.local/state" XDG_RUNTIME_DIR="$HOME_DIR/runtime" \
+         GSETTINGS_BACKEND=memory XDG_SESSION_TYPE=wayland GIO_USE_VFS=local GVFS_REMOTE_VOLUME_MONITOR_IGNORE=1
+  unset DISPLAY XAUTHORITY WAYLAND_DISPLAY DBUS_SESSION_BUS_ADDRESS GNOME_KEYRING_CONTROL SSH_AUTH_SOCK SESSION_MANAGER XDG_SESSION_ID
+  # Once this process (the D-Bus session, after the exec) has gone, in a session of its own so that a signal to the whole group does
+  # not stop it: whatever still has this HOME is stopped (a killed D-Bus session leaves its bus and services running), the mounts of
+  # those services go, then the folder. Its own HOME differs, so that it does not stop itself.
+  HOME=/ setsid sh -c '
+    while kill -0 "$1" 2>/dev/null; do sleep 1; done
+    sleep 1
+    for signal in TERM KILL; do
+      for p in /proc/[0-9]*; do
+        tr "\\0" "\\n" 2>/dev/null < "$p/environ" | grep -qxF "HOME=$2" && kill -"$signal" "${p#/proc/}" 2>/dev/null
+      done
+      sleep 1
+    done
+    grep -F "$2/" /proc/self/mounts | cut -d" " -f2 | while read -r mount; do fusermount3 -u -z "$mount"; done
+    rm -rf "$2"' sh "$$" "$HOME_DIR" </dev/null >/dev/null 2>&1 &
   exec "$DBUS_PROGRAM" -- "$0" --inner "$@"
 fi
 shift
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 SOCKET=easel-isolated-$$
-HOME_DIR=$(mktemp -d /tmp/easel-isolated-home-XXXXXX) || exit 90
+HOME_DIR=$EASEL_ISOLATED_HOME
 LOG_DIR=$ROOT/.scratch/isolated
-LOG=$LOG_DIR/shell.log
+LOG=${EASEL_ISOLATED_LOG:-$LOG_DIR/shell.log}    # several sessions at once (tools/mutate.sh's workers) have a log each
 mkdir -p "$LOG_DIR"
 SHELL_PID=
 COMMAND_PID=
@@ -84,20 +105,13 @@ cleanup () {
     wait "$SHELL_PID" 2>/dev/null
   fi
   case "$HOME_DIR" in
-    /tmp/easel-isolated-home-*) rm -rf "$HOME_DIR" ;;
+    /tmp/easel-isolated-home-*) rm -rf "$HOME_DIR" 2>/dev/null ;;   # the mounts of the session's services go with it, a moment later (see above)
   esac
-  # A shell killed by the signal that stops the whole group leaves its socket and lock file behind.
-  [ -n "${XDG_RUNTIME_DIR:-}" ] && rm -f "$XDG_RUNTIME_DIR/$SOCKET" "$XDG_RUNTIME_DIR/$SOCKET.lock"
 }
 trap cleanup EXIT
 trap 'SIGNALLED=130; [ -n "$COMMAND_PID" ] && kill -TERM "$COMMAND_PID" 2>/dev/null' INT
 trap 'SIGNALLED=143; [ -n "$COMMAND_PID" ] && kill -TERM "$COMMAND_PID" 2>/dev/null' TERM
 trap 'SIGNALLED=129; [ -n "$COMMAND_PID" ] && kill -TERM "$COMMAND_PID" 2>/dev/null' HUP
-
-# The environment of the session: a throwaway HOME, settings in memory, a Wayland session of our own.
-PRIVATE_ENV=(HOME="$HOME_DIR" XDG_CONFIG_HOME="$HOME_DIR/.config" XDG_DATA_HOME="$HOME_DIR/.local/share"
-             XDG_CACHE_HOME="$HOME_DIR/.cache" XDG_STATE_HOME="$HOME_DIR/.local/state" GSETTINGS_BACKEND=memory
-             XDG_SESSION_TYPE=wayland)
 
 # If the D-Bus session this runs in is killed (a plain kill of the top process does not reach us), stop too: the watchdog sees
 # the parent go and sends us TERM, which stops the command and runs the cleanup.
@@ -107,7 +121,7 @@ WATCHDOG_PID=$!
 
 MONITOR=1920x1200
 [ "${EASEL_ISOLATED_SCALE:-}" = 2 ] && MONITOR=3840x2400
-env "${PRIVATE_ENV[@]}" "$SHELL_PROGRAM" --headless --wayland --no-x11 --virtual-monitor "$MONITOR" \
+"$SHELL_PROGRAM" --headless --wayland --no-x11 --virtual-monitor "$MONITOR" \
     --wayland-display="$SOCKET" >"$LOG" 2>&1 &
 SHELL_PID=$!
 for _ in $(seq 1 50); do
@@ -137,7 +151,7 @@ if [ "${EASEL_ISOLATED_SCALE:-}" = 2 ]; then
   sleep 2                                           # the monitor settles at its new scale
 fi
 
-env "${PRIVATE_ENV[@]}" WAYLAND_DISPLAY="$SOCKET" GDK_BACKEND=wayland EASEL_ISOLATED=1 "$@" &
+env WAYLAND_DISPLAY="$SOCKET" GDK_BACKEND=wayland EASEL_ISOLATED=1 "$@" &
 COMMAND_PID=$!
 wait "$COMMAND_PID"
 status=$?

@@ -8,9 +8,8 @@ description: Step 3 of the loop, also usable any time. Read-only check of a feat
 1. `tools/spec.sh lint`, `tools/spec.sh lint --names NNNN` and `tools/spec.sh status`.
 2. Coverage: for every REQ and AS -> task -> test or manual check -> passing? Flag any requirement without code or test, any test
    without a requirement, any task without a trace. Run everything as the Testing section of `docs/engineering.md` says for
-   `/sdd-check`, and how to run the suites is in that section too (all tests, the whole mutation list; through `tools/isolated.sh`); a rule that guards against data loss and has no mutant in
-   `tests/mutants.txt` gets one, a mutant that survives is a finding, and so is one killed only by a crash (add an
-   assertion). If none does, first check whether any input could observe the change; an equivalent mutant is not a finding.
+   `/sdd-check`, and how to run the suites is in that section too (all tests and the scale 2 run through `tools/isolated.sh`, with the result of the spec's one `tools/mutate.sh --core` run, in the background; the whole list only at the phase gate, where a clean full run records its commit and the GTK, Pango, Cairo and GNOME Shell versions in `docs/specs/INDEX.md` and names any that changed since). A rule that guards against data loss and has no mutant in
+   `tests/mutants.txt` gets one. A survivor is one line in Check ("survivor, accepted, reason") and becomes a task only if it shows a user-visible bug; a mutant killed only by a crash is treated the same. Fix now only what a user can see; the rest goes in the spec's "Known gaps" list and in `docs/phase2-plan.md`. Decide routine things and record them; ask JOD only for product decisions or irreversible ones.
    A claim that a test covers a requirement is checked by the mutant or break it names; a claim that names none is a finding. A clause
    that names several cases (marked and floating, a success and its failure) has a test per case; a case without one is a finding (0018 F2).
    A background run is awaited by its process id or by the summary line `tools/mutate.sh` prints, and its counts are copied from that summary line, never from a search of the log.

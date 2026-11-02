@@ -28,7 +28,7 @@ Precondition: `Status: accepted` in the spec. Otherwise stop and say so.
    is covered, no task without a trace, a manual check at each user-visible slice. If `docs/engineering.md` has a budget for
    what this feature touches, add a task to measure it and record the numbers in the Plan; it comes right after the first task
    that produces the cost, not with the gate.
-   A task likely to pass already through shared code says so in the Tasks list and names the mutant that proves its test.
+   A task likely to pass already through shared code says so in the Tasks list and names the break that proves its test.
    Put that task in the same group as any speed fix that relies on how a library behaves, and name the fallback in the Plan.
    The first task of a feature that changes the look of a panel ends with a manual look at that panel, before the other
    tasks build on it. A task that changes a core rule the ui depends on carries the ui change as well, so its group's gate can pass. Show ids and titles. Wait for "go".
@@ -54,7 +54,7 @@ Precondition: `Status: accepted` in the spec. Otherwise stop and say so.
      and for the end of a group, and how to run the suites is in that section too (the ui tests and the mutation tool run through
      `tools/isolated.sh`, the benchmarks in the real session). A test that fails once and then passes is logged with its values and how it was hunted,
      never just re-run until green;
-   - a ui mutant killed in under 5 s is run again alone through `tools/isolated.sh` before its kill counts;
+   - after a task run the feature's ui cases and the core and io tests, no `tools/mutate.sh`; at the end of the spec run `tools/mutate.sh --core` once, in the background (`docs/engineering.md`, What to run when); a kill counts only when the same case fails twice: the tool repeats it and reports `UNREPEATED` otherwise;
    - a claim (in a Result, a note or the scenario-to-test map) that a test covers a requirement names the mutant or the manual break that
      made that test fail; a requirement met by an absence (nothing is pushed, nothing is drawn) is proved by a break written into the spec:
      the old line, the inserted line and the tests that failed (0018: two runs were named for REQ-0018-08 that did not observe it);
@@ -63,7 +63,8 @@ Precondition: `Status: accepted` in the spec. Otherwise stop and say so.
    - a change to a shared hot loop reruns the benchmark of every feature that uses it, against a build of the last commit (a git worktree),
      the two builds' runs interleaved (`docs/engineering.md`, Performance budgets);
    - a mutant is run against the test that can observe its change; one with no visible effect in the window is pointed at the core test and noted as equivalent for the ui;
-   - a surviving mutant is applied by hand and its test run before the survivor is believed;
+   - a survivor is one line in the Check section ("survivor, accepted, reason") and becomes a task only if it shows a user-visible bug;
+   - decide routine things yourself and record them; ask JOD only for product decisions or irreversible ones;
    - tick the task and report in one line, and fill its `Result:` line in the spec: the test that failed first and its
      message, or `characterization: <why there was no red run>` (a test that passes on its first run is reported as that),
      and for a manual step one line of what JOD saw;

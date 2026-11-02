@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Checks the progress reporting of tools/mutate.sh on the three mutants of REQ-0011-04 (a ui test: run it through
-# tools/isolated.sh, as the mutation runs are):
+# Checks the progress reporting of tools/mutate.sh on the three mutants of REQ-0011-04, with one worker and no kept case, so that
+# each mutant runs its whole test (ui tests, in the session the tool starts):
 #
-#   tools/isolated.sh tools/check-mutate-progress.sh
+#   tools/check-mutate-progress.sh
 #
 # Progress goes to stderr and to a file, never to stdout; stdout keeps the lines and the summary line it always had. The
 # heartbeat is every 2 seconds here (EASEL_MUTATE_HEARTBEAT) so that a mutant of about 6 seconds shows at least one.
@@ -10,13 +10,14 @@ set -u
 cd "$(dirname "$0")/.."
 OUT=$(mktemp)
 ERR=$(mktemp)
-trap 'rm -f "$OUT" "$ERR"' EXIT
+KILLS=$(mktemp -u)
+trap 'rm -f "$OUT" "$ERR" "$KILLS"' EXIT
 failures=0
 check () {                      # check DESCRIPTION CONDITION-EXIT-STATUS
   if [ "$2" -eq 0 ]; then echo "  ok   $1"; else echo "  FAIL $1"; failures=$((failures + 1)); fi
 }
 
-EASEL_MUTATE_HEARTBEAT=2 tools/mutate.sh REQ-0011-04 > "$OUT" 2> "$ERR"
+EASEL_MUTATE_LAST_KILLS=$KILLS EASEL_MUTATE_WORKERS=1 EASEL_MUTATE_HEARTBEAT=2 tools/mutate.sh REQ-0011-04 > "$OUT" 2> "$ERR"
 echo "the mutation run: exit status $?"
 
 PROGRESS_FILE=$(sed -n 's/^progress file: //p' "$ERR" | head -1)
@@ -42,7 +43,7 @@ fi
 [ "$(grep -cE '^(killed|SURVIVED|crashed|INCONCLUSIVE|ERROR) ' "$OUT")" -eq 3 ]; check "stdout has the three result lines as before" $?
 SUMMARY=$(grep -E '^[0-9]+ mutants: ' "$OUT")
 [ "$(printf '%s\n' "$SUMMARY" | wc -l)" -eq 1 ] && printf '%s\n' "$SUMMARY" |
-  grep -qE '^3 mutants: 3 killed, 0 killed by crash \(test gap\), 0 inconclusive \(no snapshot\), 0 survived, 0 errors in [0-9]+ s$'
+  grep -qE '^3 mutants: 3 killed, 0 killed by crash \(test gap\), 0 inconclusive \(no snapshot or skipped\), 0 survived, 0 errors in [0-9]+ s$'
 check "the summary line is the one it always was, only its seconds differ" $?
 
 if [ "$failures" -eq 0 ]; then echo "progress check: all ok"; else echo "progress check: $failures failed"; exit 1; fi
