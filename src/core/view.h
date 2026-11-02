@@ -36,6 +36,9 @@ int easel_view_edge (int k, int pct);
 int easel_view_cell_at (int d, int pct);
 /* Whether the view places its squares by those edges: from 100 % up, when a square is not a whole number of device pixels. */
 bool easel_view_draws_by_edges (int pct);
+/* Whether the view is built device pixel by device pixel on those edges, on a whole `scale`: where the renderer's scaling is not exact, a
+   square that is not a whole number of device pixels and any zoom on a scale above 1 (0025's Plan; REQ-0001-18). */
+bool easel_view_built_by_edges (int pct, double scale);
 
 /* Picture pixel under a point given relative to the picture's top-left (negative left of or above it); on a border, the square that starts there. */
 void easel_view_to_pixel (double x, double y, int pct, double scale, int *px, int *py);

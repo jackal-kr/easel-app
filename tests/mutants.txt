@@ -7447,6 +7447,14 @@ test: ui-0017
 --- replace
           if (data[(size_t) j * stride + k] >= 64)
 
+=== REQ-0017-16 a pixel is written only where a character covers three quarters of it
+file: src/ui/text-render.c
+test: ui-0017
+--- find
+          if (data[(size_t) j * stride + k] >= 128)
+--- replace
+          if (data[(size_t) j * stride + k] >= 192)
+
 === REQ-0017-16 where two characters cover a pixel the earlier one wins
 file: src/ui/text-render.c
 test: ui-0017
@@ -8772,6 +8780,7 @@ test: ui-0017
 === REQ-0017-14 the popover scrolls to the current family before the list has its size
 file: src/ui/font-card.c
 test: ui-0017
+accepted: JOD 2026-11-02, GTK 4.24 cannot kill it (the guard stays for older GTK); re-decide at packaging-release when the minimum GTK is chosen
 --- find
   if (gtk_widget_get_mapped (GTK_WIDGET (self->list)) && gtk_widget_get_height (GTK_WIDGET (self->list)) > 0)
     gtk_list_view_scroll_to (self->list, position, GTK_LIST_SCROLL_NONE, NULL);
@@ -10635,13 +10644,9 @@ test: ui-0025
 file: src/ui/canvas.c
 test: ui-0025
 --- find
-  if (view_built_by_edges (self))
-    {
-      append_cells_by_edges (self, snapshot, px, x0, y0, rw, rh);
+  if (view_built_by_edges (self) && append_cells_by_edges (self, snapshot, px, x0, y0, rw, rh))
 --- replace
-  if (FALSE)
-    {
-      append_cells_by_edges (self, snapshot, px, x0, y0, rw, rh);
+  if (FALSE && append_cells_by_edges (self, snapshot, px, x0, y0, rw, rh))
 === REQ-0025-03 a shape's preview is placed at k x zoom, not on the drawn edges
 file: src/ui/canvas.c
 test: ui-0025
@@ -10702,7 +10707,7 @@ test: ui-0025
 file: src/core/view.c
 test: ui-0025
 --- find
-  if (easel_view_draws_by_edges (pct) && scale == floor (scale))
+  if (easel_view_built_by_edges (pct, scale))
 --- replace
   if (false)
 === REQ-0025-06 a negative position is truncated toward zero
@@ -10723,8 +10728,107 @@ test: ui-0025
 file: src/ui/canvas.c
 test: ui-0025
 --- find
+        if (!by_edges || !append_cells_by_edges (self, snapshot, g_bytes_get_data (data, NULL), x0, y0, rw, rh))
+--- replace
+        if (TRUE || !append_cells_by_edges (self, snapshot, g_bytes_get_data (data, NULL), x0, y0, rw, rh))
+
+# ---- 0025's check: a view built on the edges at any zoom on a scale above 1, and without memory for it ----
+
+=== REQ-0001-18 below 100 % on a scale above 1 the view is left to the renderer's scaling
+file: src/core/view.c
+test: core-view
+--- find
+  return scale == floor (scale) && (easel_view_draws_by_edges (pct) || scale != 1);
+--- replace
+  return scale == floor (scale) && (easel_view_draws_by_edges (pct) || (scale != 1 && pct >= 100));
+
+=== REQ-0025-06 the pointer does not follow the view below 100 % on a scale above 1
+file: src/core/view.c
+test: core-view
+--- find
+  if (easel_view_built_by_edges (pct, scale))
+    {
+      *px = easel_view_cell_at
+--- replace
+  if (easel_view_draws_by_edges (pct) && scale == floor (scale))
+    {
+      *px = easel_view_cell_at
+
+=== REQ-0025-02 a view with no memory draws nothing
+file: src/ui/canvas.c
+test: ui-0025
+--- find
+  if (!by_edges || !append_view_by_edges (self, snapshot, preview))
+    for (int ty = 0; ty < self->tile_rows; ty++)
+--- replace
+  if (by_edges)
+    append_view_by_edges (self, snapshot, preview);
+  else
+    for (int ty = 0; ty < self->tile_rows; ty++)
+
+=== REQ-0025-03 a box or a float with no memory for its cells on the edges draws nothing
+file: src/ui/canvas.c
+test: ui-0025
+--- find
+  if (view_built_by_edges (self) && append_cells_by_edges (self, snapshot, px, x0, y0, rw, rh))
+    {
+--- replace
+  if (view_built_by_edges (self))
+    {
+      append_cells_by_edges (self, snapshot, px, x0, y0, rw, rh);
+
+=== REQ-0025-03 a float's part outside the picture with no memory for it is not drawn
+file: src/ui/canvas.c
+test: ui-0025
+--- find
+        if (!by_edges || !append_cells_by_edges (self, snapshot, g_bytes_get_data (data, NULL), x0, y0, rw, rh))
+          gtk_snapshot_append_scaled_texture
+--- replace
         if (by_edges)
           append_cells_by_edges (self, snapshot, g_bytes_get_data (data, NULL), x0, y0, rw, rh);
+        else
+          gtk_snapshot_append_scaled_texture
+
+=== REQ-0025-02 the view takes the memory it was refused
+file: src/ui/canvas.c
+test: ui-0025
+--- find
+  if (count > self->view_memory_max / size)
+    return NULL;
 --- replace
-        if (FALSE)
-          append_cells_by_edges (self, snapshot, g_bytes_get_data (data, NULL), x0, y0, rw, rh);
+  if (0 && count > self->view_memory_max / size)
+    return NULL;
+
+=== REQ-0025-05 AS-3 is run without the caret on
+file: src/ui/canvas.c
+test: ui-0025
+--- find
+  self->caret_on = TRUE;
+--- replace
+  self->caret_on = FALSE;
+
+=== REQ-0025-05 a saved file is not the picture while an overlay shows
+file: src/ui/window.c
+test: ui-0025
+--- find
+  if (!easel_picture_save (self->picture, path, save_format (path), self->settings.jpeg_quality, &error))
+--- replace
+  if (easel_canvas_is_pending (self->canvas))
+    self->picture->px[0] ^= 0xFF;
+  if (!easel_picture_save (self->picture, path, save_format (path), self->settings.jpeg_quality, &error))
+
+=== REQ-0025-05 a text box's line is three times as thick as a selection's
+file: src/ui/canvas.c
+test: ui-0025
+--- find
+      { X0 - th, Y0, th, hl, FALSE, -1, 2 * wl + hl, hl },             /* the left side, up */
+--- replace
+      { X0 - th, Y0, self->tool == EASEL_TOOL_TEXT ? 3 * th : th, hl, FALSE, -1, 2 * wl + hl, hl },             /* the left side, up */
+
+=== REQ-0025-05 a float's line is three times as thick as a marked rectangle's
+file: src/ui/canvas.c
+test: ui-0025
+--- find
+      { X0 - th, Y0, th, hl, FALSE, -1, 2 * wl + hl, hl },             /* the left side, up */
+--- replace
+      { X0 - th, Y0, self->sel_state == 2 ? 3 * th : th, hl, FALSE, -1, 2 * wl + hl, hl },             /* the left side, up */

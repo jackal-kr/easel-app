@@ -77,6 +77,12 @@ easel_view_draws_by_edges (int pct)
   return pct >= 100 && pct % 100 != 0;
 }
 
+bool
+easel_view_built_by_edges (int pct, double scale)
+{
+  return scale == floor (scale) && (easel_view_draws_by_edges (pct) || scale != 1);
+}
+
 void
 easel_view_to_pixel (double x, double y, int pct, double scale, int *px, int *py)
 {
@@ -84,7 +90,7 @@ easel_view_to_pixel (double x, double y, int pct, double scale, int *px, int *py
 
   /* The pixel whose square is drawn under the point (REQ-0025-06): the view's edges are the only rule, drawn and pointed. A fractional screen
      scale stays with the division, untested (0025's Plan). */
-  if (easel_view_draws_by_edges (pct) && scale == floor (scale))
+  if (easel_view_built_by_edges (pct, scale))
     {
       *px = easel_view_cell_at ((int) floor (x * scale), pct);
       *py = easel_view_cell_at ((int) floor (y * scale), pct);

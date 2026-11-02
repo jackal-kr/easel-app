@@ -19203,6 +19203,57 @@ underscore_j_pass (int only, int margin, int w, int h)
   return m;
 }
 
+/* AS-16 (REQ-0017-16): half of a pixel decides. A glyph's coverage is whole on the grid, but the ends of an underline under italic text
+   fall inside a pixel (the renderer fills its rectangle at a fractional place): one that covers less than half stays out of the ink and
+   one that covers at least half is in it. The test's own pass over the same layout gives the coverage. */
+static void
+as16_half_covered_underline_ends (void)
+{
+  int under_half = 0, over_half = 0;
+
+  for (int size = 8; size <= 40; size++)
+    {
+      EaselTextStyle style = { "DejaVu Sans", size, EASEL_TEXT_BOLD | EASEL_TEXT_ITALIC | EASEL_TEXT_UNDERLINE, 0xFF000000u };
+      EaselTextBuffer *b = easel_text_buffer_new (&style);
+      PangoLayout *layout;
+      EaselTextInk ink;
+      cairo_surface_t *surface;
+      cairo_t *cr;
+      const guint8 *d;
+      int stride;
+
+      style.family = easel_text_buffer_intern (b, style.family);
+      g_assert_true (easel_text_buffer_insert (b, "ab", 2, &style, EASEL_TEXT_EDIT_TYPING));
+      layout = easel_text_render_layout (b, 10000);
+      g_assert_true (easel_text_render_ink (layout, b, 0, 0, SIZE_MAX, &ink));
+      surface = cairo_image_surface_create (CAIRO_FORMAT_A8, ink.w, ink.h);
+      cr = cairo_create (surface);
+      cairo_move_to (cr, -ink.x, -ink.y);
+      pango_cairo_show_layout (cr, layout);
+      cairo_surface_flush (surface);
+      d = cairo_image_surface_get_data (surface);
+      stride = cairo_image_surface_get_stride (surface);
+      for (int y = 0; y < ink.h; y++)
+        for (int x = 0; x < ink.w; x++)
+          {
+            guint8 covered = d[(gsize) y * stride + x];
+
+            under_half += covered >= 64 && covered < 128;
+            over_half += covered >= 128 && covered < 192;
+            g_assert_cmpint (ink.mask[(gsize) y * ink.w + x], ==, covered >= 128);
+          }
+      cairo_destroy (cr);
+      cairo_surface_destroy (surface);
+      g_free ((gpointer) ink.color);
+      g_free ((gpointer) ink.mask);
+      g_object_unref (layout);
+      easel_text_buffer_free (b);
+    }
+  /* Both kinds were there to decide. */
+  g_assert_cmpint (under_half, >, 0);
+  g_assert_cmpint (over_half, >, 0);
+}
+
 /* AS-16 (REQ-0017-16): where two characters cover the same pixel, the later one in the text wins: a red "_" and a blue italic "j" at
    72 points share pixels (the j's descender crosses the underscore); there the box's ink is blue. */
 static void
@@ -24503,8 +24554,9 @@ as1_squares_at_whole_zooms (void)
 }
 
 /* AS-1b (REQ-0025-02): the same on a screen of scale 2: tools/isolated.sh --scale 2. Elsewhere it has nothing to see. */
-static void
-as1b_squares_at_scale_2 (void)
+/* Whether this is a session of scale 2; else the case is skipped. */
+static gboolean
+session_of_scale_2 (void)
 {
   GdkDisplay *display = gdk_display_get_default ();
   GdkMonitor *monitor = g_list_model_get_item (gdk_display_get_monitors (display), 0);
@@ -24512,16 +24564,20 @@ as1b_squares_at_scale_2 (void)
 
   g_object_unref (monitor);
   if (scale != 2)
-    {
-      g_test_skip ("needs a session of scale 2: tools/isolated.sh --scale 2");
-      return;
-    }
-  squares_at_whole_zooms (2);
+    g_test_skip ("needs a session of scale 2: tools/isolated.sh --scale 2");
+  return scale == 2;
+}
+
+static void
+as1b_squares_at_scale_2 (void)
+{
+  if (session_of_scale_2 ())
+    squares_at_whole_zooms (2);
 }
 
 /* AS-1 (REQ-0025-02): the far corner of an 8000 x 8000 picture is one square of the same size. */
 static void
-as1_far_corner_of_8000 (void)
+far_corner_of_8000 (void)
 {
   static const int zooms[] = { 800, 1600 };
   EaselWindow *win;
@@ -24551,6 +24607,201 @@ as1_far_corner_of_8000 (void)
       drawn_edges_clear (&e);
       g_free (f.px);
     }
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+static void
+as1_far_corner_of_8000 (void)
+{
+  far_corner_of_8000 ();
+}
+
+/* AS-1b (REQ-0025-02): the same far corner on a screen of scale 2. */
+static void
+as1b_far_corner_of_8000 (void)
+{
+  if (!session_of_scale_2 ())
+    return;
+  far_corner_of_8000 ();
+}
+
+/* AS-1e (REQ-0001-18): below 100 % on a screen of scale 2, every device pixel is exactly one picture pixel's color, whatever the picture;
+   the picture with every pixel different also says which, and the pointer finds that pixel there (REQ-0025-06). */
+static void
+as1e_no_blend_below_100_at_scale_2 (void)
+{
+  static const int zooms[] = { 10, 25, 33, 50, 75 };
+  enum { W = 1000, H = 700 };
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  EaselImage *img;
+
+  if (!session_of_scale_2 ())
+    return;
+  write_settings ("[new-picture]\nwidth=1000\nheight=700\n");
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  wait_for_layout (win);
+  img = (EaselImage *) easel_window_get_picture (win);
+  for (int pattern = 0; pattern < 3; pattern++)
+    {
+      for (int y = 0; y < H; y++)
+        for (int x = 0; x < W; x++)
+          easel_image_set (img, x, y, pattern == 0 ? (x % 2 ? 0xFFFFFFFFu : 0xFF000000u)
+                                      : pattern == 1 ? ((x + y) % 2 ? 0xFFFFFFFFu : 0xFF000000u) : place_color (x, y));
+      easel_canvas_update (canvas);
+      for (guint z = 0; z < G_N_ELEMENTS (zooms); z++)
+        {
+          ViewFrame f;
+          int x0, y0, x1, y1, wrong = 0, seen = 0;
+
+          easel_canvas_set_zoom (canvas, zooms[z]);
+          wait_for_layout (win);
+          g_assert_cmpint (easel_window_get_zoom (win), ==, zooms[z]);
+          wait_for_next_frame (win);
+          f = view_frame (win);
+          x0 = MAX (f.vx0, f.ox);
+          y0 = MAX (f.vy0, f.oy);
+          x1 = MIN (f.vx1, f.ox + easel_view_edge (W, zooms[z]));
+          y1 = MIN (f.vy1, f.oy + easel_view_edge (H, zooms[z]));
+          for (int y = y0; y < y1; y++)
+            for (int x = x0; x < x1; x++)
+              {
+                uint32_t c = f.px[(gsize) y * f.w + x];
+                int kx, ky;
+
+                seen++;
+                easel_view_to_pixel ((x - f.ox + 0.5) / 2, (y - f.oy + 0.5) / 2, zooms[z], 2, &kx, &ky);
+                g_assert_cmpint (kx, >=, 0);
+                g_assert_cmpint (ky, >=, 0);
+                g_assert_cmpint (kx, <, W);
+                g_assert_cmpint (ky, <, H);
+                if (c != img->px[(gsize) ky * W + kx])
+                  wrong++;
+              }
+          g_assert_cmpint (seen, >, 0);
+          g_assert_cmpint (wrong, ==, 0);
+          g_free (f.px);
+        }
+    }
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+static int frames_differ (const ViewFrame *a, const ViewFrame *b, int pic_w, int pic_h, double d, const char *what);
+
+/* The edge case of 0025: with no memory for the view built on the edges, the frame is drawn by the renderer's scaling, nothing is lost or
+   asked, and the next frame with memory is on the edges again. A text box's pixels and a float's part outside the picture likewise. */
+static void
+view_without_memory_falls_back (void)
+{
+  enum { W = 400, H = 300, ZOOM = 129 };
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  ViewFrame f, refused;
+  DrawnEdges e;
+  g_autofree uint32_t *before = NULL;
+  const EaselImage *img;
+  int checker = 0, seen = 0, ink = 0, differ = 0, bx, by, bw, bh, cx, cy, w, h;
+  g_autofree uint32_t *with_box = NULL, *with_float = NULL;
+
+  write_settings ("[new-picture]\nwidth=400\nheight=300\n\n[text]\nfont=DejaVu Sans\nsize=24\n");
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  wait_for_layout (win);
+  fill_with_places (win);
+  img = easel_window_get_picture (win);
+  before = g_memdup2 (img->px, (gsize) W * H * sizeof (uint32_t));
+  easel_canvas_set_zoom (canvas, ZOOM);
+  wait_for_layout (win);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, ZOOM);
+
+  easel_canvas_set_view_memory_limit (canvas, 1);
+  gtk_widget_queue_draw (GTK_WIDGET (canvas));
+  wait_for_next_frame (win);
+  f = view_frame (win);
+  for (int y = MAX (f.vy0, f.oy); y < MIN (f.vy1, f.oy + easel_view_edge (H, ZOOM)); y++)
+    for (int x = MAX (f.vx0, f.ox); x < MIN (f.vx1, f.ox + easel_view_edge (W, ZOOM)); x++)
+      {
+        uint32_t c = f.px[(gsize) y * f.w + x];
+        double kx = (c >> 12) & 0xfff, ky = c & 0xfff, want_x = (x - f.ox) * 100.0 / ZOOM, want_y = (y - f.oy) * 100.0 / ZOOM;
+
+        seen++;
+        checker += fabs (kx - want_x) > 3 || fabs (ky - want_y) > 3;          /* the frame shows the picture, not the checkerboard behind it */
+      }
+  g_assert_cmpint (seen, >, 0);
+  g_assert_cmpint (checker, ==, 0);
+  refused = f;
+  g_assert_cmpint (memcmp (img->px, before, (gsize) W * H * sizeof (uint32_t)), ==, 0);
+  /* The same state with memory: a frame on the edges, which the renderer's scaling is not. */
+  easel_canvas_set_view_memory_limit (canvas, SIZE_MAX);
+  gtk_widget_queue_draw (GTK_WIDGET (canvas));
+  wait_for_next_frame (win);
+  f = view_frame (win);
+  differ = frames_differ (&f, &refused, W, H, ZOOM / 100.0, "with memory and without");
+  g_assert_cmpint (differ, >, 0);
+  g_free (f.px);
+  g_free (refused.px);
+  easel_canvas_set_view_memory_limit (canvas, 1);
+  gtk_widget_queue_draw (GTK_WIDGET (canvas));
+  wait_for_next_frame (win);
+  g_assert_false (easel_window_get_modified (win));
+  g_assert_cmpint (count_alert_dialogs (GTK_WIDGET (win), &(AdwDialog *) { NULL }), ==, 0);
+
+  /* A box's letters are there all the same. */
+  easel_canvas_set_colors (canvas, 0xFFFF0000u, 0xFFFFFFFFu);
+  use_tool (win, "text");
+  shape_press_move (win, 1, 20, 20, 200, 90);
+  shape_release (win, 1);
+  g_assert_true (easel_canvas_text_box (canvas, &bx, &by, &bw, &bh));
+  type_keys (win, "HHH");
+  wait_for_next_frame (win);
+  with_box = render_pixels (win, &w, &h, &cx, &cy);
+  for (int y = cy + easel_view_edge (by, ZOOM); y < cy + easel_view_edge (by + bh, ZOOM); y++)
+    for (int x = cx + easel_view_edge (bx, ZOOM); x < cx + easel_view_edge (bx + bw, ZOOM); x++)
+      {
+        uint32_t c = with_box[(gsize) y * w + x];
+
+        ink += ((c >> 16) & 255) > 150 && ((c >> 8) & 255) < 90 && (c & 255) < 90;
+      }
+  g_assert_cmpint (ink, >, 200);                                         /* more than the caret alone */
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+
+  /* A float's part outside the picture is there too: 15 picture pixels past the left side, in the margin. */
+  use_tool (win, "select");
+  shape_press_move (win, 1, 5, 50, 60, 100);
+  shape_release (win, 1);
+  shape_press_move (win, 1, 30, 70, 10, 70);
+  shape_release (win, 1);
+  easel_canvas_set_overlay_probe (canvas, FALSE, FALSE);
+  wait_for_next_frame (win);
+  with_float = render_pixels (win, &w, &h, &cx, &cy);
+  easel_canvas_set_overlay_probe (canvas, TRUE, TRUE);
+  {
+    uint32_t c = with_float[(gsize) (cy + easel_view_edge (70, ZOOM)) * w + cx - 5];
+    int kx = (c >> 12) & 0xfff, ky = c & 0xfff;
+
+    g_assert_cmpint (kx, >=, 15);
+    g_assert_cmpint (kx, <=, 25);
+    g_assert_cmpint (ky, >=, 67);
+    g_assert_cmpint (ky, <=, 73);
+  }
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  wait_for_layout (win);
+  use_tool (win, "pencil");
+
+  /* The next frame with memory is on the edges again. */
+  easel_canvas_set_view_memory_limit (canvas, SIZE_MAX);
+  gtk_widget_queue_draw (GTK_WIDGET (canvas));
+  wait_for_next_frame (win);
+  f = view_frame (win);
+  e = drawn_edges (f.px, f.w, f.ox, f.oy, f.vx0, f.vy0, f.vx1, f.vy1, W, H, ZOOM);
+  drawn_edges_clear (&e);
+  for (int k = 0; k < 50; k++)
+    g_assert_cmphex (f.px[(gsize) (f.oy + easel_view_edge (10, ZOOM)) * f.w + f.ox + easel_view_edge (10 + k, ZOOM)], ==, place_color (10 + k, 10));
+  g_free (f.px);
   close_windows ();
   write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
 }
@@ -25156,6 +25407,26 @@ as2c_pointer_hits_the_drawn_pixel (void)
   g_assert_cmpint (wrong_pointer, ==, 0);
 }
 
+/* AS-3 (REQ-0025-05): a file saved in the state on the screen has the picture's pixels and nothing of what is drawn over them. */
+static void
+assert_saved_file_is_the_picture (EaselWindow *win, const char *path)
+{
+  g_autoptr (GdkPixbuf) saved = NULL;
+
+  g_assert_true (easel_window_save_to (win, path));
+  saved = gdk_pixbuf_new_from_file (path, NULL);
+  g_assert_nonnull (saved);
+  g_assert_cmpint (gdk_pixbuf_get_width (saved), ==, 60);
+  g_assert_cmpint (gdk_pixbuf_get_height (saved), ==, 40);
+  for (int y = 0; y < 40; y++)
+    for (int x = 0; x < 60; x++)
+      {
+        const guchar *p = gdk_pixbuf_get_pixels (saved) + (gsize) y * gdk_pixbuf_get_rowstride (saved) + (gsize) x * gdk_pixbuf_get_n_channels (saved);
+
+        g_assert_cmphex (0xFF000000u | (uint32_t) p[0] << 16 | (uint32_t) p[1] << 8 | p[2], ==, place_color (x, y));
+      }
+}
+
 /* AS-3 (REQ-0025-05): a state with its overlays is drawn; the picture, the undo list and the mark stay as they were. */
 static void
 assert_picture_untouched (EaselWindow *win, const uint32_t *before, int can_undo)
@@ -25180,7 +25451,6 @@ as3_overlays_change_nothing (void)
   EaselCanvas *canvas;
   g_autofree uint32_t *before = NULL;
   const EaselImage *img;
-  g_autoptr (GdkPixbuf) saved = NULL;
   gboolean can_undo;
   int sx, sy, sw, sh, bx, by, bw, bh;
   gboolean floating;
@@ -25208,6 +25478,7 @@ as3_overlays_change_nothing (void)
   shape_release (win, 1);
   g_assert_true (easel_canvas_is_pending (canvas));
   assert_picture_untouched (win, before, -1);
+  assert_saved_file_is_the_picture (win, path);
   g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
   g_assert_false (easel_canvas_is_pending (canvas));
   assert_picture_untouched (win, before, can_undo);
@@ -25218,6 +25489,7 @@ as3_overlays_change_nothing (void)
   shape_release (win, 1);
   g_assert_true (easel_canvas_is_pending (canvas));
   assert_picture_untouched (win, before, -1);
+  assert_saved_file_is_the_picture (win, path);
   g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
   g_assert_false (easel_canvas_is_pending (canvas));
   assert_picture_untouched (win, before, can_undo);
@@ -25227,7 +25499,10 @@ as3_overlays_change_nothing (void)
   shape_press_move (win, 1, 5, 5, 40, 30);
   shape_release (win, 1);
   g_assert_true (easel_canvas_text_box (canvas, &bx, &by, &bw, &bh));
+  g_assert_true (easel_canvas_text_caret_on (canvas));              /* the state the scenario names: a frame with the caret in it */
   assert_picture_untouched (win, before, -1);
+  g_assert_true (easel_canvas_text_box (canvas, &bx, &by, &bw, &bh));
+  assert_saved_file_is_the_picture (win, path);
   g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
   g_assert_false (easel_canvas_text_box (canvas, &bx, &by, &bw, &bh));
   assert_picture_untouched (win, before, can_undo);
@@ -25236,6 +25511,7 @@ as3_overlays_change_nothing (void)
   use_tool (win, "magnifier");
   easel_canvas_pointer_at (canvas, 100, 100);
   assert_picture_untouched (win, before, can_undo);
+  assert_saved_file_is_the_picture (win, path);
   easel_canvas_pointer_left (canvas);
 
   /* A marked rectangle: its tint, outline and handles; with the grid on, the file saved has none of it. */
@@ -25245,18 +25521,7 @@ as3_overlays_change_nothing (void)
   g_assert_true (easel_canvas_get_selection (canvas, &sx, &sy, &sw, &sh, &floating));
   g_assert_false (floating);
   assert_picture_untouched (win, before, can_undo);
-  g_assert_true (easel_window_save_to (win, path));
-  saved = gdk_pixbuf_new_from_file (path, NULL);
-  g_assert_nonnull (saved);
-  g_assert_cmpint (gdk_pixbuf_get_width (saved), ==, 60);
-  g_assert_cmpint (gdk_pixbuf_get_height (saved), ==, 40);
-  for (int y = 0; y < 40; y++)
-    for (int x = 0; x < 60; x++)
-      {
-        const guchar *p = gdk_pixbuf_get_pixels (saved) + (gsize) y * gdk_pixbuf_get_rowstride (saved) + (gsize) x * gdk_pixbuf_get_n_channels (saved);
-
-        g_assert_cmphex (0xFF000000u | (uint32_t) p[0] << 16 | (uint32_t) p[1] << 8 | p[2], ==, place_color (x, y));
-      }
+  assert_saved_file_is_the_picture (win, path);
   assert_picture_untouched (win, before, can_undo);
   close_windows ();
   write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
@@ -25321,54 +25586,74 @@ as3b_overlays_show_through (void)
         assert_near (px[(gsize) (cy + 2 * 8 + 4) * w + cx + 2 * 8 + 4], content);
         close_windows ();
       }
-  /* The outline and a handle, measured from what they add to the frame: the same state with and without them. */
-  {
-    EaselWindow *win;
-    EaselCanvas *canvas;
-    g_autofree uint32_t *with_line = NULL, *without = NULL, *with_handles = NULL;
-    graphene_rect_t handle;
-    int w, h, cx, cy, thick = 0, x0 = INT_MAX, y0 = INT_MAX, x1 = -1, y1 = -1;
+  /* The outline and a handle, measured from what they add to the frame: the same state with and without them; a marked rectangle, a float
+     and a box. */
+  for (int what = 0; what < 3; what++)
+    {
+      EaselWindow *win;
+      EaselCanvas *canvas;
+      g_autofree uint32_t *with_line = NULL, *without = NULL, *with_handles = NULL;
+      graphene_rect_t handle;
+      int w, h, cx, cy, sx, sy, sw, sh, thick = 0, x0 = INT_MAX, y0 = INT_MAX, x1 = -1, y1 = -1;
 
-    write_settings ("[new-picture]\nwidth=60\nheight=40\nbackground=#2080C0\n");
-    win = start_window ();
-    canvas = easel_window_get_canvas (win);
-    wait_for_layout (win);
-    easel_canvas_set_zoom (canvas, 800);
-    wait_for_layout (win);
-    use_tool (win, "select");
-    shape_press_move (win, 1, 5, 5, 30, 25);
-    shape_release (win, 1);
-    easel_canvas_set_selection_handles_shown (canvas, FALSE);
-    easel_canvas_set_overlay_probe (canvas, TRUE, FALSE);
-    wait_for_next_frame (win);
-    with_line = render_pixels (win, &w, &h, &cx, &cy);
-    easel_canvas_set_overlay_probe (canvas, FALSE, FALSE);
-    wait_for_next_frame (win);
-    without = render_pixels (win, &w, &h, &cx, &cy);
-    /* Across the rectangle's left side, in the middle of it. */
-    for (int x = cx + 4 * 8 - 8; x < cx + 5 * 8 + 12; x++)
-      thick += with_line[(gsize) (cy + 15 * 8 + 4) * w + x] != without[(gsize) (cy + 15 * 8 + 4) * w + x];
-    g_assert_cmpint (thick, >, 0);
-    g_assert_cmpint (thick, <=, 2);
-    easel_canvas_set_selection_handles_shown (canvas, TRUE);
-    wait_for_next_frame (win);
-    with_handles = render_pixels (win, &w, &h, &cx, &cy);
-    g_assert_true (easel_canvas_get_selection_handle_rect (canvas, EASEL_SEL_HANDLE_TL, &handle));
-    g_assert_cmpfloat (handle.size.width, ==, 5);
-    g_assert_cmpfloat (handle.size.height, ==, 5);
-    for (int y = cy + (int) handle.origin.y - 4; y < cy + (int) handle.origin.y + 9; y++)
-      for (int x = cx + (int) handle.origin.x - 4; x < cx + (int) handle.origin.x + 9; x++)
-        if (with_handles[(gsize) y * w + x] != without[(gsize) y * w + x])
-          {
-            x0 = MIN (x0, x);
-            y0 = MIN (y0, y);
-            x1 = MAX (x1, x);
-            y1 = MAX (y1, y);
-          }
-    g_assert_cmpint (x1 - x0 + 1, ==, 5);
-    g_assert_cmpint (y1 - y0 + 1, ==, 5);
-    close_windows ();
-  }
+      write_settings ("[new-picture]\nwidth=60\nheight=40\nbackground=#2080C0\n\n[text]\nfont=DejaVu Sans\nsize=8\n");
+      win = start_window ();
+      canvas = easel_window_get_canvas (win);
+      wait_for_layout (win);
+      easel_canvas_set_zoom (canvas, 800);
+      wait_for_layout (win);
+      use_tool (win, what == 2 ? "text" : "select");
+      shape_press_move (win, 1, 5, 5, 30, 25);
+      shape_release (win, 1);
+      sx = 5, sy = 5, sw = 26, sh = 21;
+      if (what == 1)
+        {
+          gboolean floating = FALSE;
+
+          shape_press_move (win, 1, 10, 10, 11, 10);          /* a pixel to the right: it floats */
+          shape_release (win, 1);
+          g_assert_true (easel_canvas_get_selection (canvas, &sx, &sy, &sw, &sh, &floating));
+          g_assert_true (floating);
+        }
+      if (what == 2)
+        g_assert_true (easel_canvas_text_box (canvas, &sx, &sy, &sw, &sh));
+      easel_canvas_set_selection_handles_shown (canvas, FALSE);
+      easel_canvas_set_overlay_probe (canvas, TRUE, FALSE);
+      wait_for_next_frame (win);
+      with_line = render_pixels (win, &w, &h, &cx, &cy);
+      easel_canvas_set_overlay_probe (canvas, FALSE, FALSE);
+      wait_for_next_frame (win);
+      without = render_pixels (win, &w, &h, &cx, &cy);
+      /* Across the left side, over several rows: a dash of the line is on some of them. */
+      for (int row = 0; row < 16; row++)
+        {
+          int across = 0;
+
+          for (int x = cx + (sx - 1) * 8; x < cx + sx * 8 + 12; x++)
+            across += with_line[(gsize) (cy + (sy + sh / 2) * 8 + row) * w + x] != without[(gsize) (cy + (sy + sh / 2) * 8 + row) * w + x];
+          thick = MAX (thick, across);
+        }
+      g_assert_cmpint (thick, >, 0);
+      g_assert_cmpint (thick, <=, 2);
+      easel_canvas_set_selection_handles_shown (canvas, TRUE);
+      wait_for_next_frame (win);
+      with_handles = render_pixels (win, &w, &h, &cx, &cy);
+      g_assert_true (easel_canvas_get_selection_handle_rect (canvas, EASEL_SEL_HANDLE_TL, &handle));
+      g_assert_cmpfloat (handle.size.width, ==, 5);
+      g_assert_cmpfloat (handle.size.height, ==, 5);
+      for (int y = cy + (int) handle.origin.y - 4; y < cy + (int) handle.origin.y + 9; y++)
+        for (int x = cx + (int) handle.origin.x - 4; x < cx + (int) handle.origin.x + 9; x++)
+          if (with_handles[(gsize) y * w + x] != without[(gsize) y * w + x])
+            {
+              x0 = MIN (x0, x);
+              y0 = MIN (y0, y);
+              x1 = MAX (x1, x);
+              y1 = MAX (y1, y);
+            }
+      g_assert_cmpint (x1 - x0 + 1, ==, 5);
+      g_assert_cmpint (y1 - y0 + 1, ==, 5);
+      close_windows ();
+    }
   write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
 }
 
@@ -26191,6 +26476,7 @@ main (int argc, char **argv)
   g_test_add_func ("/0017/as2_box_dashes_move", as2_box_dashes_move);
   g_test_add_func ("/0017/as27_highlight_over_tint_exact", as27_highlight_over_tint_exact);
   g_test_add_func ("/0017/as16_later_character_wins", as16_later_character_wins);
+  g_test_add_func ("/0017/as16_half_covered_underline_ends", as16_half_covered_underline_ends);
   g_test_add_func ("/0017/as25_line_starts", as25_line_starts);
   g_test_add_func ("/0017/as26_format_keys", as26_format_keys);
   g_test_add_func ("/0017/as26_card_steps_mixed", as26_card_steps_mixed);
@@ -26355,6 +26641,7 @@ main (int argc, char **argv)
   g_test_add_func ("/0018/handles_follow_turn", handles_follow_turn);
   g_test_add_func ("/0025/as1_squares_at_whole_zooms", as1_squares_at_whole_zooms);
   g_test_add_func ("/0025/as1_far_corner_of_8000", as1_far_corner_of_8000);
+  g_test_add_func ("/0025/view_without_memory_falls_back", view_without_memory_falls_back);
   g_test_add_func ("/0025/as1c_edges_at_fractional_zoom", as1c_edges_at_fractional_zoom);
   g_test_add_func ("/0025/as1d_grid_on_cell_edges", as1d_grid_on_cell_edges);
   g_test_add_func ("/0025/as2_same_figure_at_any_zoom", as2_same_figure_at_any_zoom);
@@ -26368,6 +26655,8 @@ main (int argc, char **argv)
   g_test_add_func ("/0025/as6_letters_at_800_scrolled", as6_letters_at_800_scrolled);
   g_test_add_func ("/0025-open/overlay_sides_at_fractional_zoom", overlay_sides_at_fractional_zoom);
   g_test_add_func ("/0025-scale2/as1b_squares_at_scale_2", as1b_squares_at_scale_2);
+  g_test_add_func ("/0025-scale2/as1b_far_corner_of_8000", as1b_far_corner_of_8000);
+  g_test_add_func ("/0025-scale2/as1e_no_blend_below_100_at_scale_2", as1e_no_blend_below_100_at_scale_2);
   ret = g_test_run ();
   g_object_unref (app);
   return ret;

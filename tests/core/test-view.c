@@ -429,6 +429,31 @@ as2b_pointer_on_border (void)
 }
 
 /* REQ-0025-02, the Plan: below 100 % and at a whole size the view stays as it is. */
+/* AS-1e (REQ-0001-18): the view is built by the edges where the renderer's scaling is not exact, and the pointer follows it below 100 % too. */
+static void
+built_by_edges_at_any_zoom_on_a_scale_above_1 (void)
+{
+  CHECK (!easel_view_built_by_edges (50, 1));
+  CHECK (!easel_view_built_by_edges (100, 1));
+  CHECK (!easel_view_built_by_edges (800, 1));
+  CHECK (easel_view_built_by_edges (129, 1));
+  CHECK (easel_view_built_by_edges (10, 2));
+  CHECK (easel_view_built_by_edges (75, 2));
+  CHECK (easel_view_built_by_edges (100, 2));
+  CHECK (easel_view_built_by_edges (129, 2));
+  CHECK (easel_view_built_by_edges (800, 2));
+  CHECK (!easel_view_built_by_edges (75, 1.5));
+  CHECK (!easel_view_built_by_edges (129, 1.5));
+  for (int d = 0; d < 500; d++)
+    {
+      int px, py;
+
+      easel_view_to_pixel ((d + 0.25) / 2.0, (d + 0.75) / 2.0, 75, 2, &px, &py);
+      CHECK (px == easel_view_cell_at (d, 75));
+      CHECK (py == easel_view_cell_at (d, 75));
+    }
+}
+
 static void
 draws_by_edges_only_where_a_square_is_fractional (void)
 {
@@ -464,5 +489,6 @@ main (void)
   RUN (as2c_cell_at_is_the_inverse);
   RUN (as2b_pointer_on_border);
   RUN (draws_by_edges_only_where_a_square_is_fractional);
+  RUN (built_by_edges_at_any_zoom_on_a_scale_above_1);
   return 0;
 }

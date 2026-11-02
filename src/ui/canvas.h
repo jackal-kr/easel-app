@@ -317,6 +317,10 @@ gboolean easel_canvas_text_filter (EaselCanvas *self, GdkEvent *event);
 void easel_canvas_text_point (EaselCanvas *self, size_t index, double *x, double *y);
 /* The most the box's pixels may use (a test hook, REQ-0017-07), and the error bells sounded (a test hook). */
 void easel_canvas_set_text_show_limit (EaselCanvas *self, size_t max_bytes);
+/* The most a view built on the drawn edges may ask for at once, as if the memory ended there (a test hook; the edge case of 0025). */
+void easel_canvas_set_view_memory_limit (EaselCanvas *self, size_t max_bytes);
+/* Whether the box's caret is shown now (a test hook). */
+gboolean easel_canvas_text_caret_on (EaselCanvas *self);
 /* The most the put-down's step may use (a test hook, REQ-0017-18). */
 void easel_canvas_set_text_step_limit (EaselCanvas *self, size_t max_bytes);
 guint easel_canvas_get_error_bells (EaselCanvas *self);

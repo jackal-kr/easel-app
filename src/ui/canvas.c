@@ -57,6 +57,7 @@ struct _EaselCanvas
   guint64 trail_key;      /* what the trail was laid from, see trail_key_of (); 0: none */
   guint sel_epoch;        /* counts every cut-back of the copies: the trail laid before it is stale */
   gboolean probe_no_line, probe_no_tint;   /* benchmark hook, see easel_canvas_set_overlay_probe () */
+  size_t view_memory_max;                  /* test hook, see easel_canvas_set_view_memory_limit () */
   gboolean no_sel_handles;                 /* test hook, see easel_canvas_set_selection_handles_shown () */
   gboolean line_unmerged;                  /* test hook, see easel_canvas_set_line_merge () */
   gsize line_strips;                       /* test hook: the white strips of the last line drawn */
@@ -271,7 +272,7 @@ static gboolean on_spray_tick (gpointer data);
 #define HANDLE_SIZE 5.0
 #define HANDLE_HIT 9.0
 static gboolean view_built_by_edges (EaselCanvas *self);
-static void append_cells_by_edges (EaselCanvas *self, GtkSnapshot *snapshot, const uint32_t *px, int x0, int y0, int rw, int rh);
+static gboolean append_cells_by_edges (EaselCanvas *self, GtkSnapshot *snapshot, const uint32_t *px, int x0, int y0, int rw, int rh);
 
 #define TEXT_BAND 4.0          /* the width of a text box's move band, logical pixels (REQ-0017-09) */
 #define MARKER_SIZE 5.0          /* a gradient's marker: the size of a handle (REQ-0012-13) ... */
@@ -364,6 +365,7 @@ easel_canvas_set_image (EaselCanvas *self, EaselImage *img)
   self->hover_sel_handle = -1;
   self->tiles_rebuilt = 0;
   self->text_show_max = SIZE_MAX;
+  self->view_memory_max = SIZE_MAX;
   self->text_step_max = SIZE_MAX;
   if (img != NULL)
     {
@@ -691,6 +693,19 @@ easel_canvas_text_style_at_caret (EaselCanvas *self, EaselTextStyle *out)
 {
   if (self->text_open)
     style_at_caret_of (self->text_buf, out);
+}
+
+void
+easel_canvas_set_view_memory_limit (EaselCanvas *self, size_t max_bytes)
+{
+  self->view_memory_max = max_bytes;
+  self->view_kept = FALSE;
+}
+
+gboolean
+easel_canvas_text_caret_on (EaselCanvas *self)
+{
+  return self->text_open && self->caret_on;
 }
 
 void
@@ -1687,9 +1702,9 @@ append_text_box (EaselCanvas *self, GtkSnapshot *snapshot, double l)
           c = ink->color[(size_t) (y - ink->y) * ink->w + (x - ink->x)];
         px[(gsize) j * rw + i] = c;
       }
-  if (view_built_by_edges (self))
+  /* On the squares drawn under it (REQ-0025-03); with no memory for that, by the renderer's scaling below. */
+  if (view_built_by_edges (self) && append_cells_by_edges (self, snapshot, px, x0, y0, rw, rh))
     {
-      append_cells_by_edges (self, snapshot, px, x0, y0, rw, rh);      /* on the squares drawn under it (REQ-0025-03) */
       g_free (px);
       return;
     }
@@ -1847,9 +1862,7 @@ append_float_outside (EaselCanvas *self, GtkSnapshot *snapshot, double l)
     for (guint b = 0; b < G_N_ELEMENTS (bands); b++)
       {
         gtk_snapshot_push_clip (snapshot, &bands[b]);
-        if (by_edges)
-          append_cells_by_edges (self, snapshot, g_bytes_get_data (data, NULL), x0, y0, rw, rh);
-        else
+        if (!by_edges || !append_cells_by_edges (self, snapshot, g_bytes_get_data (data, NULL), x0, y0, rw, rh))
           gtk_snapshot_append_scaled_texture (snapshot, texture, GSK_SCALING_FILTER_NEAREST,
                                               &GRAPHENE_RECT_INIT ((float) (x0 * l), (float) (y0 * l), (float) (rw * l),
                                                                    (float) (rh * l)));
@@ -3175,14 +3188,22 @@ typedef struct
 static gboolean
 view_built_by_edges (EaselCanvas *self)
 {
-  double scale = easel_canvas_get_scale (self);
+  return easel_view_built_by_edges (self->zoom, easel_canvas_get_scale (self));
+}
 
-  return self->zoom >= 100 && scale == floor (scale) && (easel_view_draws_by_edges (self->zoom) || scale != 1);
+/* An allocation of a view built on the edges (REQ-0025-03; the edge case of 0025): NULL without memory, or past the test hook's limit. */
+static gpointer
+view_try_malloc (EaselCanvas *self, gsize count, gsize size)
+{
+  if (count > self->view_memory_max / size)
+    return NULL;
+  return g_try_malloc_n (count, size);
 }
 
 /* Pixels of the picture's grid (the rectangle x0, y0, rw, rh of px, which has rw pixels to a row) as device pixels on the drawn edges, only what
-   the view shows (REQ-0025-03): what lies over the picture falls on its squares. */
-static void
+   the view shows (REQ-0025-03): what lies over the picture falls on its squares. FALSE without memory, with nothing drawn: the caller
+   draws them by the renderer's scaling, for this frame. */
+static gboolean
 append_cells_by_edges (EaselCanvas *self, GtkSnapshot *snapshot, const uint32_t *px, int x0, int y0, int rw, int rh)
 {
   double scale = easel_canvas_get_scale (self);
@@ -3195,7 +3216,7 @@ append_cells_by_edges (EaselCanvas *self, GtkSnapshot *snapshot, const uint32_t 
   g_autoptr (GdkTexture) texture = NULL;
 
   if (!gtk_widget_compute_bounds (gtk_widget_get_parent (GTK_WIDGET (self)), GTK_WIDGET (self), &seen))
-    return;
+    return TRUE;
   dx0 = MAX (easel_view_edge (x0, zoom), (int) floor (seen.origin.x * scale));
   dy0 = MAX (easel_view_edge (y0, zoom), (int) floor (seen.origin.y * scale));
   dx1 = MIN (easel_view_edge (x0 + rw, zoom), (int) ceil ((seen.origin.x + seen.size.width) * scale));
@@ -3203,9 +3224,15 @@ append_cells_by_edges (EaselCanvas *self, GtkSnapshot *snapshot, const uint32_t 
   vw = dx1 - dx0;
   vh = dy1 - dy0;
   if (vw <= 0 || vh <= 0)
-    return;
-  dst = g_new (uint32_t, (gsize) vw * (gsize) vh);
-  xk = g_new (int, vw);
+    return TRUE;
+  dst = view_try_malloc (self, (gsize) vw * (gsize) vh, sizeof (uint32_t));
+  xk = view_try_malloc (self, vw, sizeof (int));
+  if (dst == NULL || xk == NULL)
+    {
+      g_free (dst);
+      g_free (xk);
+      return FALSE;
+    }
   for (int i = 0; i < vw; i++)
     xk[i] = easel_view_cell_at (dx0 + i, zoom) - x0;
   for (int r = 0; r < vh; r++)
@@ -3228,12 +3255,13 @@ append_cells_by_edges (EaselCanvas *self, GtkSnapshot *snapshot, const uint32_t 
   bytes = g_bytes_new_take (dst, (gsize) vw * (gsize) vh * sizeof (uint32_t));
   texture = gdk_memory_texture_new (vw, vh, PICTURE_FORMAT, bytes, (gsize) vw * sizeof (uint32_t));
   gtk_snapshot_append_texture (snapshot, texture, &GRAPHENE_RECT_INIT ((float) (dx0 / scale), (float) (dy0 / scale), (float) (vw / scale), (float) (vh / scale)));
+  return TRUE;
 }
 
 /* The part of the picture in view at device size, each device pixel from the cell the edge rule puts there, through a source index per device
    column (0025's Plan, T001). While a preview replaces some tiles their pixels are read from those; a repaint with nothing changed reuses the
-   last texture. */
-static void
+   last texture. FALSE without memory, with nothing drawn: the caller draws the tiles by the renderer's scaling, for this frame. */
+static gboolean
 append_view_by_edges (EaselCanvas *self, GtkSnapshot *snapshot, GdkTexture **preview)
 {
   const EaselImage *img = self->img;
@@ -3243,7 +3271,7 @@ append_view_by_edges (EaselCanvas *self, GtkSnapshot *snapshot, GdkTexture **pre
   int x0, y0, x1, y1, vw, vh;
 
   if (!gtk_widget_compute_bounds (gtk_widget_get_parent (GTK_WIDGET (self)), GTK_WIDGET (self), &seen))
-    return;
+    return TRUE;
   x0 = MAX (0, (int) floor (seen.origin.x * scale));
   y0 = MAX (0, (int) floor (seen.origin.y * scale));
   x1 = MIN (easel_view_edge (img->width, zoom), (int) ceil ((seen.origin.x + seen.size.width) * scale));
@@ -3251,28 +3279,40 @@ append_view_by_edges (EaselCanvas *self, GtkSnapshot *snapshot, GdkTexture **pre
   vw = x1 - x0;
   vh = y1 - y0;
   if (vw <= 0 || vh <= 0)
-    return;
+    return TRUE;
   if (preview != NULL || !self->view_kept || self->view_tex == NULL || self->view_gen != self->tiles_gen || self->view_zoom != zoom
       || self->view_x != x0 || self->view_y != y0 || self->view_w != vw || self->view_h != vh)
     {
-      uint32_t *dst = g_new (uint32_t, (gsize) vw * (gsize) vh);
-      int *xk = g_new (int, vw);
+      uint32_t *dst = view_try_malloc (self, (gsize) vw * (gsize) vh, sizeof (uint32_t));
+      int *xk = view_try_malloc (self, vw, sizeof (int));
       int prev_y = -1;
       int first_col = 0, n_cols = 0;
       const uint32_t **from = NULL;
       GBytes **held = NULL;
       gsize *strides = NULL;
       g_autoptr (GBytes) bytes = NULL;
+      gboolean have_memory = dst != NULL && xk != NULL;
 
-      for (int i = 0; i < vw; i++)
-        xk[i] = easel_view_cell_at (x0 + i, zoom);
-      if (preview != NULL)
+      if (have_memory)
+        for (int i = 0; i < vw; i++)
+          xk[i] = easel_view_cell_at (x0 + i, zoom);
+      if (have_memory && preview != NULL)
         {
           first_col = xk[0] / EASEL_CANVAS_TILE;
           n_cols = xk[vw - 1] / EASEL_CANVAS_TILE - first_col + 1;
-          from = g_new (const uint32_t *, n_cols);
-          held = g_new0 (GBytes *, (gsize) self->tile_cols * (gsize) self->tile_rows);
-          strides = g_new (gsize, (gsize) self->tile_cols * (gsize) self->tile_rows);
+          from = g_try_new (const uint32_t *, n_cols);
+          held = g_try_new0 (GBytes *, (gsize) self->tile_cols * (gsize) self->tile_rows);
+          strides = g_try_new (gsize, (gsize) self->tile_cols * (gsize) self->tile_rows);
+          have_memory = from != NULL && held != NULL && strides != NULL;
+        }
+      if (!have_memory)
+        {
+          g_free (dst);
+          g_free (xk);
+          g_free (from);
+          g_free (held);
+          g_free (strides);
+          return FALSE;
         }
       for (int r = 0; r < vh; r++)
         {
@@ -3339,6 +3379,7 @@ append_view_by_edges (EaselCanvas *self, GtkSnapshot *snapshot, GdkTexture **pre
   /* A plain texture at whole device pixels: exact, where a scaled one with NEAREST is not on every screen. */
   gtk_snapshot_append_texture (snapshot, self->view_tex,
                                &GRAPHENE_RECT_INIT ((float) (x0 / scale), (float) (y0 / scale), (float) (vw / scale), (float) (vh / scale)));
+  return TRUE;
 }
 
 /* Picture coordinates to canvas coordinates, putting the line on a whole device pixel: a vertical or horizontal line
@@ -4204,9 +4245,7 @@ easel_canvas_snapshot (GtkWidget *widget, GtkSnapshot *snapshot)
   /* Transparent pixels show the checkerboard (REQ-0001-11); nearest filtering keeps pixels hard-edged
      at every zoom (REQ-0001-18). Each tile is drawn where its pixels are; edges fall on whole device pixels. */
   easel_snapshot_append_checkerboard (snapshot, &bounds, CHECKER_SIZE);
-  if (by_edges)
-    append_view_by_edges (self, snapshot, preview);
-  else
+  if (!by_edges || !append_view_by_edges (self, snapshot, preview))
     for (int ty = 0; ty < self->tile_rows; ty++)
       for (int tx = 0; tx < self->tile_cols; tx++)
         {
