@@ -1073,9 +1073,9 @@ test: ui-0007
 file: src/ui/window.c
 test: ui-0007
 --- find
-                                      g_variant_new_int32 (easel_magnifier_levels[EASEL_MAGNIFIER_DEFAULT]));
+g_variant_new_int32 (self->settings.magnifier * 100));
 --- replace
-                                      g_variant_new_int32 (easel_magnifier_levels[2]));
+g_variant_new_int32 (400));
 
 === REQ-0007-02 the Magnifier has no 1x level
 file: src/core/view.c
@@ -4366,7 +4366,7 @@ test: ui-0014
 file: src/ui/canvas.c
 test: ui-0014
 --- find
-  GdkRGBA tint = { accent->red, accent->green, accent->blue, 0.12f };      /* the system's accent at 12 % (JOD, 2026-10-28) */
+  GdkRGBA tint = { accent->red, accent->green, accent->blue, self->tint / 100.0f };      /* the system's accent at 12 % (JOD, 2026-10-28) */
 --- replace
   GdkRGBA tint = { accent->red, accent->green, accent->blue, 0.0f };      /* the system's accent at 12 % (JOD, 2026-10-28) */
 
@@ -4431,9 +4431,9 @@ test: ui-0014
 file: src/ui/canvas.c
 test: ui-0014
 --- find
-  GdkRGBA tint = { accent->red, accent->green, accent->blue, 0.12f };      /* the system's accent at 12 % (JOD, 2026-10-28) */
+  GdkRGBA tint = { accent->red, accent->green, accent->blue, self->tint / 100.0f };      /* the system's accent at 12 % (JOD, 2026-10-28) */
 --- replace
-  GdkRGBA tint = { 0.208f, 0.518f, 0.894f, 0.12f };      /* the system's accent at 12 % (JOD, 2026-10-28) */
+  GdkRGBA tint = { 0.208f, 0.518f, 0.894f, self->tint / 100.0f };      /* the system's accent at 12 % (JOD, 2026-10-28) */
 
 === REQ-0014-17 the canvas is not drawn again when the accent changes
 file: src/ui/canvas.c
@@ -10515,11 +10515,11 @@ test: ui-0017
       if (FALSE && easel_canvas_text_box (self, &x, &y, &w, &h))
         gtk_snapshot_append_color (snapshot, &tint,
 
-=== REQ-0014-17 the tint is 28 % as before
+=== REQ-0014-17 the tint is a fixed strength, not the setting
 file: src/ui/canvas.c
 test: ui-0014
 --- find
-  GdkRGBA tint = { accent->red, accent->green, accent->blue, 0.12f };
+  GdkRGBA tint = { accent->red, accent->green, accent->blue, self->tint / 100.0f };
 --- replace
   GdkRGBA tint = { accent->red, accent->green, accent->blue, 0.28f };
 
@@ -10682,7 +10682,7 @@ test: ui-0025
 file: src/ui/canvas.c
 test: ui-0025
 --- find
-GdkRGBA tint = { accent->red, accent->green, accent->blue, 0.12f };
+GdkRGBA tint = { accent->red, accent->green, accent->blue, self->tint / 100.0f };
 --- replace
 GdkRGBA tint = { accent->red, accent->green, accent->blue, 1.0f };
 === REQ-0025-05 the text box is drawn over the grid
@@ -11165,3 +11165,232 @@ no_memory:
   free (seen);
   *out = p;
   return false;
+
+# ---- 0020 Preferences ----
+
+=== REQ-0020-03 tint strength from the settings is ignored
+file: src/ui/window.c
+test: ui-0020
+--- find
+  easel_canvas_set_tint (self->canvas, self->settings.tint);
+--- replace
+  easel_canvas_set_tint (self->canvas, EASEL_TINT_DEFAULT);
+
+=== REQ-0020-09 a repeated key changes its first line, not the one that counts
+file: src/core/settings.c
+test: core-settings-edit
+--- find
+              has_key = true;
+              key_start = l.start;
+              key_end = l.end;
+--- replace
+              if (!has_key)
+                {
+                  key_start = l.start;
+                  key_end = l.end;
+                }
+              has_key = true;
+
+=== REQ-0020-09 a key in another section is taken for it
+file: src/core/settings.c
+test: core-settings-edit
+--- find
+      else if (in_section && line_key (line, &name))
+        {
+          after = l.next;
+--- replace
+      else if (line_key (line, &name))
+        {
+          after = l.next;
+
+=== REQ-0020-09 a line loses its line ending
+file: src/core/settings.c
+test: core-settings-edit
+--- find
+      put_str (&at, value);
+      put (&at, text + key_end, len - key_end);
+--- replace
+      put_str (&at, value);
+      put (&at, text + key_end + (key_end < len ? 1 : 0), len - key_end - (key_end < len ? 1 : 0));
+
+=== REQ-0020-09 a new key goes at the end of the section, after its comments
+file: src/core/settings.c
+test: core-settings-edit
+--- find
+      if (line_section (line, &name))
+        {
+          in_section = easel_span_is (name, section);
+          if (in_section)
+            {
+              has_section = true;
+              after = l.next;
+            }
+        }
+      else if (in_section && line_key
+--- replace
+      if (in_section && !line_section (line, &name))
+        after = l.next;
+      if (line_section (line, &name))
+        {
+          in_section = easel_span_is (name, section);
+          if (in_section)
+            {
+              has_section = true;
+              after = l.next;
+            }
+        }
+      else if (in_section && line_key
+
+=== REQ-0020-09 a last line with no ending takes the new key on it
+file: src/core/settings.c
+test: core-settings-edit
+--- find
+      put (&at, text, after);
+      if (after > 0 && text[after - 1] != '\n')
+        put_str (&at, eol);
+--- replace
+      put (&at, text, after);
+
+=== REQ-0020-09 a new line ignores the file's line ending
+file: src/core/settings.c
+test: core-settings-edit
+--- find
+  if (first_nl != NULL && first_nl > text && first_nl[-1] == '\r')
+    eol = "\r\n";
+--- replace
+  if (first_nl != NULL && first_nl > text && first_nl[-1] == '\r' && len == 0)
+    eol = "\r\n";
+
+=== REQ-0020-09 an empty file gets a leading blank line
+file: src/core/settings.c
+test: core-settings-edit
+--- find
+      if (len > 0 && !(at - buffer >= 2 * (long) strlen (eol)
+--- replace
+      if (!(at - buffer >= 2 * (long) strlen (eol)
+
+=== REQ-0020-09 a removed key keeps its first line
+file: src/core/settings.c
+test: core-settings-edit
+--- find
+          else if (in_section && line_key (line, &name))
+            gone = easel_span_is (name, key);
+--- replace
+          else if (in_section && line_key (line, &name))
+            gone = easel_span_is (name, key) && l.start == key_start;
+
+=== REQ-0020-09 a removal reaches other sections
+file: src/core/settings.c
+test: core-settings-edit
+--- find
+          if (line_section (line, &name))
+            in_section = easel_span_is (name, section);
+          else if (in_section && line_key (line, &name))
+            gone =
+--- replace
+          if (line_section (line, &name))
+            in_section = true;
+          else if (in_section && line_key (line, &name))
+            gone =
+
+=== REQ-0020-10 an unparseable file is edited all the same
+file: src/core/settings.c
+test: core-settings-edit
+--- find
+  if (!easel_settings_parseable (text, len))
+    return false;
+  if (first_nl
+--- replace
+  if (first_nl
+
+=== REQ-0020-11 a created file has no drawing section
+file: src/core/settings.c
+test: core-settings-edit
+--- find
+  "[" SECTION_DRAWING "]\n"
+
+--- replace
+
+
+=== REQ-0020-11 tint past its limit is taken
+file: src/core/settings.c
+test: core-settings-edit
+--- find
+          if (!easel_parse_field (text, EASEL_TINT_MIN, EASEL_TINT_MAX, &s->tint))
+--- replace
+          if (!easel_parse_field (text, EASEL_TINT_MIN, 100, &s->tint))
+
+=== REQ-0020-11 style takes its case into account
+file: src/core/settings.c
+test: core-settings-edit
+--- find
+            if (easel_span_is_nocase (value, style_names[i]))
+--- replace
+            if (easel_span_is (value, style_names[i]))
+
+=== REQ-0020-11 an invalid brush keeps the last value, not the default
+file: src/core/settings.c
+test: core-settings-edit
+--- find
+        s->brush = (i = index_of (value, brush_names, 12)) >= 0 ? i : 1;
+--- replace
+        s->brush = (i = index_of (value, brush_names, 12)) >= 0 ? i : 0;
+
+=== REQ-0020-11 an invalid line width means 5
+file: src/core/settings.c
+test: core-settings-edit
+--- find
+            s->line_width = (i = index_of (value, widths, 5)) >= 0 ? i + 1 : 1;
+--- replace
+            s->line_width = (i = index_of (value, widths, 5)) >= 0 ? i + 1 : 5;
+
+=== REQ-0020-11 magnifier 16 reads as 1
+file: src/core/settings.c
+test: core-settings-edit
+--- find
+(value.n == 2 ? 16 : value.p[0] - '0') : 2;
+--- replace
+(value.p[0] - '0') : 2;
+
+=== REQ-0020-10 a read-only file is replaced all the same
+file: src/io/settings-file.c
+test: io-settings-change
+--- find
+g_access (target, R_OK | W_OK) != 0 || 
+--- replace
+
+
+--- replace
+
+
+=== REQ-0020-09 a link is replaced by a file
+file: src/io/settings-file.c
+test: io-settings-change
+--- find
+  const char *target = resolved != NULL ? resolved : path;
+--- replace
+  const char *target = path;
+
+=== REQ-0020-04 only the first of two keys is written
+file: src/io/settings-file.c
+test: io-settings-change
+--- find
+  for (size_t i = 0; i < n; i++)
+    {
+      char *next = NULL;
+--- replace
+  for (size_t i = 0; i < n && i < 1; i++)
+    {
+      char *next = NULL;
+
+=== REQ-0020-10 a missing folder is not made
+file: src/io/settings-file.c
+test: io-settings-change
+--- find
+      if (errno != ENOENT || g_mkdir_with_parents (dir, 0700) != 0)
+        return FALSE;
+      text = g_strdup
+--- replace
+      if (errno != ENOENT)
+        return FALSE;
+      text = g_strdup

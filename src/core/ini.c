@@ -10,8 +10,8 @@ is_space (char c)
   return c == ' ' || c == '\t' || c == '\r';
 }
 
-static EaselSpan
-trim (EaselSpan s)
+EaselSpan
+easel_span_trim (EaselSpan s)
 {
   while (s.n > 0 && is_space (s.p[0]))
     {
@@ -56,7 +56,7 @@ easel_ini_parse (const char *text, size_t len, EaselIniFunc func, void *data)
     {
       const char *nl = memchr (text + pos, '\n', len - pos);
       size_t end = nl ? (size_t) (nl - text) : len;
-      EaselSpan line = trim ((EaselSpan) { text + pos, end - pos });
+      EaselSpan line = easel_span_trim ((EaselSpan) { text + pos, end - pos });
       const char *eq;
 
       pos = end + 1;
@@ -74,8 +74,8 @@ easel_ini_parse (const char *text, size_t len, EaselIniFunc func, void *data)
       if (eq == NULL || eq == line.p || memchr (line.p, '\0', line.n) != NULL)
         return false;
 
-      func (section, trim ((EaselSpan) { line.p, (size_t) (eq - line.p) }),
-            trim ((EaselSpan) { eq + 1, line.n - (size_t) (eq - line.p) - 1 }), data);
+      func (section, easel_span_trim ((EaselSpan) { line.p, (size_t) (eq - line.p) }),
+            easel_span_trim ((EaselSpan) { eq + 1, line.n - (size_t) (eq - line.p) - 1 }), data);
     }
   return true;
 }

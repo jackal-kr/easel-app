@@ -58,6 +58,7 @@ struct _EaselCanvas
   guint sel_epoch;        /* counts every cut-back of the copies: the trail laid before it is stale */
   gboolean probe_no_line, probe_no_tint;   /* benchmark hook, see easel_canvas_set_overlay_probe () */
   size_t view_memory_max;                  /* test hook, see easel_canvas_set_view_memory_limit () */
+  int tint;                                /* the strength of the selection's tint in percent (REQ-0020-03) */
   gboolean no_sel_handles;                 /* test hook, see easel_canvas_set_selection_handles_shown () */
   gboolean line_unmerged;                  /* test hook, see easel_canvas_set_line_merge () */
   gsize line_strips;                       /* test hook: the white strips of the last line drawn */
@@ -2116,7 +2117,7 @@ static void
 append_selection_tint (EaselCanvas *self, GtkSnapshot *snapshot)
 {
   g_autoptr (GdkRGBA) accent = adw_style_manager_get_accent_color_rgba (adw_style_manager_get_default ());
-  GdkRGBA tint = { accent->red, accent->green, accent->blue, 0.12f };      /* the system's accent at 12 % (JOD, 2026-10-28) */
+  GdkRGBA tint = { accent->red, accent->green, accent->blue, self->tint / 100.0f };      /* the system's accent at 12 % (JOD, 2026-10-28) */
   double l = logical_per_pixel (self);
   const uint8_t *mask = selection_mask (self);
   int x, y, w, h;
@@ -4187,6 +4188,13 @@ easel_canvas_get_preview_bytes_held (EaselCanvas *self)
         held += (gsize) gdk_texture_get_width (self->comp_tex[i]) * (gsize) gdk_texture_get_height (self->comp_tex[i]) * 4;
     }
   return held;
+}
+
+void
+easel_canvas_set_tint (EaselCanvas *self, int percent)
+{
+  self->tint = percent;
+  gtk_widget_queue_draw (GTK_WIDGET (self));
 }
 
 void
@@ -6355,6 +6363,7 @@ easel_canvas_class_init (EaselCanvasClass *klass)
 static void
 easel_canvas_init (EaselCanvas *self)
 {
+  self->tint = EASEL_TINT_DEFAULT;
   self->zoom = 100;
   /* Input methods, compose and dead keys for the text box (REQ-0017-06): their text arrives by "commit" */
   self->im = gtk_im_multicontext_new ();                   /* its client widget is set while the canvas is realized */

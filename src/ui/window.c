@@ -7,6 +7,7 @@
 
 #include "config.h"
 #include "attributes-dialog.h"
+#include "preferences-dialog.h"
 #include "stretch-skew-dialog.h"
 #include "stretch-skew.h"
 #include "grid-dialog.h"
@@ -39,6 +40,9 @@ struct _EaselWindow
   guint card_focus_idle;
   gint64 tab_time;                              /* when Tab or Shift+Tab was last pressed: keyboard navigation */
   gsize rich_limit;                             /* tests: rich text longer than this fails as for memory; G_MAXSIZE is off */
+  EaselSettings chosen;                         /* what Preferences shows: as read at start, as changed there (REQ-0020-02) */
+  AdwDialog *preferences;                       /* Preferences while it is open */
+  gboolean preferences_error_shown;
   gsize transform_limit;                        /* tests: an Image command's allocation above this fails as for memory; G_MAXSIZE is off */
   EaselCanvas *canvas;
   EaselPaletteBar *palette_bar;
@@ -837,6 +841,9 @@ easel_window_close_request (GtkWindow *window)
 {
   EaselWindow *self = EASEL_WINDOW (window);
 
+  /* Preferences closes, a typed value kept, and the quit goes on (REQ-0020-01). */
+  if (self->preferences != NULL)
+    adw_dialog_force_close (self->preferences);
   /* While Open's or Paste From's file dialog is open a quit request does nothing, and so puts nothing down (REQ-0005-02, REQ-0016-08). */
   if (self->open_dialog_open)
     return TRUE;
@@ -2028,6 +2035,107 @@ static void
 rotate_270_activated (GSimpleAction *action, GVariant *parameter, gpointer user_data)
 {
   image_action (user_data, EASEL_OP_ROTATE_270);
+}
+
+/* ---- Preferences (0020) ---- */
+
+static void
+preferences_activated (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+  EaselWindow *self = user_data;
+
+  /* Opening it changes nothing: what waits stays (REQ-0020-01). */
+  if (view_actions_allowed (self) && !easel_canvas_is_panning (self->canvas) && card_field_focus (self) == NULL)
+    easel_preferences_dialog_present (self);
+}
+
+EaselSettings *
+easel_window_get_chosen_settings (EaselWindow *self)
+{
+  return &self->chosen;
+}
+
+void
+easel_window_preferences_opened (EaselWindow *self, AdwDialog *dialog)
+{
+  self->preferences = dialog;
+  self->preferences_error_shown = FALSE;
+}
+
+void
+easel_window_preferences_closed (EaselWindow *self)
+{
+  self->preferences = NULL;
+}
+
+void
+easel_window_write_settings (EaselWindow *self, const EaselSettingChange *changes, gsize n)
+{
+  g_autofree char *path = easel_settings_file_path ();
+
+  if (easel_settings_file_change (path, changes, n) || self->preferences_error_shown)
+    return;
+  self->preferences_error_shown = TRUE;
+  show_save_error (self, "Could Not Save the Preferences", "The change applies until Easel closes, but settings.ini could not be written.");
+}
+
+void
+easel_window_apply_style (EaselWindow *self, EaselStyle style)
+{
+  self->settings.style = style;
+  adw_style_manager_set_color_scheme (adw_style_manager_get_default (), style == EASEL_STYLE_LIGHT ? ADW_COLOR_SCHEME_FORCE_LIGHT
+                                      : style == EASEL_STYLE_DARK ? ADW_COLOR_SCHEME_FORCE_DARK : ADW_COLOR_SCHEME_DEFAULT);
+}
+
+void
+easel_window_apply_tint (EaselWindow *self, int percent)
+{
+  self->settings.tint = percent;
+  easel_canvas_set_tint (self->canvas, percent);
+}
+
+void
+easel_window_apply_panels (EaselWindow *self, gboolean toolbox, gboolean colorbox, gboolean statusbar)
+{
+  set_panel_state (self, "show-toolbox", self->toolbox_panel, toolbox);
+  set_panel_state (self, "show-colorbox", GTK_WIDGET (self->palette_bar), colorbox);
+  set_panel_state (self, "show-statusbar", GTK_WIDGET (self->status_bar), statusbar);
+}
+
+void
+easel_window_apply_chosen (EaselWindow *self)
+{
+  self->settings.width = self->chosen.width;
+  self->settings.height = self->chosen.height;
+  self->settings.background = self->chosen.background;
+  self->settings.jpeg_quality = self->chosen.jpeg_quality;
+  self->settings.has_workspace_color = self->chosen.has_workspace_color;
+  self->settings.workspace_color = self->chosen.workspace_color;
+  self->settings.has_workspace_color_dark = self->chosen.has_workspace_color_dark;
+  self->settings.workspace_color_dark = self->chosen.workspace_color_dark;
+  apply_workspace_color (&self->settings);
+}
+
+void
+easel_window_automatic_size (EaselWindow *self, int *width, int *height)
+{
+  EaselSettings automatic = self->settings;
+  int area_w = 0, area_h = 0;
+
+  automatic.width = automatic.height = EASEL_SIZE_AUTO;
+  canvas_area_device (self, &area_w, &area_h);
+  easel_settings_resolve_size (&automatic, area_w, area_h, width, height);
+}
+
+void
+easel_window_reset_palette (EaselWindow *self)
+{
+  g_autofree char *path = easel_palette_file_path ();
+
+  easel_palette_defaults (&self->palette);
+  easel_palette_bar_set_palette (self->palette_bar, &self->palette);
+  if (g_remove (path) != 0)
+    g_debug ("Cannot remove %s", path);          /* the swatches still change for this run, silently (REQ-0020-07) */
 }
 
 /* ---- Stretch and Skew (0019) ---- */
@@ -3301,6 +3409,7 @@ static const GActionEntry win_actions[] = {
   { .name = "rotate-180", .activate = rotate_180_activated },
   { .name = "rotate-270", .activate = rotate_270_activated },
   { .name = "stretch-skew", .activate = stretch_skew_activated },
+  { .name = "preferences", .activate = preferences_activated },
   { .name = "invert", .activate = invert_activated },
   { .name = "clear-image", .activate = clear_image_activated },
   { .name = "show-toolbox", .state = "true", .change_state = show_panel_state_changed },
@@ -3537,6 +3646,7 @@ easel_window_init (EaselWindow *self)
   self->rich_limit = G_MAXSIZE;
   self->transform_limit = G_MAXSIZE;
   easel_settings_file_load (settings_path, &self->settings);
+  self->chosen = self->settings;
   self->tool = EASEL_TOOL_PAN;
   self->foreground = 0xFF000000u;
   self->background = self->settings.background;
@@ -3549,8 +3659,9 @@ easel_window_init (EaselWindow *self)
   g_simple_action_set_enabled (G_SIMPLE_ACTION (g_action_map_lookup_action (G_ACTION_MAP (self), "clear-selection")), FALSE);
   easel_window_set_clipboard (self, NULL);
   add_zoom_submenu (self);
-  g_action_group_change_action_state (G_ACTION_GROUP (self), "magnifier-level",
-                                      g_variant_new_int32 (easel_magnifier_levels[EASEL_MAGNIFIER_DEFAULT]));
+  g_action_group_change_action_state (G_ACTION_GROUP (self), "line-width", g_variant_new_int32 (self->settings.line_width));
+  g_action_group_change_action_state (G_ACTION_GROUP (self), "fill-style", g_variant_new_int32 ((int) self->settings.fill_style));
+  g_action_group_change_action_state (G_ACTION_GROUP (self), "magnifier-level", g_variant_new_int32 (self->settings.magnifier * 100));
   gtk_popover_menu_add_child (GTK_POPOVER_MENU (gtk_menu_button_get_popover (self->view_button)), make_zoom_row (self),
                               "zoom");
   easel_font_card_set_canvas (self->font_card, self->canvas);
@@ -3588,6 +3699,8 @@ easel_window_init (EaselWindow *self)
     easel_palette_file_load (palette_path, &self->palette);
   }
   easel_palette_bar_set_palette (self->palette_bar, &self->palette);
+  easel_canvas_set_tint (self->canvas, self->settings.tint);
+  easel_window_apply_style (self, self->settings.style);
   /* The grid and the panels start as the settings file says (REQ-0004-15, REQ-0004-27). */
   easel_canvas_set_grid (self->canvas, self->settings.grid, self->settings.grid_size, self->settings.grid_axonometric);
   apply_text_settings (self);
@@ -3595,6 +3708,7 @@ easel_window_init (EaselWindow *self)
                              g_variant_new_boolean (self->settings.grid));
   /* The options panel sits below the tool buttons and shows only for the tools that have options. */
   self->tool_options = easel_tool_options_new ();
+  easel_tool_options_set_start (self->tool_options, self->settings.brush, self->settings.airbrush, self->settings.eraser, self->settings.eraser_transparent);
   gtk_box_append (GTK_BOX (self->tools_column), GTK_WIDGET (self->tool_options));
   g_signal_connect_swapped (self->tool_options, "preset-changed", G_CALLBACK (sync_canvas_options), self);
   g_signal_connect_object (self->canvas, "stroking-changed", G_CALLBACK (on_stroking_changed), self, G_CONNECT_SWAPPED);

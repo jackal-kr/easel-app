@@ -31,7 +31,7 @@ belongs to (see `docs/specs/INDEX.md`). Behavior only.
 - Keyboard access to the palette: Tab to it, arrows to move, Enter or Space picks the foreground, Shift+Enter the background.
 
 ## Application
-- Preferences (Ctrl+,): appearance (light / dark / system, workspace color, the strength of the selection's tint, which panels are shown, frame time), new-picture default size and background, drawing defaults (line width, magnifier zoom, undo memory, text font and style), palette reset.
+- Preferences (Ctrl+,): appearance (light / dark / system, workspace color, the strength of the selection's tint, which panels are shown, frame time), new-picture default size and background, drawing defaults (the tools' presets, line width, fill style, magnifier zoom, undo memory, JPEG quality, text font and style), palette reset.
 - Frame Time display, switchable from View and Preferences.
 - Keyboard shortcuts window (Ctrl+? or Ctrl+F1); Help (F1) opens as a readable page in the default browser.
 - Pictures can be opened from the command line.

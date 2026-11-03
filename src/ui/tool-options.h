@@ -19,6 +19,8 @@ void easel_tool_options_show_tool (EaselToolOptions *self, EaselTool tool);
 
 /* The selected footprint of a tool (Brush, Airbrush or Eraser); each tool keeps its own for the session. */
 EaselFootprint easel_tool_options_get_footprint (EaselToolOptions *self, EaselTool tool);
+/* What the tools start with, by their place in the panel (REQ-0020-05). */
+void easel_tool_options_set_start (EaselToolOptions *self, int brush, int airbrush, int eraser, gboolean transparent);
 
 /* The Eraser's mode: TRUE for Transparent. */
 gboolean easel_tool_options_get_transparent (EaselToolOptions *self);

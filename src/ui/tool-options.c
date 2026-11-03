@@ -496,3 +496,13 @@ easel_tool_options_set_busy (EaselToolOptions *self, gboolean busy)
   self->busy = busy;
   gtk_widget_set_sensitive (GTK_WIDGET (self), !busy);
 }
+
+void
+easel_tool_options_set_start (EaselToolOptions *self, int brush, int airbrush, int eraser, gboolean transparent)
+{
+  self->brush_index = brush;
+  self->airbrush_index = airbrush;
+  self->eraser_index = eraser;
+  self->transparent = transparent;
+  sync_selection (self);
+}

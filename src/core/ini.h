@@ -15,6 +15,8 @@ typedef struct
 } EaselSpan;
 
 bool easel_span_is (EaselSpan s, const char *word);
+/* The piece without the spaces, tabs and carriage returns at its two ends. */
+EaselSpan easel_span_trim (EaselSpan s);
 bool easel_span_is_nocase (EaselSpan s, const char *lower_word);
 
 /* Called for each key line, in order. section is empty before the first header. */

@@ -6,6 +6,7 @@
 #include <string.h>
 
 #include "stretch-skew.h"
+#include "unit-row.h"
 
 typedef struct
 {
@@ -19,8 +20,6 @@ typedef struct
   EaselStretchSkewApplied applied;
   gpointer data;
 } StretchSkewDialog;
-
-static int on_output (AdwSpinRow *row, StretchSkewDialog *d);
 
 static int
 value_of (AdwSpinRow *row)
@@ -124,7 +123,10 @@ static void
 on_stretch_unit (GtkToggleButton *percent, StretchSkewDialog *d)
 {
   int width = value_of (d->width), height = value_of (d->height);
+  const char *unit = gtk_toggle_button_get_active (percent) ? "%" : "px";
 
+  easel_unit_row_set_unit (d->width, unit);
+  easel_unit_row_set_unit (d->height, unit);
   d->updating = TRUE;
   if (gtk_toggle_button_get_active (percent))
     {
@@ -145,8 +147,6 @@ on_stretch_unit (GtkToggleButton *percent, StretchSkewDialog *d)
   d->updating = FALSE;
   if (gtk_check_button_get_active (d->keep))
     follow (d, d->width, d->height, d->w, d->h);
-  on_output (d->width, d);                  /* the same number in the other unit changes no value, and so no text by itself */
-  on_output (d->height, d);
   refresh (d);
 }
 
@@ -163,6 +163,8 @@ on_skew_unit (GtkToggleButton *degrees, StretchSkewDialog *d)
   /* The horizontal amount as it stands, in the old unit, gives the width the vertical skew sees. */
   amount = H <= 1 ? 0 : to_degrees ? horizontal : easel_ss_skew_amount (H, horizontal);
   step_w = W + ABS (amount);
+  easel_unit_row_set_unit (d->horizontal, to_degrees ? "°" : "px");
+  easel_unit_row_set_unit (d->vertical, to_degrees ? "°" : "px");
   d->updating = TRUE;
   if (to_degrees)
     {
@@ -179,51 +181,7 @@ on_skew_unit (GtkToggleButton *degrees, StretchSkewDialog *d)
       adw_spin_row_set_value (d->vertical, CLAMP (easel_ss_skew_amount (step_w, vertical), -9999, 9999));
     }
   d->updating = FALSE;
-  on_output (d->horizontal, d);
-  on_output (d->vertical, d);
   refresh (d);
-}
-
-/* The unit a field shows now (REQ-0019-03). */
-static const char *
-unit_of (AdwSpinRow *row, StretchSkewDialog *d)
-{
-  if (row == d->width || row == d->height)
-    return gtk_toggle_button_get_active (d->stretch_percent) ? "%" : "px";
-  return gtk_toggle_button_get_active (d->skew_degrees) ? "°" : "px";
-}
-
-/* The value with its unit: "100 %", "800 px", "45°". */
-static int
-on_output (AdwSpinRow *row, StretchSkewDialog *d)
-{
-  const char *unit = unit_of (row, d);
-  g_autofree char *text = g_strdup_printf (g_str_equal (unit, "°") ? "%d%s" : "%d %s", value_of (row), unit);
-
-  gtk_editable_set_text (GTK_EDITABLE (row), text);
-  return TRUE;
-}
-
-/* A typed number stops at the field's limits; text that is not a whole number, with or without the field's own unit after it, goes back to
-   the old value (REQ-0019-03, as Attributes). */
-static int
-on_input (AdwSpinRow *row, double *new_value, StretchSkewDialog *d)
-{
-  GtkAdjustment *adj = adw_spin_row_get_adjustment (row);
-  g_autofree char *trimmed = g_strstrip (g_strdup (gtk_editable_get_text (GTK_EDITABLE (row))));
-  const char *unit = unit_of (row, d);
-  char *end = NULL;
-  gint64 n = g_ascii_strtoll (trimmed, &end, 10);   /* saturates on overflow, so a huge number stops at the limit */
-
-  while (*end == ' ')
-    end++;
-  if (end != trimmed && g_str_equal (end, unit))
-    end += strlen (unit);
-  if (trimmed[0] == '\0' || end == trimmed || *end != '\0')
-    *new_value = adw_spin_row_get_value (row);
-  else
-    *new_value = CLAMP ((double) n, gtk_adjustment_get_lower (adj), gtk_adjustment_get_upper (adj));
-  return TRUE;
 }
 
 /* Typed text counts once it is committed, as when the field is left or Enter is pressed (REQ-0019-02). */
@@ -278,19 +236,13 @@ free_dialog (gpointer data, GObject *where_the_dialog_was)
 }
 
 static AdwSpinRow *
-add_row (GtkWidget *list, const char *title, int lower, int upper, int value, StretchSkewDialog *d)
+add_row (GtkWidget *list, const char *title, int lower, int upper, int value, const char *unit, StretchSkewDialog *d)
 {
-  GtkWidget *row = adw_spin_row_new_with_range (lower, upper, 1);
+  AdwSpinRow *row = easel_unit_row_new (title, lower, upper, value, unit);
 
-  adw_preferences_row_set_title (ADW_PREFERENCES_ROW (row), title);
-  adw_spin_row_set_numeric (ADW_SPIN_ROW (row), FALSE);       /* a numeric field refuses the unit's text; on_input judges what is typed */
-  gtk_adjustment_set_page_increment (adw_spin_row_get_adjustment (ADW_SPIN_ROW (row)), 10);
-  adw_spin_row_set_value (ADW_SPIN_ROW (row), value);
-  g_signal_connect (row, "input", G_CALLBACK (on_input), d);
-  g_signal_connect (row, "output", G_CALLBACK (on_output), d);
   g_signal_connect_swapped (gtk_editable_get_delegate (GTK_EDITABLE (row)), "activate", G_CALLBACK (on_field_activated), d);
-  gtk_list_box_append (GTK_LIST_BOX (list), row);
-  return ADW_SPIN_ROW (row);
+  gtk_list_box_append (GTK_LIST_BOX (list), GTK_WIDGET (row));
+  return row;
 }
 
 /* A section's heading and its unit's two buttons, the first one on. */
@@ -336,15 +288,15 @@ easel_stretch_skew_dialog_present (GtkWidget *parent, int w, int h, EaselStretch
   gtk_widget_add_css_class (skew_list, "boxed-list");
 
   d->stretch_percent = add_units (box, "Stretch", "Percent", "stretch-percent", "Pixels", "stretch-pixels");
-  d->width = add_row (stretch_list, "Width", 1, 500, 100, d);
-  d->height = add_row (stretch_list, "Height", 1, 500, 100, d);
+  d->width = add_row (stretch_list, "Width", 1, 500, 100, "%", d);
+  d->height = add_row (stretch_list, "Height", 1, 500, 100, "%", d);
   gtk_box_append (GTK_BOX (box), stretch_list);
   gtk_check_button_set_active (GTK_CHECK_BUTTON (keep), TRUE);
   d->keep = GTK_CHECK_BUTTON (keep);
   gtk_box_append (GTK_BOX (box), keep);
   d->skew_degrees = add_units (box, "Skew", "Degrees", "skew-degrees", "Pixels", "skew-pixels");
-  d->horizontal = add_row (skew_list, "Horizontal", -89, 89, 0, d);
-  d->vertical = add_row (skew_list, "Vertical", -89, 89, 0, d);
+  d->horizontal = add_row (skew_list, "Horizontal", -89, 89, 0, "°", d);
+  d->vertical = add_row (skew_list, "Vertical", -89, 89, 0, "°", d);
   gtk_box_append (GTK_BOX (box), skew_list);
   gtk_widget_set_name (size, "new-size");
   gtk_widget_set_halign (size, GTK_ALIGN_START);
@@ -366,10 +318,6 @@ easel_stretch_skew_dialog_present (GtkWidget *parent, int w, int h, EaselStretch
   g_signal_connect (d->skew_degrees, "toggled", G_CALLBACK (on_skew_unit), d);
   g_signal_connect (d->dialog, "response", G_CALLBACK (on_response), d);
   g_object_weak_ref (G_OBJECT (d->dialog), free_dialog, d);
-  on_output (d->width, d);
-  on_output (d->height, d);
-  on_output (d->horizontal, d);
-  on_output (d->vertical, d);
   refresh (d);
   adw_dialog_present (ADW_DIALOG (d->dialog), parent);
 }

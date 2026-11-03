@@ -51,6 +51,8 @@ gsize easel_canvas_get_preview_bytes_held (EaselCanvas *self);   /* test hook: t
 void easel_canvas_drop_preview (EaselCanvas *self);
 /* Benchmark hook (0014 T015): draw the selection's line and its tint, or not, to measure what each costs a frame. Both are drawn by default. */
 void easel_canvas_set_overlay_probe (EaselCanvas *self, gboolean line, gboolean tint);
+/* The strength of the selection's tint, in percent (REQ-0014-17, REQ-0020-03): 0 draws none. */
+void easel_canvas_set_tint (EaselCanvas *self, int percent);
 /* Test hooks of the free-form line (0014 T015): its white line drawn as one strip per straight run (the default) or one per grid step,
    and how many white strips the last frame drew for it. */
 /* Test hook (0015): draw the eight handles of a selection or not (they are drawn by default); the cases whose subject is the line and

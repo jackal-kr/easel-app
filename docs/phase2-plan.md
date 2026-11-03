@@ -16,5 +16,9 @@ Known gaps from Phase 1 specs, to take up after the core XP scope is delivered. 
 - Cases the code handles and no test of their own observes: Ctrl+T at the quit prompt and with the focus in the font card; the scroll kept after OK; a stretch back through the dialog, and a free-form or pasted selection skewed in the window (the core tests have them); a refused lift; AS-16 compares the pixels, not a saved file.
 - The take-back of a stretch after a refused skew uses no memory limit and can itself fail, leaving the selection stretched with the error shown.
 
+## From 0020 (Preferences)
+- Cases the code handles and no test of their own observes: Ctrl+, at the quit prompt, over the color chooser and with the focus in the font card; the workspace colors actually drawn in each style (the keys are tested); JPEG quality reaching a saved file in the same run; a palette file that cannot be removed; the font row's search finding a family.
+- The Font row does not show each family in its own font, as the font card does.
+
 ## From the mutation list
 - REQ-0017-14, the popover's scroll guard: survives on GTK 4.24, accepted (JOD, 2026-11-02). Re-decide at packaging-release, when the minimum GTK is chosen.

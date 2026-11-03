@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 
+#include <stdlib.h>
 #include <string.h>
 
 #include "ini.h"
@@ -8,6 +9,7 @@
 
 #define SECTION "new-picture"
 #define SECTION_HISTORY "history"
+#define SECTION_DRAWING "drawing"
 #define SECTION_VIEW "view"
 #define SECTION_SAVE "save"
 #define SECTION_TEXT "text"
@@ -77,6 +79,8 @@ const char easel_settings_default_text[] =
   "toolbox=on\n"
   "colorbox=on\n"
   "statusbar=on\n"
+  "style=system\n"
+  "tint=12\n"
   "\n"
   "[" SECTION_SAVE "]\n"
   "jpeg-quality=90\n"
@@ -87,7 +91,53 @@ const char easel_settings_default_text[] =
   "bold=false\n"
   "italic=false\n"
   "underline=false\n"
-  "strikethrough=false\n";
+  "strikethrough=false\n"
+  "\n"
+  "[" SECTION_DRAWING "]\n"
+  "brush=circle-4\n"
+  "airbrush=16\n"
+  "eraser=8\n"
+  "eraser-mode=opaque\n"
+  "line-width=1\n"
+  "fill-style=outline\n"
+  "magnifier=2\n";
+
+static const char *const brush_names[] = {
+  "circle-7", "circle-4", "circle-1", "square-8", "square-5", "square-2",
+  "slash-8", "slash-5", "slash-2", "backslash-8", "backslash-5", "backslash-2",
+};
+static const char *const style_names[] = { "system", "light", "dark" };
+static const char *const fill_names[] = { "outline", "outline-and-fill", "fill" };
+static const char *const airbrush_values[] = { "9", "16", "24" };
+static const char *const eraser_values[] = { "4", "6", "8", "10" };
+
+const char *
+easel_settings_style_name (EaselStyle style)
+{
+  return style_names[style];
+}
+
+const char *
+easel_settings_fill_name (EaselFillStyle fill)
+{
+  return fill_names[fill];
+}
+
+const char *
+easel_settings_brush_name (int brush)
+{
+  return brush_names[brush];
+}
+
+/* The place of the value in names, or -1. */
+static int
+index_of (EaselSpan value, const char *const *names, int n)
+{
+  for (int i = 0; i < n; i++)
+    if (easel_span_is (value, names[i]))
+      return i;
+  return -1;
+}
 
 void
 easel_settings_defaults (EaselSettings *s)
@@ -108,6 +158,15 @@ easel_settings_defaults (EaselSettings *s)
   s->workspace_color_dark = 0;
   s->jpeg_quality = EASEL_JPEG_QUALITY_DEFAULT;
   s->text_font[0] = '\0';
+  s->style = EASEL_STYLE_SYSTEM;
+  s->tint = EASEL_TINT_DEFAULT;
+  s->brush = 1;
+  s->airbrush = 1;
+  s->eraser = 2;
+  s->eraser_transparent = false;
+  s->line_width = 1;
+  s->fill_style = EASEL_FILL_OUTLINE;
+  s->magnifier = 2;
   s->text_size = EASEL_TEXT_SIZE_DEFAULT;
   s->text_bold = s->text_italic = s->text_underline = s->text_strike = false;
 }
@@ -236,6 +295,31 @@ apply (EaselSpan section, EaselSpan key, EaselSpan value, void *data)
       else if (easel_span_is (key, "strikethrough") && !parse_true_false (value, &s->text_strike))
         s->text_strike = false;
     }
+  else if (easel_span_is (section, SECTION_DRAWING))
+    {
+      int i;
+
+      if (easel_span_is (key, "brush"))
+        s->brush = (i = index_of (value, brush_names, 12)) >= 0 ? i : 1;
+      else if (easel_span_is (key, "airbrush"))
+        s->airbrush = (i = index_of (value, airbrush_values, 3)) >= 0 ? i : 1;
+      else if (easel_span_is (key, "eraser"))
+        s->eraser = (i = index_of (value, eraser_values, 4)) >= 0 ? i : 2;
+      else if (easel_span_is (key, "eraser-mode"))
+        s->eraser_transparent = easel_span_is (value, "transparent");
+      else if (easel_span_is (key, "fill-style"))
+        s->fill_style = (i = index_of (value, fill_names, 3)) >= 0 ? (EaselFillStyle) i : EASEL_FILL_OUTLINE;
+      else if (easel_span_is (key, "line-width") || easel_span_is (key, "magnifier"))
+        {
+          static const char *const widths[] = { "1", "2", "3", "4", "5" };
+          static const char *const levels[] = { "1", "2", "4", "6", "8", "16" };
+
+          if (easel_span_is (key, "line-width"))
+            s->line_width = (i = index_of (value, widths, 5)) >= 0 ? i + 1 : 1;
+          else
+            s->magnifier = (i = index_of (value, levels, 6)) >= 0 ? (value.n == 2 ? 16 : value.p[0] - '0') : 2;
+        }
+    }
   else if (easel_span_is (section, SECTION_VIEW))
     {
       /* easel_parse_field wants a NUL-terminated text; a number in range is short, so copy it. */
@@ -255,6 +339,22 @@ apply (EaselSpan section, EaselSpan key, EaselSpan value, void *data)
         s->has_workspace_color = parse_rgb (value, &s->workspace_color);
       else if (easel_span_is (key, "workspace-color-dark"))
         s->has_workspace_color_dark = parse_rgb (value, &s->workspace_color_dark);
+      else if (easel_span_is (key, "style"))
+        {
+          s->style = EASEL_STYLE_SYSTEM;
+          for (int i = 0; i < 3; i++)
+            if (easel_span_is_nocase (value, style_names[i]))
+              s->style = (EaselStyle) i;
+        }
+      else if (easel_span_is (key, "tint"))
+        {
+          if (value.n < sizeof text)
+            memcpy (text, value.p, value.n);
+          else
+            text[0] = 'x';   /* too long to be a number in range */
+          if (!easel_parse_field (text, EASEL_TINT_MIN, EASEL_TINT_MAX, &s->tint))
+            s->tint = EASEL_TINT_DEFAULT;
+        }
       else if (easel_span_is (key, "grid-size"))
         {
           if (value.n < sizeof text)
@@ -291,7 +391,7 @@ void
 easel_settings_resolve_size (const EaselSettings *s, int area_width, int area_height,
                              int *width, int *height)
 {
-  /* Largest last. Preferences will make this list a setting. */
+  /* Largest last. A constant (JOD, 2026-11-03: Preferences has no row for it). */
   static const int standard[][2] = { { 640, 480 }, { 800, 600 }, { 1024, 768 } };
 
   if (s->width != EASEL_SIZE_AUTO && s->height != EASEL_SIZE_AUTO)
@@ -309,4 +409,180 @@ easel_settings_resolve_size (const EaselSettings *s, int area_width, int area_he
         *width = standard[i][0];
         *height = standard[i][1];
       }
+}
+
+static void
+no_key (EaselSpan section, EaselSpan key, EaselSpan value, void *data)
+{
+}
+
+bool
+easel_settings_parseable (const char *text, size_t len)
+{
+  return easel_ini_parse (text, len, no_key, NULL);
+}
+
+/* One line of the text, its piece without the line ending, and where the next one starts. */
+typedef struct
+{
+  size_t start, end, next;
+} Line;
+
+static bool
+next_line (const char *text, size_t len, size_t pos, Line *line)
+{
+  const char *nl;
+
+  if (pos >= len)
+    return false;
+  nl = memchr (text + pos, '\n', len - pos);
+  line->start = pos;
+  line->next = nl != NULL ? (size_t) (nl - text) + 1 : len;
+  line->end = nl != NULL ? (size_t) (nl - text) : len;
+  if (nl != NULL && line->end > pos && text[line->end - 1] == '\r')
+    line->end--;
+  return true;
+}
+
+static void
+put (char **at, const char *text, size_t n)
+{
+  memcpy (*at, text, n);
+  *at += n;
+}
+
+static void
+put_str (char **at, const char *text)
+{
+  put (at, text, strlen (text));
+}
+
+/* What a line says, if it is the header of a section or the line of a key. */
+static bool
+line_section (EaselSpan line, EaselSpan *section)
+{
+  if (line.n < 2 || line.p[0] != '[' || line.p[line.n - 1] != ']')
+    return false;
+  *section = (EaselSpan) { line.p + 1, line.n - 2 };
+  return true;
+}
+
+static bool
+line_key (EaselSpan line, EaselSpan *key)
+{
+  const char *eq;
+
+  if (line.n == 0 || line.p[0] == '#' || (eq = memchr (line.p, '=', line.n)) == NULL)
+    return false;
+  *key = easel_span_trim ((EaselSpan) { line.p, (size_t) (eq - line.p) });
+  return true;
+}
+
+bool
+easel_settings_edit (const char *text, size_t len, const char *section, const char *key, const char *value, char **out, size_t *out_len)
+{
+  const char *eol = "\n";
+  const char *first_nl = memchr (text, '\n', len);
+  bool in_section = false, has_section = false, has_key = false;
+  size_t after = 0, key_start = 0, key_end = 0, room;
+  size_t pos = 0;
+  Line l;
+  char *buffer, *at;
+
+  if (!easel_settings_parseable (text, len))
+    return false;
+  if (first_nl != NULL && first_nl > text && first_nl[-1] == '\r')
+    eol = "\r\n";
+  room = len + strlen (section) + strlen (key) + (value != NULL ? strlen (value) : 0) + 16;
+  buffer = malloc (room);
+  if (buffer == NULL)
+    return false;
+  at = buffer;
+  /* Where the key's last line is, and where a new one would go. */
+  while (next_line (text, len, pos, &l))
+    {
+      EaselSpan line = easel_span_trim ((EaselSpan) { text + l.start, l.end - l.start });
+      EaselSpan name;
+
+      if (line_section (line, &name))
+        {
+          in_section = easel_span_is (name, section);
+          if (in_section)
+            {
+              has_section = true;
+              after = l.next;
+            }
+        }
+      else if (in_section && line_key (line, &name))
+        {
+          after = l.next;
+          if (easel_span_is (name, key))
+            {
+              has_key = true;
+              key_start = l.start;
+              key_end = l.end;
+            }
+        }
+      pos = l.next;
+    }
+  if (value == NULL)
+    {
+      /* Every line of the key goes. */
+      in_section = false;
+      pos = 0;
+      while (next_line (text, len, pos, &l))
+        {
+          EaselSpan line = easel_span_trim ((EaselSpan) { text + l.start, l.end - l.start });
+          EaselSpan name;
+          bool gone = false;
+
+          if (line_section (line, &name))
+            in_section = easel_span_is (name, section);
+          else if (in_section && line_key (line, &name))
+            gone = easel_span_is (name, key);
+          if (!gone)
+            put (&at, text + l.start, l.next - l.start);
+          pos = l.next;
+        }
+    }
+  else if (has_key)
+    {
+      put (&at, text, key_start);
+      put_str (&at, key);
+      put_str (&at, "=");
+      put_str (&at, value);
+      put (&at, text + key_end, len - key_end);
+    }
+  else if (has_section)
+    {
+      put (&at, text, after);
+      if (after > 0 && text[after - 1] != '\n')
+        put_str (&at, eol);
+      put_str (&at, key);
+      put_str (&at, "=");
+      put_str (&at, value);
+      put_str (&at, eol);
+      put (&at, text + after, len - after);
+    }
+  else
+    {
+      put (&at, text, len);
+      if (len > 0 && text[len - 1] != '\n')
+        put_str (&at, eol);
+      /* A blank line before it, if the file does not end in one already. */
+      if (len > 0 && !(at - buffer >= 2 * (long) strlen (eol)
+                       && memcmp (at - 2 * strlen (eol), eol, strlen (eol)) == 0 && memcmp (at - strlen (eol), eol, strlen (eol)) == 0))
+        put_str (&at, eol);
+      put_str (&at, "[");
+      put_str (&at, section);
+      put_str (&at, "]");
+      put_str (&at, eol);
+      put_str (&at, key);
+      put_str (&at, "=");
+      put_str (&at, value);
+      put_str (&at, eol);
+    }
+  *out = buffer;
+  *out_len = (size_t) (at - buffer);
+  return true;
 }

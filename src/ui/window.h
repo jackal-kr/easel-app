@@ -11,6 +11,7 @@
 #include "status-bar.h"
 #include "tool-options.h"
 #include "image.h"
+#include "settings-file.h"
 #include "tool.h"
 
 G_BEGIN_DECLS
@@ -36,6 +37,19 @@ EaselCanvas *easel_window_get_canvas (EaselWindow *self);
 EaselFontCard *easel_window_get_font_card (EaselWindow *self);
 EaselPaletteBar *easel_window_get_palette_bar (EaselWindow *self);
 EaselToolOptions *easel_window_get_tool_options (EaselWindow *self);
+/* Preferences (0020): the settings the dialog's rows show and change; what a change does to the run, each part where it applies now. */
+EaselSettings *easel_window_get_chosen_settings (EaselWindow *self);
+/* The changes written to the settings file; one failure a dialog opening shows the error (REQ-0020-10). */
+void easel_window_write_settings (EaselWindow *self, const EaselSettingChange *changes, gsize n);
+void easel_window_apply_style (EaselWindow *self, EaselStyle style);
+void easel_window_apply_tint (EaselWindow *self, int percent);
+void easel_window_apply_panels (EaselWindow *self, gboolean toolbox, gboolean colorbox, gboolean statusbar);
+/* The chosen size, canvas color, JPEG quality and workspace colors take effect for what comes next. */
+void easel_window_apply_chosen (EaselWindow *self);
+void easel_window_automatic_size (EaselWindow *self, int *width, int *height);
+void easel_window_reset_palette (EaselWindow *self);
+void easel_window_preferences_opened (EaselWindow *self, AdwDialog *dialog);
+void easel_window_preferences_closed (EaselWindow *self);
 /* The Text tool's mode: TRUE for Opaque (REQ-0017-02). */
 gboolean easel_window_get_text_opaque (EaselWindow *self);
 EaselStatusBar *easel_window_get_status_bar (EaselWindow *self);
