@@ -81,6 +81,7 @@ const char easel_settings_default_text[] =
   "statusbar=on\n"
   "style=system\n"
   "tint=12\n"
+  "frame-time=off\n"
   "\n"
   "[" SECTION_SAVE "]\n"
   "jpeg-quality=90\n"
@@ -160,6 +161,7 @@ easel_settings_defaults (EaselSettings *s)
   s->text_font[0] = '\0';
   s->style = EASEL_STYLE_SYSTEM;
   s->tint = EASEL_TINT_DEFAULT;
+  s->frame_time = false;
   s->brush = 1;
   s->airbrush = 1;
   s->eraser = 2;
@@ -335,6 +337,8 @@ apply (EaselSpan section, EaselSpan key, EaselSpan value, void *data)
         s->show_colorbox = true;
       else if (easel_span_is (key, "statusbar") && !parse_on_off (value, &s->show_statusbar))
         s->show_statusbar = true;
+      else if (easel_span_is (key, "frame-time") && !parse_on_off (value, &s->frame_time))
+        s->frame_time = false;
       else if (easel_span_is (key, "workspace-color"))
         s->has_workspace_color = parse_rgb (value, &s->workspace_color);
       else if (easel_span_is (key, "workspace-color-dark"))

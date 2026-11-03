@@ -53,6 +53,17 @@ void easel_canvas_drop_preview (EaselCanvas *self);
 void easel_canvas_set_overlay_probe (EaselCanvas *self, gboolean line, gboolean tint);
 /* The strength of the selection's tint, in percent (REQ-0014-17, REQ-0020-03): 0 draws none. */
 void easel_canvas_set_tint (EaselCanvas *self, int percent);
+/* "painted" comes once after each frame the canvas draws (0021). The CPU time its last frame took to build, in milliseconds (REQ-0021-12). */
+double easel_canvas_get_frame_ms (EaselCanvas *self);
+/* Test hooks: a drawing made slower by this many milliseconds of work; how many frames it has drawn. */
+void easel_canvas_set_draw_delay (EaselCanvas *self, int ms);
+guint easel_canvas_get_frames_drawn (EaselCanvas *self);
+/* A texture of the w x h picture pixels at (x0, y0), which must lie in the picture, as the put-down would write them: the picture, what is pending and an open box's
+   letters, with no overlay (REQ-0021-07); NULL with no memory for it. */
+GdkTexture *easel_canvas_compose_view (EaselCanvas *self, int x0, int y0, int w, int h);
+const EaselImage *easel_canvas_get_image (EaselCanvas *self);
+/* The canvas's checkerboard over bounds (REQ-0001-11). */
+void easel_canvas_append_checkerboard (GtkSnapshot *snapshot, const graphene_rect_t *bounds);
 /* Test hooks of the free-form line (0014 T015): its white line drawn as one strip per straight run (the default) or one per grid step,
    and how many white strips the last frame drew for it. */
 /* Test hook (0015): draw the eight handles of a selection or not (they are drawn by default); the cases whose subject is the line and
@@ -87,6 +98,9 @@ void easel_canvas_reset_view (EaselCanvas *self);
 /* What the Brush, the Airbrush and the Eraser paint with, as the options panel has it (REQ-0006-04..11): the footprint of
    the active tool, and whether the Eraser erases to transparency. */
 void easel_canvas_set_footprint (EaselCanvas *self, EaselFootprint footprint);
+
+/* How many surface pixels of a smooth scroll make one notch of the wheel. */
+#define EASEL_CANVAS_PIXELS_PER_NOTCH 30.0
 
 /* The Magnifier's selected level in percent (200, 400, ...), as the options panel has it (REQ-0007-02). */
 void easel_canvas_set_magnifier_level (EaselCanvas *self, int pct);

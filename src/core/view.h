@@ -34,6 +34,11 @@ int easel_view_content_size (int picture_size, int pct, double scale);
 int easel_view_edge (int k, int pct);
 /* The inverse: the picture pixel whose square covers the device pixel d (negative left of or above the picture). */
 int easel_view_cell_at (int d, int pct);
+/* The picture pixel the thumbnail starts with along one axis: the one whose square holds the view's first device pixel, or 0 while the margin of
+   margin logical pixels is at that edge (REQ-0021-07). */
+int easel_view_first_cell (double scroll_logical, double margin, int pct, double scale);
+/* Whether a canvas area of w x h logical pixels has room for the thumbnail (REQ-0021-11). */
+bool easel_view_thumbnail_fits (int w, int h);
 /* Whether the view places its squares by those edges: from 100 % up, when a square is not a whole number of device pixels. */
 bool easel_view_draws_by_edges (int pct);
 /* Whether the view is built device pixel by device pixel on those edges, on a whole `scale`: where the renderer's scaling is not exact, a

@@ -24,7 +24,7 @@ belongs to (see `docs/specs/INDEX.md`). Behavior only.
 - Font controls: a card over the canvas, next to the text box, holds the font family, size and Bold / Italic / Underline / Strikethrough in one row; there is no separate dialog, and the text color is the foreground color picked on the palette: a palette color colors the selected text, or the text typed next; to color all of a box's text, select all (Ctrl+A) first.
 - Formatting can differ within one text box: select part of the text and change font, size, color and styles for just that part.
 - Copying or cutting text from a box keeps its formatting: the clipboard gets rich text as well as plain text, and pasting rich text into a box keeps each part's font, size, color and styles; plain text takes the style of the box at the caret.
-- Default text size is 12. Esc closes the Font and Thumbnail windows.
+- Default text size is 12. Esc closes the Font card and the Thumbnail card.
 
 ## Colors
 - Changing a palette color (double-click or F2, then a color chooser) is remembered between runs; Preferences can reset to the classic 28 colors. Clicking the fore/background indicator opens the chooser for that color.
@@ -32,7 +32,7 @@ belongs to (see `docs/specs/INDEX.md`). Behavior only.
 
 ## Application
 - Preferences (Ctrl+,): appearance (light / dark / system, workspace color, the strength of the selection's tint, which panels are shown, frame time), new-picture default size and background, drawing defaults (the tools' presets, line width, fill style, magnifier zoom, undo memory, JPEG quality, text font and style), palette reset.
-- Frame Time display, switchable from View and Preferences.
+- Frame Time display, switchable from Preferences (JOD, 2026-11-03: no View item).
 - Keyboard shortcuts window (Ctrl+? or Ctrl+F1); Help (F1) opens as a readable page in the default browser.
 - Pictures can be opened from the command line.
 - About with acknowledgements (XP Paint, JS Paint). Twelve UI languages, screen-reader labels and announcements, and keyboard-only drawing: covered by features Window Extras, Accessibility and i18n.

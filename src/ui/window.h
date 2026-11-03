@@ -35,6 +35,9 @@ gboolean easel_window_get_modified (EaselWindow *self);
 EaselCanvas *easel_window_get_canvas (EaselWindow *self);
 /* The font card over the view (tests). */
 EaselFontCard *easel_window_get_font_card (EaselWindow *self);
+GtkWidget *easel_window_get_thumbnail_card (EaselWindow *self);
+/* A press on the card, with the modifier state of its event (REQ-0021-09, -10). */
+void easel_window_thumbnail_press (EaselWindow *self, GdkModifierType state);
 EaselPaletteBar *easel_window_get_palette_bar (EaselWindow *self);
 EaselToolOptions *easel_window_get_tool_options (EaselWindow *self);
 /* Preferences (0020): the settings the dialog's rows show and change; what a change does to the run, each part where it applies now. */
@@ -43,6 +46,7 @@ EaselSettings *easel_window_get_chosen_settings (EaselWindow *self);
 void easel_window_write_settings (EaselWindow *self, const EaselSettingChange *changes, gsize n);
 void easel_window_apply_style (EaselWindow *self, EaselStyle style);
 void easel_window_apply_tint (EaselWindow *self, int percent);
+void easel_window_apply_frame_time (EaselWindow *self, gboolean shown);
 void easel_window_apply_panels (EaselWindow *self, gboolean toolbox, gboolean colorbox, gboolean statusbar);
 /* The chosen size, canvas color, JPEG quality and workspace colors take effect for what comes next. */
 void easel_window_apply_chosen (EaselWindow *self);
@@ -66,6 +70,11 @@ GtkPopoverMenu *easel_window_get_text_menu (EaselWindow *self);
 void easel_window_set_clipboard (EaselWindow *self, EaselClipboard *clipboard);
 /* The limit of the wait for the clipboard's content, in ms (REQ-0016-15): 5000 unless a test sets it. */
 void easel_window_set_clipboard_timeout (EaselWindow *self, guint ms);
+
+/* Opens uri, and calls easel_window_help_finished at the end (REQ-0021-04); a test sets its own. */
+typedef void (*EaselHelpLauncher) (EaselWindow *win, const char *uri, gpointer data);
+void easel_window_set_help_launcher (EaselWindow *self, EaselHelpLauncher launch, gpointer data);
+void easel_window_help_finished (EaselWindow *self, gboolean ok);
 /* Tests only (REQ-0017-19, REQ-0017-20): rich text (HTML) written for Copy or read for Paste that is longer than `bytes` fails as when
    its memory cannot be had. G_MAXSIZE, the start, is off: the production path is unchanged. */
 void easel_window_set_rich_text_limit (EaselWindow *self, gsize bytes);

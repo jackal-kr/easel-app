@@ -71,6 +71,20 @@ easel_view_cell_at (int d, int pct)
   return (int) ((a > 0 ? (a + pct - 1) / pct : -(-a / pct)) - 1);
 }
 
+int
+easel_view_first_cell (double scroll_logical, double margin, int pct, double scale)
+{
+  double d = (scroll_logical - margin) * scale;
+
+  return d <= 0 ? 0 : easel_view_cell_at ((int) floor (d), pct);
+}
+
+bool
+easel_view_thumbnail_fits (int w, int h)
+{
+  return w >= 172 + 2 * 12 && h >= 132 + 2 * 12;
+}
+
 bool
 easel_view_draws_by_edges (int pct)
 {

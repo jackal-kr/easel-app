@@ -115,7 +115,7 @@ Each is covered by the REQ named.
 - Click exactly on the last row or column: REQ-0001-19 (AS-20 checks x = 99).
 - A drag that leaves and re-enters the picture: segments are clipped, REQ-0001-22.
 - Very fast drags: no gaps, REQ-0001-20.
-- Secondary-button drag in Pan mode does nothing (the Pan right-click menu comes with Window Extras): REQ-0001-14 covers only the primary button.
+- Secondary-button drag in Pan mode does nothing (the press opens Pan's menu, REQ-0021-13): REQ-0001-14 covers only the primary button.
 - Zoom at a view edge: the anchor point moves as little as the edge limits allow, REQ-0001-16.
 - Save to an existing file through the dialog: the dialog's own overwrite confirmation applies, REQ-0001-27; when `.png` was added, REQ-0001-42.
 - Disk full or file removed mid-save: REQ-0001-31.

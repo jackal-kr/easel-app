@@ -7,7 +7,10 @@
 
 #include "config.h"
 #include "attributes-dialog.h"
+#include "frame-time.h"
+#include "help.h"
 #include "preferences-dialog.h"
+#include "thumbnail-card.h"
 #include "stretch-skew-dialog.h"
 #include "stretch-skew.h"
 #include "grid-dialog.h"
@@ -36,13 +39,23 @@ struct _EaselWindow
   GtkScrolledWindow *scroller;
   GtkOverlay *canvas_overlay;
   EaselFontCard *font_card;                     /* over the view while a text box is open (REQ-0017-14) */
+  EaselThumbnailCard *thumbnail_card;           /* over the view while Show Thumbnail is checked and it can show (REQ-0021-06, -11) */
   guint card_idle;
   guint card_focus_idle;
   gint64 tab_time;                              /* when Tab or Shift+Tab was last pressed: keyboard navigation */
   gsize rich_limit;                             /* tests: rich text longer than this fails as for memory; G_MAXSIZE is off */
   EaselSettings chosen;                         /* what Preferences shows: as read at start, as changed there (REQ-0020-02) */
   AdwDialog *preferences;                       /* Preferences while it is open */
+  AdwDialog *extra_dialog;                      /* Keyboard Shortcuts, About Easel or Help's error while it is open */
+  EaselHelpLauncher help_launch;
+  gpointer help_launch_data;
+  gboolean help_starting;                       /* the browser was asked and has not answered */
+  gboolean help_dropped;                        /* a quit has begun: Help's failure is not shown (REQ-0021-04) */
+  guint help_error_timer;                       /* Help's failure waits for a free moment */
+  guint key_down;                               /* the key last pressed and not yet released: another press of it is a repeat */
   gboolean preferences_error_shown;
+  gint64 frame_time_shown;                      /* when the Frame time part last changed (REQ-0021-12) */
+  guint frame_time_timer;
   gsize transform_limit;                        /* tests: an Image command's allocation above this fails as for memory; G_MAXSIZE is off */
   EaselCanvas *canvas;
   EaselPaletteBar *palette_bar;
@@ -117,6 +130,7 @@ static void show_open_error (EaselWindow *self, GFile *file, EaselOpenResult res
 static gboolean dialog_is_open (EaselWindow *self);
 static void show_memory_error (EaselWindow *self, const char *heading, int width, int height);
 static gboolean view_actions_allowed (EaselWindow *self);
+static void scroll_view_as_scroller (EaselWindow *self, GtkEventControllerScroll *controller, double dx, double dy);
 
 static void
 create_picture (EaselWindow *self, int area_width, int area_height)
@@ -835,15 +849,34 @@ quit_now (EaselWindow *self)
   gtk_window_destroy (GTK_WINDOW (self));
 }
 
+/* An emission hook, since the handler libadwaita connects at the window's start stops a close request while a dialog is open, ahead of any handler of ours.
+   Preferences closes, a typed value kept (REQ-0020-01), so do Keyboard Shortcuts, About Easel and Help's error (REQ-0021-03), and the quit goes on;
+   a failure of Help not yet shown is dropped (REQ-0021-04). */
+static gboolean
+close_request_hook (GSignalInvocationHint *hint, guint n_values, const GValue *values, gpointer data)
+{
+  GObject *window = g_value_get_object (&values[0]);
+
+  if (EASEL_IS_WINDOW (window))
+    {
+      EaselWindow *self = EASEL_WINDOW (window);
+
+      if (self->preferences != NULL)
+        adw_dialog_force_close (self->preferences);
+      if (self->extra_dialog != NULL)
+        adw_dialog_force_close (self->extra_dialog);
+      self->help_dropped = TRUE;
+      g_clear_handle_id (&self->help_error_timer, g_source_remove);
+    }
+  return TRUE;
+}
+
 /* Ctrl+Q, Ctrl+W and the window's close button all end here. */
 static gboolean
 easel_window_close_request (GtkWindow *window)
 {
   EaselWindow *self = EASEL_WINDOW (window);
 
-  /* Preferences closes, a typed value kept, and the quit goes on (REQ-0020-01). */
-  if (self->preferences != NULL)
-    adw_dialog_force_close (self->preferences);
   /* While Open's or Paste From's file dialog is open a quit request does nothing, and so puts nothing down (REQ-0005-02, REQ-0016-08). */
   if (self->open_dialog_open)
     return TRUE;
@@ -1560,6 +1593,124 @@ view_actions_allowed (EaselWindow *self)
          && !easel_canvas_is_resizing (self->canvas) && !easel_canvas_is_waiting_for_release (self->canvas);
 }
 
+/* ---- the thumbnail (0021) ---- */
+
+/* With no button held a drag whose release got lost ends as last shown (REQ-0021-10); a focused field of the font card applies its value, as at a press
+   elsewhere (REQ-0021-09). The press does nothing more. */
+void
+easel_window_thumbnail_press (EaselWindow *self, GdkModifierType state)
+{
+  if (!(state & (GDK_BUTTON1_MASK | GDK_BUTTON2_MASK | GDK_BUTTON3_MASK)))
+    easel_canvas_buttons_released (self->canvas);
+  if (card_field_focus (self) != NULL)
+    gtk_root_set_focus (GTK_ROOT (self), NULL);
+}
+
+static void
+on_thumbnail_pressed (GtkGestureClick *gesture, int n_press, double x, double y, EaselWindow *self)
+{
+  gtk_gesture_set_state (GTK_GESTURE (gesture), GTK_EVENT_SEQUENCE_CLAIMED);
+  easel_window_thumbnail_press (self, gtk_event_controller_get_current_event_state (GTK_EVENT_CONTROLLER (gesture)));
+}
+
+/* A point of the card in the canvas area's coordinates. */
+static graphene_point_t
+thumbnail_point_in_area (EaselWindow *self, double x, double y)
+{
+  graphene_point_t p = GRAPHENE_POINT_INIT (0, 0);
+
+  if (!gtk_widget_compute_point (GTK_WIDGET (self->thumbnail_card), GTK_WIDGET (self->scroller), &GRAPHENE_POINT_INIT ((float) x, (float) y), &p))
+    p = GRAPHENE_POINT_INIT (0, 0);
+  return p;
+}
+
+/* The wheel, Shift+wheel and Ctrl+wheel act as over the canvas at that point (REQ-0021-09): the card is the scrolled window's sibling, so the wheel would not reach it. */
+static gboolean
+on_thumbnail_scroll (GtkEventControllerScroll *controller, double dx, double dy, EaselWindow *self)
+{
+  GdkModifierType state = gtk_event_controller_get_current_event_state (GTK_EVENT_CONTROLLER (controller));
+  GdkEvent *event = gtk_event_controller_get_current_event (GTK_EVENT_CONTROLLER (controller));
+  double x = 0, y = 0, nx = 0, ny = 0;
+  GtkNative *native = gtk_widget_get_native (GTK_WIDGET (self));
+  graphene_point_t p = GRAPHENE_POINT_INIT (0, 0);
+  double notches = gtk_event_controller_scroll_get_unit (controller) == GDK_SCROLL_UNIT_SURFACE ? dy / EASEL_CANVAS_PIXELS_PER_NOTCH : dy;
+
+  if (event != NULL && gdk_event_get_position (event, &x, &y))
+    {
+      gtk_native_get_surface_transform (native, &nx, &ny);
+      if (!gtk_widget_compute_point (GTK_WIDGET (native), GTK_WIDGET (self->scroller), &GRAPHENE_POINT_INIT ((float) (x - nx), (float) (y - ny)), &p))
+        p = GRAPHENE_POINT_INIT (0, 0);
+    }
+  if (easel_canvas_wheel (self->canvas, state, notches, p.x, p.y) == GDK_EVENT_STOP)
+    return GDK_EVENT_STOP;
+  scroll_view_as_scroller (self, controller, dx, dy);
+  return GDK_EVENT_STOP;
+}
+
+static void
+on_thumbnail_pinch_begin (GtkGesture *gesture, GdkEventSequence *sequence, EaselWindow *self)
+{
+  easel_canvas_pinch_begin (self->canvas);
+}
+
+static void
+on_thumbnail_pinch_end (GtkGesture *gesture, GdkEventSequence *sequence, EaselWindow *self)
+{
+  easel_canvas_pinch_end (self->canvas);
+}
+
+static void
+on_thumbnail_pinch (GtkGestureZoom *gesture, double scale, EaselWindow *self)
+{
+  double x = 0, y = 0;
+  graphene_point_t p;
+
+  gtk_gesture_get_bounding_box_center (GTK_GESTURE (gesture), &x, &y);
+  p = thumbnail_point_in_area (self, x, y);
+  easel_canvas_pinch (self->canvas, scale, p.x, p.y);
+}
+
+/* The card's own input. A drag begun on the canvas keeps its grab, so none of this hears it (REQ-0021-10). */
+static void
+thumbnail_connect_input (EaselWindow *self)
+{
+  GtkWidget *card = GTK_WIDGET (self->thumbnail_card);
+  GtkGesture *click = gtk_gesture_click_new ();
+  GtkGesture *pinch = gtk_gesture_zoom_new ();
+  GtkEventController *wheel = gtk_event_controller_scroll_new (GTK_EVENT_CONTROLLER_SCROLL_BOTH_AXES);
+
+  gtk_gesture_single_set_button (GTK_GESTURE_SINGLE (click), 0);
+  g_signal_connect_object (click, "pressed", G_CALLBACK (on_thumbnail_pressed), self, G_CONNECT_DEFAULT);
+  gtk_widget_add_controller (card, GTK_EVENT_CONTROLLER (click));
+  g_signal_connect_object (wheel, "scroll", G_CALLBACK (on_thumbnail_scroll), self, G_CONNECT_DEFAULT);
+  gtk_widget_add_controller (card, wheel);
+  g_signal_connect_object (pinch, "begin", G_CALLBACK (on_thumbnail_pinch_begin), self, G_CONNECT_DEFAULT);
+  g_signal_connect_object (pinch, "end", G_CALLBACK (on_thumbnail_pinch_end), self, G_CONNECT_DEFAULT);
+  g_signal_connect_object (pinch, "scale-changed", G_CALLBACK (on_thumbnail_pinch), self, G_CONNECT_DEFAULT);
+  gtk_widget_add_controller (card, GTK_EVENT_CONTROLLER (pinch));
+}
+
+/* The card shows while the item is checked, above 100 % and with room for it (REQ-0021-06, -11); the item is sensitive above 100 %. */
+static void
+sync_thumbnail (EaselWindow *self)
+{
+  GAction *action = g_action_map_lookup_action (G_ACTION_MAP (self), "thumbnail");
+  g_autoptr (GVariant) state = g_action_get_state (action);
+  gboolean above = self->picture != NULL && easel_canvas_get_zoom (self->canvas) > 100;
+  GtkAdjustment *h = gtk_scrolled_window_get_hadjustment (self->scroller), *v = gtk_scrolled_window_get_vadjustment (self->scroller);
+
+  g_simple_action_set_enabled (G_SIMPLE_ACTION (action), above);
+  gtk_widget_set_visible (GTK_WIDGET (self->thumbnail_card), g_variant_get_boolean (state) && above
+                          && easel_view_thumbnail_fits ((int) gtk_adjustment_get_page_size (h), (int) gtk_adjustment_get_page_size (v)));
+}
+
+static void
+thumbnail_state_changed (GSimpleAction *action, GVariant *value, gpointer user_data)
+{
+  g_simple_action_set_state (action, value);
+  sync_thumbnail (user_data);
+}
+
 /* The row's label and which zoom actions can do something (REQ-0004-02). */
 static void
 sync_zoom_ui (EaselWindow *self)
@@ -1575,6 +1726,7 @@ sync_zoom_ui (EaselWindow *self)
 
   gtk_label_set_text (self->zoom_label, text);
   easel_status_bar_set_zoom (self->status_bar, self->picture != NULL, zoom);
+  sync_thumbnail (self);
   /* View > Zoom marks the current zoom when it is a preset, and nothing otherwise (REQ-0008-05). */
   {
     GAction *zoom_to = g_action_map_lookup_action (G_ACTION_MAP (self), "zoom-to");
@@ -1774,7 +1926,7 @@ load_workspace_color (void)
       g_signal_connect (adw_style_manager_get_default (), "notify::dark", G_CALLBACK (on_dark_changed), NULL);
     }
   if (set)
-    css = g_strdup_printf ("scrolledwindow.workspace > viewport { background-color: #%06X; }", (unsigned) color);
+    css = g_strdup_printf ("scrolledwindow.workspace > viewport, .thumbnail-area { background-color: #%06X; }", (unsigned) color);
   gtk_css_provider_load_from_string (provider, css != NULL ? css : "");
 }
 
@@ -2037,6 +2189,51 @@ rotate_270_activated (GSimpleAction *action, GVariant *parameter, gpointer user_
   image_action (user_data, EASEL_OP_ROTATE_270);
 }
 
+/* ---- Frame time (0021) ---- */
+
+static void
+show_frame_time (EaselWindow *self)
+{
+  char text[32];
+
+  easel_frame_time_format (easel_canvas_get_frame_ms (self->canvas), text, sizeof text);
+  easel_status_bar_set_frame_time (self->status_bar, text);
+  self->frame_time_shown = g_get_monotonic_time ();
+}
+
+static gboolean
+frame_time_timer_fired (gpointer data)
+{
+  EaselWindow *self = data;
+
+  self->frame_time_timer = 0;
+  show_frame_time (self);
+  return G_SOURCE_REMOVE;
+}
+
+/* A frame was painted: its value shows now, or as soon as the pace lets it, so the last one always shows within 250 ms (REQ-0021-12). */
+static void
+on_canvas_painted (EaselWindow *self)
+{
+  gint64 now = g_get_monotonic_time ();
+
+  if (!self->settings.frame_time || self->frame_time_timer != 0)
+    return;
+  if (easel_frame_time_due (now, self->frame_time_shown))
+    show_frame_time (self);
+  else
+    self->frame_time_timer = g_timeout_add (easel_frame_time_wait_ms (now, self->frame_time_shown), frame_time_timer_fired, self);
+}
+
+void
+easel_window_apply_frame_time (EaselWindow *self, gboolean shown)
+{
+  self->settings.frame_time = shown;
+  g_clear_handle_id (&self->frame_time_timer, g_source_remove);
+  easel_status_bar_show_frame_time (self->status_bar, shown);
+  self->frame_time_shown = 0;
+}
+
 /* ---- Preferences (0020) ---- */
 
 static void
@@ -2047,6 +2244,136 @@ preferences_activated (GSimpleAction *action, GVariant *parameter, gpointer user
   /* Opening it changes nothing: what waits stays (REQ-0020-01). */
   if (view_actions_allowed (self) && !easel_canvas_is_panning (self->canvas) && card_field_focus (self) == NULL)
     easel_preferences_dialog_present (self);
+}
+
+/* ---- Keyboard Shortcuts, Help, About Easel (0021) ---- */
+
+/* Opening any of them changes nothing, and each has the same gates (REQ-0021-01). */
+static gboolean
+extras_allowed (EaselWindow *self)
+{
+  return view_actions_allowed (self) && !easel_canvas_is_panning (self->canvas) && card_field_focus (self) == NULL;
+}
+
+static void
+on_extra_dialog_closed (EaselWindow *self)
+{
+  self->extra_dialog = NULL;
+}
+
+static void
+present_extra_dialog (EaselWindow *self, AdwDialog *dialog)
+{
+  self->extra_dialog = dialog;
+  g_signal_connect_object (dialog, "closed", G_CALLBACK (on_extra_dialog_closed), self, G_CONNECT_SWAPPED);
+  adw_dialog_present (dialog, GTK_WIDGET (self));
+}
+
+static void
+shortcuts_activated (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+  EaselWindow *self = user_data;
+
+  if (extras_allowed (self))
+    present_extra_dialog (self, easel_shortcuts_dialog_new ());
+}
+
+static void
+about_activated (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+  EaselWindow *self = user_data;
+
+  if (extras_allowed (self))
+    present_extra_dialog (self, easel_about_dialog_new ());
+}
+
+/* No button is held and no dialog is open. */
+static gboolean
+extras_can_show_error (EaselWindow *self)
+{
+  return view_actions_allowed (self) && !easel_canvas_is_panning (self->canvas);
+}
+
+static void
+show_help_error (EaselWindow *self)
+{
+  AdwDialog *dialog = adw_alert_dialog_new ("Could Not Open Help", "The help page could not be opened.");
+
+  adw_alert_dialog_add_response (ADW_ALERT_DIALOG (dialog), "ok", "OK");
+  adw_alert_dialog_set_default_response (ADW_ALERT_DIALOG (dialog), "ok");
+  adw_alert_dialog_set_close_response (ADW_ALERT_DIALOG (dialog), "ok");
+  present_extra_dialog (self, dialog);
+}
+
+/* A failure reported late waits until no button is held and no dialog is open (REQ-0021-04). */
+static gboolean
+help_error_timer_fired (gpointer data)
+{
+  EaselWindow *self = data;
+
+  if (!extras_can_show_error (self))
+    return G_SOURCE_CONTINUE;
+  self->help_error_timer = 0;
+  show_help_error (self);
+  return G_SOURCE_REMOVE;
+}
+
+void
+easel_window_help_finished (EaselWindow *self, gboolean ok)
+{
+  self->help_starting = FALSE;
+  if (ok || self->help_dropped)
+    return;
+  if (extras_can_show_error (self))
+    show_help_error (self);
+  else if (self->help_error_timer == 0)
+    self->help_error_timer = g_timeout_add (100, help_error_timer_fired, self);
+}
+
+static void
+help_launched (GObject *source, GAsyncResult *result, gpointer data)
+{
+  g_autoptr (EaselWindow) self = data;
+  g_autoptr (GError) error = NULL;
+
+  easel_window_help_finished (self, g_app_info_launch_default_for_uri_finish (result, &error));
+}
+
+static void
+launch_in_browser (EaselWindow *win, const char *uri, gpointer data)
+{
+  g_autoptr (GdkAppLaunchContext) context = gdk_display_get_app_launch_context (gtk_widget_get_display (GTK_WIDGET (win)));
+
+  /* GLib's own launch: GTK's URI launcher refuses a file:// page and its file launcher asks "Open With" through the portal (JOD's M1, 2026-11-03). The window
+     stays until the answer; a window gone has dropped the failure. */
+  g_app_info_launch_default_for_uri_async (uri, G_APP_LAUNCH_CONTEXT (context), NULL, help_launched, g_object_ref (win));
+}
+
+void
+easel_window_set_help_launcher (EaselWindow *self, EaselHelpLauncher launch, gpointer data)
+{
+  self->help_launch = launch;
+  self->help_launch_data = data;
+}
+
+static void
+help_activated (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+  EaselWindow *self = user_data;
+  const char *page = easel_help_page_path ();
+  g_autofree char *uri = NULL;
+
+  if (!extras_allowed (self) || self->help_starting)
+    return;
+  self->help_dropped = FALSE;
+  /* A missing page needs no browser to be seen. */
+  if (!g_file_test (page, G_FILE_TEST_IS_REGULAR) || (uri = g_filename_to_uri (page, NULL, NULL)) == NULL)
+    {
+      show_help_error (self);
+      return;
+    }
+  self->help_starting = TRUE;
+  self->help_launch (self, uri, self->help_launch_data);
 }
 
 EaselSettings *
@@ -2263,6 +2590,20 @@ on_resize_requested (EaselWindow *self, int width, int height)
   easel_window_resize_picture (self, width, height);
 }
 
+/* The wheel moves the view as GTK's scrolled window does (Shift for across). */
+static void
+scroll_view_as_scroller (EaselWindow *self, GtkEventControllerScroll *controller, double dx, double dy)
+{
+  GdkModifierType state = gtk_event_controller_get_current_event_state (GTK_EVENT_CONTROLLER (controller));
+  gboolean across = (state & GDK_SHIFT_MASK) || (dy == 0 && dx != 0);
+  GtkAdjustment *adj = across ? gtk_scrolled_window_get_hadjustment (self->scroller) : gtk_scrolled_window_get_vadjustment (self->scroller);
+  double d = across ? (dx != 0 ? dx : dy) : dy;
+
+  if (gtk_event_controller_scroll_get_unit (controller) == GDK_SCROLL_UNIT_WHEEL)
+    d *= pow (gtk_adjustment_get_page_size (adj), 2.0 / 3.0);
+  gtk_adjustment_set_value (adj, gtk_adjustment_get_value (adj) + d);
+}
+
 /* The wheel over the card's size field: with the focus in the field, the field's own (a step of the size, REQ-0017-25); without it,
    the view's, as anywhere over the canvas area. The card is the scrolled window's sibling in the overlay, so the wheel would not reach
    it: the window scrolls the view as GTK's scrolled window does (Shift for across). With a box open the tool is Text, where Ctrl+wheel
@@ -2272,16 +2613,10 @@ on_card_size_scroll (GtkEventControllerScroll *controller, double dx, double dy,
 {
   GtkWidget *field = gtk_event_controller_get_widget (GTK_EVENT_CONTROLLER (controller));
   GtkWidget *focus = gtk_root_get_focus (GTK_ROOT (self));
-  GdkModifierType state = gtk_event_controller_get_current_event_state (GTK_EVENT_CONTROLLER (controller));
-  gboolean across = (state & GDK_SHIFT_MASK) || (dy == 0 && dx != 0);
-  GtkAdjustment *adj = across ? gtk_scrolled_window_get_hadjustment (self->scroller) : gtk_scrolled_window_get_vadjustment (self->scroller);
-  double d = across ? (dx != 0 ? dx : dy) : dy;
 
   if (focus != NULL && (focus == field || gtk_widget_is_ancestor (focus, field)))
     return GDK_EVENT_PROPAGATE;
-  if (gtk_event_controller_scroll_get_unit (controller) == GDK_SCROLL_UNIT_WHEEL)
-    d *= pow (gtk_adjustment_get_page_size (adj), 2.0 / 3.0);
-  gtk_adjustment_set_value (adj, gtk_adjustment_get_value (adj) + d);
+  scroll_view_as_scroller (self, controller, dx, dy);
   return GDK_EVENT_STOP;
 }
 
@@ -2350,11 +2685,41 @@ shortcut_keyval (EaselWindow *self, guint keyval, guint keycode, GdkModifierType
   return found;
 }
 
+/* Ctrl+? by the key's place: with Shift, a layout that is not Latin writes something else on that key, such as the comma of the Ukrainian layout, and
+   the key still means Ctrl+? when a layout the user also has writes "?" there (REQ-0021-01, as REQ-0018-01). */
+static gboolean
+key_is_shortcuts (EaselWindow *self, guint keyval, guint keycode, GdkModifierType state)
+{
+  g_autofree GdkKeymapKey *keys = NULL;
+  g_autofree guint *keyvals = NULL;
+  int n = 0;
+
+  if ((state & (GDK_CONTROL_MASK | GDK_SHIFT_MASK | GDK_ALT_MASK)) != (GDK_CONTROL_MASK | GDK_SHIFT_MASK) || keyval == GDK_KEY_question || keycode == 0
+      || !gdk_display_map_keycode (gtk_widget_get_display (GTK_WIDGET (self)), keycode, &keys, &keyvals, &n))
+    return FALSE;
+  for (int i = 0; i < n; i++)
+    if (keyvals[i] == GDK_KEY_question)
+      return TRUE;
+  return FALSE;
+}
+
 /* Esc cancels a handle drag (REQ-0004-19); at any other time it is not ours. */
 static gboolean
 on_key_pressed (EaselWindow *self, guint keyval, guint keycode, GdkModifierType state, GtkEventControllerKey *controller)
 {
+  gboolean repeat;
+
   keyval = shortcut_keyval (self, keyval, keycode, state);
+  repeat = keyval == self->key_down;
+  /* A key repeat of F1 does nothing (REQ-0021-04). */
+  if (keyval == GDK_KEY_F1 && repeat && (state & GDK_CONTROL_MASK) == 0)
+    return GDK_EVENT_STOP;
+  self->key_down = keyval;
+  if (key_is_shortcuts (self, keyval, keycode, state))
+    {
+      g_action_group_activate_action (G_ACTION_GROUP (self), "shortcuts", NULL);
+      return GDK_EVENT_STOP;
+    }
   if (keyval == GDK_KEY_Tab || keyval == GDK_KEY_ISO_Left_Tab || keyval == GDK_KEY_KP_Tab)
     self->tab_time = g_get_monotonic_time ();   /* a focus Tab carries into the card does not stay there (REQ-0017-14) */
   if (menu_is_open (self))
@@ -2425,10 +2790,26 @@ on_key_pressed (EaselWindow *self, guint keyval, guint keycode, GdkModifierType 
     }
   if ((keyval == GDK_KEY_Return || keyval == GDK_KEY_KP_Enter) && !dialog_is_open (self) && easel_canvas_enter (self->canvas))
     return GDK_EVENT_STOP;
-  if (keyval != GDK_KEY_Escape || !easel_canvas_is_resizing (self->canvas))
-    return GDK_EVENT_PROPAGATE;
-  easel_canvas_cancel_resize (self->canvas);
-  return GDK_EVENT_STOP;
+  if (keyval == GDK_KEY_Escape && easel_canvas_is_resizing (self->canvas))
+    {
+      easel_canvas_cancel_resize (self->canvas);
+      return GDK_EVENT_STOP;
+    }
+  /* Last of all, with nothing else to take it and no button held, Esc closes the thumbnail; its repeat does not (REQ-0021-08). */
+  if (keyval == GDK_KEY_Escape && !repeat && gtk_widget_get_visible (GTK_WIDGET (self->thumbnail_card)) && view_actions_allowed (self)
+      && !easel_canvas_is_panning (self->canvas))
+    {
+      g_action_group_change_action_state (G_ACTION_GROUP (self), "thumbnail", g_variant_new_boolean (FALSE));
+      return GDK_EVENT_STOP;
+    }
+  return GDK_EVENT_PROPAGATE;
+}
+
+static void
+on_key_released (EaselWindow *self, guint keyval, guint keycode, GdkModifierType state, GtkEventControllerKey *controller)
+{
+  if (keyval == self->key_down)
+    self->key_down = 0;
 }
 
 /* Shift going down or up changes a shape being dragged at once (REQ-0010-14); the state is the new one. */
@@ -2445,6 +2826,7 @@ on_modifiers_changed (EaselWindow *self, GdkModifierType state, GtkEventControll
 static void
 on_active_changed (EaselWindow *self)
 {
+  self->key_down = 0;                           /* the release of a key held as the window went to the back never arrives */
   if (!gtk_window_is_active (GTK_WINDOW (self)))
     easel_canvas_reset_pointer (self->canvas);
 }
@@ -3401,6 +3783,7 @@ static const GActionEntry win_actions[] = {
   { .name = "line-width", .parameter_type = "i", .state = "1", .change_state = line_width_changed },
   { .name = "fill-style", .parameter_type = "i", .state = "0", .change_state = fill_style_changed },
   { .name = "grid", .state = "false", .change_state = grid_state_changed },
+  { .name = "thumbnail", .state = "false", .change_state = thumbnail_state_changed },
   { .name = "grid-dialog", .activate = grid_dialog_activated },
   { .name = "attributes", .activate = attributes_activated },
   { .name = "flip-horizontal", .activate = flip_horizontal_activated },
@@ -3410,6 +3793,9 @@ static const GActionEntry win_actions[] = {
   { .name = "rotate-270", .activate = rotate_270_activated },
   { .name = "stretch-skew", .activate = stretch_skew_activated },
   { .name = "preferences", .activate = preferences_activated },
+  { .name = "shortcuts", .activate = shortcuts_activated },
+  { .name = "help", .activate = help_activated },
+  { .name = "about", .activate = about_activated },
   { .name = "invert", .activate = invert_activated },
   { .name = "clear-image", .activate = clear_image_activated },
   { .name = "show-toolbox", .state = "true", .change_state = show_panel_state_changed },
@@ -3474,6 +3860,12 @@ easel_window_get_modified (EaselWindow *self)
   return easel_history_is_modified (self->history);
 }
 
+GtkWidget *
+easel_window_get_thumbnail_card (EaselWindow *self)
+{
+  return GTK_WIDGET (self->thumbnail_card);
+}
+
 EaselFontCard *
 easel_window_get_font_card (EaselWindow *self)
 {
@@ -3504,6 +3896,9 @@ easel_window_dispose (GObject *object)
   EaselWindow *self = EASEL_WINDOW (object);
 
   g_clear_handle_id (&self->card_idle, g_source_remove);
+  g_clear_handle_id (&self->frame_time_timer, g_source_remove);
+  g_clear_handle_id (&self->help_error_timer, g_source_remove);
+  self->help_dropped = TRUE;
   g_clear_handle_id (&self->card_focus_idle, g_source_remove);
   if (self->font_card != NULL)
     easel_font_card_set_canvas (self->font_card, NULL);   /* a field left with a typed value applies nothing while the window goes */
@@ -3612,15 +4007,18 @@ easel_window_class_init (EaselWindowClass *klass)
                                                         G_PARAM_WRITABLE | G_PARAM_CONSTRUCT_ONLY | G_PARAM_STATIC_STRINGS));
   object_class->finalize = easel_window_finalize;
   GTK_WINDOW_CLASS (klass)->close_request = easel_window_close_request;
+  g_signal_add_emission_hook (g_signal_lookup ("close-request", GTK_TYPE_WINDOW), 0, close_request_hook, NULL, NULL);
 
   g_type_ensure (EASEL_TYPE_CANVAS);
   g_type_ensure (EASEL_TYPE_PALETTE_BAR);
   g_type_ensure (EASEL_TYPE_STATUS_BAR);
   g_type_ensure (EASEL_TYPE_FONT_CARD);
+  g_type_ensure (EASEL_TYPE_THUMBNAIL_CARD);
   gtk_widget_class_set_template_from_resource (widget_class, RESOURCE_PATH "/window.ui");
   gtk_widget_class_bind_template_child (widget_class, EaselWindow, scroller);
   gtk_widget_class_bind_template_child (widget_class, EaselWindow, canvas_overlay);
   gtk_widget_class_bind_template_child (widget_class, EaselWindow, font_card);
+  gtk_widget_class_bind_template_child (widget_class, EaselWindow, thumbnail_card);
   gtk_widget_class_bind_template_child (widget_class, EaselWindow, canvas);
   gtk_widget_class_bind_template_child (widget_class, EaselWindow, palette_bar);
   gtk_widget_class_bind_template_child (widget_class, EaselWindow, status_bar);
@@ -3723,11 +4121,17 @@ easel_window_init (EaselWindow *self)
                            G_CONNECT_SWAPPED);
   g_signal_connect_object (self->canvas, "resize-requested", G_CALLBACK (on_resize_requested), self, G_CONNECT_SWAPPED);
   g_signal_connect_swapped (self, "notify::visible-dialog", G_CALLBACK (on_visible_dialog_changed), self);
+  self->help_launch = launch_in_browser;
+  easel_thumbnail_card_set_view (self->thumbnail_card, self->canvas, self->scroller);
+  thumbnail_connect_input (self);
+  g_signal_connect_object (gtk_scrolled_window_get_hadjustment (self->scroller), "changed", G_CALLBACK (sync_thumbnail), self, G_CONNECT_SWAPPED);
+  g_signal_connect_object (gtk_scrolled_window_get_vadjustment (self->scroller), "changed", G_CALLBACK (sync_thumbnail), self, G_CONNECT_SWAPPED);
   {
     GtkEventController *keys = gtk_event_controller_key_new ();
 
     gtk_event_controller_set_propagation_phase (keys, GTK_PHASE_CAPTURE);
     g_signal_connect_swapped (keys, "key-pressed", G_CALLBACK (on_key_pressed), self);
+    g_signal_connect_swapped (keys, "key-released", G_CALLBACK (on_key_released), self);
     g_signal_connect_swapped (keys, "modifiers", G_CALLBACK (on_modifiers_changed), self);
     gtk_widget_add_controller (GTK_WIDGET (self), keys);
   }
@@ -3745,6 +4149,8 @@ easel_window_init (EaselWindow *self)
   gtk_widget_set_halign (self->selection_menu, GTK_ALIGN_START);
   gtk_widget_set_parent (self->selection_menu, GTK_WIDGET (self->canvas));
   g_signal_connect_object (self->canvas, "canvas-menu", G_CALLBACK (on_canvas_menu), self, G_CONNECT_SWAPPED);
+  g_signal_connect_object (self->canvas, "painted", G_CALLBACK (on_canvas_painted), self, G_CONNECT_SWAPPED);
+  easel_window_apply_frame_time (self, self->settings.frame_time);
   g_signal_connect_object (self->canvas, "picture-replaced", G_CALLBACK (picture_size_changed), self, G_CONNECT_SWAPPED);
   self->canvas_menu = gtk_popover_menu_new_from_model (self->canvas_menu_model);
   gtk_popover_set_has_arrow (GTK_POPOVER (self->canvas_menu), FALSE);

@@ -20,12 +20,14 @@ button.flat.level {
 /* The workspace around the picture: a light grey in the light theme and a dark one in the dark theme, following a
    change of theme at once (REQ-0009-03, REQ-0009-06). Valid `[view] workspace-color` and `workspace-color-dark` replace
    them through a style provider of higher priority (window.c). */
-scrolledwindow.workspace > viewport {
+scrolledwindow.workspace > viewport,
+.thumbnail-area {
   background-color: #E7E7E7;
 }
 
 @media (prefers-color-scheme: dark) {
-  scrolledwindow.workspace > viewport {
+  scrolledwindow.workspace > viewport,
+  .thumbnail-area {
     background-color: #2C2C2C;
   }
 }

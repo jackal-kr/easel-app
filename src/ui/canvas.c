@@ -59,6 +59,9 @@ struct _EaselCanvas
   gboolean probe_no_line, probe_no_tint;   /* benchmark hook, see easel_canvas_set_overlay_probe () */
   size_t view_memory_max;                  /* test hook, see easel_canvas_set_view_memory_limit () */
   int tint;                                /* the strength of the selection's tint in percent (REQ-0020-03) */
+  double frame_ms;                         /* the CPU time of the last frame's build (REQ-0021-12) */
+  guint frames_drawn, painted_idle;
+  int draw_delay_ms;                       /* test hook, see easel_canvas_set_draw_delay () */
   gboolean no_sel_handles;                 /* test hook, see easel_canvas_set_selection_handles_shown () */
   gboolean line_unmerged;                  /* test hook, see easel_canvas_set_line_merge () */
   gsize line_strips;                       /* test hook: the white strips of the last line drawn */
@@ -228,7 +231,6 @@ struct _EaselCanvas
 };
 
 /* Touchpad scrolling arrives in surface pixels; this many count as one wheel notch. */
-#define PIXELS_PER_NOTCH 30.0
 
 enum
 {
@@ -240,6 +242,7 @@ enum
   SIGNAL_SELECTION_CHANGED,
   SIGNAL_CONTEXT_MENU,
   SIGNAL_CANVAS_MENU,
+  SIGNAL_PAINTED,
   SIGNAL_PICTURE_REPLACED,
   SIGNAL_SELECTION_FAILED,
   SIGNAL_TEXT_FAILED,
@@ -1674,10 +1677,23 @@ text_box_area (EaselCanvas *self, double l, int *bx, int *by, int *x0, int *y0, 
 /* The open box as the pixels its put-down will write (REQ-0017-05, REQ-0017-16): the picture's pixels under it, the background over the
    box in Opaque mode, the ink's masked pixels. One texture over the tiles, drawn with their filter, so that it is the picture's look at
    every zoom (the Plan); drawn before the grid, the tint and the selected text's highlight (REQ-0017-05's order). */
+/* What an open box makes of the picture's color c at (x, y), the box at (bx, by), bw x bh: its background when opaque, then its letters. */
+static uint32_t
+text_box_pixel (EaselCanvas *self, int x, int y, uint32_t c, int bx, int by, int bw, int bh)
+{
+  const EaselTextInk *ink = &self->text_ink;
+
+  if (self->text_opaque && x >= bx && x < bx + bw && y >= by && y < by + bh)
+    c = self->background;
+  if (ink->mask != NULL && x >= ink->x && x < ink->x + ink->w && y >= ink->y && y < ink->y + ink->h
+      && ink->mask[(size_t) (y - ink->y) * ink->w + (x - ink->x)])
+    c = ink->color[(size_t) (y - ink->y) * ink->w + (x - ink->x)];
+  return c;
+}
+
 static void
 append_text_box (EaselCanvas *self, GtkSnapshot *snapshot, double l)
 {
-  const EaselTextInk *ink = &self->text_ink;
   int bx, by, bw, bh, x0, y0, x1, y1, rw, rh;
   uint32_t *px;
   g_autoptr (GBytes) data = NULL;
@@ -1693,15 +1709,7 @@ append_text_box (EaselCanvas *self, GtkSnapshot *snapshot, double l)
   for (int j = 0; j < rh; j++)
     for (int i = 0; i < rw; i++)
       {
-        int x = x0 + i, y = y0 + j;
-        uint32_t c = easel_image_get (self->img, x, y);
-
-        if (self->text_opaque && x >= bx && x < bx + bw && y >= by && y < by + bh)
-          c = self->background;
-        if (ink->mask != NULL && x >= ink->x && x < ink->x + ink->w && y >= ink->y && y < ink->y + ink->h
-            && ink->mask[(size_t) (y - ink->y) * ink->w + (x - ink->x)])
-          c = ink->color[(size_t) (y - ink->y) * ink->w + (x - ink->x)];
-        px[(gsize) j * rw + i] = c;
+        px[(gsize) j * rw + i] = text_box_pixel (self, x0 + i, y0 + j, easel_image_get (self->img, x0 + i, y0 + j), bx, by, bw, bh);
       }
   /* On the squares drawn under it (REQ-0025-03); with no memory for that, by the renderer's scaling below. */
   if (view_built_by_edges (self) && append_cells_by_edges (self, snapshot, px, x0, y0, rw, rh))
@@ -3844,6 +3852,45 @@ append_shape_run (GtkSnapshot *snapshot, const graphene_rect_t *r, const graphen
 /* The shape being dragged, drawn over the picture as it will be drawn: the same runs the release applies, only for the rows
    the view shows (REQ-0010-05). At a zoom where a device pixel holds many rows, one row in step is drawn, so a frame costs
    what the view costs and not what the shape does. */
+/* The figure shown over the picture now and its two colors: the waiting one or the one being dragged; none while a gradient waits, which replaces the
+   tiles instead (gradient_preview). */
+static gboolean
+shown_figure (EaselCanvas *self, EaselFigure *f, uint32_t *draw, uint32_t *other)
+{
+  if (self->pending && self->pend_gradient)
+    return FALSE;
+  if (self->pending)
+    {
+      *f = pending_figure (self);
+      *draw = self->pend_draw;
+      *other = self->pend_other;
+      return TRUE;
+    }
+  if (self->shaping)
+    {
+      *f = current_figure (self);
+      *draw = self->shape_draw;
+      *other = self->shape_other;
+      return TRUE;
+    }
+  return FALSE;
+}
+
+/* The color of one run of a figure, FALSE for a run that draws nothing. */
+static gboolean
+figure_run_color (const EaselFigure *f, const EaselFigureRun *run, uint32_t draw, uint32_t other, uint32_t *color)
+{
+  if (!run->inside)
+    *color = draw;
+  else if (f->style == EASEL_FIGURE_OUTLINE_AND_FILL)
+    *color = other;
+  else if (f->style == EASEL_FIGURE_FILL_ONLY)
+    *color = draw;
+  else
+    return FALSE;
+  return TRUE;
+}
+
 static void
 append_shape_preview (EaselCanvas *self, GtkSnapshot *snapshot)
 {
@@ -3857,21 +3904,7 @@ append_shape_preview (EaselCanvas *self, GtkSnapshot *snapshot)
 
   uint32_t draw, other;
 
-  if (self->pending && self->pend_gradient)
-    return;                                     /* the gradient replaces the tiles instead (gradient_preview) */
-  if (self->pending)
-    {
-      f = pending_figure (self);
-      draw = self->pend_draw;
-      other = self->pend_other;
-    }
-  else if (self->shaping)
-    {
-      f = current_figure (self);
-      draw = self->shape_draw;
-      other = self->shape_other;
-    }
-  else
+  if (!shown_figure (self, &f, &draw, &other))
     return;
   if (!gtk_widget_compute_bounds (gtk_widget_get_parent (GTK_WIDGET (self)), GTK_WIDGET (self), &seen))
     return;
@@ -3906,15 +3939,7 @@ append_shape_preview (EaselCanvas *self, GtkSnapshot *snapshot)
           int x0 = runs[i].x0 < 0 ? 0 : runs[i].x0, x1 = runs[i].x1 > self->img->width - 1 ? self->img->width - 1 : runs[i].x1;
           graphene_rect_t r;
 
-          if (x0 > x1)
-            continue;
-          if (!runs[i].inside)
-            color = draw;
-          else if (f.style == EASEL_FIGURE_OUTLINE_AND_FILL)
-            color = other;
-          else if (f.style == EASEL_FIGURE_FILL_ONLY)
-            color = draw;
-          else
+          if (x0 > x1 || !figure_run_color (&f, &runs[i], draw, other, &color))
             continue;
           r = GRAPHENE_RECT_INIT ((float) (x0 * l), (float) (y * l), (float) ((x1 - x0 + 1) * l), (float) (step * l));
           if (by_edges)
@@ -4190,6 +4215,24 @@ easel_canvas_get_preview_bytes_held (EaselCanvas *self)
   return held;
 }
 
+double
+easel_canvas_get_frame_ms (EaselCanvas *self)
+{
+  return self->frame_ms;
+}
+
+void
+easel_canvas_set_draw_delay (EaselCanvas *self, int ms)
+{
+  self->draw_delay_ms = ms;
+}
+
+guint
+easel_canvas_get_frames_drawn (EaselCanvas *self)
+{
+  return self->frames_drawn;
+}
+
 void
 easel_canvas_set_tint (EaselCanvas *self, int percent)
 {
@@ -4308,17 +4351,118 @@ gradient_preview (EaselCanvas *self, double l)
   return textures;
 }
 
+const EaselImage *
+easel_canvas_get_image (EaselCanvas *self)
+{
+  return self->img;
+}
+
+void
+easel_canvas_append_checkerboard (GtkSnapshot *snapshot, const graphene_rect_t *bounds)
+{
+  easel_snapshot_append_checkerboard (snapshot, bounds, CHECKER_SIZE);
+}
+
+GdkTexture *
+easel_canvas_compose_view (EaselCanvas *self, int x0, int y0, int w, int h)
+{
+  size_t bytes = (size_t) w * (size_t) h * sizeof (uint32_t);
+  g_autofree uint32_t *px = g_try_malloc (bytes);
+  g_autoptr (GBytes) data = NULL;
+  EaselFigure f;
+  uint32_t draw, other;
+  int bx, by, bw, bh;
+
+  if (px == NULL)
+    return NULL;
+  if (self->sel_state == 2)
+    easel_selection_lay (&self->sel_float, TRUE, self->img, x0, y0, w, h, px, (size_t) w);
+  else if (self->pending && self->pend_gradient)
+    {
+      EaselGradient g = shown_gradient (self);
+
+      easel_gradient_lay (&g, self->img, x0, y0, w, h, px, (size_t) w);
+    }
+  else
+    for (int j = 0; j < h; j++)
+      for (int i = 0; i < w; i++)
+        px[(gsize) j * w + i] = easel_image_get (self->img, x0 + i, y0 + j);
+  if (self->tool == EASEL_TOOL_TEXT && easel_canvas_text_box (self, &bx, &by, &bw, &bh))
+    for (int j = 0; j < h; j++)
+      for (int i = 0; i < w; i++)
+        px[(gsize) j * w + i] = text_box_pixel (self, x0 + i, y0 + j, px[(gsize) j * w + i], bx, by, bw, bh);
+  if (shown_figure (self, &f, &draw, &other) && easel_figure_prepare (&f, y0, y0 + h - 1))
+    {
+      EaselFigureRun *runs = malloc (easel_figure_max_runs (&f) * sizeof *runs);
+
+      if (runs != NULL)
+        for (int y = y0; y < y0 + h; y++)
+          {
+            size_t n = easel_figure_row (&f, y, runs, easel_figure_max_runs (&f));
+
+            for (size_t r = 0; r < n; r++)
+              {
+                uint32_t color;
+
+                if (figure_run_color (&f, &runs[r], draw, other, &color))
+                  for (int x = MAX (runs[r].x0, x0); x <= MIN (runs[r].x1, x0 + w - 1); x++)
+                    px[(gsize) (y - y0) * w + (x - x0)] = color;
+              }
+          }
+      free (runs);
+      easel_figure_release (&f);
+    }
+  data = g_bytes_new_take (g_steal_pointer (&px), bytes);
+  return gdk_memory_texture_new (w, h, PICTURE_FORMAT, data, (gsize) w * sizeof (uint32_t));
+}
+
+static gboolean
+emit_painted (gpointer data)
+{
+  EaselCanvas *self = data;
+
+  self->painted_idle = 0;
+  g_signal_emit (self, signals[SIGNAL_PAINTED], 0);
+  return G_SOURCE_REMOVE;
+}
+
+static void
+canvas_snapshot_frame (EaselCanvas *self, GtkSnapshot *snapshot);
+
+/* The frame, and the CPU it took: this thread's, so that nothing of the GPU or the compositor counts (REQ-0021-12). */
 static void
 easel_canvas_snapshot (GtkWidget *widget, GtkSnapshot *snapshot)
 {
   EaselCanvas *self = EASEL_CANVAS (widget);
+  struct timespec start, end;
+
+  if (self->tiles == NULL)
+    return;
+  clock_gettime (CLOCK_THREAD_CPUTIME_ID, &start);
+  canvas_snapshot_frame (self, snapshot);
+  if (self->draw_delay_ms > 0)
+    {
+      struct timespec now;
+
+      do
+        clock_gettime (CLOCK_THREAD_CPUTIME_ID, &now);
+      while ((now.tv_sec - start.tv_sec) * 1000.0 + (now.tv_nsec - start.tv_nsec) / 1e6 < self->draw_delay_ms);
+    }
+  clock_gettime (CLOCK_THREAD_CPUTIME_ID, &end);
+  self->frame_ms = (end.tv_sec - start.tv_sec) * 1000.0 + (end.tv_nsec - start.tv_nsec) / 1e6;
+  self->frames_drawn++;
+  if (self->painted_idle == 0)
+    self->painted_idle = g_idle_add (emit_painted, self);
+}
+
+static void
+canvas_snapshot_frame (EaselCanvas *self, GtkSnapshot *snapshot)
+{
   double l;
   graphene_rect_t bounds;
   GdkTexture **preview;
   gboolean by_edges;
 
-  if (self->tiles == NULL)
-    return;
   l = self->zoom / (100.0 * easel_canvas_get_scale (self));
   preview = self->sel_state == 2 ? selection_preview (self) : gradient_preview (self, l);
   if (self->sel_state != 2)
@@ -5347,7 +5491,7 @@ easel_canvas_press_timed (EaselCanvas *self, guint button, double x, double y, g
 
   if (self->tool == EASEL_TOOL_PAN)
     {
-      /* Only a primary drag pans (REQ-0001-14). */
+      /* Only a primary drag pans (REQ-0001-14); the secondary button opens Pan's menu, with no button held (REQ-0021-13). */
       if (button == GDK_BUTTON_PRIMARY)
         {
           self->panning = TRUE;
@@ -5355,6 +5499,8 @@ easel_canvas_press_timed (EaselCanvas *self, guint button, double x, double y, g
           self->pan_y = y;
           update_cursor (self);
         }
+      else if (button == GDK_BUTTON_SECONDARY && !self->panning && self->img != NULL)
+        g_signal_emit (self, signals[SIGNAL_CANVAS_MENU], 0, x, y);
       return;
     }
 
@@ -6077,7 +6223,7 @@ on_scroll (GtkEventControllerScroll *controller, double dx, double dy, EaselCanv
   double x, y, nx, ny;
 
   if (gtk_event_controller_scroll_get_unit (controller) == GDK_SCROLL_UNIT_SURFACE)
-    dy /= PIXELS_PER_NOTCH;
+    dy /= EASEL_CANVAS_PIXELS_PER_NOTCH;
   if ((state & GDK_CONTROL_MASK) && event != NULL && gdk_event_get_position (event, &x, &y))
     {
       gtk_native_get_surface_transform (native, &nx, &ny);
@@ -6278,6 +6424,7 @@ easel_canvas_dispose (GObject *object)
 {
   EaselCanvas *self = EASEL_CANVAS (object);
 
+  g_clear_handle_id (&self->painted_idle, g_source_remove);
   g_clear_handle_id (&self->ants_tick, g_source_remove);   /* a timer, unlike a frame callback, outlives its widget */
   stop_spray (self);
   if (self->stroke != NULL)
@@ -6350,6 +6497,7 @@ easel_canvas_class_init (EaselCanvasClass *klass)
   signals[SIGNAL_PICTURE_REPLACED] = g_signal_new ("picture-replaced", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST, 0, NULL, NULL, NULL,
                                                    G_TYPE_NONE, 0);
   /* A secondary press with Select or Free-Form Select not on the selection nor a handle: the canvas menu at (x, y) (REQ-0016-14). */
+  signals[SIGNAL_PAINTED] = g_signal_new ("painted", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST, 0, NULL, NULL, NULL, G_TYPE_NONE, 0);
   signals[SIGNAL_CANVAS_MENU] = g_signal_new ("canvas-menu", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST, 0, NULL, NULL, NULL,
                                               G_TYPE_NONE, 2, G_TYPE_DOUBLE, G_TYPE_DOUBLE);
   signals[SIGNAL_PENDING_CHANGED] = g_signal_new ("pending-changed", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST, 0, NULL, NULL, NULL,

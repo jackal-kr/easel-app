@@ -195,6 +195,12 @@ apply_tint (Prefs *p)
 }
 
 static void
+apply_frame_time (Prefs *p)
+{
+  easel_window_apply_frame_time (p->win, p->chosen->frame_time);
+}
+
+static void
 apply_panels (Prefs *p)
 {
   easel_window_apply_panels (p->win, p->chosen->show_toolbox, p->chosen->show_colorbox, p->chosen->show_statusbar);
@@ -400,6 +406,7 @@ build_appearance (Prefs *p, AdwPreferencesPage *page)
   add_switch (p, panels, "Tool Box", &s->show_toolbox, "on", "off", "view", "toolbox", apply_panels);
   add_switch (p, panels, "Color Box", &s->show_colorbox, "on", "off", "view", "colorbox", apply_panels);
   add_switch (p, panels, "Status Bar", &s->show_statusbar, "on", "off", "view", "statusbar", apply_panels);
+  add_switch (p, panels, "Frame time", &s->frame_time, "on", "off", "view", "frame-time", apply_frame_time);
   gtk_widget_set_valign (reset, GTK_ALIGN_CENTER);
   adw_preferences_row_set_title (ADW_PREFERENCES_ROW (reset_row), "Colors");
   adw_action_row_add_suffix (reset_row, reset);

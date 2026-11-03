@@ -28,7 +28,7 @@ Palette colors are edited in place: double-click a palette color or press F2 on 
 How input maps to actions across all tools. Seed from XP Paint behavior; verify while writing each spec.
 
 ### Modes
-- Pan is a tool and the tool active at start-up. A left-button drag pans; Ctrl + mouse wheel zooms (only in Pan mode). Nothing in Pan mode changes the picture or the undo history.
+- Pan is a tool and the tool active at start-up. A left-button drag pans; Ctrl + mouse wheel zooms (only in Pan mode). Nothing in Pan mode changes the picture or the undo history. (A drag never does; Pan's right-click menu holds Clear Image, Window Extras.)
 - Ctrl+drag on a selection moves a copy of it (classic XP).
 - After any paste the Select tool becomes active with the pasted picture selected.
 

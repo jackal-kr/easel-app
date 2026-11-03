@@ -1461,11 +1461,13 @@ test: ui-0009
 file: src/ui/canvas.c
 test: ui-0009
 --- find
-      /* Only a primary drag pans (REQ-0001-14). */
       if (button == GDK_BUTTON_PRIMARY)
+        {
+          self->panning = TRUE;
 --- replace
-      /* Only a primary drag pans (REQ-0001-14). */
       if (button == GDK_BUTTON_PRIMARY && x >= 0 && y >= 0)
+        {
+          self->panning = TRUE;
 
 === REQ-0009-02 the picture has no shadow (the style class is not set)
 file: src/ui/canvas.c
@@ -1872,8 +1874,12 @@ test: core-figure-apply
 file: src/ui/canvas.c
 test: ui-0010
 --- find
+  for (int y = row0; y <= row1; y += step)
+    {
       size_t n = easel_figure_row (&f, y, runs, easel_figure_max_runs (&f));
 --- replace
+  for (int y = row0; y <= row1; y += step)
+    {
       size_t n = easel_figure_row (&f, y, runs, 1);
 
 === REQ-0011-05 a half of the curve's coordinate rounds down
@@ -2013,11 +2019,11 @@ test: ui-0011
 --- find
   if (self->pending)
     {
-      f = pending_figure (self);
+      *f = pending_figure (self);
 --- replace
   if (0)
     {
-      f = pending_figure (self);
+      *f = pending_figure (self);
 
 === REQ-0011-04 the second bend does not put the curve down
 file: src/ui/canvas.c
@@ -2562,8 +2568,10 @@ file: src/ui/canvas.c
 test: ui-0012
 --- find
       easel_gradient_lay (&g, self->img, x0, y0, w, h, px, (size_t) w);
+      data = g_bytes_new_take (px, bytes);
 --- replace
       easel_gradient_lay (&g, self->img, x0, y0, w - 1, h, px + 1, (size_t) w);
+      data = g_bytes_new_take (px, bytes);
 
 === REQ-0012-09 the preview ignores its memory limit
 file: src/ui/canvas.c
@@ -3895,13 +3903,13 @@ test: ui-0010
 file: src/ui/canvas.c
 test: ui-0010
 --- find
-  else if (self->shaping)
+  if (self->shaping)
     {
-      f = current_figure (self);
+      *f = current_figure (self);
 --- replace
-  else if (0)
+  if (0)
     {
-      f = current_figure (self);
+      *f = current_figure (self);
 
 === REQ-0010-06 the secondary button draws with the foreground color
 file: src/ui/canvas.c
@@ -7518,21 +7526,19 @@ test: ui-0017
 file: src/ui/canvas.c
 test: ui-0017
 --- find
-          c = ink->color[(size_t) (y - ink->y) * ink->w + (x - ink->x)];
-        px[(gsize) j * rw + i] = c;
+    c = ink->color[(size_t) (y - ink->y) * ink->w + (x - ink->x)];
 --- replace
-          (void) 0;
-        px[(gsize) j * rw + i] = c;
+    (void) 0;
 
 === REQ-0017-05 an Opaque box shows no background
 file: src/ui/canvas.c
 test: ui-0017
 --- find
-        if (self->text_opaque && x >= bx && x < bx + bw && y >= by && y < by + bh)
-          c = self->background;
+  if (self->text_opaque && x >= bx && x < bx + bw && y >= by && y < by + bh)
+    c = self->background;
 --- replace
-        if (0)
-          c = self->background;
+  if (0)
+    c = self->background;
 
 === REQ-0017-05 the selected text has no accent behind it
 file: src/ui/canvas.c
@@ -9159,10 +9165,10 @@ test: ui-0017
 --- find
   if (focus != NULL && (focus == field || gtk_widget_is_ancestor (focus, field)))
     return GDK_EVENT_PROPAGATE;
-  if (gtk_event_controller_scroll_get_unit
+  scroll_view_as_scroller
 --- replace
   return GDK_EVENT_PROPAGATE;
-  if (gtk_event_controller_scroll_get_unit
+  scroll_view_as_scroller
 
 === REQ-0017-20 the pasted size is not clamped
 file: src/core/rich-text.c
@@ -11394,3 +11400,76 @@ test: io-settings-change
       if (errno != ENOENT)
         return FALSE;
       text = g_strdup
+
+=== REQ-0021-07 the card's first pixel forgets the margin
+file: src/core/view.c
+test: core-window-extras
+--- find
+  double d = (scroll_logical - margin) * scale;
+--- replace
+  double d = scroll_logical * scale;
+
+=== REQ-0021-07 the card's first pixel forgets the scale
+file: src/core/view.c
+test: core-window-extras
+--- find
+  double d = (scroll_logical - margin) * scale;
+--- replace
+  double d = scroll_logical - margin;
+
+=== REQ-0021-07 the card's first pixel is off by a square at each edge
+file: src/core/view.c
+test: core-window-extras
+--- find
+  return d <= 0 ? 0 : easel_view_cell_at ((int) floor (d), pct);
+--- replace
+  return d <= 0 ? 0 : easel_view_cell_at ((int) floor (d), pct) + 1;
+
+=== REQ-0021-11 a canvas area one pixel narrower still shows the card
+file: src/core/view.c
+test: core-window-extras
+--- find
+  return w >= 172 + 2 * 12 && h >= 132 + 2 * 12;
+--- replace
+  return w >= 171 + 2 * 12 && h >= 132 + 2 * 12;
+
+=== REQ-0021-11 a canvas area one pixel lower still shows the card
+file: src/core/view.c
+test: core-window-extras
+--- find
+  return w >= 172 + 2 * 12 && h >= 132 + 2 * 12;
+--- replace
+  return w >= 172 + 2 * 12 && h >= 131 + 2 * 12;
+
+=== REQ-0021-12 frame time has two decimals
+file: src/core/frame-time.c
+test: core-window-extras
+--- find
+  snprintf (out, size, "%.1f ms", ms);
+--- replace
+  snprintf (out, size, "%.2f ms", ms);
+
+=== REQ-0021-12 frame time changes faster than once per 250 ms
+file: src/core/frame-time.c
+test: core-window-extras
+--- find
+#define PACE_US 250000
+--- replace
+#define PACE_US 200000
+
+=== REQ-0021-12 the wait for the next text is cut short
+file: src/core/frame-time.c
+test: core-window-extras
+--- find
+  return left <= 0 ? 0 : (int) ((left + 999) / 1000);
+--- replace
+  return left <= 0 ? 0 : (int) (left / 1000);
+
+=== REQ-0021-12 a bad frame-time value turns it on
+file: src/core/settings.c
+test: core-window-extras
+--- find
+        s->frame_time = false;
+--- replace
+        s->frame_time = true;
+

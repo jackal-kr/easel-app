@@ -18,6 +18,7 @@
 #include "palette-bar.h"
 #include "lasso.h"
 #include "stretch-skew.h"
+#include "help.h"
 #include "memory-clipboard.h"
 #include "picture-file.h"
 #include "palette-file.h"
@@ -30,6 +31,7 @@
 #include "text-buffer.h"
 #include "text-render.h"
 #include "text-put.h"
+#include "thumbnail-card.h"
 #include "tool-options.h"
 #include "window.h"
 
@@ -1606,16 +1608,15 @@ as1_menus (void)
   g_assert_cmpstr (s0, ==, "custom:zoom");
   /* 0008 (REQ-0008-03) puts the Zoom submenu first in this group; its items are checked by /0008/as1. */
   g_assert_cmpstr (s1, ==, "Zoom|(null); Normal Size|win.zoom-normal; Large Size|win.zoom-large; Fit to Window|win.zoom-fit");
-  g_assert_cmpstr (s2, ==, "Show Grid|win.grid; Grid…|win.grid-dialog");
+  g_assert_cmpstr (s2, ==, "Show Grid|win.grid; Grid…|win.grid-dialog; Show Thumbnail|win.thumbnail");   /* REQ-0021-06 */
   g_assert_cmpstr (s3, ==, "Tool Box|win.show-toolbox; Color Box|win.show-colorbox; Status Bar|win.show-statusbar");
   /* 0018 (REQ-0018-01) added the flips and turns, Invert Colors and Clear Image around Attributes: its section is the last of three */
   g_assert_cmpint (g_menu_model_get_n_items (im), ==, 3);
   i0 = describe_section (im, 2);
   g_assert_cmpstr (i0, ==, "Attributes…|win.attributes; _Clear Image|win.clear-image");
 
-  /* No Frame Time and no Show Thumbnail. */
+  /* No Frame Time (0021 keeps it in Preferences). */
   g_assert_null (g_strstr_len (s3, -1, "Frame"));
-  g_assert_null (g_strstr_len (s2, -1, "Thumbnail"));
 
   /* The shortcuts, shown beside the items by the menus (REQ-0004-01). */
   g_assert_true (has_accel ("win.zoom-in", GDK_KEY_equal, GDK_CONTROL_MASK));
@@ -4030,6 +4031,11 @@ as9_spray_one_step_and_cancel (void)
 
 /* ---- 0005: file I/O ---- */
 
+/* The primary menu's last three sections (REQ-0020-01, REQ-0021-01). */
+#define PREFERENCES_SECTION "_Preferences|win.preferences"
+#define EXTRAS_SECTION "_Keyboard Shortcuts|win.shortcuts; _Help|win.help; _About Easel|win.about"
+#define QUIT_SECTION "_Quit|app.quit"
+
 /* REQ-0005-01: the Open button before Save, and the main menu with its shortcuts. */
 static void
 as1_file_menu (void)
@@ -4040,7 +4046,7 @@ as1_file_menu (void)
   GtkButton *open = find_action_button (GTK_WIDGET (win), "win.open");
   GtkButton *save = find_action_button (GTK_WIDGET (win), "win.save");
   GtkButton *undo = find_action_button (GTK_WIDGET (win), "win.undo");
-  g_autofree char *s0 = NULL, *s1 = NULL;
+  g_autofree char *s0 = NULL, *s1 = NULL, *s2 = NULL, *s3 = NULL;
 
   wait_for_layout (win);
   /* Open, Save, Undo, Redo, left to right (docs/design.md). */
@@ -4055,13 +4061,17 @@ as1_file_menu (void)
     g_assert_cmpfloat (rs.origin.x + rs.size.width, <=, ru.origin.x);
   }
 
-  /* New, Open…, Save and Save As… in one section, then Edit (0013, REQ-0013-16), Quit apart from them in the last. */
+  /* New, Open…, Save and Save As… in one section, then Edit (0013, REQ-0013-16), then Preferences, the extras and Quit, each apart. */
   g_assert_true (gtk_menu_button_get_primary (main));
-  g_assert_cmpint (g_menu_model_get_n_items (menu), ==, 3);
+  g_assert_cmpint (g_menu_model_get_n_items (menu), ==, 5);
   s0 = describe_section (menu, 0);
   s1 = describe_section (menu, 2);
+  s2 = describe_section (menu, 3);
+  s3 = describe_section (menu, 4);
   g_assert_cmpstr (s0, ==, "_New|win.new; _Open…|win.open; _Save|win.save; Save _As…|win.save-as");
-  g_assert_cmpstr (s1, ==, "_Preferences|win.preferences; _Quit|app.quit");    /* Preferences: REQ-0020-01 */
+  g_assert_cmpstr (s1, ==, PREFERENCES_SECTION);    /* REQ-0020-01 */
+  g_assert_cmpstr (s2, ==, EXTRAS_SECTION);         /* REQ-0021-01 */
+  g_assert_cmpstr (s3, ==, QUIT_SECTION);
 
   g_assert_true (has_accel ("win.new", GDK_KEY_n, GDK_CONTROL_MASK));
   g_assert_true (has_accel ("win.open", GDK_KEY_o, GDK_CONTROL_MASK));
@@ -12457,9 +12467,9 @@ as10_select_all_edit_menu (void)
   img = easel_window_get_picture (win);
   bar = easel_window_get_status_bar (win);
   wait_for_layout (win);
-  /* The Edit submenu, between the file items and Quit. */
+  /* The Edit submenu, after the file items. */
   menu = menu_of (easel_window_get_main_menu_button (win));
-  g_assert_cmpint (g_menu_model_get_n_items (menu), ==, 3);
+  g_assert_cmpint (g_menu_model_get_n_items (menu), ==, 5);                   /* 0021: Preferences, the extras and Quit, each apart */
   edit_section = g_menu_model_get_item_link (menu, 1, G_MENU_LINK_SECTION);
   g_assert_nonnull (edit_section);
   g_assert_cmpint (g_menu_model_get_n_items (edit_section), ==, 3);           /* 0016: Copy To… and Paste From… after Edit */
@@ -27376,10 +27386,10 @@ as1_preferences_opens (void)
   EaselWindow *win = window_with ("[new-picture]\nwidth=60\nheight=40\n");
   EaselCanvas *canvas = easel_window_get_canvas (win);
   GMenuModel *menu = gtk_menu_button_get_menu_model (GTK_MENU_BUTTON (find_primary_button (GTK_WIDGET (win))));
-  g_autofree char *last = describe_section (menu, g_menu_model_get_n_items (menu) - 1);
+  g_autofree char *own = describe_section (menu, g_menu_model_get_n_items (menu) - 3);
   AdwDialog *d;
 
-  g_assert_cmpstr (last, ==, "_Preferences|win.preferences; _Quit|app.quit");
+  g_assert_cmpstr (own, ==, PREFERENCES_SECTION);
   g_assert_true (has_accel ("win.preferences", GDK_KEY_comma, GDK_CONTROL_MASK));
   /* A stroke held. */
   use_tool (win, "pencil");
@@ -27403,6 +27413,17 @@ as1_preferences_opens (void)
   write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
 }
 
+/* Waits (at most 3 s) until the app has no window. */
+static void
+wait_for_no_window (void)
+{
+  gint64 deadline = g_get_monotonic_time () + 3 * G_USEC_PER_SEC;
+
+  while (gtk_application_get_windows (app) != NULL && g_get_monotonic_time () < deadline)
+    g_main_context_iteration (NULL, FALSE);
+  g_assert_null (gtk_application_get_windows (app));
+}
+
 /* AS-1 (REQ-0020-01): a quit with it open closes it, keeping a typed value, then goes on as usual. */
 static void
 as1_quit_closes_it (void)
@@ -27413,6 +27434,7 @@ as1_quit_closes_it (void)
   gtk_editable_set_text (GTK_EDITABLE (pref_row (d, "Tint strength")), "30");
   gtk_window_close (GTK_WINDOW (win));
   g_assert_true (settings_has ("tint=30"));
+  wait_for_no_window ();                        /* the quit went on */
   close_windows ();
   write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
 }
@@ -27762,6 +27784,1313 @@ as12_error_once (void)
   d = open_preferences (win);
   g_assert_cmpint (field_value (GTK_EDITABLE (pref_row (d, "Tint strength"))), ==, 40);
   close_preferences (win, d);
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* ---- 0021 Window Extras ---- */
+
+static void
+run_for_ms_0021 (int ms)
+{
+  gint64 end = g_get_monotonic_time () + ms * G_TIME_SPAN_MILLISECOND;
+
+  while (g_get_monotonic_time () < end)
+    g_main_context_iteration (NULL, FALSE);
+}
+
+/* ---- 0021: the extras of the primary menu ---- */
+
+/* What each way of opening does: the dialog on top, or nothing. */
+static AdwDialog *
+visible_dialog (EaselWindow *win)
+{
+  return adw_application_window_get_visible_dialog (ADW_APPLICATION_WINDOW (win));
+}
+
+/* Waits (at most 3 s) until no dialog is on top of win. */
+static void
+wait_for_no_dialog (EaselWindow *win)
+{
+  gint64 deadline = g_get_monotonic_time () + 3 * G_USEC_PER_SEC;
+
+  while (visible_dialog (win) != NULL && g_get_monotonic_time () < deadline)
+    g_main_context_iteration (NULL, FALSE);
+  g_assert_null (visible_dialog (win));
+}
+
+/* The shortcut labels under w. */
+static guint
+count_shortcut_labels (GtkWidget *w)
+{
+  guint n = ADW_IS_SHORTCUT_LABEL (w) ? 1 : 0;
+
+  for (GtkWidget *c = gtk_widget_get_first_child (w); c != NULL; c = gtk_widget_get_next_sibling (c))
+    n += count_shortcut_labels (c);
+  return n;
+}
+
+static void
+assert_extras_do_nothing (EaselWindow *win, AdwDialog *before)
+{
+  g_action_group_activate_action (G_ACTION_GROUP (win), "shortcuts", NULL);
+  g_assert_true (visible_dialog (win) == before);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "about", NULL);
+  g_assert_true (visible_dialog (win) == before);
+}
+
+/* AS-1 (REQ-0021-01): the section, its keys, when they do nothing, and that opening changes nothing. */
+static void
+as1_extras_in_the_menu (void)
+{
+  EaselWindow *win = window_with ("[new-picture]\nwidth=60\nheight=40\n");
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  GMenuModel *menu = gtk_menu_button_get_menu_model (GTK_MENU_BUTTON (find_primary_button (GTK_WIDGET (win))));
+  g_autofree char *extras = describe_section (menu, g_menu_model_get_n_items (menu) - 2);
+  g_autofree char *last = describe_section (menu, g_menu_model_get_n_items (menu) - 1);
+  const char *const actions[] = { "shortcuts", "about" };
+  AdwDialog *d;
+
+  g_assert_cmpstr (extras, ==, EXTRAS_SECTION);
+  g_assert_cmpstr (last, ==, QUIT_SECTION);
+  g_assert_true (has_accel ("win.shortcuts", GDK_KEY_question, GDK_CONTROL_MASK));
+  g_assert_true (has_accel ("win.shortcuts", GDK_KEY_F1, GDK_CONTROL_MASK));
+  g_assert_true (has_accel ("win.help", GDK_KEY_F1, 0));
+  /* A stroke held. */
+  use_tool (win, "pencil");
+  easel_canvas_press (canvas, 1, 5.5, 5.5);
+  g_assert_true (easel_canvas_is_stroking (canvas));
+  assert_extras_do_nothing (win, NULL);
+  easel_canvas_release (canvas, 1);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  /* Another dialog open: the second does nothing. */
+  d = open_preferences (win);
+  assert_extras_do_nothing (win, d);
+  close_preferences (win, d);
+  /* The focus in the font card's size field: a box is open for the card to show. */
+  use_tool (win, "text");
+  shape_press_move (win, 1, 5, 5, 50, 30);
+  shape_release (win, 1);
+  g_assert_nonnull (easel_canvas_text_buffer (canvas));
+  gtk_widget_grab_focus (GTK_WIDGET (easel_font_card_get_size (easel_window_get_font_card (win))));
+  g_assert_nonnull (gtk_root_get_focus (GTK_ROOT (win)));
+  assert_extras_do_nothing (win, NULL);
+  easel_canvas_put_down (canvas);
+  wait_for_layout (win);                        /* the focus leaves the hidden card at the next frame */
+  /* A waiting curve stays waiting through each, and no step is added. */
+  use_tool (win, "curve");
+  shape_press_move (win, 1, 5, 5, 30, 5);
+  shape_release (win, 1);
+  g_assert_true (easel_canvas_is_pending (canvas));
+  for (guint i = 0; i < G_N_ELEMENTS (actions); i++)
+    {
+      gboolean can_undo = action_enabled (win, "undo");
+
+      g_action_group_activate_action (G_ACTION_GROUP (win), actions[i], NULL);
+      d = visible_dialog (win);
+      g_assert_nonnull (d);
+      g_assert_true (adw_dialog_close (d));
+      wait_for_no_dialog (win);
+      g_assert_true (easel_canvas_is_pending (canvas));
+      g_assert_true (action_enabled (win, "undo") == can_undo);
+    }
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* The keys no action holds, with the meaning the dialog gives each (REQ-0021-02): a list apart from the table, so that a key dropped from it is seen. */
+static const struct { const char *group, *title; } unbound_keys[] = {
+  { "Edit", "Clear the selection" },
+  { "Edit", "Move the selection 1 pixel" },
+  { "Edit", "Move the selection 10 pixels" },
+  { "Edit", "Put down a selection or a waiting shape" },
+  { "Edit", "Put down a selection, drop a waiting shape, cancel a drag" },
+  { "View", "Move the focus" },
+  { "View", "Close the thumbnail" },
+  { "Image", "Invert Colors" },
+  { "Colors", "Edit the focused swatch" },
+  { "Text", "Bold" },
+  { "Text", "Italic" },
+  { "Text", "Underline" },
+  { "Text", "Strikethrough" },
+  { "Text", "Font size 1 point larger or smaller" },
+  { "Text", "Open the font family list" },
+  { "Text", "Move the highlight in the family list" },
+  { "Text", "Choose the highlighted family" },
+  { "Text", "Close the family list" },
+  { "Text", "New line" },
+  { "Text", "Delete before or after the caret" },
+  { "Text", "Move the caret" },
+  { "Text", "Move the caret by a word" },
+  { "Text", "To the start or the end of the line" },
+  { "Text", "Extend the text selection" },
+  { "Text", "Put the box down" },
+};
+
+/* Whether accel is one of the names GTK holds for the action. */
+static gboolean
+action_holds (const char *action, const char *accel)
+{
+  g_auto (GStrv) held = gtk_application_get_accels_for_action (app, action);
+  guint key, want;
+  GdkModifierType mods, want_mods;
+
+  if (!gtk_accelerator_parse (accel, &want, &want_mods))
+    return FALSE;
+  for (guint i = 0; held[i] != NULL; i++)
+    if (gtk_accelerator_parse (held[i], &key, &mods) && key == want && mods == want_mods)
+      return TRUE;
+  return FALSE;
+}
+
+/* The label, with no mnemonic, of the first item for action in model or below it; NULL for none. */
+static char *
+menu_label_of_action (GMenuModel *model, const char *action)
+{
+  for (int i = 0; i < g_menu_model_get_n_items (model); i++)
+    {
+      g_autofree char *item_action = NULL, *label = NULL;
+      g_autoptr (GMenuLinkIter) links = g_menu_model_iterate_item_links (model, i);
+
+      if (g_menu_model_get_item_attribute (model, i, "action", "s", &item_action) && strcmp (item_action, action) == 0
+          && g_menu_model_get_item_attribute (model, i, "label", "s", &label))
+        {
+          g_auto (GStrv) parts = g_strsplit (label, "_", -1);
+
+          return g_strjoinv ("", parts);
+        }
+      while (g_menu_link_iter_next (links))
+        {
+          g_autoptr (GMenuModel) below = g_menu_link_iter_get_value (links);
+          char *found = menu_label_of_action (below, action);
+
+          if (found != NULL)
+            return found;
+        }
+    }
+  return NULL;
+}
+
+/* The same over the menu buttons under w. */
+static char *
+menu_label_in (GtkWidget *w, const char *action)
+{
+  if (GTK_IS_MENU_BUTTON (w) && gtk_menu_button_get_menu_model (GTK_MENU_BUTTON (w)) != NULL)
+    {
+      char *found = menu_label_of_action (gtk_menu_button_get_menu_model (GTK_MENU_BUTTON (w)), action);
+
+      if (found != NULL)
+        return found;
+    }
+  for (GtkWidget *c = gtk_widget_get_first_child (w); c != NULL; c = gtk_widget_get_next_sibling (c))
+    {
+      char *found = menu_label_in (c, action);
+
+      if (found != NULL)
+        return found;
+    }
+  return NULL;
+}
+
+/* AS-2 (REQ-0021-02): every key the app has is listed in its group, each meaning once, and every listed key is one the app has. */
+static void
+as2_every_key_listed (void)
+{
+  EaselWindow *win = window_with ("[new-picture]\nwidth=60\nheight=40\n");
+  g_auto (GStrv) described = gtk_application_list_action_descriptions (app);
+  g_autoptr (GHashTable) titles = g_hash_table_new (g_str_hash, g_str_equal);
+  const char *const groups[] = { "File", "Edit", "Image", "View", "Tools", "Colors", "Text" };
+  gsize n = 0;
+  const EaselShortcut *table = easel_shortcuts_table (&n);
+  guint seen_group = 0;
+  AdwDialog *d;
+
+  g_assert_cmpuint (n, >, 0);
+  for (gsize i = 0; i < n; i++)
+    {
+      g_autofree char *whole = g_strconcat (table[i].group, "/", table[i].title, NULL);
+      g_auto (GStrv) accels = g_strsplit (table[i].accel, " ", -1);
+
+      /* In the groups' order, each meaning once. */
+      while (seen_group < G_N_ELEMENTS (groups) && g_strcmp0 (groups[seen_group], table[i].group) != 0)
+        seen_group++;
+      g_assert_cmpuint (seen_group, <, G_N_ELEMENTS (groups));
+      g_assert_true (g_hash_table_add (titles, (gpointer) g_intern_string (whole)));
+      /* A key a table row names for an action is one GTK holds for it, and a row with no action is on the list apart. */
+      if (table[i].action != NULL)
+        {
+          /* Outside Text, whose rows say what the key does in a box, a row for a menu's action has the menu's words. */
+          if (strcmp (table[i].group, "Text") != 0)
+            {
+              g_autofree char *in_menu = menu_label_in (GTK_WIDGET (win), table[i].action);
+
+              if (in_menu != NULL && strcmp (in_menu, table[i].title) != 0)
+                g_error ("the row %s, the menu %s", table[i].title, in_menu);
+            }
+          for (guint a = 0; accels[a] != NULL; a++)
+            if (!action_holds (table[i].action, accels[a]))
+              g_error ("%s has no key %s", table[i].action, accels[a]);
+        }
+      else
+        {
+          gboolean found = FALSE;
+
+          for (guint u = 0; u < G_N_ELEMENTS (unbound_keys); u++)
+            found = found || (g_strcmp0 (unbound_keys[u].group, table[i].group) == 0 && g_strcmp0 (unbound_keys[u].title, table[i].title) == 0);
+          if (!found)
+            g_error ("%s is on no list", whole);
+        }
+    }
+  /* Every key GTK holds is in a row of its action. */
+  for (guint i = 0; described[i] != NULL; i++)
+    {
+      g_auto (GStrv) held = gtk_application_get_accels_for_action (app, described[i]);
+
+      for (guint h = 0; held[h] != NULL; h++)
+        {
+          gboolean found = FALSE;
+
+          for (gsize r = 0; r < n && !found; r++)
+            if (g_strcmp0 (table[r].action, described[i]) == 0)
+              {
+                g_auto (GStrv) accels = g_strsplit (table[r].accel, " ", -1);
+                guint key, row_key;
+                GdkModifierType mods, row_mods;
+
+                g_assert_true (gtk_accelerator_parse (held[h], &key, &mods));
+                for (guint a = 0; accels[a] != NULL; a++)
+                  found = found || (gtk_accelerator_parse (accels[a], &row_key, &row_mods) && row_key == key && row_mods == mods);
+              }
+          if (!found)
+            g_error ("%s of %s is in no row", held[h], described[i]);
+        }
+    }
+  /* Every key with no action is in a row. */
+  for (guint u = 0; u < G_N_ELEMENTS (unbound_keys); u++)
+    {
+      g_autofree char *whole = g_strconcat (unbound_keys[u].group, "/", unbound_keys[u].title, NULL);
+
+      if (!g_hash_table_contains (titles, whole))
+        g_error ("%s is not in the table", whole);
+    }
+
+  /* The dialog shows the table's rows; Esc closes it (the dialog's own binding, so close here). */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "shortcuts", NULL);
+  d = visible_dialog (win);
+  g_assert_true (ADW_IS_SHORTCUTS_DIALOG (d));
+  wait_for_layout (win);
+  /* Each row has its label in the list and another in the dialog's search list. */
+  g_assert_cmpuint (count_shortcut_labels (GTK_WIDGET (d)), ==, 2 * n);
+  g_assert_true (adw_dialog_close (d));
+  wait_for_no_dialog (win);
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* AS-1 (REQ-0021-01, REQ-0018-01): Ctrl+? by the place of the key on a layout whose level has another symbol, and Ctrl+Shift with a key elsewhere is not it. */
+static void
+as1_shortcuts_key_by_place (void)
+{
+  EaselWindow *win = window_with ("[new-picture]\nwidth=60\nheight=40\n");
+  guint slash = keycode_of (GDK_KEY_slash);
+
+  /* The Ukrainian layout's Shift on this key writes a comma. */
+  g_assert_true (key_taken_code (win, GDK_KEY_comma, slash, GDK_CONTROL_MASK | GDK_SHIFT_MASK));
+  g_assert_true (ADW_IS_SHORTCUTS_DIALOG (visible_dialog (win)));
+  g_assert_true (adw_dialog_close (visible_dialog (win)));
+  wait_for_no_dialog (win);
+  /* The key of the comma itself is not taken for it. */
+  g_assert_false (key_taken_code (win, GDK_KEY_comma, keycode_of (GDK_KEY_comma), GDK_CONTROL_MASK));
+  g_assert_null (visible_dialog (win));
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* AS-5 (REQ-0021-05): the name, the version of the build, the license and both acknowledgements. */
+static void
+as5_about (void)
+{
+  EaselWindow *win = window_with ("[new-picture]\nwidth=60\nheight=40\n");
+  AdwDialog *d;
+
+  g_action_group_activate_action (G_ACTION_GROUP (win), "about", NULL);
+  d = visible_dialog (win);
+  g_assert_true (ADW_IS_ABOUT_DIALOG (d));
+  g_assert_cmpstr (adw_about_dialog_get_application_name (ADW_ABOUT_DIALOG (d)), ==, "Easel");
+  g_assert_cmpstr (adw_about_dialog_get_version (ADW_ABOUT_DIALOG (d)), ==, easel_build_version ());
+  g_assert_cmpint (adw_about_dialog_get_license_type (ADW_ABOUT_DIALOG (d)), ==, GTK_LICENSE_GPL_3_0);
+  for (gsize i = 0; i < easel_about_n_acknowledgements (); i++)
+    g_assert_nonnull (easel_about_acknowledgement (i));
+  g_assert_cmpuint (easel_about_n_acknowledgements (), ==, 2);
+  g_assert_cmpstr (easel_about_acknowledgement (0), ==, "Microsoft Paint in Windows XP");
+  g_assert_cmpstr (easel_about_acknowledgement (1), ==, "JS Paint by Isaiah Odhner");
+  g_assert_true (adw_dialog_close (d));
+  wait_for_no_dialog (win);
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* AS-3 (REQ-0021-03): a quit closes the dialog and goes on; with a modified picture the prompt shows. */
+static void
+as3_quit_closes_extras (void)
+{
+  const char *const actions[] = { "shortcuts", "about" };
+
+  for (guint i = 0; i < G_N_ELEMENTS (actions); i++)
+    {
+      EaselWindow *win = window_with ("[new-picture]\nwidth=60\nheight=40\n");
+      AdwDialog *d;
+
+      /* Unmodified: the window goes. */
+      g_action_group_activate_action (G_ACTION_GROUP (win), actions[i], NULL);
+      g_assert_nonnull (visible_dialog (win));
+      gtk_window_close (GTK_WINDOW (win));
+      wait_for_no_window ();
+
+      /* Modified: the prompt shows in its place. */
+      win = window_with ("[new-picture]\nwidth=60\nheight=40\n");
+      use_tool (win, "pencil");
+      easel_canvas_press (easel_window_get_canvas (win), 1, 5.5, 5.5);
+      easel_canvas_release (easel_window_get_canvas (win), 1);
+      g_action_group_activate_action (G_ACTION_GROUP (win), actions[i], NULL);
+      d = visible_dialog (win);
+      g_assert_nonnull (d);
+      gtk_window_close (GTK_WINDOW (win));
+      wait_for_dialogs (win, 1);
+      g_assert_true (visible_dialog (win) != d);
+      g_assert_true (ADW_IS_ALERT_DIALOG (visible_dialog (win)));
+      close_windows ();
+    }
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* AS-12 (REQ-0021-12): off there is no part; on, a dash, then a number with one decimal, at a readable pace; the last value shows; nothing is
+   drawn for its own sake; a known delay reads at least that; the key is written. */
+static void
+as12_frame_time (void)
+{
+  EaselWindow *win = window_with ("[new-picture]\nwidth=60\nheight=40\n");
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  EaselStatusBar *bar = easel_window_get_status_bar (win);
+  GtkLabel *label = easel_status_bar_get_label (bar, EASEL_STATUS_FRAME_TIME);
+  AdwDialog *d;
+  guint frames, writes;
+
+  g_assert_false (gtk_widget_get_visible (GTK_WIDGET (label)));
+  d = open_preferences (win);
+  g_assert_false (adw_switch_row_get_active (ADW_SWITCH_ROW (pref_row (d, "Frame time"))));
+  set_switch (d, "Frame time", TRUE);
+  g_assert_true (settings_has ("frame-time=on"));
+  g_assert_true (gtk_widget_get_visible (GTK_WIDGET (label)));
+  g_assert_cmpstr (easel_status_bar_get_text (bar, EASEL_STATUS_FRAME_TIME), ==, "– ms");
+  g_assert_cmpint (gtk_label_get_width_chars (label), >=, 8);
+  close_preferences (win, d);
+
+  /* A drawing delayed by 30 ms reads at least that. */
+  easel_canvas_set_draw_delay (canvas, 30);
+  gtk_widget_queue_draw (GTK_WIDGET (canvas));
+  wait_for_next_frame (win);
+  run_for_ms_0021 (300);
+  {
+    double ms = g_ascii_strtod (easel_status_bar_get_text (bar, EASEL_STATUS_FRAME_TIME), NULL);
+
+    g_assert_cmpfloat (ms, >=, 30);
+    g_assert_nonnull (strstr (easel_status_bar_get_text (bar, EASEL_STATUS_FRAME_TIME), " ms"));
+  }
+  easel_canvas_set_draw_delay (canvas, 0);
+  /* The value's pace while frames come quickly: at most one change per 250 ms, the last within 250 ms. */
+  writes = easel_status_bar_get_writes (bar, EASEL_STATUS_FRAME_TIME);
+  for (int i = 0; i < 40; i++)
+    {
+      gtk_widget_queue_draw (GTK_WIDGET (canvas));
+      wait_for_next_frame (win);
+      run_for_ms_0021 (12);
+    }
+  g_assert_cmpuint (easel_status_bar_get_writes (bar, EASEL_STATUS_FRAME_TIME) - writes, <=, 5);
+  /* Nothing painted: no canvas frame comes, and the text does not ask for one. */
+  run_for_ms_0021 (300);
+  frames = easel_canvas_get_frames_drawn (canvas);
+  writes = easel_status_bar_get_writes (bar, EASEL_STATUS_FRAME_TIME);
+  run_for_ms_0021 (400);
+  g_assert_cmpuint (easel_canvas_get_frames_drawn (canvas), ==, frames);
+  g_assert_cmpuint (easel_status_bar_get_writes (bar, EASEL_STATUS_FRAME_TIME), ==, writes);
+  d = open_preferences (win);
+  set_switch (d, "Frame time", FALSE);
+  g_assert_false (gtk_widget_get_visible (GTK_WIDGET (label)));
+  close_preferences (win, d);
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+static const char *
+tool_now (EaselWindow *win)
+{
+  static char name[32];
+  g_autoptr (GVariant) state = g_action_group_get_action_state (G_ACTION_GROUP (win), "tool");
+
+  g_strlcpy (name, g_variant_get_string (state, NULL), sizeof name);
+  return name;
+}
+
+/* AS-13 (REQ-0021-13): Pan's menu at the pointer, over the picture, the margin and where a handle would be; what each item does to the tool. */
+static void
+as13_pan_menu (void)
+{
+  EaselWindow *win = window_with ("[new-picture]\nwidth=60\nheight=40\n");
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  GtkPopover *menu = GTK_POPOVER (easel_window_get_canvas_menu (win));
+  GMenuModel *model = gtk_popover_menu_get_menu_model (GTK_POPOVER_MENU (menu));
+  gboolean modified_before = easel_window_get_modified (win);
+  const double places[][2] = { { 10, 10 }, { 200, 100 }, { 61, 20 } };
+
+  g_assert_cmpstr (tool_now (win), ==, "pan");
+  g_assert_cmpint (g_menu_model_get_n_items (model), ==, 3);
+  for (guint i = 0; i < G_N_ELEMENTS (places); i++)
+    {
+      GdkRectangle at;
+
+      easel_canvas_press (canvas, 3, places[i][0], places[i][1]);
+      easel_canvas_release (canvas, 3);
+      wait_for_layout (win);
+      g_assert_true (gtk_widget_get_visible (GTK_WIDGET (menu)));
+      g_assert_true (gtk_popover_get_pointing_to (menu, &at));
+      g_assert_cmpint (at.x, ==, (int) places[i][0]);
+      g_assert_cmpint (at.y, ==, (int) places[i][1]);
+      gtk_popover_popdown (menu);
+      wait_for_layout (win);
+    }
+  g_assert_cmpint (easel_window_get_modified (win), ==, modified_before);
+  g_assert_false (action_enabled (win, "undo"));
+  g_assert_cmpstr (tool_now (win), ==, "pan");
+  /* A press while the primary is held does nothing: the pan goes on. */
+  easel_canvas_press (canvas, 1, 10, 10);
+  easel_canvas_press (canvas, 3, 12, 12);
+  wait_for_layout (win);
+  g_assert_false (gtk_widget_get_visible (GTK_WIDGET (menu)));
+  easel_canvas_release (canvas, 3);
+  easel_canvas_release (canvas, 1);
+  /* Zoom keeps Pan; Select All goes to Select, all marked. */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-in", NULL);
+  wait_for_layout (win);
+  g_assert_cmpstr (tool_now (win), ==, "pan");
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-normal", NULL);
+  wait_for_layout (win);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "select-all", NULL);
+  wait_for_layout (win);
+  g_assert_cmpstr (tool_now (win), ==, "select");
+  g_assert_true (selection_is (win, 0, 0, 60, 40));
+  close_windows ();
+  /* Clear Image keeps Pan. */
+  win = window_with ("[new-picture]\nwidth=60\nheight=40\n");
+  g_action_group_activate_action (G_ACTION_GROUP (win), "clear-image", NULL);
+  wait_for_layout (win);
+  g_assert_cmpstr (tool_now (win), ==, "pan");
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* A launcher that only counts, and keeps what it was asked to open. */
+typedef struct
+{
+  int calls;
+  char *uri;
+} HelpCalls;
+
+static void
+count_help_launch (EaselWindow *win, const char *uri, gpointer data)
+{
+  HelpCalls *calls = data;
+
+  calls->calls++;
+  g_free (calls->uri);
+  calls->uri = g_strdup (uri);
+}
+
+static gboolean
+key_released (EaselWindow *win, guint keyval)
+{
+  g_autoptr (GListModel) controllers = gtk_widget_observe_controllers (GTK_WIDGET (win));
+
+  for (guint i = 0; i < g_list_model_get_n_items (controllers); i++)
+    {
+      g_autoptr (GtkEventController) c = g_list_model_get_item (controllers, i);
+
+      if (GTK_IS_EVENT_CONTROLLER_KEY (c))
+        g_signal_emit_by_name (c, "key-released", keyval, 0, 0);
+    }
+  return TRUE;
+}
+
+/* AS-4 (REQ-0021-04): the page goes to the browser; a held key and a second request open one; a missing page shows the error and leaves the picture;
+   a failure reported later waits for the release; during a quit it is dropped. */
+static void
+as4_help (void)
+{
+  EaselWindow *win = window_with ("[new-picture]\nwidth=60\nheight=40\n");
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  HelpCalls calls = { 0 };
+  g_autofree char *page = g_strdup (g_getenv ("EASEL_HELP_PAGE"));
+  g_autofree char *wanted = NULL;
+  AdwDialog *alert;
+
+  easel_window_set_help_launcher (win, count_help_launch, &calls);
+  g_assert_nonnull (page);
+  wanted = g_filename_to_uri (page, NULL, NULL);
+  /* The first press goes on to the action; while it starts a second does nothing. */
+  g_assert_false (key_taken (win, GDK_KEY_F1, 0));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "help", NULL);
+  g_assert_cmpint (calls.calls, ==, 1);
+  g_assert_cmpstr (calls.uri, ==, wanted);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "help", NULL);
+  g_assert_cmpint (calls.calls, ==, 1);
+  easel_window_help_finished (win, TRUE);
+  g_assert_null (visible_dialog (win));
+  /* A repeat of the held key is taken and opens nothing, after a release it opens again. */
+  g_assert_true (key_taken (win, GDK_KEY_F1, 0));
+  key_released (win, GDK_KEY_F1);
+  g_assert_false (key_taken (win, GDK_KEY_F1, 0));
+  key_released (win, GDK_KEY_F1);
+  /* A stroke held: nothing starts. */
+  use_tool (win, "pencil");
+  easel_canvas_press (canvas, 1, 5.5, 5.5);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "help", NULL);
+  g_assert_cmpint (calls.calls, ==, 1);
+  easel_canvas_release (canvas, 1);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+
+  /* A failure reported during a stroke waits for its release. */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "help", NULL);
+  g_assert_cmpint (calls.calls, ==, 2);
+  easel_canvas_press (canvas, 1, 5.5, 5.5);
+  easel_window_help_finished (win, FALSE);
+  run_for_ms_0021 (250);
+  g_assert_null (visible_dialog (win));
+  easel_canvas_release (canvas, 1);
+  wait_for_dialogs (win, 1);
+  assert_alert (win, "Could Not Open Help", "The help page could not be opened.");
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+
+  /* A page that does not exist: no browser, the error, and the picture as it was. */
+  g_setenv ("EASEL_HELP_PAGE", "/nonexistent/easel-help/index.html", TRUE);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "help", NULL);
+  g_assert_cmpint (calls.calls, ==, 2);
+  wait_for_dialogs (win, 1);
+  assert_alert (win, "Could Not Open Help", "The help page could not be opened.");
+  g_assert_false (action_enabled (win, "undo"));
+  /* A quit closes the error (REQ-0021-03). */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "help", NULL);
+  wait_for_dialogs (win, 1);
+  g_setenv ("EASEL_HELP_PAGE", page, TRUE);
+  gtk_window_close (GTK_WINDOW (win));
+  wait_for_no_window ();
+
+  /* A failure reported during a quit is dropped: a prompt is up, and no dialog follows it. */
+  win = window_with ("[new-picture]\nwidth=60\nheight=40\n");
+  canvas = easel_window_get_canvas (win);
+  easel_window_set_help_launcher (win, count_help_launch, &calls);
+  use_tool (win, "pencil");
+  easel_canvas_press (canvas, 1, 5.5, 5.5);
+  easel_canvas_release (canvas, 1);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "help", NULL);
+  g_assert_cmpint (calls.calls, ==, 3);
+  gtk_window_close (GTK_WINDOW (win));
+  wait_for_dialogs (win, 1);
+  alert = visible_dialog (win);
+  easel_window_help_finished (win, FALSE);
+  run_for_ms_0021 (250);
+  g_assert_true (visible_dialog (win) == alert);
+  respond (win, "cancel");
+  wait_for_no_dialog (win);
+  run_for_ms_0021 (250);
+  g_assert_null (visible_dialog (win));
+  close_windows ();
+  g_free (calls.uri);
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* How the page writes one key of the table. */
+static char *
+key_as_the_page_writes_it (const char *accel)
+{
+  static const struct { const char *name, *text; } keys[] = {
+    { "question", "?" }, { "comma", "," }, { "equal", "=" }, { "plus", "+" }, { "minus", "−" }, { "KP_Add", "Numpad +" }, { "KP_Subtract", "Numpad −" },
+    { "Page_Up", "Page Up" }, { "Page_Down", "Page Down" }, { "bracketright", "]" }, { "bracketleft", "[" }, { "Escape", "Esc" }, { "Return", "Enter" },
+    { "BackSpace", "Backspace" },
+  };
+  GString *out = g_string_new (NULL);
+  const char *rest = accel;
+
+  if (g_str_has_prefix (rest, "<Control>"))
+    {
+      g_string_append (out, "Ctrl+");
+      rest += strlen ("<Control>");
+    }
+  if (g_str_has_prefix (rest, "<Shift>"))
+    {
+      g_string_append (out, "Shift+");
+      rest += strlen ("<Shift>");
+    }
+  for (guint i = 0; i < G_N_ELEMENTS (keys); i++)
+    if (strcmp (rest, keys[i].name) == 0)
+      {
+        g_string_append (out, keys[i].text);
+        return g_string_free (out, FALSE);
+      }
+  if (rest[0] != '\0' && rest[1] == '\0')
+    g_string_append_c (out, g_ascii_toupper (rest[0]));
+  else
+    g_string_append (out, rest);
+  return g_string_free (out, FALSE);
+}
+
+/* AS-4 (REQ-0021-04): the page names every tool of the toolbox in its order, and each key with its meaning. */
+static void
+as4_help_page_text (void)
+{
+  static const char *const tools[] = { "Pan", "Magnifier", "Select", "Free-Form Select", "Eraser", "Pick Color", "Fill", "Gradient", "Pencil", "Brush",
+                                       "Airbrush", "Text", "Line", "Curve", "Rectangle", "Rounded Rectangle", "Ellipse", "Polygon" };
+  static const char *const parts[] = { "<title>Easel Help</title>", "Pan mode", "Selections", "Text", "Image menu", "View menu", "Preferences", "Undo" };
+  g_autofree char *text = NULL;
+  const char *at, *bound;
+  gsize n = 0;
+  const EaselShortcut *table = easel_shortcuts_table (&n);
+
+  /* With no variable, however the app was started, a build tree finds its own copy of the page. */
+  {
+    g_autofree char *set = g_strdup (g_getenv ("EASEL_HELP_PAGE"));
+
+    g_unsetenv ("EASEL_HELP_PAGE");
+    g_assert_true (g_file_test (easel_help_page_path (), G_FILE_TEST_IS_REGULAR));
+    g_setenv ("EASEL_HELP_PAGE", set, TRUE);
+  }
+  g_assert_true (g_file_get_contents (g_getenv ("EASEL_HELP_PAGE"), &text, NULL, NULL));
+  for (guint i = 0; i < G_N_ELEMENTS (parts); i++)
+    if (strstr (text, parts[i]) == NULL)
+      g_error ("the page has no %s", parts[i]);
+  at = text;
+  for (guint i = 0; i < G_N_ELEMENTS (tools); i++)
+    {
+      g_autofree char *heading = g_strdup_printf ("<h3>%s</h3>", tools[i]);
+
+      at = strstr (at, heading);
+      if (at == NULL)
+        g_error ("the page has no %s after the tool before it", heading);
+    }
+  for (gsize i = 0; i < n; i++)
+    {
+      g_autofree char *title = g_markup_escape_text (table[i].title, -1);
+      g_autofree char *cell = g_strdup_printf ("<td>%s</td>", title);
+      g_auto (GStrv) accels = g_strsplit (table[i].accel, " ", -1);
+
+      at = strstr (text, cell);
+      if (at == NULL)
+        g_error ("the page has no row %s", table[i].title);
+      bound = strstr (at, "</tr>");
+      g_assert_nonnull (bound);
+      for (guint a = 0; accels[a] != NULL; a++)
+        {
+          g_autofree char *key = key_as_the_page_writes_it (accels[a]);
+          g_autofree char *kbd0 = g_markup_escape_text (key, -1);
+          g_autofree char *kbd = g_strdup_printf ("<kbd>%s</kbd>", kbd0);
+          const char *found = strstr (at, kbd);
+
+          if (found == NULL || found > bound)
+            g_error ("row %s has no key %s", table[i].title, kbd);
+        }
+    }
+}
+
+/* ---- 0021: the thumbnail ---- */
+
+static GtkWidget *
+thumbnail_card (EaselWindow *win)
+{
+  return easel_window_get_thumbnail_card (win);
+}
+
+static void
+set_thumbnail (EaselWindow *win, gboolean on)
+{
+  g_action_group_change_action_state (G_ACTION_GROUP (win), "thumbnail", g_variant_new_boolean (on));
+}
+
+static gboolean
+thumbnail_checked (EaselWindow *win)
+{
+  g_autoptr (GVariant) state = g_action_group_get_action_state (G_ACTION_GROUP (win), "thumbnail");
+
+  return g_variant_get_boolean (state);
+}
+
+/* AS-6 (REQ-0021-06): sensitive above 100 %; below it hidden and still checked; off at every start. */
+static void
+as6_thumbnail_item (void)
+{
+  EaselWindow *win = window_with ("[new-picture]\nwidth=60\nheight=40\n");
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+
+  g_assert_false (thumbnail_checked (win));
+  g_assert_cmpint (easel_canvas_get_zoom (canvas), ==, 100);
+  g_assert_false (action_enabled (win, "thumbnail"));
+  g_assert_false (gtk_widget_get_visible (thumbnail_card (win)));
+  easel_canvas_set_zoom (canvas, 400);
+  wait_for_layout (win);
+  g_assert_true (action_enabled (win, "thumbnail"));
+  g_assert_false (gtk_widget_get_visible (thumbnail_card (win)));
+  set_thumbnail (win, TRUE);
+  wait_for_layout (win);
+  g_assert_true (gtk_widget_get_visible (thumbnail_card (win)));
+  easel_canvas_set_zoom (canvas, 100);
+  wait_for_layout (win);
+  g_assert_false (gtk_widget_get_visible (thumbnail_card (win)));
+  g_assert_true (thumbnail_checked (win));
+  g_assert_false (action_enabled (win, "thumbnail"));
+  easel_canvas_set_zoom (canvas, 75);
+  wait_for_layout (win);
+  g_assert_false (gtk_widget_get_visible (thumbnail_card (win)));
+  easel_canvas_set_zoom (canvas, 200);
+  wait_for_layout (win);
+  g_assert_true (gtk_widget_get_visible (thumbnail_card (win)));
+  close_windows ();
+  win = window_with ("[new-picture]\nwidth=60\nheight=40\n");
+  g_assert_false (thumbnail_checked (win));
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* The picture area in the window's device pixels. */
+typedef struct
+{
+  uint32_t *px;
+  int w, h, x0, y0, aw, ah;
+} CardFrame;
+
+static CardFrame
+card_frame (EaselWindow *win)
+{
+  double scale = easel_canvas_get_scale (easel_window_get_canvas (win));
+  graphene_rect_t r;
+  CardFrame f;
+  int cx, cy;
+
+  wait_for_layout (win);
+  f.px = render_pixels (win, &f.w, &f.h, &cx, &cy);
+  g_assert_true (gtk_widget_compute_bounds (easel_thumbnail_card_get_area (EASEL_THUMBNAIL_CARD (thumbnail_card (win))), GTK_WIDGET (win), &r));
+  f.x0 = (int) (r.origin.x * scale);
+  f.y0 = (int) (r.origin.y * scale);
+  /* On a whole device pixel, and 160 x 120 logical pixels in size (REQ-0021-07). */
+  g_assert_cmpfloat (fabs (r.origin.x * scale - f.x0), <, 1e-3);
+  g_assert_cmpfloat (fabs (r.origin.y * scale - f.y0), <, 1e-3);
+  g_assert_cmpfloat (r.size.width, ==, 160);
+  g_assert_cmpfloat (r.size.height, ==, 120);
+  f.aw = (int) (160 * scale);
+  f.ah = (int) (120 * scale);
+  return f;
+}
+
+/* The area's pixels are the picture's from (fx, fy), at 100 %, exactly. */
+static void
+assert_card_shows (EaselWindow *win, int fx, int fy)
+{
+  CardFrame f = card_frame (win);
+  const EaselImage *img = easel_window_get_picture (win);
+
+  for (int j = 0; j < f.ah; j += 7)
+    for (int i = 0; i < f.aw; i += 5)
+      if (fx + i < img->width && fy + j < img->height)
+        {
+          uint32_t want = easel_image_get (img, fx + i, fy + j), got = f.px[(gsize) (f.y0 + j) * f.w + (f.x0 + i)];
+
+          if (got != want)
+            g_error ("the card at (%d, %d) shows %08x, the picture's (%d, %d) is %08x", i, j, got, fx + i, fy + j, want);
+        }
+  g_free (f.px);
+}
+
+/* The area's pixels as drawn now, to compare with what the put-down writes. */
+static uint32_t *
+card_pixels (EaselWindow *win)
+{
+  CardFrame f = card_frame (win);
+  uint32_t *out = g_new (uint32_t, (gsize) f.aw * f.ah);
+
+  for (int j = 0; j < f.ah; j++)
+    memcpy (out + (gsize) j * f.aw, f.px + (gsize) (f.y0 + j) * f.w + f.x0, (gsize) f.aw * sizeof *out);
+  g_free (f.px);
+  return out;
+}
+
+static void
+assert_pixels_are_the_picture (EaselWindow *win, const uint32_t *shown, int fx, int fy)
+{
+  const EaselImage *img = easel_window_get_picture (win);
+  int scale = (int) easel_canvas_get_scale (easel_window_get_canvas (win)), aw = 160 * scale, ah = 120 * scale;
+
+  for (int j = 0; j < ah; j++)
+    for (int i = 0; i < aw; i++)
+      if (fx + i < img->width && fy + j < img->height && shown[(gsize) j * aw + i] != easel_image_get (img, fx + i, fy + j))
+        g_error ("the card at (%d, %d) showed %08x, the put-down wrote %08x", i, j, shown[(gsize) j * aw + i], easel_image_get (img, fx + i, fy + j));
+}
+
+/* Every pixel different at zoom, scrolled, on any scale. */
+static void
+card_follows_scroll (EaselWindow *win, int zoom)
+{
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  double scale = easel_canvas_get_scale (canvas);
+  View view = view_of (win);
+
+  easel_canvas_set_zoom (canvas, zoom);
+  wait_for_layout (win);
+  gtk_adjustment_set_value (view.h, 0);
+  gtk_adjustment_set_value (view.v, 0);
+  assert_card_shows (win, 0, 0);
+  gtk_adjustment_set_value (view.h, EASEL_VIEW_MARGIN + 400);
+  gtk_adjustment_set_value (view.v, EASEL_VIEW_MARGIN + 240);
+  assert_card_shows (win, easel_view_first_cell (gtk_adjustment_get_value (view.h), EASEL_VIEW_MARGIN, zoom, scale),
+                     easel_view_first_cell (gtk_adjustment_get_value (view.v), EASEL_VIEW_MARGIN, zoom, scale));
+}
+
+static void
+card_pixels_exact (void)
+{
+  EaselWindow *win = window_with ("[new-picture]\nwidth=800\nheight=600\n");
+
+  fill_with_places (win);
+  easel_canvas_set_zoom (easel_window_get_canvas (win), 800);
+  set_thumbnail (win, TRUE);
+  wait_for_layout (win);
+  g_assert_true (gtk_widget_get_mapped (thumbnail_card (win)));
+  card_follows_scroll (win, 800);
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* AS-7 (REQ-0021-07, REQ-0021-14): what the area shows. */
+static void
+as7_thumbnail_pixels (void)
+{
+  EaselWindow *win = window_with ("[new-picture]\nwidth=2000\nheight=1500\n");
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  View view = view_of (win);
+
+  fill_with_places (win);
+  easel_canvas_set_zoom (canvas, 800);
+  set_thumbnail (win, TRUE);
+  card_follows_scroll (win, 800);
+
+  /* 129 %: the first column is the pixel whose square holds it, at s = 1 and 2. */
+  easel_canvas_set_zoom (canvas, 129);
+  wait_for_layout (win);
+  for (int s = 1; s <= 2; s++)
+    {
+      gtk_adjustment_set_value (view.h, EASEL_VIEW_MARGIN + s);
+      gtk_adjustment_set_value (view.v, 0);
+      g_assert_cmpfloat (gtk_adjustment_get_value (view.h), ==, EASEL_VIEW_MARGIN + s);
+      wait_for_layout (win);
+      g_assert_cmpfloat (gtk_adjustment_get_value (view.h), ==, EASEL_VIEW_MARGIN + s);
+      assert_card_shows (win, easel_view_cell_at (s, 129), 0);
+    }
+
+  /* Scroll changes it with no canvas frame, and its own redraw adds none (R3). */
+  easel_canvas_set_zoom (canvas, 800);
+  wait_for_layout (win);
+  gtk_adjustment_set_value (view.h, EASEL_VIEW_MARGIN + 80);
+  gtk_adjustment_set_value (view.v, EASEL_VIEW_MARGIN);
+  assert_card_shows (win, 10, 0);
+  {
+    guint frames = easel_canvas_get_frames_drawn (canvas);
+
+    run_for_ms_0021 (200);
+    g_assert_cmpuint (easel_canvas_get_frames_drawn (canvas), ==, frames);
+  }
+
+  gtk_adjustment_set_value (view.h, 0);
+  gtk_adjustment_set_value (view.v, 0);
+  /* A stroke held: its pixels are in the area at once, and the handles, tint and outline are nowhere. */
+  use_tool (win, "pencil");
+  shape_press_move (win, 1, 6, 6, 30, 20);
+  assert_card_shows (win, 0, 0);
+  shape_release (win, 1);
+
+  /* What is pending shows the pixels its put-down writes. */
+  {
+    static const char *const tools[] = { "line", "rectangle", "curve", "polygon" };
+
+    for (guint t = 0; t < G_N_ELEMENTS (tools); t++)
+      {
+        g_autofree uint32_t *shown = NULL;
+
+        use_tool (win, tools[t]);
+        shape_press_move (win, 1, 8, 8, 50, 40);
+        if (strcmp (tools[t], "curve") == 0 || strcmp (tools[t], "polygon") == 0)
+          shape_release (win, 1);
+        shown = card_pixels (win);
+        if (strcmp (tools[t], "curve") == 0 || strcmp (tools[t], "polygon") == 0)
+          g_assert_true (easel_canvas_put_down (canvas));
+        else
+          shape_release (win, 1);
+        wait_for_layout (win);
+        assert_pixels_are_the_picture (win, shown, 0, 0);
+      }
+  }
+  /* A floating selection, moved: the float and its hole, no tint or outline. */
+  {
+    g_autofree uint32_t *shown = NULL;
+
+    use_tool (win, "select");
+    shape_press_move (win, 1, 4, 4, 30, 24);
+    shape_release (win, 1);
+    g_assert_true (easel_canvas_move_selection (canvas, 3, 2));
+    shown = card_pixels (win);
+    g_assert_true (easel_canvas_put_down (canvas));
+    wait_for_layout (win);
+    assert_pixels_are_the_picture (win, shown, 0, 0);
+  }
+  /* An open text box: its letters, not the highlight or the caret. */
+  {
+    g_autofree uint32_t *shown = NULL;
+    gsize changed = 0;
+    g_autofree uint32_t *before = card_pixels (win);
+
+    use_tool (win, "text");
+    shape_press_move (win, 1, 2, 2, 60, 40);
+    shape_release (win, 1);
+    easel_canvas_text_commit (canvas, "MMM");
+    shown = card_pixels (win);
+    for (gsize i = 0; i < (gsize) 160 * 120 * (gsize) easel_canvas_get_scale (canvas) * (gsize) easel_canvas_get_scale (canvas); i++)
+      changed += shown[i] != before[i];
+    g_assert_cmpuint (changed, >, 0);
+    g_assert_true (easel_canvas_put_down (canvas));
+    wait_for_layout (win);
+    assert_pixels_are_the_picture (win, shown, 0, 0);
+  }
+  close_windows ();
+
+  /* Past the picture's end the workspace color, and a transparent pixel as the checkerboard. */
+  win = window_with ("[new-picture]\nwidth=20\nheight=10\n");
+  canvas = easel_window_get_canvas (win);
+  easel_image_set ((EaselImage *) easel_window_get_picture (win), 1, 1, 0x00000000);
+  easel_canvas_update (canvas);
+  easel_canvas_set_zoom (canvas, 1600);
+  set_thumbnail (win, TRUE);
+  {
+    CardFrame f = card_frame (win);
+    ViewFrame v = view_frame (win);
+    uint32_t workspace = v.px[(gsize) v.vy0 * v.w + v.vx0];
+    uint32_t *at = f.px + (gsize) f.y0 * f.w + f.x0;
+    uint32_t on_card = at[1 * f.w + 1];
+    int cx, cy, cw, ch;
+    g_autofree uint32_t *canvas_px = render_pixels (win, &cw, &ch, &cx, &cy);
+    /* The transparent pixel's square on the canvas holds both colors of the checkerboard. */
+    gboolean found = FALSE;
+
+    for (int j = 16; j < 32 && !found; j++)
+      for (int i = 16; i < 32 && !found; i++)
+        found = canvas_px[(gsize) (cy + j) * cw + cx + i] == on_card;
+    g_assert_true (found);
+    g_assert_cmpuint (at[(gsize) 100 * f.w + 100], ==, workspace);
+    g_assert_cmpuint (at[(gsize) 5 * f.w + 100], ==, workspace);
+    g_free (f.px);
+    g_free (v.px);
+  }
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+static void
+as7_at_scale_2 (void)
+{
+  if (session_of_scale_2 ())
+    card_pixels_exact ();
+}
+
+/* AS-11 (REQ-0021-11): hidden under 196 x 156, the item checked; shown again at 196 x 156. */
+static void
+as11_small_area (void)
+{
+  EaselWindow *win = window_with ("[new-picture]\nwidth=800\nheight=600\n");
+
+  easel_canvas_set_zoom (easel_window_get_canvas (win), 400);
+  set_thumbnail (win, TRUE);
+  wait_for_layout (win);
+  g_assert_true (gtk_widget_get_visible (thumbnail_card (win)));
+  /* The window's own minimum is wider than this, so the area's size is set where the rule reads it (the core test has its edges). */
+  {
+    View view = view_of (win);
+
+    gtk_adjustment_set_page_size (view.h, 195);
+    gtk_adjustment_set_page_size (view.v, 156);
+    g_assert_false (gtk_widget_get_visible (thumbnail_card (win)));
+    g_assert_true (thumbnail_checked (win));
+    gtk_adjustment_set_page_size (view.h, 196);
+    g_assert_true (gtk_widget_get_visible (thumbnail_card (win)));
+    gtk_adjustment_set_page_size (view.v, 155);
+    g_assert_false (gtk_widget_get_visible (thumbnail_card (win)));
+  }
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* A window at 400 % with the card shown and a picture larger than the view. */
+static EaselWindow *
+window_with_thumbnail (void)
+{
+  EaselWindow *win = window_with ("[new-picture]\nwidth=800\nheight=600\n");
+
+  easel_canvas_set_zoom (easel_window_get_canvas (win), 400);
+  set_thumbnail (win, TRUE);
+  wait_for_layout (win);
+  g_assert_true (gtk_widget_get_mapped (thumbnail_card (win)));
+  return win;
+}
+
+static gboolean
+esc_pressed_and_released (EaselWindow *win)
+{
+  gboolean taken = key_taken (win, GDK_KEY_Escape, 0);
+
+  key_released (win, GDK_KEY_Escape);
+  return taken;
+}
+
+/* The card stays, and the item stays checked. */
+static void
+assert_card_stays (EaselWindow *win)
+{
+  g_assert_true (gtk_widget_get_visible (thumbnail_card (win)));
+  g_assert_true (thumbnail_checked (win));
+}
+
+/* AS-8 (REQ-0021-08): Esc closes the card only when nothing else takes it. */
+static void
+as8_thumbnail_esc (void)
+{
+  EaselWindow *win = window_with_thumbnail ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+
+  /* A pending curve. */
+  use_tool (win, "curve");
+  shape_press_move (win, 1, 5, 5, 30, 5);
+  shape_release (win, 1);
+  g_assert_true (easel_canvas_is_pending (canvas));
+  g_assert_true (esc_pressed_and_released (win));
+  g_assert_false (easel_canvas_is_pending (canvas));
+  assert_card_stays (win);
+  /* A marked selection, then a floating one, by a held Esc: put down, and the repeat leaves the card. */
+  use_tool (win, "select");
+  shape_press_move (win, 1, 4, 4, 30, 24);
+  shape_release (win, 1);
+  g_assert_true (esc_pressed_and_released (win));
+  assert_card_stays (win);
+  shape_press_move (win, 1, 4, 4, 30, 24);
+  shape_release (win, 1);
+  g_assert_true (easel_canvas_move_selection (canvas, 2, 2));
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+  key_taken (win, GDK_KEY_Escape, 0);
+  assert_card_stays (win);
+  key_released (win, GDK_KEY_Escape);
+  /* An open box. */
+  use_tool (win, "text");
+  shape_press_move (win, 1, 5, 5, 60, 40);
+  shape_release (win, 1);
+  g_assert_nonnull (easel_canvas_text_buffer (canvas));
+  g_assert_true (esc_pressed_and_released (win));
+  assert_card_stays (win);
+  /* A pencil stroke held: not its Esc, and not the card's. */
+  use_tool (win, "pencil");
+  easel_canvas_press (canvas, 1, 5.5, 5.5);
+  esc_pressed_and_released (win);
+  assert_card_stays (win);
+  easel_canvas_release (canvas, 1);
+  /* A pan held. */
+  use_tool (win, "pan");
+  easel_canvas_press (canvas, 1, 5.5, 5.5);
+  g_assert_true (easel_canvas_is_panning (canvas));
+  esc_pressed_and_released (win);
+  assert_card_stays (win);
+  easel_canvas_release (canvas, 1);
+  /* A dialog. */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "about", NULL);
+  g_assert_nonnull (visible_dialog (win));
+  esc_pressed_and_released (win);
+  assert_card_stays (win);
+  g_assert_true (adw_dialog_close (visible_dialog (win)));
+  wait_for_no_dialog (win);
+  /* A hidden card: the item stays. */
+  easel_canvas_set_zoom (canvas, 100);
+  wait_for_layout (win);
+  g_assert_false (esc_pressed_and_released (win));
+  g_assert_true (thumbnail_checked (win));
+  easel_canvas_set_zoom (canvas, 400);
+  wait_for_layout (win);
+  assert_card_stays (win);
+  /* A repeat from a press that closed nothing does not close the card. */
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+  g_assert_false (gtk_widget_get_visible (thumbnail_card (win)));
+  g_assert_false (thumbnail_checked (win));
+  key_released (win, GDK_KEY_Escape);
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* The window's point at the middle of a rectangle of w. */
+static graphene_point_t
+middle_of (GtkWidget *w, EaselWindow *win)
+{
+  graphene_rect_t r;
+
+  g_assert_true (gtk_widget_compute_bounds (w, GTK_WIDGET (win), &r));
+  return GRAPHENE_POINT_INIT (r.origin.x + r.size.width / 2, r.origin.y + r.size.height / 2);
+}
+
+/* AS-9 (REQ-0021-09): the card wins over the picture, nothing is drawn or opened, the wheel scrolls, the font card wins over it, a focused field is applied. */
+static void
+as9_card_takes_presses (void)
+{
+  EaselWindow *win = window_with_thumbnail ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  GtkWidget *card = thumbnail_card (win);
+  graphene_point_t mid = middle_of (card, win);
+  GtkWidget *picked = gtk_widget_pick (GTK_WIDGET (win), mid.x, mid.y, GTK_PICK_DEFAULT);
+  const EaselImage *img = easel_window_get_picture (win);
+  g_autofree uint32_t *before = g_memdup2 (img->px, (gsize) img->width * img->height * sizeof (uint32_t));
+  View view = view_of (win);
+
+  g_assert_nonnull (picked);
+  g_assert_true (picked == card || gtk_widget_is_ancestor (picked, card));
+  g_assert_cmpstr (gtk_widget_get_cursor (card) != NULL ? gdk_cursor_get_name (gtk_widget_get_cursor (card)) : NULL, ==, "default");
+  /* Each button, with a drawing tool: nothing drawn, opened or begun. */
+  use_tool (win, "pencil");
+  for (guint button = 1; button <= 3; button++)
+    {
+      easel_window_thumbnail_press (win, 0);
+      g_assert_false (easel_canvas_is_stroking (canvas));
+      g_assert_null (visible_dialog (win));
+    }
+  g_assert_cmpint (memcmp (img->px, before, (gsize) img->width * img->height * sizeof (uint32_t)), ==, 0);
+  g_assert_false (action_enabled (win, "undo"));
+  /* The wheel over it scrolls the view. */
+  {
+    g_autoptr (GListModel) controllers = gtk_widget_observe_controllers (card);
+    double top = gtk_adjustment_get_value (view.v);
+    gboolean scrolled = FALSE, handled = FALSE;
+
+    for (guint i = 0; i < g_list_model_get_n_items (controllers); i++)
+      {
+        g_autoptr (GtkEventController) c = g_list_model_get_item (controllers, i);
+
+        if (GTK_IS_EVENT_CONTROLLER_SCROLL (c))
+          {
+            g_signal_emit_by_name (c, "scroll", 0.0, 1.0, &handled);
+            scrolled = TRUE;
+          }
+      }
+    g_assert_true (scrolled);
+    g_assert_cmpfloat (gtk_adjustment_get_value (view.v), >, top);
+    gtk_adjustment_set_value (view.v, 0);
+  }
+  /* The font card lies over it: a box at the top right brings it there. */
+  {
+    GtkWidget *font = GTK_WIDGET (easel_window_get_font_card (win));
+    graphene_rect_t a, b, both;
+    GtkWidget *over;
+
+    use_tool (win, "text");
+    gtk_adjustment_set_value (view.h, gtk_adjustment_get_upper (view.h));
+    wait_for_layout (win);
+    gtk_adjustment_set_value (view.h, 0);
+    wait_for_layout (win);
+    /* A short box at the view's right: the font card lies under it, kept in the view, and reaches over the card. */
+    shape_press_move (win, 1, (int) (gtk_adjustment_get_page_size (view.h) / 4) - 40, 2, (int) (gtk_adjustment_get_page_size (view.h) / 4) - 5, 8);
+    shape_release (win, 1);
+    g_assert_nonnull (easel_canvas_text_buffer (canvas));
+    wait_for_layout (win);
+    g_assert_true (gtk_widget_get_mapped (font));
+    g_assert_true (gtk_widget_compute_bounds (font, GTK_WIDGET (win), &a));
+    g_assert_true (gtk_widget_compute_bounds (card, GTK_WIDGET (win), &b));
+    g_assert_true (graphene_rect_intersection (&a, &b, &both));
+    over = gtk_widget_pick (GTK_WIDGET (win), both.origin.x + both.size.width / 2, both.origin.y + both.size.height / 2, GTK_PICK_DEFAULT);
+    g_assert_true (over == font || gtk_widget_is_ancestor (over, font));
+    /* A focused size field is applied by a press on the card. */
+    {
+      GtkSpinButton *size = easel_font_card_get_size (EASEL_FONT_CARD (font));
+
+      gtk_widget_grab_focus (GTK_WIDGET (size));
+      g_assert_nonnull (gtk_root_get_focus (GTK_ROOT (win)));
+      gtk_editable_set_text (GTK_EDITABLE (size), "33");
+      easel_window_thumbnail_press (win, 0);
+      g_assert_null (gtk_root_get_focus (GTK_ROOT (win)));
+      g_assert_cmpfloat (gtk_spin_button_get_value (size), ==, 33);
+    }
+    easel_canvas_put_down (canvas);
+  }
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* AS-10 (REQ-0021-10): a drag begun on the canvas goes on over the card; the release and the other button act there; a lost release ends as last shown. */
+static void
+as10_drag_over_card (void)
+{
+  EaselWindow *win = window_with_thumbnail ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  double scale = easel_canvas_get_scale (canvas);
+  graphene_point_t mid = middle_of (thumbnail_card (win), win), under;
+  int px, py;
+  const EaselImage *img = easel_window_get_picture (win);
+
+  /* The canvas pixel under the card's middle. */
+  g_assert_true (gtk_widget_compute_point (GTK_WIDGET (win), GTK_WIDGET (canvas), &mid, &under));
+  easel_view_to_pixel (under.x, under.y, 400, scale, &px, &py);
+  g_assert_cmpint (px, <, img->width);
+  use_tool (win, "pencil");
+  /* The release falls on the card: the stroke ends at the pixel there. */
+  easel_canvas_press (canvas, 1, 5.5, 5.5);
+  easel_canvas_motion (canvas, under.x, under.y);
+  g_assert_true (easel_canvas_is_stroking (canvas));
+  easel_canvas_release (canvas, 1);
+  g_assert_false (easel_canvas_is_stroking (canvas));
+  g_assert_cmpuint (easel_image_get (img, px, py), !=, 0xFFFFFFFFu);
+  /* The other button over the card cancels it. */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  easel_canvas_press (canvas, 1, 5.5, 5.5);
+  easel_canvas_motion (canvas, under.x, under.y);
+  easel_canvas_press (canvas, 3, under.x, under.y);
+  easel_canvas_release (canvas, 3);
+  easel_canvas_release (canvas, 1);
+  g_assert_cmpuint (easel_image_get (img, px, py), ==, 0xFFFFFFFFu);
+  /* A lost release: the press on the card, no button held, ends the stroke as last shown and does nothing more. */
+  easel_canvas_press (canvas, 1, 5.5, 5.5);
+  easel_canvas_motion (canvas, under.x, under.y);
+  g_assert_true (easel_canvas_is_stroking (canvas));
+  easel_window_thumbnail_press (win, 0);
+  g_assert_false (easel_canvas_is_stroking (canvas));
+  g_assert_cmpuint (easel_image_get (img, px, py), !=, 0xFFFFFFFFu);
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* AS-13 (REQ-0021-13): a paste from Pan's menu that lands switches to Select; one that times out leaves Pan. */
+static void
+as13_pan_menu_paste (void)
+{
+  EaselWindow *win = window_with ("[new-picture]\nwidth=60\nheight=40\n");
+  EaselMemoryClipboard *clipboard = memory_clipboard (win);
+
+  other_copies (clipboard, 3, 2, 0xFF0000FFu);
+  use_tool (win, "pan");
+  g_assert_cmpstr (tool_now (win), ==, "pan");
+  /* It times out: Pan stays. */
+  easel_memory_clipboard_set_never_answers (clipboard, TRUE);
+  easel_window_set_clipboard_timeout (win, 50);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "paste", NULL);
+  g_assert_cmpstr (tool_now (win), ==, "pan");
+  assert_alert (win, "Could Not Paste", "The clipboard's picture cannot be read.");
+  /* It lands: Select. */
+  easel_memory_clipboard_set_never_answers (clipboard, FALSE);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "paste", NULL);
+  g_assert_cmpstr (tool_now (win), ==, "select");
   close_windows ();
   write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
 }
@@ -28206,6 +29535,23 @@ main (int argc, char **argv)
   g_test_add_func ("/0025/as2_same_figure_at_any_zoom", as2_same_figure_at_any_zoom);
   g_test_add_func ("/0025/as2b_pointer_inside_pixel", as2b_pointer_inside_pixel);
   g_test_add_func ("/0025/as2c_pointer_hits_the_drawn_pixel", as2c_pointer_hits_the_drawn_pixel);
+  g_test_add_func ("/0021/as1_extras_in_the_menu", as1_extras_in_the_menu);
+  g_test_add_func ("/0021/as1_shortcuts_key_by_place", as1_shortcuts_key_by_place);
+  g_test_add_func ("/0021/as2_every_key_listed", as2_every_key_listed);
+  g_test_add_func ("/0021/as4_help", as4_help);
+  g_test_add_func ("/0021/as4_help_page_text", as4_help_page_text);
+  g_test_add_func ("/0021/as5_about", as5_about);
+  g_test_add_func ("/0021/as3_quit_closes_extras", as3_quit_closes_extras);
+  g_test_add_func ("/0021/as6_thumbnail_item", as6_thumbnail_item);
+  g_test_add_func ("/0021/as7_thumbnail_pixels", as7_thumbnail_pixels);
+  g_test_add_func ("/0021/as8_thumbnail_esc", as8_thumbnail_esc);
+  g_test_add_func ("/0021/as9_card_takes_presses", as9_card_takes_presses);
+  g_test_add_func ("/0021/as10_drag_over_card", as10_drag_over_card);
+  g_test_add_func ("/0021/as11_small_area", as11_small_area);
+  g_test_add_func ("/0021-scale2/as7_at_scale_2", as7_at_scale_2);
+  g_test_add_func ("/0021/as12_frame_time", as12_frame_time);
+  g_test_add_func ("/0021/as13_pan_menu", as13_pan_menu);
+  g_test_add_func ("/0021/as13_pan_menu_paste", as13_pan_menu_paste);
   g_test_add_func ("/0020/as4_tint_strength", as4_tint_strength);
   g_test_add_func ("/0020/as1_preferences_opens", as1_preferences_opens);
   g_test_add_func ("/0020/as1_quit_closes_it", as1_quit_closes_it);

@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Easel Help</title>
+<style>
+:root { color-scheme: light dark; }
+body { font: 16px/1.5 system-ui, sans-serif; max-width: 46em; margin: 0 auto; padding: 1em; }
+h2 { margin-top: 2em; }
+h3 { margin: 1.4em 0 .2em; }
+p { margin: .3em 0 .6em; }
+table { border-collapse: collapse; width: 100%; }
+td { padding: .25em .5em .25em 0; border-bottom: 1px solid color-mix(in srgb, currentColor 18%, transparent); vertical-align: top; }
+kbd { font: .9em system-ui, sans-serif; padding: 0 .35em; border: 1px solid color-mix(in srgb, currentColor 35%, transparent); border-radius: 4px; white-space: nowrap; }
+</style>
+</head>
+<body>
+<h1>Easel Help</h1>
+<p>Easel is a simple paint program for quick pictures and touch-ups, in the manner of Paint in Windows XP.</p>
+
+<h2>Pan mode</h2>
+<p>Pan mode is the tool Easel starts with. Dragging moves the view and never changes the picture, so you can open a picture, look around and zoom before you edit it. The secondary button opens a menu with Paste, Paste From…, Select All, Zoom In, Zoom Out, Normal Size and Clear Image. A paste that lands switches to Select.</p>
+
+<h2>Tools</h2>
+<p>The toolbox's tools, in its order. The primary button draws in the foreground color, the secondary button in the background color. The other button cancels a drag. Esc cancels the drag of a shape, a selection or a text box, but not a stroke of Pencil, Brush, Airbrush or Eraser. The options of the chosen tool are under the toolbox.</p>
+<h3>Pan</h3>
+<p>Moves the view. No options.</p>
+<h3>Magnifier</h3>
+<p>A press with either button sets the zoom to the chosen level, or back to 100 % if it is already there. Options: the zoom levels.</p>
+<h3>Select</h3>
+<p>Marks a rectangle. Options: Opaque, or Transparent, which leaves the background color out.</p>
+<h3>Free-Form Select</h3>
+<p>Marks the shape you trace. Options as Select.</p>
+<h3>Eraser</h3>
+<p>Paints the background color. Options: its size.</p>
+<h3>Pick Color</h3>
+<p>Takes the color of the pixel you press with the primary button into the foreground color and with the secondary button into the background color, then goes back to the tool before it.</p>
+<h3>Fill</h3>
+<p>Fills the area of one color you press. No options.</p>
+<h3>Gradient</h3>
+<p>Fades from the color to transparent, so that a second gradient lies over the first. A drag sets its direction and length, Enter puts it down, Esc drops it.</p>
+<h3>Pencil</h3>
+<p>Draws lines one pixel wide. No options.</p>
+<h3>Brush</h3>
+<p>Paints with a tip. Options: the tip's shape and size.</p>
+<h3>Airbrush</h3>
+<p>Sprays while the button is held. Options: the spray's size.</p>
+<h3>Text</h3>
+<p>A drag opens a text box. See Text below.</p>
+<h3>Line</h3>
+<p>A straight line. Shift keeps it to steps of 45°. Options: its width.</p>
+<h3>Curve</h3>
+<p>A line, then two presses to bend it. Options: its width. Enter puts it down, Esc drops it.</p>
+<h3>Rectangle</h3>
+<p>Shift makes a square. Options: the width, and outline, outline and fill, or fill.</p>
+<h3>Rounded Rectangle</h3>
+<p>As Rectangle, with round corners.</p>
+<h3>Ellipse</h3>
+<p>Shift makes a circle. Options as Rectangle.</p>
+<h3>Polygon</h3>
+<p>Each press adds a side, and a double-click closes it. Options as Rectangle. Enter puts it down, Esc drops it.</p>
+
+<h2>Selections</h2>
+<p>A marked part can be moved by a drag or the arrow keys, copied by a drag with Ctrl, and stamped by a drag with Shift. Enter or Esc puts it down, Delete clears it. Cut, Copy and Paste act on it.</p>
+
+<h2>Text</h2>
+<p>A box holds styled text. Its font card chooses the family, the size and the styles, and a swatch colors the selected text. Esc puts the box down, and a press outside it does too. Until then the text can be changed.</p>
+
+<h2>Image menu</h2>
+<p>Flip, Rotate, Stretch and Skew…, Invert Colors, Attributes… for the picture's size, and Clear Image. With a selection, flip, rotate, stretch, skew and invert act on it.</p>
+
+<h2>View menu</h2>
+<p>The zoom items, Show Grid, Grid…, the panels, and Show Thumbnail, a small card that shows the picture at 100 % while you work zoomed in.</p>
+
+<h2>Preferences</h2>
+<p>Preferences holds the look of the window, the defaults for drawing and for new pictures, and how files are saved. Changes apply at once.</p>
+
+<h2>Undo</h2>
+<p>Undo takes back one step and Redo brings it back. While a text box is open, they act on the box's edits.</p>
+
+<h2>Keys</h2>
+<h3>File</h3>
+<table>
+<tr><td>New</td><td><kbd>Ctrl+N</kbd></td></tr>
+<tr><td>Open…</td><td><kbd>Ctrl+O</kbd></td></tr>
+<tr><td>Save</td><td><kbd>Ctrl+S</kbd></td></tr>
+<tr><td>Save As…</td><td><kbd>Ctrl+Shift+S</kbd></td></tr>
+<tr><td>Preferences</td><td><kbd>Ctrl+,</kbd></td></tr>
+<tr><td>Keyboard Shortcuts</td><td><kbd>Ctrl+?</kbd> <kbd>Ctrl+F1</kbd></td></tr>
+<tr><td>Help</td><td><kbd>F1</kbd></td></tr>
+<tr><td>Close the window</td><td><kbd>Ctrl+W</kbd></td></tr>
+<tr><td>Quit</td><td><kbd>Ctrl+Q</kbd></td></tr>
+</table>
+<h3>Edit</h3>
+<table>
+<tr><td>Undo</td><td><kbd>Ctrl+Z</kbd></td></tr>
+<tr><td>Redo</td><td><kbd>Ctrl+Y</kbd> <kbd>Ctrl+Shift+Z</kbd></td></tr>
+<tr><td>Cut</td><td><kbd>Ctrl+X</kbd></td></tr>
+<tr><td>Copy</td><td><kbd>Ctrl+C</kbd></td></tr>
+<tr><td>Paste</td><td><kbd>Ctrl+V</kbd></td></tr>
+<tr><td>Select All</td><td><kbd>Ctrl+A</kbd></td></tr>
+<tr><td>Clear the selection</td><td><kbd>Delete</kbd></td></tr>
+<tr><td>Move the selection 1 pixel</td><td><kbd>Left</kbd> <kbd>Right</kbd> <kbd>Up</kbd> <kbd>Down</kbd></td></tr>
+<tr><td>Move the selection 10 pixels</td><td><kbd>Shift+Left</kbd> <kbd>Shift+Right</kbd> <kbd>Shift+Up</kbd> <kbd>Shift+Down</kbd></td></tr>
+<tr><td>Put down a selection or a waiting shape</td><td><kbd>Enter</kbd></td></tr>
+<tr><td>Put down a selection, drop a waiting shape, cancel a drag</td><td><kbd>Esc</kbd></td></tr>
+</table>
+<h3>Image</h3>
+<table>
+<tr><td>Rotate 90°</td><td><kbd>Ctrl+R</kbd></td></tr>
+<tr><td>Rotate 270°</td><td><kbd>Ctrl+L</kbd></td></tr>
+<tr><td>Stretch and Skew…</td><td><kbd>Ctrl+T</kbd></td></tr>
+<tr><td>Invert Colors</td><td><kbd>Ctrl+I</kbd></td></tr>
+<tr><td>Attributes…</td><td><kbd>Ctrl+E</kbd></td></tr>
+<tr><td>Clear Image</td><td><kbd>Ctrl+Shift+N</kbd></td></tr>
+</table>
+<h3>View</h3>
+<table>
+<tr><td>Zoom In</td><td><kbd>Ctrl+=</kbd> <kbd>Ctrl++</kbd> <kbd>Ctrl+Numpad +</kbd></td></tr>
+<tr><td>Zoom Out</td><td><kbd>Ctrl+−</kbd> <kbd>Ctrl+Numpad −</kbd></td></tr>
+<tr><td>Normal Size</td><td><kbd>Ctrl+Page Up</kbd></td></tr>
+<tr><td>Large Size</td><td><kbd>Ctrl+Page Down</kbd></td></tr>
+<tr><td>Fit to Window</td><td><kbd>Ctrl+0</kbd></td></tr>
+<tr><td>Show Grid</td><td><kbd>Ctrl+G</kbd></td></tr>
+<tr><td>Close the thumbnail</td><td><kbd>Esc</kbd></td></tr>
+<tr><td>Move the focus</td><td><kbd>Tab</kbd> <kbd>Shift+Tab</kbd></td></tr>
+</table>
+<h3>Tools</h3>
+<table>
+<tr><td>The next larger size of the tool</td><td><kbd>Numpad +</kbd></td></tr>
+<tr><td>The next smaller size of the tool</td><td><kbd>Numpad −</kbd></td></tr>
+</table>
+<h3>Colors</h3>
+<table>
+<tr><td>Swap foreground and background</td><td><kbd>Ctrl+Shift+X</kbd></td></tr>
+<tr><td>Edit the focused swatch</td><td><kbd>F2</kbd></td></tr>
+</table>
+<h3>Text</h3>
+<table>
+<tr><td>Bold</td><td><kbd>Ctrl+B</kbd></td></tr>
+<tr><td>Italic</td><td><kbd>Ctrl+I</kbd></td></tr>
+<tr><td>Underline</td><td><kbd>Ctrl+U</kbd></td></tr>
+<tr><td>Strikethrough</td><td><kbd>Ctrl+Shift+5</kbd></td></tr>
+<tr><td>Font size 1 point larger or smaller</td><td><kbd>Ctrl+]</kbd> <kbd>Ctrl+[</kbd></td></tr>
+<tr><td>Open the font family list</td><td><kbd>Ctrl+Shift+F</kbd></td></tr>
+<tr><td>Move the highlight in the family list</td><td><kbd>Up</kbd> <kbd>Down</kbd></td></tr>
+<tr><td>Choose the highlighted family</td><td><kbd>Enter</kbd></td></tr>
+<tr><td>Close the family list</td><td><kbd>Esc</kbd></td></tr>
+<tr><td>New line</td><td><kbd>Enter</kbd></td></tr>
+<tr><td>Delete before or after the caret</td><td><kbd>Backspace</kbd> <kbd>Delete</kbd></td></tr>
+<tr><td>Move the caret</td><td><kbd>Left</kbd> <kbd>Right</kbd> <kbd>Up</kbd> <kbd>Down</kbd></td></tr>
+<tr><td>Move the caret by a word</td><td><kbd>Ctrl+Left</kbd> <kbd>Ctrl+Right</kbd></td></tr>
+<tr><td>To the start or the end of the line</td><td><kbd>Home</kbd> <kbd>End</kbd></td></tr>
+<tr><td>Extend the text selection</td><td><kbd>Shift+Left</kbd> <kbd>Shift+Right</kbd> <kbd>Shift+Up</kbd> <kbd>Shift+Down</kbd> <kbd>Shift+Home</kbd> <kbd>Shift+End</kbd></td></tr>
+<tr><td>Cut the selected text</td><td><kbd>Ctrl+X</kbd></td></tr>
+<tr><td>Copy the selected text</td><td><kbd>Ctrl+C</kbd></td></tr>
+<tr><td>Paste into the box</td><td><kbd>Ctrl+V</kbd></td></tr>
+<tr><td>Paste as Plain Text</td><td><kbd>Ctrl+Shift+V</kbd></td></tr>
+<tr><td>Select all the box&apos;s text</td><td><kbd>Ctrl+A</kbd></td></tr>
+<tr><td>Put the box down</td><td><kbd>Esc</kbd></td></tr>
+</table>
+</body>
+</html>

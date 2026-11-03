@@ -6,6 +6,7 @@ easel_core = static_library('easel-core',
   'core/change-log.c',
   'core/cursor-shape.c',
   'core/fill.c',
+  'core/frame-time.c',
   'core/figure.c',
   'core/footprint.c',
   'core/magnifier.c',
@@ -52,6 +53,8 @@ easel_io_dep = declare_dependency(link_with: easel_io, include_directories: ease
 ui_conf = configuration_data()
 ui_conf.set_quoted('APP_ID', app_id)
 ui_conf.set_quoted('RESOURCE_PATH', resource_path)
+ui_conf.set_quoted('VERSION', meson.project_version())
+ui_conf.set_quoted('HELP_PAGE', get_option('prefix') / get_option('datadir') / 'easel' / 'help' / 'index.html')
 configure_file(output: 'config.h', configuration: ui_conf)
 
 gnome = import('gnome')
@@ -66,11 +69,13 @@ easel_ui = static_library('easel-ui',
   'ui/application.c',
   'ui/attributes-dialog.c',
   'ui/stretch-skew-dialog.c',
+  'ui/help.c',
   'ui/preferences-dialog.c',
   'ui/unit-row.c',
   'ui/canvas.c',
   'ui/clipboard.c',
   'ui/text-render.c',
+  'ui/thumbnail-card.c',
   'ui/grid-dialog.c',
   'ui/palette-bar.c',
   'ui/font-card.c',
