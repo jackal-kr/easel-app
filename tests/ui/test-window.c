@@ -21,6 +21,7 @@
 #include "help.h"
 #include "memory-clipboard.h"
 #include "picture-file.h"
+#include "print.h"
 #include "palette-file.h"
 #include "status-bar.h"
 #include "stroke.h"
@@ -4031,6 +4032,8 @@ as9_spray_one_step_and_cancel (void)
 
 /* ---- 0005: file I/O ---- */
 
+/* The primary menu's first section (REQ-0026-01). */
+#define FILE_SECTION "_New|win.new; _Open…|win.open; _Save|win.save; Save _As…|win.save-as; _Print…|win.print"
 /* The primary menu's last three sections (REQ-0020-01, REQ-0021-01). */
 #define PREFERENCES_SECTION "_Preferences|win.preferences"
 #define EXTRAS_SECTION "_Keyboard Shortcuts|win.shortcuts; _Help|win.help; _About Easel|win.about"
@@ -4068,7 +4071,7 @@ as1_file_menu (void)
   s1 = describe_section (menu, 2);
   s2 = describe_section (menu, 3);
   s3 = describe_section (menu, 4);
-  g_assert_cmpstr (s0, ==, "_New|win.new; _Open…|win.open; _Save|win.save; Save _As…|win.save-as");
+  g_assert_cmpstr (s0, ==, FILE_SECTION);           /* REQ-0005-01, REQ-0026-01 */
   g_assert_cmpstr (s1, ==, PREFERENCES_SECTION);    /* REQ-0020-01 */
   g_assert_cmpstr (s2, ==, EXTRAS_SECTION);         /* REQ-0021-01 */
   g_assert_cmpstr (s3, ==, QUIT_SECTION);
@@ -29095,6 +29098,596 @@ as13_pan_menu_paste (void)
   write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
 }
 
+/* ---- 0026: print ---- */
+
+/* A sheet drawn on white at dots_per_inch, as a printer's dots: width and height from the paper. */
+static uint32_t *
+sheet_dots (const EaselPrintJob *job, const EaselPrintPage *page, int index, double dots_per_inch, int *w, int *h)
+{
+  cairo_surface_t *surface;
+  cairo_t *cr;
+  uint32_t *out;
+
+  *w = (int) ceil (page->paper_w_mm / 25.4 * dots_per_inch);
+  *h = (int) ceil (page->paper_h_mm / 25.4 * dots_per_inch);
+  surface = cairo_image_surface_create (CAIRO_FORMAT_ARGB32, *w, *h);
+  cr = cairo_create (surface);
+  cairo_set_source_rgb (cr, 1, 1, 1);
+  cairo_paint (cr);
+  easel_print_job_draw_sheet (job, cr, index, dots_per_inch);
+  cairo_surface_flush (surface);
+  out = g_memdup2 (cairo_image_surface_get_data (surface), (gsize) *w * *h * 4);
+  g_assert_cmpint (cairo_image_surface_get_stride (surface), ==, *w * 4);
+  cairo_destroy (cr);
+  cairo_surface_destroy (surface);
+  return out;
+}
+
+/* AS-8 (REQ-0026-09, -11): which dots each Pixels choice makes. */
+static void
+as8_pixels_on_paper (void)
+{
+  g_autoptr (EaselImage) four = easel_image_new (2, 2, 0xFFFFFFFFu);
+  g_autoptr (EaselImage) checker = easel_image_new (64, 64, 0xFF000000u);
+  EaselPrintPage page = { .paper_w_mm = 40, .paper_h_mm = 40, .margins_mm = 0, .fit = FALSE, .percent = 400, .pixels = EASEL_PRINT_SHARP };
+  EaselPrintJob *job;
+  int w, h;
+
+  easel_image_set (four, 0, 0, 0xFFFF0000u);
+  easel_image_set (four, 1, 0, 0xFF00FF00u);
+  easel_image_set (four, 0, 1, 0xFF0000FFu);
+  easel_image_set (four, 1, 1, 0x00000000u);
+  /* Sharp at 400 % and 600 dots per inch: 25 dots a pixel, the exact colors, the transparent one white, nothing else. */
+  {
+    job = easel_print_job_new (four, &page);
+    g_autofree uint32_t *dots = sheet_dots (job, &page, 0, 600, &w, &h);
+
+    g_assert_cmpuint (dots[(gsize) 12 * w + 12], ==, 0xFFFF0000u);
+    g_assert_cmpuint (dots[(gsize) 12 * w + 37], ==, 0xFF00FF00u);
+    g_assert_cmpuint (dots[(gsize) 37 * w + 12], ==, 0xFF0000FFu);
+    g_assert_cmpuint (dots[(gsize) 37 * w + 37], ==, 0xFFFFFFFFu);
+    for (int y = 0; y < 50; y++)
+      for (int x = 0; x < 50; x++)
+        {
+          uint32_t c = dots[(gsize) y * w + x];
+
+          g_assert_true (c == 0xFFFF0000u || c == 0xFF00FF00u || c == 0xFF0000FFu || c == 0xFFFFFFFFu);
+        }
+    /* Twice, the same page (REQ-0026-11). */
+    {
+      g_autofree uint32_t *again = sheet_dots (job, &page, 0, 600, &w, &h);
+
+      g_assert_cmpint (memcmp (dots, again, (gsize) w * h * 4), ==, 0);
+    }
+    easel_print_job_free (job);
+  }
+  /* Smooth: a dot midway between two squares differs from both. */
+  {
+    page.pixels = EASEL_PRINT_SMOOTH;
+    job = easel_print_job_new (four, &page);
+    g_autofree uint32_t *dots = sheet_dots (job, &page, 0, 600, &w, &h);
+    uint32_t mid = dots[(gsize) 12 * w + 25];
+
+    g_assert_cmpuint (mid, !=, 0xFFFF0000u);
+    g_assert_cmpuint (mid, !=, 0xFF00FF00u);
+    easel_print_job_free (job);
+  }
+  /* A checker at 10 % and 300 dots per inch: a dot covers 3.2 pixels. */
+  for (int y = 0; y < 64; y++)
+    for (int x = 0; x < 64; x++)
+      if ((x + y) % 2)
+        easel_image_set (checker, x, y, 0xFFFFFFFFu);
+  page.percent = 10;
+  {
+    gsize grays = 0, others = 0;
+
+    page.pixels = EASEL_PRINT_SMOOTH_WHEN_SHRUNK;
+    job = easel_print_job_new (checker, &page);
+    g_autofree uint32_t *dots = sheet_dots (job, &page, 0, 300, &w, &h);
+
+    for (int y = 0; y < 18; y++)
+      for (int x = 0; x < 18; x++)
+        {
+          uint32_t c = dots[(gsize) y * w + x];
+
+          if (c != 0xFF000000u && c != 0xFFFFFFFFu)
+            grays++;
+          else
+            others++;
+        }
+    g_assert_cmpuint (grays, >, others);
+    easel_print_job_free (job);
+  }
+  {
+    page.pixels = EASEL_PRINT_SHARP;
+    job = easel_print_job_new (checker, &page);
+    g_autofree uint32_t *dots = sheet_dots (job, &page, 0, 300, &w, &h);
+
+    for (int y = 0; y < 18; y++)
+      for (int x = 0; x < 18; x++)
+        {
+          uint32_t c = dots[(gsize) y * w + x];
+
+          g_assert_true (c == 0xFF000000u || c == 0xFFFFFFFFu);
+        }
+    easel_print_job_free (job);
+  }
+  /* At 50 % and 300 dots per inch a dot is under one pixel: Smooth when shrunk is Sharp's page. */
+  page.percent = 50;
+  {
+    page.pixels = EASEL_PRINT_SHARP;
+    job = easel_print_job_new (checker, &page);
+    g_autofree uint32_t *sharp = sheet_dots (job, &page, 0, 300, &w, &h);
+
+    easel_print_job_free (job);
+    page.pixels = EASEL_PRINT_SMOOTH_WHEN_SHRUNK;
+    job = easel_print_job_new (checker, &page);
+    g_autofree uint32_t *smooth = sheet_dots (job, &page, 0, 300, &w, &h);
+
+    g_assert_cmpint (memcmp (sharp, smooth, (gsize) w * h * 4), ==, 0);
+    easel_print_job_free (job);
+  }
+  /* The picture itself is unchanged. */
+  g_assert_cmpuint (easel_image_get (four, 1, 1), ==, 0x00000000u);
+  /* A half-transparent pixel is flattened on white first (REQ-0005-11): #40404080 is #9F9F9F. */
+  {
+    g_autoptr (EaselImage) half = easel_image_new (1, 1, 0x80404040u);
+
+    page.percent = 400;
+    page.pixels = EASEL_PRINT_SHARP;
+    job = easel_print_job_new (half, &page);
+    g_autofree uint32_t *dots = sheet_dots (job, &page, 0, 600, &w, &h);
+
+    g_assert_cmpuint (dots[(gsize) 12 * w + 12], ==, 0xFF9F9F9Fu);
+    easel_print_job_free (job);
+  }
+}
+
+/* AS-1 (REQ-0026-01): the items, and Ctrl+P by the place of its key on a layout that is not Latin; a repeat is taken and does nothing. */
+static void
+as1_print_items (void)
+{
+  EaselWindow *win = window_with ("[new-picture]\nwidth=60\nheight=40\n");
+  GMenuModel *menu = gtk_menu_button_get_menu_model (GTK_MENU_BUTTON (find_primary_button (GTK_WIDGET (win))));
+  g_autofree char *first = describe_section (menu, 0);
+
+  g_assert_cmpstr (first, ==, FILE_SECTION);
+  g_assert_true (has_accel ("win.print", GDK_KEY_p, GDK_CONTROL_MASK));
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* AS-2 (REQ-0026-02): Ctrl+P is in Keyboard Shortcuts' File group and on the Help page, with the Picture tab. */
+static void
+as2_print_in_shortcuts (void)
+{
+  gsize n = 0;
+  const EaselShortcut *table = easel_shortcuts_table (&n);
+  gboolean found = FALSE;
+  g_autofree char *text = NULL;
+
+  for (gsize i = 0; i < n; i++)
+    found = found || (strcmp (table[i].group, "File") == 0 && strcmp (table[i].title, "Print…") == 0 && strcmp (table[i].accel, "<Control>p") == 0);
+  g_assert_true (found);
+  g_assert_true (g_file_get_contents (g_getenv ("EASEL_HELP_PAGE"), &text, NULL, NULL));
+  g_assert_nonnull (strstr (text, "<h2>Printing</h2>"));
+  g_assert_nonnull (strstr (text, "Picture"));
+}
+
+/* A stand-in for the desktop's print dialog: it counts, and the test answers for it. */
+static int print_runs;
+
+static void
+count_print_run (EaselWindow *win, gpointer data)
+{
+  print_runs++;
+}
+
+static EaselWindow *
+window_for_print (const char *settings)
+{
+  EaselWindow *win = window_with (settings);
+
+  print_runs = 0;
+  easel_window_set_print_runner (win, count_print_run, NULL);
+  return win;
+}
+
+#define A4_W 210.0
+#define A4_H 297.0
+
+/* AS-1 (REQ-0026-01): Ctrl+P and the items' gates, and its repeat. */
+static void
+as1_print_gates (void)
+{
+  EaselWindow *win = window_for_print ("[new-picture]\nwidth=60\nheight=40\n");
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  guint p = keycode_of (GDK_KEY_p);
+  AdwDialog *d;
+
+  /* The key by its place on a layout that is not Latin: Ukrainian writes "з" there. */
+  g_assert_true (key_taken_code (win, GDK_KEY_Cyrillic_ze, p, GDK_CONTROL_MASK));
+  g_assert_cmpint (print_runs, ==, 1);
+  easel_window_print_cancelled (win);
+  /* A repeat does nothing, and after a release it prints again. */
+  g_assert_true (key_taken (win, GDK_KEY_p, GDK_CONTROL_MASK));
+  g_assert_cmpint (print_runs, ==, 1);
+  key_released (win, GDK_KEY_p);
+  g_assert_true (key_taken (win, GDK_KEY_p, GDK_CONTROL_MASK));
+  g_assert_cmpint (print_runs, ==, 2);
+  easel_window_print_cancelled (win);
+  key_released (win, GDK_KEY_p);
+  /* A stroke held. */
+  use_tool (win, "pencil");
+  easel_canvas_press (canvas, 1, 5.5, 5.5);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "print", NULL);
+  g_assert_cmpint (print_runs, ==, 2);
+  g_assert_null (visible_dialog (win));
+  easel_canvas_release (canvas, 1);
+  /* A dialog open. */
+  d = open_preferences (win);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "print", NULL);
+  g_assert_cmpint (print_runs, ==, 2);
+  g_assert_true (visible_dialog (win) == d);
+  close_preferences (win, d);
+  /* The focus in the size field. */
+  use_tool (win, "text");
+  shape_press_move (win, 1, 5, 5, 50, 30);
+  shape_release (win, 1);
+  gtk_widget_grab_focus (GTK_WIDGET (easel_font_card_get_size (easel_window_get_font_card (win))));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "print", NULL);
+  g_assert_cmpint (print_runs, ==, 2);
+  easel_canvas_put_down (canvas);
+  wait_for_layout (win);
+  /* With the print dialog open, a second one does nothing. */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "print", NULL);
+  g_assert_cmpint (print_runs, ==, 3);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "print", NULL);
+  g_assert_cmpint (print_runs, ==, 3);
+  easel_window_print_cancelled (win);
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* AS-3 (REQ-0026-03, -04): the tab's start, and what a confirm keeps. */
+static void
+as3_print_tab (void)
+{
+  EaselWindow *win = window_for_print ("[new-picture]\nwidth=800\nheight=600\n");
+  const EaselPageSetup *setup = easel_window_get_page_setup (win);
+  GtkWidget *tab = easel_print_tab_new (setup, 800, 600);
+  g_autoptr (GObject) keep = G_OBJECT (g_object_ref_sink (tab));
+  GtkWidget *sharp = find_named (tab, "sharp");
+
+  g_assert_true (gtk_toggle_button_get_active (GTK_TOGGLE_BUTTON (sharp)));
+  g_assert_cmpstr (gtk_widget_get_tooltip_text (sharp), ==, "Each pixel a sharp square");
+  g_assert_cmpstr (gtk_widget_get_tooltip_text (find_named (tab, "smooth-when-shrunk")), ==, "Sharp, but averaged where a printer's dot covers several pixels");
+  g_assert_cmpstr (gtk_widget_get_tooltip_text (find_named (tab, "smooth")), ==, "Blended between pixels");
+  g_assert_true (adw_switch_row_get_active (ADW_SWITCH_ROW (find_named (tab, "fit"))));
+  g_assert_true (setup->fit);
+  g_assert_true (easel_page_setup_landscape (setup, 800, 600));
+  g_assert_false (easel_page_setup_landscape (setup, 600, 800));
+  g_assert_false (easel_page_setup_landscape (setup, 60, 60));
+  /* A Cancel keeps nothing; a confirm keeps what the tab and the dialog say. */
+  gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (find_named (tab, "smooth")), TRUE);
+  adw_switch_row_set_active (ADW_SWITCH_ROW (find_named (tab, "fit")), FALSE);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "print", NULL);
+  easel_window_print_cancelled (win);
+  g_assert_true (setup->fit);
+  g_assert_cmpint (setup->pixels, ==, EASEL_PRINT_SHARP);
+  easel_window_print_remember (win, tab, setup->paper, FALSE);
+  g_assert_false (setup->fit);
+  g_assert_cmpint (setup->pixels, ==, EASEL_PRINT_SMOOTH);
+  g_assert_true (setup->orientation_set);
+  g_assert_false (easel_page_setup_landscape (setup, 800, 600));
+  close_windows ();
+  /* After a restart: the starting values, and no key in the file. */
+  g_assert_false (settings_has ("pixels"));
+  win = window_for_print ("[new-picture]\nwidth=800\nheight=600\n");
+  setup = easel_window_get_page_setup (win);
+  g_assert_true (setup->fit);
+  g_assert_false (setup->orientation_set);
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* AS-9 (REQ-0026-10): the count follows the switch, the paper and the orientation. */
+static void
+as9_sheets_line (void)
+{
+  EaselPageSetup setup;
+  GtkWidget *tab, *line;
+  g_autoptr (GObject) keep = NULL;
+
+  easel_page_setup_init (&setup);
+  tab = easel_print_tab_new (&setup, 3000, 2000);
+  keep = G_OBJECT (g_object_ref_sink (tab));
+  line = find_named (tab, "sheets");
+  easel_print_tab_set_paper (tab, A4_W, A4_H);
+  g_assert_false (gtk_widget_get_visible (line));
+  adw_switch_row_set_active (ADW_SWITCH_ROW (find_named (tab, "fit")), FALSE);
+  g_assert_true (gtk_widget_get_visible (line));
+  g_assert_cmpstr (gtk_label_get_text (GTK_LABEL (line)), ==, "Takes 15 sheets");
+  easel_print_tab_set_paper (tab, A4_H, A4_W);
+  g_assert_cmpstr (gtk_label_get_text (GTK_LABEL (line)), ==, "Takes 16 sheets");
+  adw_switch_row_set_active (ADW_SWITCH_ROW (find_named (tab, "fit")), TRUE);
+  g_assert_false (gtk_widget_get_visible (line));
+  easel_page_setup_clear (&setup);
+}
+
+/* AS-10 (REQ-0026-12): what is held is put down first; a Cancel keeps that; a marked selection stays; a failed put-down stops the print. */
+static void
+as10_put_down_first (void)
+{
+  EaselWindow *win = window_for_print ("[new-picture]\nwidth=60\nheight=40\n");
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  int x, y, w, h;
+  gboolean floating;
+
+  g_assert_false (easel_window_get_modified (win));
+  use_tool (win, "curve");
+  shape_press_move (win, 1, 5, 5, 30, 5);
+  shape_release (win, 1);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "print", NULL);
+  g_assert_cmpint (print_runs, ==, 1);
+  g_assert_false (easel_canvas_is_pending (canvas));
+  easel_window_print_cancelled (win);
+  g_assert_true (easel_window_get_modified (win));
+  g_assert_true (action_enabled (win, "undo"));
+  /* A floating selection is put down; a marked one stays marked. */
+  use_tool (win, "select");
+  shape_press_move (win, 1, 4, 4, 20, 20);
+  shape_release (win, 1);
+  g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  g_assert_false (floating);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "print", NULL);
+  g_assert_cmpint (print_runs, ==, 2);
+  g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  easel_window_print_cancelled (win);
+  g_assert_true (easel_canvas_move_selection (canvas, 3, 0));
+  g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  g_assert_true (floating);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "print", NULL);
+  g_assert_cmpint (print_runs, ==, 3);
+  g_assert_false (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  easel_window_print_cancelled (win);
+  /* An open box is put down. */
+  use_tool (win, "text");
+  shape_press_move (win, 1, 2, 2, 50, 30);
+  shape_release (win, 1);
+  easel_canvas_text_commit (canvas, "M");
+  g_action_group_activate_action (G_ACTION_GROUP (win), "print", NULL);
+  g_assert_cmpint (print_runs, ==, 4);
+  g_assert_null (easel_canvas_text_buffer (canvas));
+  easel_window_print_cancelled (win);
+  close_windows ();
+
+  /* A put-down that fails, for each of the four: its dialog, and no print dialog. */
+  for (int kind = 0; kind < 4; kind++)
+    {
+      static const char *const tools[] = { "curve", "gradient", "select", "text" };
+      static const char *const headings[] = { "Could Not Draw the Shape", "Could Not Apply the Gradient", MOVE_HEADING, NULL };
+
+      win = window_for_print ("[new-picture]\nwidth=60\nheight=40\n");
+      canvas = easel_window_get_canvas (win);
+      fill_with_places (win);                   /* a put-down that changes no pixel has nothing to fail */
+      use_tool (win, tools[kind]);
+      shape_press_move (win, 1, 4, 4, 30, 20);
+      shape_release (win, 1);
+      if (kind == 2)
+        g_assert_true (easel_canvas_move_selection (canvas, 3, 0));
+      if (kind == 3)
+        easel_canvas_text_commit (canvas, "M");
+      easel_canvas_set_shape_memory_limit (canvas, 1);
+      easel_canvas_set_selection_step_limit (canvas, 1);
+      easel_canvas_set_text_step_limit (canvas, 0);
+      g_action_group_activate_action (G_ACTION_GROUP (win), "print", NULL);
+      wait_for_dialogs (win, 1);
+      g_assert_cmpint (print_runs, ==, 0);
+      if (headings[kind] != NULL)
+        g_assert_cmpstr (adw_alert_dialog_get_heading (open_alert (win)), ==, headings[kind]);
+      if (kind == 3)
+        g_assert_nonnull (easel_canvas_text_buffer (canvas));
+      close_windows ();
+    }
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* AS-11 (REQ-0026-13): the paper the print dialog confirms decides, and is not written back. */
+static void
+as11_print_dialogs_paper (void)
+{
+  EaselWindow *win = window_for_print ("[new-picture]\nwidth=800\nheight=900\n");
+  EaselPrintJob *job;
+
+  g_action_group_activate_action (G_ACTION_GROUP (win), "print", NULL);
+  /* 800 x 900 follows to Portrait; the dialog's Landscape makes a different scale, on one sheet, and the next print starts with it. */
+  easel_window_print_remember (win, NULL, easel_window_get_page_setup (win)->paper, TRUE);
+  job = easel_window_print_confirmed (win, A4_H, A4_W);
+  g_assert_nonnull (job);
+  g_assert_cmpint (easel_print_job_sheets (job), ==, 1);
+  g_assert_cmpfloat (fabs (easel_print_job_percent (job) - 100 * 172 / (900 * 25.4 / 96)), <, 0.01);
+  g_assert_true (easel_page_setup_landscape (easel_window_get_page_setup (win), 800, 900));
+  easel_window_print_finished (win, job, TRUE);
+  g_assert_null (visible_dialog (win));
+  /* Too little room on the paper it confirms: the error, nothing prints. */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "print", NULL);
+  g_assert_null (easel_window_print_confirmed (win, 30, 30));   /* no room at 19 mm margins */
+  wait_for_dialogs (win, 1);
+  assert_alert (win, "Could Not Print", "The picture could not be printed.");
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* AS-12 (REQ-0026-14): the page is of the picture as confirmed; nothing in the app changes; two prints are two jobs. */
+static void
+as12_print_changes_nothing (void)
+{
+  EaselWindow *win = window_for_print ("[new-picture]\nwidth=60\nheight=40\n");
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  EaselPrintJob *first, *second;
+  const EaselImage *img = easel_window_get_picture (win);
+  g_autofree char *title = g_strdup (gtk_window_get_title (GTK_WINDOW (win)));
+  int w, h;
+
+  g_assert_false (easel_window_get_modified (win));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "print", NULL);
+  first = easel_window_print_confirmed (win, A4_W, A4_H);
+  g_assert_false (easel_window_get_modified (win));
+  g_assert_false (action_enabled (win, "undo"));
+  g_assert_cmpstr (gtk_window_get_title (GTK_WINDOW (win)), ==, title);
+  /* An edit after the confirm does not reach it. */
+  use_tool (win, "pencil");
+  easel_canvas_press (canvas, 1, 5.5, 5.5);
+  easel_canvas_release (canvas, 1);
+  g_assert_cmpuint (easel_image_get (img, 5, 5), !=, 0xFFFFFFFFu);
+  {
+    EaselPrintPage on_paper = { .paper_w_mm = A4_W, .paper_h_mm = A4_H };
+    g_autofree uint32_t *dots = sheet_dots (first, &on_paper, 0, 96, &w, &h);
+
+    /* The picture was all white when confirmed, so the whole page still is. */
+    for (gsize i = 0; i < (gsize) w * h; i++)
+      g_assert_cmpuint (dots[i], ==, 0xFFFFFFFFu);
+  }
+  /* A second during sending is its own job. */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "print", NULL);
+  g_assert_cmpint (print_runs, ==, 2);
+  second = easel_window_print_confirmed (win, A4_W, A4_H);
+  g_assert_nonnull (second);
+  g_assert_true (first != second);
+  easel_window_print_finished (win, first, TRUE);
+  easel_window_print_finished (win, second, TRUE);
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* AS-13 (REQ-0026-15): the error, one for each print; it waits for the release; no memory; a quit closes it. */
+static void
+as13_could_not_print (void)
+{
+  EaselWindow *win = window_for_print ("[new-picture]\nwidth=60\nheight=40\n");
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  EaselPrintJob *a, *b;
+
+  /* A failure that comes at once. */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "print", NULL);
+  a = easel_window_print_confirmed (win, A4_W, A4_H);
+  easel_window_print_finished (win, a, FALSE);
+  assert_alert (win, "Could Not Print", "The picture could not be printed.");
+  g_assert_false (easel_window_get_modified (win));
+  /* Two failures, one after the other. */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "print", NULL);
+  a = easel_window_print_confirmed (win, A4_W, A4_H);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "print", NULL);
+  b = easel_window_print_confirmed (win, A4_W, A4_H);
+  easel_window_print_finished (win, a, FALSE);
+  easel_window_print_finished (win, b, FALSE);
+  assert_alert (win, "Could Not Print", "The picture could not be printed.");
+  assert_alert (win, "Could Not Print", "The picture could not be printed.");
+  /* During a stroke it waits for the release. */
+  use_tool (win, "pencil");
+  g_action_group_activate_action (G_ACTION_GROUP (win), "print", NULL);
+  a = easel_window_print_confirmed (win, A4_W, A4_H);
+  easel_canvas_press (canvas, 1, 5.5, 5.5);
+  easel_window_print_finished (win, a, FALSE);
+  run_for_ms_0021 (250);
+  g_assert_null (visible_dialog (win));
+  easel_canvas_release (canvas, 1);
+  assert_alert (win, "Could Not Print", "The picture could not be printed.");
+  /* No memory to keep the picture. */
+  easel_window_set_print_copy_limit (win, 1);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "print", NULL);
+  g_assert_null (easel_window_print_confirmed (win, A4_W, A4_H));
+  wait_for_dialogs (win, 1);
+  /* A quit closes the error and goes on: the prompt, the picture being modified. */
+  gtk_window_close (GTK_WINDOW (win));
+  wait_for_dialogs (win, 1);
+  g_assert_cmpstr (adw_alert_dialog_get_heading (open_alert (win)), ==, "Save Changes?");
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* AS-14 (REQ-0026-16): a quit with the print dialog open does nothing; during sending the window closes, and the app stays until the job has gone. */
+static void
+as14_quit_and_sending (void)
+{
+  EaselWindow *win = window_for_print ("[new-picture]\nwidth=60\nheight=40\n");
+  EaselPrintJob *job;
+
+  g_action_group_activate_action (G_ACTION_GROUP (win), "print", NULL);
+  gtk_window_close (GTK_WINDOW (win));
+  run_for_ms_0021 (100);
+  g_assert_nonnull (gtk_application_get_windows (app));
+  /* It goes away with no answer: as Cancel, and now a quit goes on. */
+  easel_window_print_cancelled (win);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "print", NULL);
+  job = easel_window_print_confirmed (win, A4_W, A4_H);
+  g_assert_nonnull (job);
+  g_object_ref (win);
+  gtk_window_close (GTK_WINDOW (win));
+  wait_for_no_window ();
+  g_assert_true (easel_window_print_is_sending (win));
+  /* A failure from then on shows nothing, and the hold goes. */
+  easel_window_print_finished (win, job, FALSE);
+  g_assert_false (easel_window_print_is_sending (win));
+  {
+    AdwDialog *none = NULL;
+
+    g_assert_cmpint (count_alert_dialogs (GTK_WIDGET (win), &none), ==, 0);
+  }
+  g_object_unref (win);
+  /* A failure still waiting for a release when the window closes, another job keeping the window: nothing shows on the closed window. */
+  win = window_for_print ("[new-picture]\nwidth=60\nheight=40\n");
+  {
+    EaselCanvas *canvas = easel_window_get_canvas (win);
+    AdwDialog *none = NULL;
+    EaselPrintJob *failing, *other;
+
+    g_action_group_activate_action (G_ACTION_GROUP (win), "print", NULL);
+    failing = easel_window_print_confirmed (win, A4_W, A4_H);
+    g_action_group_activate_action (G_ACTION_GROUP (win), "print", NULL);
+    other = easel_window_print_confirmed (win, A4_W, A4_H);
+    use_tool (win, "pan");
+    easel_canvas_press (canvas, 1, 5.5, 5.5);
+    g_assert_true (easel_canvas_is_panning (canvas));
+    easel_window_print_finished (win, failing, FALSE);
+    g_object_ref (win);
+    gtk_window_close (GTK_WINDOW (win));
+    wait_for_no_window ();
+    easel_canvas_release (canvas, 1);           /* nothing holds the failure back now but the window being gone */
+    g_assert_false (easel_canvas_is_panning (canvas));
+    run_for_ms_0021 (200);
+    g_assert_cmpint (count_alert_dialogs (GTK_WIDGET (win), &none), ==, 0);
+    easel_window_print_finished (win, other, TRUE);
+    g_object_unref (win);
+  }
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* R1: the real operation, exported to a file with no dialog: every sheet is drawn and it ends. */
+static void
+as14_real_operation_exports (void)
+{
+  EaselWindow *win = window_with ("[new-picture]\nwidth=60\nheight=40\n");
+  g_autofree char *dir = g_dir_make_tmp ("easel-print-XXXXXX", NULL);
+  g_autofree char *path = g_build_filename (dir, "page.pdf", NULL);
+  gint64 deadline = g_get_monotonic_time () + 5 * G_USEC_PER_SEC;
+  GStatBuf st;
+
+  easel_window_set_print_export (win, path);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "print", NULL);
+  while (easel_window_print_is_sending (win) && g_get_monotonic_time () < deadline)
+    g_main_context_iteration (NULL, FALSE);
+  g_assert_false (easel_window_print_is_sending (win));
+  g_assert_cmpint (g_stat (path, &st), ==, 0);
+  g_assert_cmpint (st.st_size, >, 0);
+  g_assert_null (visible_dialog (win));
+  g_unlink (path);
+  g_rmdir (dir);
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
 int
 main (int argc, char **argv)
 {
@@ -29542,6 +30135,18 @@ main (int argc, char **argv)
   g_test_add_func ("/0021/as4_help_page_text", as4_help_page_text);
   g_test_add_func ("/0021/as5_about", as5_about);
   g_test_add_func ("/0021/as3_quit_closes_extras", as3_quit_closes_extras);
+  g_test_add_func ("/0026/as1_print_items", as1_print_items);
+  g_test_add_func ("/0026/as2_print_in_shortcuts", as2_print_in_shortcuts);
+  g_test_add_func ("/0026/as3_print_tab", as3_print_tab);
+  g_test_add_func ("/0026/as8_pixels_on_paper", as8_pixels_on_paper);
+  g_test_add_func ("/0026/as1_print_gates", as1_print_gates);
+  g_test_add_func ("/0026/as9_sheets_line", as9_sheets_line);
+  g_test_add_func ("/0026/as10_put_down_first", as10_put_down_first);
+  g_test_add_func ("/0026/as11_print_dialogs_paper", as11_print_dialogs_paper);
+  g_test_add_func ("/0026/as12_print_changes_nothing", as12_print_changes_nothing);
+  g_test_add_func ("/0026/as13_could_not_print", as13_could_not_print);
+  g_test_add_func ("/0026/as14_quit_and_sending", as14_quit_and_sending);
+  g_test_add_func ("/0026/as14_real_operation_exports", as14_real_operation_exports);
   g_test_add_func ("/0021/as6_thumbnail_item", as6_thumbnail_item);
   g_test_add_func ("/0021/as7_thumbnail_pixels", as7_thumbnail_pixels);
   g_test_add_func ("/0021/as8_thumbnail_esc", as8_thumbnail_esc);

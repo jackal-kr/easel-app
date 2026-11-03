@@ -86,6 +86,7 @@ easel_application_new (void)
   gtk_application_set_accels_for_action (GTK_APPLICATION (app), "win.rotate-270", (const char *[]) { "<Control>l", NULL });
   gtk_application_set_accels_for_action (GTK_APPLICATION (app), "win.stretch-skew", (const char *[]) { "<Control>t", NULL });
   gtk_application_set_accels_for_action (GTK_APPLICATION (app), "win.preferences", (const char *[]) { "<Control>comma", NULL });
+  gtk_application_set_accels_for_action (GTK_APPLICATION (app), "win.print", (const char *[]) { "<Control>p", NULL });
   gtk_application_set_accels_for_action (GTK_APPLICATION (app), "win.shortcuts", (const char *[]) { "<Control>question", "<Control>F1", NULL });
   gtk_application_set_accels_for_action (GTK_APPLICATION (app), "win.help", (const char *[]) { "F1", NULL });
   gtk_application_set_accels_for_action (GTK_APPLICATION (app), "win.clear-image", (const char *[]) { "<Control><Shift>n", NULL });

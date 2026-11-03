@@ -54,3 +54,4 @@ Optional; it starts only after the core XP scope is delivered.
 - Panning happens only in Pan mode; so Ctrl+drag on a selection keeps classic XP behavior: it moves a copy.
 - Pan mode's right-click menu keeps Paste, Paste From, Select All, zoom and Clear Image; a paste from it switches to the Select tool.
 - Default undo memory budget: 512 MB, adjustable in Preferences (min and max to be set in the spec).
+- Print: by default a picture too large for one sheet shrinks to fit it, never enlarged, and the orientation follows the picture until set (XP starts at 100 % in Portrait); there is no Page Setup item, since the desktop's print dialog has it, and that dialog gains a tab "Picture" with a Pixels choice (Sharp, Smooth when shrunk, Smooth) and the switch Fit on one page.

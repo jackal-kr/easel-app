@@ -10,6 +10,7 @@
 #include "frame-time.h"
 #include "help.h"
 #include "preferences-dialog.h"
+#include "print.h"
 #include "thumbnail-card.h"
 #include "stretch-skew-dialog.h"
 #include "stretch-skew.h"
@@ -46,7 +47,18 @@ struct _EaselWindow
   gsize rich_limit;                             /* tests: rich text longer than this fails as for memory; G_MAXSIZE is off */
   EaselSettings chosen;                         /* what Preferences shows: as read at start, as changed there (REQ-0020-02) */
   AdwDialog *preferences;                       /* Preferences while it is open */
-  AdwDialog *extra_dialog;                      /* Keyboard Shortcuts, About Easel or Help's error while it is open */
+  AdwDialog *extra_dialog;                      /* Keyboard Shortcuts, About Easel, Help's or a print's error while it is open */
+  EaselPageSetup page_setup;                    /* kept until the app quits (REQ-0026-04) */
+  gboolean print_dialog_open;
+  gboolean put_down_failed;                     /* a shape's or a gradient's, whose dialog is on its way */
+  EaselPrintRunner print_run;
+  gpointer print_run_data;
+  char *print_export;
+  gsize print_copy_limit;
+  int print_sending;                            /* jobs confirmed and not yet gone; each holds the application */
+  int print_errors;                             /* failures not yet shown, one dialog each */
+  guint print_error_timer;
+  GtkPrintSettings *print_settings;             /* the print dialog's printer and choices, kept until the app quits (REQ-0026-13) */
   EaselHelpLauncher help_launch;
   gpointer help_launch_data;
   gboolean help_starting;                       /* the browser was asked and has not answered */
@@ -877,8 +889,9 @@ easel_window_close_request (GtkWindow *window)
 {
   EaselWindow *self = EASEL_WINDOW (window);
 
-  /* While Open's or Paste From's file dialog is open a quit request does nothing, and so puts nothing down (REQ-0005-02, REQ-0016-08). */
-  if (self->open_dialog_open)
+  /* While Open's or Paste From's file dialog is open a quit request does nothing, and so puts nothing down (REQ-0005-02, REQ-0016-08); so
+     with the print dialog (REQ-0026-16). */
+  if (self->open_dialog_open || self->print_dialog_open)
     return TRUE;
   /* A stroke in progress is ended first (REQ-0001-33), a pending curve or polygon put down (REQ-0011-12); an open color
      chooser closes as Cancel (REQ-0003-14). */
@@ -1253,7 +1266,7 @@ static gboolean
 dialog_is_open (EaselWindow *self)
 {
   return self->prompt_open || self->save_dialog_open || self->open_dialog_open || self->loading || self->reading_clipboard
-         || self->chooser_open
+         || self->chooser_open || self->print_dialog_open
          || adw_application_window_get_visible_dialog (ADW_APPLICATION_WINDOW (self)) != NULL;
 }
 
@@ -2376,6 +2389,270 @@ help_activated (GSimpleAction *action, GVariant *parameter, gpointer user_data)
   self->help_launch (self, uri, self->help_launch_data);
 }
 
+/* ---- Print (0026) ---- */
+
+const EaselPageSetup *
+easel_window_get_page_setup (EaselWindow *self)
+{
+  return &self->page_setup;
+}
+
+static gboolean
+print_error_timer_fired (gpointer data)
+{
+  EaselWindow *self = data;
+
+  /* Nothing left to show, or a window closed during sending, with no one to tell (REQ-0026-16). */
+  if (self->print_errors == 0 || gtk_window_get_application (GTK_WINDOW (self)) == NULL)
+    {
+      self->print_error_timer = 0;
+      return G_SOURCE_REMOVE;
+    }
+  if (extras_can_show_error (self))
+    {
+      AdwDialog *dialog = adw_alert_dialog_new ("Could Not Print", "The picture could not be printed.");
+
+      adw_alert_dialog_add_response (ADW_ALERT_DIALOG (dialog), "ok", "OK");
+      adw_alert_dialog_set_default_response (ADW_ALERT_DIALOG (dialog), "ok");
+      adw_alert_dialog_set_close_response (ADW_ALERT_DIALOG (dialog), "ok");
+      self->print_errors--;
+      present_extra_dialog (self, dialog);
+    }
+  return G_SOURCE_CONTINUE;
+}
+
+/* One dialog for each failed print, as soon as no button is held and no dialog is open (REQ-0026-15). */
+static void
+print_failed (EaselWindow *self)
+{
+  /* A window closed during sending has no one to tell (REQ-0026-16). */
+  if (gtk_window_get_application (GTK_WINDOW (self)) == NULL)
+    return;
+  self->print_errors++;
+  if (self->print_error_timer == 0)
+    self->print_error_timer = g_timeout_add (50, print_error_timer_fired, self);
+  print_error_timer_fired (self);
+}
+
+void
+easel_window_set_print_runner (EaselWindow *self, EaselPrintRunner run, gpointer data)
+{
+  self->print_run = run;
+  self->print_run_data = data;
+}
+
+void
+easel_window_set_print_export (EaselWindow *self, const char *path)
+{
+  g_free (self->print_export);
+  self->print_export = g_strdup (path);
+}
+
+void
+easel_window_set_print_copy_limit (EaselWindow *self, gsize max_bytes)
+{
+  self->print_copy_limit = max_bytes;
+}
+
+gboolean
+easel_window_print_is_sending (EaselWindow *self)
+{
+  return self->print_sending > 0;
+}
+
+void
+easel_window_print_cancelled (EaselWindow *self)
+{
+  self->print_dialog_open = FALSE;
+}
+
+EaselPrintJob *
+easel_window_print_confirmed (EaselWindow *self, double paper_w_mm, double paper_h_mm)
+{
+  EaselPrintPage page;
+  EaselPrintJob *job = NULL;
+
+  self->print_dialog_open = FALSE;
+  easel_page_setup_page (&self->page_setup, self->picture->width, self->picture->height, &page);
+  page.paper_w_mm = paper_w_mm;
+  page.paper_h_mm = paper_h_mm;
+  if (easel_print_area_ok (paper_w_mm - 2 * page.margins_mm, paper_h_mm - 2 * page.margins_mm, page.fit, page.percent))
+    job = easel_print_job_new_limited (self->picture, &page, self->print_copy_limit);
+  if (job == NULL)
+    {
+      print_failed (self);
+      return NULL;
+    }
+  self->print_sending++;
+  g_application_hold (g_application_get_default ());
+  return job;
+}
+
+void
+easel_window_print_finished (EaselWindow *self, EaselPrintJob *job, gboolean ok)
+{
+  if (job != NULL)
+    {
+      easel_print_job_free (job);
+      self->print_sending--;
+      g_application_release (g_application_get_default ());
+    }
+  if (!ok)
+    print_failed (self);
+}
+
+/* What a confirm keeps for the next print: the tab's choices, the paper, and the orientation, which stops following the picture once it differs (REQ-0026-04). */
+void
+easel_window_print_remember (EaselWindow *self, GtkWidget *tab, const char *paper, gboolean landscape)
+{
+  if (tab != NULL)
+    easel_print_tab_read (tab, &self->page_setup);
+  if (paper == NULL)
+    return;
+  if (paper != self->page_setup.paper)
+    {
+      g_free (self->page_setup.paper);
+      self->page_setup.paper = g_strdup (paper);
+    }
+  if (landscape != easel_page_setup_landscape (&self->page_setup, self->picture->width, self->picture->height))
+    {
+      self->page_setup.orientation_set = TRUE;
+      self->page_setup.landscape = landscape;
+    }
+}
+
+/* The real operation: GTK's dialog, then a job per confirm. */
+static GObject *
+on_create_custom_widget (GtkPrintOperation *op, EaselWindow *self)
+{
+  return G_OBJECT (easel_print_tab_new (&self->page_setup, self->picture->width, self->picture->height));
+}
+
+static void
+on_update_custom_widget (GtkPrintOperation *op, GtkWidget *tab, GtkPageSetup *setup, GtkPrintSettings *settings, EaselWindow *self)
+{
+  easel_print_tab_set_paper (tab, gtk_page_setup_get_paper_width (setup, GTK_UNIT_MM), gtk_page_setup_get_paper_height (setup, GTK_UNIT_MM));
+}
+
+static void
+on_custom_widget_apply (GtkPrintOperation *op, GtkWidget *tab, EaselWindow *self)
+{
+  easel_window_print_remember (self, tab, NULL, FALSE);
+}
+
+static void
+on_begin_print (GtkPrintOperation *op, GtkPrintContext *context, EaselWindow *self)
+{
+  GtkPageSetup *setup = gtk_print_context_get_page_setup (context);
+  EaselPrintJob *job;
+
+  easel_window_print_remember (self, NULL, gtk_paper_size_get_name (gtk_page_setup_get_paper_size (setup)),
+                               gtk_page_setup_get_orientation (setup) == GTK_PAGE_ORIENTATION_LANDSCAPE);
+  job = easel_window_print_confirmed (self, gtk_page_setup_get_paper_width (setup, GTK_UNIT_MM),
+                                                     gtk_page_setup_get_paper_height (setup, GTK_UNIT_MM));
+
+  g_object_set_data (G_OBJECT (op), "easel-print-job", job);
+  if (job != NULL)
+    gtk_print_operation_set_n_pages (op, easel_print_job_sheets (job));
+  else
+    gtk_print_operation_cancel (op);
+}
+
+static void
+on_draw_page (GtkPrintOperation *op, GtkPrintContext *context, int page, EaselWindow *self)
+{
+  EaselPrintJob *job = g_object_get_data (G_OBJECT (op), "easel-print-job");
+
+  if (job != NULL)
+    easel_print_job_draw_sheet (job, gtk_print_context_get_cairo_context (context), page, gtk_print_context_get_dpi_x (context));
+}
+
+/* Ends what run_print began: the job, if there was one, and the reference on the window. */
+static void
+on_print_done (GtkPrintOperation *op, GtkPrintOperationResult result, EaselWindow *self)
+{
+  EaselPrintJob *job = g_object_get_data (G_OBJECT (op), "easel-print-job");
+
+  if (result == GTK_PRINT_OPERATION_RESULT_APPLY)
+    g_set_object (&self->print_settings, gtk_print_operation_get_print_settings (op));
+  if (job == NULL && result != GTK_PRINT_OPERATION_RESULT_ERROR)
+    easel_window_print_cancelled (self);       /* cancelled at the dialog, or the failure is already told */
+  else
+    {
+      self->print_dialog_open = FALSE;
+      easel_window_print_finished (self, job, result != GTK_PRINT_OPERATION_RESULT_ERROR);
+    }
+  g_object_set_data (G_OBJECT (op), "easel-print-job", NULL);
+  g_object_unref (self);
+  g_object_unref (op);
+}
+
+static void
+run_print (EaselWindow *self, gpointer data)
+{
+  GtkPrintOperation *op = gtk_print_operation_new ();
+  g_autoptr (GtkPageSetup) setup = gtk_page_setup_new ();
+  g_autoptr (GtkPaperSize) paper = gtk_paper_size_new (self->page_setup.paper);
+  const char *title = gtk_window_get_title (GTK_WINDOW (self));
+  g_autofree char *name = g_strdup (g_str_has_prefix (title, "• ") ? title + strlen ("• ") : title);
+  char *suffix = g_strrstr (name, " – Easel");
+  GtkPrintOperationResult result;
+  g_autoptr (GError) error = NULL;
+
+  if (suffix != NULL)
+    *suffix = '\0';
+  gtk_page_setup_set_paper_size (setup, paper);
+  gtk_page_setup_set_orientation (setup, easel_page_setup_landscape (&self->page_setup, self->picture->width, self->picture->height)
+                                         ? GTK_PAGE_ORIENTATION_LANDSCAPE : GTK_PAGE_ORIENTATION_PORTRAIT);
+  gtk_print_operation_set_default_page_setup (op, setup);
+  gtk_print_operation_set_use_full_page (op, TRUE);
+  gtk_print_operation_set_allow_async (op, TRUE);
+  gtk_print_operation_set_embed_page_setup (op, TRUE);       /* so that the dialog's Orientation shows what the page is (a probe, T009) */
+  gtk_print_operation_set_custom_tab_label (op, "Picture");
+  g_signal_connect (op, "create-custom-widget", G_CALLBACK (on_create_custom_widget), self);
+  g_signal_connect (op, "update-custom-widget", G_CALLBACK (on_update_custom_widget), self);
+  g_signal_connect (op, "custom-widget-apply", G_CALLBACK (on_custom_widget_apply), self);
+  gtk_print_operation_set_job_name (op, name);
+  if (self->print_settings != NULL)
+    gtk_print_operation_set_print_settings (op, self->print_settings);
+  g_signal_connect (op, "begin-print", G_CALLBACK (on_begin_print), self);
+  g_signal_connect (op, "draw-page", G_CALLBACK (on_draw_page), self);
+  g_signal_connect (op, "done", G_CALLBACK (on_print_done), self);
+  g_object_ref (self);
+  self->print_dialog_open = TRUE;
+  if (self->print_export != NULL)
+    gtk_print_operation_set_export_filename (op, self->print_export);
+  result = gtk_print_operation_run (op, self->print_export != NULL ? GTK_PRINT_OPERATION_ACTION_EXPORT : GTK_PRINT_OPERATION_ACTION_PRINT_DIALOG,
+                                    GTK_WINDOW (self), &error);
+  /* An answer at once, with no "done" to come: GTK emits it only for a run in progress. */
+  if (result == GTK_PRINT_OPERATION_RESULT_ERROR && g_object_get_data (G_OBJECT (op), "easel-print-job") == NULL)
+    {
+      self->print_dialog_open = FALSE;
+      print_failed (self);
+    }
+}
+
+/* Past the prompt: what is held is put down, and if that fails its dialog shows and there is no print (REQ-0026-12). */
+static void
+print_go (EaselWindow *self)
+{
+  self->put_down_failed = FALSE;
+  /* A shape's or a gradient's dialog comes after the action, so it is the signal that says it failed. */
+  if (!easel_canvas_put_down_keeping_marked (self->canvas) || self->put_down_failed || dialog_is_open (self))
+    return;
+  self->print_dialog_open = TRUE;
+  self->print_run (self, self->print_run_data);
+}
+
+static void
+print_activated (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+  EaselWindow *self = user_data;
+
+  if (extras_allowed (self))
+    print_go (self);
+}
+
 EaselSettings *
 easel_window_get_chosen_settings (EaselWindow *self)
 {
@@ -2727,6 +3004,13 @@ on_key_pressed (EaselWindow *self, guint keyval, guint keycode, GdkModifierType 
   if (gtk_root_get_focus (GTK_ROOT (self)) != NULL
       && gtk_widget_is_ancestor (gtk_root_get_focus (GTK_ROOT (self)), GTK_WIDGET (self->font_card)))
     return GDK_EVENT_PROPAGATE;                 /* the card's fields and its family list take their own keys (REQ-0017-14) */
+  /* Ctrl+P by the place of its key on a layout that is not Latin, ahead of an open box; its repeat does nothing (REQ-0026-01). */
+  if ((keyval == GDK_KEY_p || keyval == GDK_KEY_P) && (state & (GDK_CONTROL_MASK | GDK_SHIFT_MASK | GDK_ALT_MASK)) == GDK_CONTROL_MASK)
+    {
+      if (!repeat)
+        g_action_group_activate_action (G_ACTION_GROUP (self), "print", NULL);
+      return GDK_EVENT_STOP;
+    }
   if (self->tool == EASEL_TOOL_TEXT && !dialog_is_open (self) && easel_canvas_text_buffer (self->canvas) != NULL)
     {
       GdkEvent *event = gtk_event_controller_get_current_event (GTK_EVENT_CONTROLLER (controller));
@@ -2903,6 +3187,7 @@ show_shape_error (gpointer data)
 static void
 on_shape_failed (EaselWindow *self)
 {
+  self->put_down_failed = TRUE;
   g_idle_add (show_shape_error, g_object_ref (self));
 }
 
@@ -2920,6 +3205,7 @@ show_gradient_error (gpointer data)
 static void
 on_gradient_failed (EaselWindow *self)
 {
+  self->put_down_failed = TRUE;
   g_idle_add (show_gradient_error, g_object_ref (self));
 }
 
@@ -3793,6 +4079,7 @@ static const GActionEntry win_actions[] = {
   { .name = "rotate-270", .activate = rotate_270_activated },
   { .name = "stretch-skew", .activate = stretch_skew_activated },
   { .name = "preferences", .activate = preferences_activated },
+  { .name = "print", .activate = print_activated },
   { .name = "shortcuts", .activate = shortcuts_activated },
   { .name = "help", .activate = help_activated },
   { .name = "about", .activate = about_activated },
@@ -3899,6 +4186,7 @@ easel_window_dispose (GObject *object)
   g_clear_handle_id (&self->frame_time_timer, g_source_remove);
   g_clear_handle_id (&self->help_error_timer, g_source_remove);
   self->help_dropped = TRUE;
+  g_clear_handle_id (&self->print_error_timer, g_source_remove);
   g_clear_handle_id (&self->card_focus_idle, g_source_remove);
   if (self->font_card != NULL)
     easel_font_card_set_canvas (self->font_card, NULL);   /* a field left with a typed value applies nothing while the window goes */
@@ -3954,6 +4242,9 @@ easel_window_finalize (GObject *object)
   easel_image_free (self->picture);
   easel_history_free (self->history);
   g_free (self->path);
+  easel_page_setup_clear (&self->page_setup);
+  g_free (self->print_export);
+  g_clear_object (&self->print_settings);
   G_OBJECT_CLASS (easel_window_parent_class)->finalize (object);
 }
 
@@ -4122,6 +4413,9 @@ easel_window_init (EaselWindow *self)
   g_signal_connect_object (self->canvas, "resize-requested", G_CALLBACK (on_resize_requested), self, G_CONNECT_SWAPPED);
   g_signal_connect_swapped (self, "notify::visible-dialog", G_CALLBACK (on_visible_dialog_changed), self);
   self->help_launch = launch_in_browser;
+  self->print_run = run_print;
+  self->print_copy_limit = G_MAXSIZE;
+  easel_page_setup_init (&self->page_setup);
   easel_thumbnail_card_set_view (self->thumbnail_card, self->canvas, self->scroller);
   thumbnail_connect_input (self);
   g_signal_connect_object (gtk_scrolled_window_get_hadjustment (self->scroller), "changed", G_CALLBACK (sync_thumbnail), self, G_CONNECT_SWAPPED);

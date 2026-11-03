@@ -424,10 +424,12 @@ test: ui-0005
 file: src/ui/window.c
 test: ui-0005
 --- find
-  if (self->open_dialog_open)
+  if (self->open_dialog_open || self->print_dialog_open)
     return TRUE;
   /* A stroke in progress is ended first
 --- replace
+  if (self->print_dialog_open)
+    return TRUE;
   /* A stroke in progress is ended first
 
 === REQ-0005-17 a picture that is too big is refused without telling the user why
@@ -6565,11 +6567,11 @@ test: ui-0016
 file: src/ui/window.c
 test: ui-0016
 --- find
-  if (self->open_dialog_open)
+  if (self->open_dialog_open || self->print_dialog_open)
     return TRUE;
   /* A stroke in progress is ended first
 --- replace
-  if (FALSE)
+  if (self->print_dialog_open)
     return TRUE;
   /* A stroke in progress is ended first
 
@@ -11472,4 +11474,92 @@ test: core-window-extras
         s->frame_time = false;
 --- replace
         s->frame_time = true;
+
+=== REQ-0026-06 Fit to enlarges a small picture
+file: src/core/print-layout.c
+test: core-print-layout
+--- find
+      l.percent = fmin (100, fmin (across, down));
+--- replace
+      l.percent = fmin (across, down);
+
+=== REQ-0026-06 Fit to looks at the width alone
+file: src/core/print-layout.c
+test: core-print-layout
+--- find
+      l.percent = fmin (100, fmin (across, down));
+--- replace
+      l.percent = fmin (100, across);
+
+=== REQ-0026-06 a pixel is 1/72 inch
+file: src/core/print-layout.c
+test: core-print-layout
+--- find
+#define MM_PER_PIXEL (25.4 / 96)
+--- replace
+#define MM_PER_PIXEL (25.4 / 72)
+
+=== REQ-0026-07 a sheet holds part of a pixel
+file: src/core/print-layout.c
+test: core-print-layout
+--- find
+  int n = (int) floor (area_mm / (MM_PER_PIXEL * percent / 100) + WHOLE_SLACK);
+--- replace
+  int n = (int) ceil (area_mm / (MM_PER_PIXEL * percent / 100) + WHOLE_SLACK);
+
+=== REQ-0026-07 sheets run top to bottom first
+file: src/core/print-layout.c
+test: core-print-layout
+--- find
+  *x = (index % l->sheets_across) * l->pixels_across;
+--- replace
+  *x = (index / l->sheets_across) * l->pixels_across;
+
+=== REQ-0026-08 a picture on several sheets is still centered
+file: src/core/print-layout.c
+test: core-print-layout
+--- find
+  *x_mm = center_h && l->sheets_across == 1 ? (area_w_mm - pic_w * pixel) / 2 : 0;
+--- replace
+  *x_mm = center_h ? (area_w_mm - pic_w * pixel) / 2 : 0;
+
+=== REQ-0026-08 Center vertically is ignored
+file: src/core/print-layout.c
+test: core-print-layout
+--- find
+  *y_mm = center_v && l->sheets_down == 1 ? (area_h_mm - pic_h * pixel) / 2 : 0;
+--- replace
+  *y_mm = 0;
+
+=== REQ-0026-05 Adjust to takes any area
+file: src/core/print-layout.c
+test: core-print-layout
+--- find
+  double least = fit ? 0 : MM_PER_PIXEL * percent / 100;
+--- replace
+  double least = 0;
+
+=== REQ-0026-04 a square picture turns Landscape
+file: src/core/print-layout.c
+test: core-print-layout
+--- find
+  return w > h;
+--- replace
+  return w >= h;
+
+=== REQ-0026-09 the average counts each pixel whole
+file: src/core/print-layout.c
+test: core-print-layout
+--- find
+                  double cover = cover_y * (fmin (x + 1, right) - fmax (x, left));
+--- replace
+                  double cover = 1;
+
+=== REQ-0026-09 the average rounds down
+file: src/core/print-layout.c
+test: core-print-layout
+--- find
+| ((uint32_t) floor (sum[0] / area + 0.5) << 16)
+--- replace
+| ((uint32_t) floor (sum[0] / area) << 16)
 

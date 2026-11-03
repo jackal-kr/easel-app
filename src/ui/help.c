@@ -8,6 +8,7 @@ static const EaselShortcut shortcuts[] = {
   { "File", "Open…", "<Control>o", "win.open" },
   { "File", "Save", "<Control>s", "win.save" },
   { "File", "Save As…", "<Control><Shift>s", "win.save-as" },
+  { "File", "Print…", "<Control>p", "win.print" },
   { "File", "Preferences", "<Control>comma", "win.preferences" },
   { "File", "Keyboard Shortcuts", "<Control>question <Control>F1", "win.shortcuts" },
   { "File", "Help", "F1", "win.help" },

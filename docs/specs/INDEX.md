@@ -30,7 +30,7 @@ Vertical slices first (a thin end-to-end feature), breadth later.
 | 0023 | i18n | UI languages: cs, de, en, es, fr, hu, it, pl, pt (pt_BR), ro, ru, uk (uk_UA); English the default and fallback | Mark the 0001 strings (title, quit and save prompts, errors) translatable; deferred from the 0001 check. The language picker goes in Preferences; no right-to-left language |
 | 0024 | packaging-release | Flatpak, deb, AppImage, metadata | Choose the minimum GTK, then re-decide the accepted mutant of REQ-0017-14 (JOD, 2026-11-02: GTK 4.24 cannot kill it) |
 | 0025 | pixel-contract-tests | The six points of P7 (ADR-0003) as requirements, one test per gap, and fixes for what the tests find wrong (fractional-zoom edges, the grid and the pointer on them): the picture as squares, the same drag at two zooms, overlays leaving the picture unchanged, shown equals put-down | Accepted 2026-10-28; runs in this order (JOD): /sdd-check 0018, the 0017 text and tint task, then this feature (its text-box cases fail until the 0017 fix lands); the number moves when it is placed in the order |
-| 0026 | print | Print the picture, with page setup | Split from Window Extras (JOD, 2026-11-03) |
+| 0026 | print | Print the picture, with a Picture tab in the print dialog | Implemented 2026-11-03. Split from Window Extras (JOD, 2026-11-03); no Page Setup item, the print dialog has it |
 
 ### Phase 2: Modern extras (optional, starts only after the core XP scope is delivered)
 | Feature | One line |

@@ -7,6 +7,7 @@
 
 #include "canvas.h"
 #include "font-card.h"
+#include "print.h"
 #include "palette-bar.h"
 #include "status-bar.h"
 #include "tool-options.h"
@@ -36,6 +37,23 @@ EaselCanvas *easel_window_get_canvas (EaselWindow *self);
 /* The font card over the view (tests). */
 EaselFontCard *easel_window_get_font_card (EaselWindow *self);
 GtkWidget *easel_window_get_thumbnail_card (EaselWindow *self);
+const EaselPageSetup *easel_window_get_page_setup (EaselWindow *self);
+
+/* Stands in for the desktop's print dialog (a test); then easel_window_print_confirmed or _cancelled answer for it. */
+typedef void (*EaselPrintRunner) (EaselWindow *win, gpointer data);
+void easel_window_set_print_runner (EaselWindow *self, EaselPrintRunner run, gpointer data);
+/* A test: the real operation, written to path with no dialog. */
+void easel_window_set_print_export (EaselWindow *self, const char *path);
+/* A test: the copy of the picture refused above max_bytes. */
+void easel_window_set_print_copy_limit (EaselWindow *self, gsize max_bytes);
+/* The dialog confirmed a paper of w x h: the job as of now, NULL with the error shown (REQ-0026-13 to -15). */
+EaselPrintJob *easel_window_print_confirmed (EaselWindow *self, double paper_w_mm, double paper_h_mm);
+void easel_window_print_cancelled (EaselWindow *self);
+/* What a confirm keeps: tab's choices if tab, the paper and orientation if paper (REQ-0026-04). */
+void easel_window_print_remember (EaselWindow *self, GtkWidget *tab, const char *paper, gboolean landscape);
+/* The job has gone, or failed; frees it (REQ-0026-15, -16). */
+void easel_window_print_finished (EaselWindow *self, EaselPrintJob *job, gboolean ok);
+gboolean easel_window_print_is_sending (EaselWindow *self);
 /* A press on the card, with the modifier state of its event (REQ-0021-09, -10). */
 void easel_window_thumbnail_press (EaselWindow *self, GdkModifierType state);
 EaselPaletteBar *easel_window_get_palette_bar (EaselWindow *self);

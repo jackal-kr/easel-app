@@ -3,7 +3,7 @@ core_wrap = {
   'stretch-skew': ['-Wl,--wrap=malloc', '-Wl,--wrap=calloc', '-Wl,--wrap=realloc'],
   'settings-edit': ['-Wl,--wrap=malloc'],
 }
-foreach name : ['cursor', 'stretch-skew', 'settings-edit', 'window-extras', 'figure', 'figure-apply', 'figure-curve', 'figure-polygon', 'figure-step', 'gradient', 'selection', 'fill', 'footprint', 'format', 'grid', 'history', 'image', 'lasso', 'lattice', 'magnifier', 'number', 'palette', 'resize', 'settings', 'spray', 'stroke', 'rich-text', 'text-buffer', 'text-put', 'transform', 'view']
+foreach name : ['cursor', 'stretch-skew', 'settings-edit', 'window-extras', 'print-layout', 'figure', 'figure-apply', 'figure-curve', 'figure-polygon', 'figure-step', 'gradient', 'selection', 'fill', 'footprint', 'format', 'grid', 'history', 'image', 'lasso', 'lattice', 'magnifier', 'number', 'palette', 'resize', 'settings', 'spray', 'stroke', 'rich-text', 'text-buffer', 'text-put', 'transform', 'view']
   test('core-' + name,
     executable('test-' + name, 'core/test-' + name + '.c', dependencies: easel_core_dep,
                link_args: core_wrap.get(name, [])),
@@ -35,7 +35,7 @@ test_window = executable('test-window', 'ui/test-window.c', 'ui/memory-clipboard
 # registered as /0001/..., /0002/..., so every case is in exactly one of them); see docs/engineering.md, Testing.
 # Not parallel: run in parallel, the ui windows failed as5_zoom_keeps_center with a stale layout (598.25 against 1196.5)
 # in 2 of 3 runs. Earlier one-off failures of the ui tests, run as a single executable, are unexplained.
-foreach feature : ['0001', '0002', '0003', '0004', '0005', '0006', '0007', '0008', '0009', '0010', '0011', '0012', '0013', '0014', '0015', '0016', '0017', '0018', '0019', '0020', '0021', '0025']
+foreach feature : ['0001', '0002', '0003', '0004', '0005', '0006', '0007', '0008', '0009', '0010', '0011', '0012', '0013', '0014', '0015', '0016', '0017', '0018', '0019', '0020', '0021', '0025', '0026']
   test('ui-' + feature, test_window, args: ['-p', '/' + feature], env: ui_env, suite: 'ui', timeout: 180,
        is_parallel: false)
 endforeach

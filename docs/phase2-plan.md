@@ -24,5 +24,10 @@ Known gaps from Phase 1 specs, to take up after the core XP scope is delivered. 
 - Cases the code handles and no test of their own observes: a waiting gradient on the thumbnail; a failed put-down taking Esc; Paste From… cancelled and the oversize prompt in Pan; the quit prompt, the color chooser and an open menu as gates of Keyboard Shortcuts, Help and About Easel; no memory for the card's buffer; a press on the card released on the canvas; a theme change's workspace color on the card.
 - Help under Flatpak: checked at packaging.
 
+## From 0026 (Print)
+- Cases the code handles and no test of their own observes: the document name, without the mark and " – Easel"; the quit prompt, the color chooser and an open menu as gates of Print…; a print dialog that cannot be shown; a quit during sending with a modified picture; AS-8 at another zoom and scroll (the job reads no view, by construction); the title's mark in AS-10 (the modified flag is what is tested).
+- `run_print` handles GTK answering ERROR at the run with no `done`, and then keeps its references on the operation and the window. Whether GTK can answer so is unknown.
+- The Picture tab under Flatpak: checked at packaging, with Sharp and Fit on one page as the fallback.
+
 ## From the mutation list
 - REQ-0017-14, the popover's scroll guard: survives on GTK 4.24, accepted (JOD, 2026-11-02). Re-decide at packaging-release, when the minimum GTK is chosen.
