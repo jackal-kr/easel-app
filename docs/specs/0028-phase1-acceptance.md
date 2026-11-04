@@ -27,7 +27,7 @@ Each journey below shall run as written and shall give the result written. Color
 - REQ-0028-13 Journey 9, Transforms. On the picture: Rotate 90°, Flip Horizontal, Invert Colors, Stretch and Skew: four steps. Mark a rectangle, apply the same four, Enter: one step. Five Undos give the first picture and its size, exactly; that picture is saved (0018, 0019).
 - REQ-0028-14 Journey 10, Interrupted tools. For each of a curve after its first stage, a polygon with two sides and a gradient: a zoom leaves it waiting; then, in three runs, Esc drops it with no step, Enter puts it down with one step, another tool puts it down with one step. The saved file holds the six put down and none of those dropped (0004, 0011, 0012).
 - REQ-0028-15 Journey 11, Don't lose work. On an existing file, edited, close: Cancel at the prompt stays; a Save into a folder that cannot be written stays, with its error, the picture and the old file as they were. In a second run on a writable file a Save closes with the new file; in a third, Discard closes with the file byte for byte as it was. It ends with the file read back in each (0002, 0005).
-- REQ-0028-16 Journey 12, Big picture. With `[history] memory=16` set before the start and an 8000 × 8000 picture made by Attributes: at 1600 % mark a 40 × 20 rectangle, move it, Enter; at 100 % (JOD, 2026-11-04: a hand cannot draw this much at 1600 %) draw filled 500 × 500 rectangles in turn until Undo, pressed to its end, no longer reaches the move. The move's step went first; undo stops at the oldest step kept, on the picture from before that step, with Undo off; the title stays modified if the saved state was dropped; the picture saves and reads back (0002, 0004, 0005, 0008, 0013, 0025).
+- REQ-0028-16 Journey 12, Big picture. With `[history] memory=16` set before the start and an 8000 × 8000 picture made by Attributes: at 1600 % mark a 40 × 20 rectangle, move it, Enter; at 100 % (JOD, 2026-11-04: a hand cannot do this much at 1600 %), four times at different places, mark a 1000 × 700 rectangle, Invert Colors, Enter; Undo, pressed to its end, no longer reaches the move (a filled rectangle's step counts only its spans, so it would take thousands to pass the budget, and a put-down selection counts each pixel, by REQ-0002-16). The move's step went first; undo stops at the oldest step kept, on the picture from before that step, with Undo off; the title stays modified if the saved state was dropped; the picture saves and reads back (0002, 0004, 0005, 0008, 0013, 0025).
 - REQ-0028-17 Journey 13, Preferences. With swatch 1 edited beforehand and a settings file holding a comment: set the new-picture size to 300 × 200 and a canvas color, change Workspace color, press Reset Palette, Apply; change Tint strength, Cancel; restart. The kept values show and are used, New has the kept size and color, the classic colors show, the cancelled tint does not, and the comment stays. New's picture is drawn on, saved and read back (0003, 0009, 0020, 0027).
 - REQ-0028-18 Journey 14, Keyboard only. Started with a file as argument, with no pointer used: Tab to the toolbox, arrows and Space to choose the Pencil, on to a swatch and choose it, F6 to the canvas, draw by Space, arrows, Space; choose Select, mark by Space, arrows, Space; once released, arrows move it and Shift with an arrow smears it; Enter puts it down; Ctrl+S saves (0005, 0013, 0014, 0022).
 - REQ-0028-19 Journey 15, Another language. Journey 1 with the same input and picture size, from a settings file holding `language=uk`, under `LC_ALL=C`, with the translated suggested file name: a menu item reads in Ukrainian and the file equals journey 1's, pixel for pixel (0023).
@@ -63,10 +63,30 @@ Each journey below shall run as written and shall give the result written. Color
 ## Open questions
 
 ## Plan
-(added by /sdd-build)
+**Approach.** No code in the app: fifteen cases in the ui test program, `/0028/journey_N_name`, built on the helpers the features' own tests use, with `journey_end`, which saves, opens the file again and compares every pixel with the picture held before the save. A failure is read first: a mistake in a case is the case's, and a real bug goes to the feature that owns it, its spec old and new, test first.
+
+**Runs.** `ui-0028` in the normal suite, the software renderer. Journey 15 in `ui-0028-uk`, its own process, with `language=uk` from the settings file and `LC_ALL=C`. Journeys 1 and 4 again in `ui-0028-scale2`, which skips off a screen of scale 2, like the other scale 2 tests. Vulkan is a command of the gate and not a test of the normal suite, which `docs/engineering.md` names: `tools/isolated.sh env GSK_RENDERER=vulkan ... build/tests/test-window -p /0028`.
+
+**Files.** `tests/ui/test-window.c`, `tests/meson.build`, `docs/engineering.md`, `docs/walkthrough-phase1.md`.
+
+**Oracles.** Journey 1 and 15's picture is a model written from REQ-0010's rules, so that two processes can be compared with one thing and neither with itself. Journey 3's flatten is REQ-0005-11's formula. Journey 5 uses the models of 0013's and 0014's tests. Journey 7 is big.png scaled by the nearest pixel. Journey 8 compares with the same box made at 100 %.
+
+**Risks.** R1 Journey 12's 8000 × 8000 save and read may take most of the budget: measured at T002, and its size moves only at JOD's word. R2 Vulkan in the headless session: `ui-0025-vulkan` runs there today.
+
+**Scenario map.** AS-1 the list of cases and `docs/walkthrough-phase1.md`; AS-2 the times in the Check; AS-3 the Check; AS-4 to AS-18 `/0028/journey_1` to `journey_14` and `/0028-uk/journey_15`, each with its step of the walkthrough.
+
+Constitution: no app code, so P1 to P7 are untouched unless a journey finds a bug.
 
 ## Tasks
-(added by /sdd-build)
+- [x] T001 The fifteen journeys and their runs (REQ-0028-01, -02, -05 to -19; AS-1, AS-4 to AS-18) - done when all pass, each first run reported
+  Result: first runs: 7 passed (1, 3, 4, 5, 8, 10, 13) plus 15 in its own process, 7 failed. All seven failures were mistakes in the cases, none in the app: colors set on the canvas and not the palette (2), Pan has no handles (2), an off-by-one column (6), the nearest pixel taken at a corner and not a cell's middle (7), Save on an untitled picture opening its chooser (9), the same stroke again changing nothing and a wait for no dialog (11), a walk that could not change column (14). And one in the spec: journey 12's rectangles never passed the budget, as a filled rectangle's step counts its spans, so its step changed, old and new in T003. Journey 14's smear first looked wrong, a 3-row selection covering its own copies: that is REQ-0014-11, and the journey marks one row. As the passing ones had shown nothing, breaks: one pixel changed at every save failed 12 of 14 (not 9 and 11, which do not go that way); an Undo step skipped and the quit prompt gone failed 7, 9, 10 and 11. Sources restored and the suite green again.
+- [x] T002 The time, Vulkan and scale 2 (REQ-0028-03; AS-2) - done when the times are here
+  Result: software renderer in the isolated session: `ui-0028` 25.85 s and `ui-0028-uk` 0.39 s, 26.2 s of the 120 s budget. Vulkan: 15 of 15, 26.6 s. Scale 2: journeys 1 and 4 pass, `ui-0028-scale2` 2.81 s.
+- [x] T003 What the journeys find (REQ-0028-04; AS-3) - done when each is fixed in its feature, or there is none
+  Result: the journeys found no bug in the app, so no feature's spec changed. One change here, after acceptance (JOD, 2026-11-04, shown): REQ-0028-16 old, "draw filled 500 × 500 rectangles in turn until Undo, pressed to its end, no longer reaches the move"; new, four times mark a 1000 × 700 rectangle, Invert Colors, Enter.
+- [ ] T004 The full mutation run, its versions in the INDEX - done when its summary line is here and each survivor has its line
+- [ ] T005 `docs/walkthrough-phase1.md` - done when each step has its action and result, in a throwaway settings folder
+- [ ] T006 Manual: the walkthrough (JOD) - done when JOD has walked it
 
 ## Check
 (written by /sdd-check as its last step, about ten lines)

@@ -32455,6 +32455,1090 @@ as15_language_notice (void)
   restore_27 ();
 }
 
+/* ---- 0028 Phase 1 acceptance: journeys across the features ---- */
+
+static EaselImage *
+picture_copy (EaselWindow *win)
+{
+  const EaselImage *img = easel_window_get_picture (win);
+  EaselImage *copy = easel_image_new (img->width, img->height, 0);
+
+  g_assert_nonnull (copy);
+  memcpy (copy->px, img->px, (size_t) img->width * img->height * sizeof img->px[0]);
+  return copy;
+}
+
+static char *
+journey_file (const char *name)
+{
+  g_autofree char *dir = g_dir_make_tmp ("easel-journey-XXXXXX", NULL);
+
+  return g_build_filename (dir, name, NULL);
+}
+
+/* REQ-0028-02: saved, opened again, and every pixel as it was held. */
+static void
+journey_end (EaselWindow *win, const char *path)
+{
+  g_autoptr (EaselImage) before = picture_copy (win);
+
+  g_assert_true (easel_window_save_to (win, path));
+  g_assert_false (easel_window_get_modified (win));
+  open_and_wait (win, path);
+  assert_same_picture (easel_window_get_picture (win), before);
+  g_assert_false (easel_window_get_modified (win));
+  g_assert_false (action_enabled (win, "undo"));
+}
+
+static void
+journey_clean (const char *settings)
+{
+  remove_palette_file ();
+  write_settings (settings);
+}
+
+static void
+journey_stop (void)
+{
+  close_windows ();
+  remove_palette_file ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* Started with a file: past the start-up picture, the file's. */
+static EaselWindow *
+journey_launch (GFile **file)
+{
+  EaselWindow *win = launch_with (file, 1);
+  gint64 deadline = g_get_monotonic_time () + 20 * G_USEC_PER_SEC;
+
+  while (easel_window_is_loading (win) && g_get_monotonic_time () < deadline)
+    g_main_context_iteration (NULL, FALSE);
+  g_assert_false (easel_window_is_loading (win));
+  wait_for_layout (win);
+  return win;
+}
+
+#define JOURNEY1_SETTINGS "[new-picture]\nwidth=120\nheight=80\ncanvas-color=#FFFFFF\n"
+
+/* Journey 1's drawing, with what REQ-0010 says it gives written out in want. */
+static void
+journey1_draw (EaselWindow *win, EaselImage *want)
+{
+  uint32_t first = choose_swatch (win, 16), second = choose_swatch (win, 17);
+  uint32_t ground = 0xFFFFFFFFu;
+
+  g_assert_cmphex (first, !=, second);
+  (void) choose_swatch (win, 16);
+  use_tool (win, "pencil");
+  shape_press_move (win, 1, 10, 10, 30, 10);
+  shape_release (win, 1);
+  (void) choose_swatch (win, 17);
+  use_tool (win, "line");
+  set_shape_options (win, 1, 1);
+  shape_press_move (win, 1, 10, 20, 30, 20);
+  shape_release (win, 1);
+  use_tool (win, "rectangle");
+  shape_press_move (win, 1, 40, 10, 70, 30);
+  shape_release (win, 1);
+  for (int x = 10; x <= 30; x++)
+    {
+      easel_image_set (want, x, 10, first);
+      easel_image_set (want, x, 20, second);
+    }
+  for (int y = 10; y <= 30; y++)
+    for (int x = 40; x <= 70; x++)
+      easel_image_set (want, x, y, x == 40 || x == 70 || y == 10 || y == 30 ? second : ground);
+}
+
+/* AS-4 (REQ-0028-05). */
+static void
+journey_1_first_picture (void)
+{
+  g_autofree char *path = journey_file ("first.png");
+  g_autoptr (EaselImage) want = easel_image_new (120, 80, 0xFFFFFFFFu);
+  g_autoptr (GFile) file = g_file_new_for_path (path);
+  EaselWindow *win;
+
+  journey_clean (JOURNEY1_SETTINGS);
+  win = start_window ();
+  wait_for_layout (win);
+  journey1_draw (win, want);
+  assert_same_picture (easel_window_get_picture (win), want);
+  g_assert_true (easel_window_save_to (win, path));
+  close_windows ();
+  win = journey_launch (&file);
+  assert_same_picture (easel_window_get_picture (win), want);
+  g_assert_false (easel_window_get_modified (win));
+  g_assert_false (g_str_has_prefix (gtk_window_get_title (GTK_WINDOW (win)), "• "));
+  g_assert_false (action_enabled (win, "undo"));
+  journey_stop ();
+}
+
+/* AS-5 (REQ-0028-06). */
+static void
+journey_2_poster (void)
+{
+  g_autofree char *path = journey_file ("poster.png");
+  g_autoptr (EaselImage) first = NULL, end = NULL;
+  AdwAlertDialog *dialog;
+  GtkEditable *width, *height;
+  EaselWindow *win;
+  uint32_t grown;
+  int steps = 0;
+
+  journey_clean ("[new-picture]\nwidth=100\nheight=80\ncanvas-color=#FFFFFF\n");
+  win = start_window ();
+  wait_for_layout (win);
+  first = picture_copy (win);
+  /* Grown by Attributes, in the first background; the background then changes; cropped by a handle. */
+  easel_palette_bar_press (easel_window_get_palette_bar (win), 19, 3, 1);
+  grown = easel_window_get_background (win);
+  open_attributes (win, &dialog, &width, &height);
+  type_into (width, "200");
+  type_into (height, "150");
+  respond (win, "ok");
+  g_assert_cmphex (easel_image_get (easel_window_get_picture (win), 150, 120), ==, grown);
+  easel_palette_bar_press (easel_window_get_palette_bar (win), 20, 3, 1);
+  g_assert_cmphex (easel_window_get_background (win), !=, grown);
+  use_tool (win, "pencil");                                       /* Pan has no handles (REQ-0004-19) */
+  wait_for_layout (win);
+  drag_handle (win, EASEL_HANDLE_RIGHT, -40, 0);
+  assert_size (win, 160, 150);
+  /* Filled shapes. */
+  use_tool (win, "rectangle");
+  set_shape_options (win, 2, 1);
+  shape_press_move (win, 1, 10, 10, 60, 50);
+  shape_release (win, 1);
+  use_tool (win, "ellipse");
+  shape_press_move (win, 1, 70, 20, 130, 90);
+  shape_release (win, 1);
+  /* A text box with one bold word. */
+  use_tool (win, "text");
+  shape_press_move (win, 1, 10, 100, 150, 145);
+  shape_release (win, 1);
+  type_keys (win, "one ");
+  g_assert_true (key_taken (win, GDK_KEY_b, GDK_CONTROL_MASK));
+  type_keys (win, "bold");
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+  wait_for_layout (win);
+  end = picture_copy (win);
+  /* Every step undone, then redone. */
+  while (action_enabled (win, "undo") && steps < 40)
+    {
+      g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+      steps++;
+    }
+  g_assert_cmpint (steps, ==, 5);
+  assert_same_picture (easel_window_get_picture (win), first);
+  while (action_enabled (win, "redo"))
+    g_action_group_activate_action (G_ACTION_GROUP (win), "redo", NULL);
+  assert_same_picture (easel_window_get_picture (win), end);
+  g_assert_cmphex (easel_image_get (easel_window_get_picture (win), 150, 120), ==, grown);
+  journey_end (win, path);
+  journey_stop ();
+}
+
+/* AS-6 (REQ-0028-07). */
+static void
+journey_3_fix_a_screenshot (void)
+{
+  g_autofree char *shot = journey_file ("shot.png");
+  g_autofree char *bmp = journey_file ("shot.bmp");
+  const uint32_t half = 0x80FF8000u, blue = 0xFF0000FFu, mine = 0xFF123456u;
+  g_autoptr (EaselImage) start = easel_image_new (60, 40, 0xFFFFFFFFu), held = NULL;
+  g_autoptr (GBytes) png = NULL;
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  const EaselImage *img;
+
+  for (int y = 0; y < 10; y++)
+    for (int x = 0; x < 10; x++)
+      easel_image_set (start, 30 + x, y, half);
+  for (int y = 20; y < 30; y++)
+    for (int x = 0; x < 10; x++)
+      easel_image_set (start, x, y, blue);
+  png = easel_picture_encode (start, EASEL_FORMAT_PNG, 90, NULL);
+  g_assert_true (g_file_set_contents (shot, g_bytes_get_data (png, NULL), (gssize) g_bytes_get_size (png), NULL));
+  journey_clean ("[new-picture]\nwidth=60\nheight=40\ncanvas-color=#FFFFFF\n");
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  wait_for_layout (win);
+  open_and_wait (win, shot);
+  /* Magnify a part, pick its blue, fill a white area with it. */
+  use_tool (win, "magnifier");
+  click_pixel (win, 1, 5, 25);
+  g_assert_cmpint (easel_window_get_zoom (win), >, 100);
+  use_tool (win, "pick");
+  click_pixel (win, 1, 5, 25);
+  g_assert_cmphex (easel_window_get_foreground (win), ==, blue);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-to", g_variant_new_int32 (100));
+  wait_for_layout (win);
+  use_tool (win, "fill");
+  click_pixel (win, 1, 20, 35);
+  img = easel_window_get_picture (win);
+  g_assert_cmphex (easel_image_get (img, 20, 35), ==, blue);
+  g_assert_cmphex (easel_image_get (img, 35, 5), ==, half);
+  /* Edit swatch 1, and paint with it. */
+  easel_palette_bar_press (easel_window_get_palette_bar (win), 1, 1, 2);
+  choose (win, &mine);
+  g_assert_cmphex (easel_window_get_foreground (win), ==, mine);
+  use_tool (win, "pencil");
+  shape_press_move (win, 1, 5, 25, 8, 25);
+  shape_release (win, 1);
+  g_assert_cmphex (easel_image_get (img, 6, 25), ==, mine);
+  held = picture_copy (win);
+  /* The BMP: flattened on white by REQ-0005-11, and the window keeps its transparency until the file is read. */
+  g_assert_true (easel_window_save_to (win, bmp));
+  g_assert_cmphex (easel_image_get (easel_window_get_picture (win), 35, 5), ==, half);
+  open_and_wait (win, bmp);
+  img = easel_window_get_picture (win);
+  for (int y = 0; y < 40; y++)
+    for (int x = 0; x < 60; x++)
+      {
+        uint32_t c = easel_image_get (held, x, y), a = c >> 24, want = 0xFF000000u;
+
+        for (int shift = 0; shift < 24; shift += 8)
+          want |= (uint32_t) (((c >> shift & 255) * a + 255 * (255 - a)) / 255.0 + 0.5) << shift;
+        g_assert_cmphex (easel_image_get (img, x, y), ==, want);
+      }
+  (void) canvas;
+  journey_stop ();
+}
+
+/* Black at the cell of (x, y) at this zoom: the run across the middle of the cell, in device pixels. A zoom counts device pixels on a
+   screen of any scale (REQ-0001-18). */
+static int
+journey_black_run (const ViewFrame *f, int x, int y, int zoom)
+{
+  double d = zoom / 100.0;
+  int row = f->oy + (int) ((y + 0.5) * d), at = f->ox + (int) ((x + 0.5) * d), n = 1;
+
+  if (f->px[(gsize) row * f->w + at] != 0xFF000000u)
+    return 0;
+  for (int i = at + 1; i < f->w && f->px[(gsize) row * f->w + i] == 0xFF000000u; i++)
+    n++;
+  for (int i = at - 1; i >= 0 && f->px[(gsize) row * f->w + i] == 0xFF000000u; i--)
+    n++;
+  return n;
+}
+
+/* AS-7 (REQ-0028-08). */
+static void
+journey_4_pixel_art (void)
+{
+  static const int dots[][2] = { { 2, 2 }, { 6, 2 }, { 4, 5 }, { 9, 8 } };
+  g_autofree char *path = journey_file ("art.png");
+  g_autoptr (EaselImage) art = NULL;
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  double scale;
+  ViewFrame f;
+  int zoom;
+
+  journey_clean ("[new-picture]\nwidth=757\nheight=100\ncanvas-color=#FFFFFF\n");
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  wait_for_layout (win);
+  scale = easel_canvas_get_scale (canvas);
+  easel_canvas_set_guides_hidden (canvas, TRUE);
+  easel_canvas_set_colors (canvas, 0xFF000000u, 0xFFFFFFFFu);
+  zoom_exactly (win, 800);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "grid", NULL);
+  use_tool (win, "pencil");
+  for (guint i = 0; i < G_N_ELEMENTS (dots); i++)
+    click_pixel (win, 1, dots[i][0], dots[i][1]);
+  art = picture_copy (win);
+  for (guint i = 0; i < G_N_ELEMENTS (dots); i++)
+    g_assert_cmphex (easel_image_get (art, dots[i][0], dots[i][1]), ==, 0xFF000000u);
+  wait_for_next_frame (win);
+  /* 800 %: each cell its color, in its middle; a cell beside it is not black. */
+  f = view_frame (win);
+  for (guint i = 0; i < G_N_ELEMENTS (dots); i++)
+    {
+      int run = journey_black_run (&f, dots[i][0], dots[i][1], 800);
+
+      g_assert_cmpint (run, >=, 6);
+      g_assert_cmpint (run, <=, 8);
+    }
+  g_free (f.px);
+  /* A fractional zoom, by Fit to Window; then 100 %. No grid line shows, and the picture is the same. */
+  set_area (win, scale == 2 ? 514 : 1001, 500);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-fit", NULL);
+  wait_for_layout (win);
+  zoom = easel_window_get_zoom (win);
+  g_assert_cmpint (zoom % 100, !=, 0);
+  gtk_adjustment_set_value (view_of (win).h, 0);
+  gtk_adjustment_set_value (view_of (win).v, 0);
+  wait_for_next_frame (win);
+  f = view_frame (win);
+  for (guint i = 0; i < G_N_ELEMENTS (dots); i++)
+    {
+      double d = zoom / 100.0;
+      int run = journey_black_run (&f, dots[i][0], dots[i][1], zoom);
+
+      g_assert_cmpint (run, >=, (int) floor (d));
+      g_assert_cmpint (run, <=, (int) ceil (d));
+    }
+  g_free (f.px);
+  assert_same_picture (easel_window_get_picture (win), art);
+  zoom_exactly (win, 100);
+  f = view_frame (win);
+  for (guint i = 0; i < G_N_ELEMENTS (dots); i++)
+    g_assert_cmpint (journey_black_run (&f, dots[i][0], dots[i][1], 100), ==, 1);
+  for (int y = 0; y < 40; y++)
+    for (int x = 0; x < 40; x++)
+      {
+        uint32_t c = f.px[(gsize) (f.oy + y) * f.w + f.ox + x];
+
+        g_assert_true (c == 0xFF000000u || c == 0xFFFFFFFFu);    /* no grid line at 100 % */
+      }
+  g_free (f.px);
+  journey_end (win, path);
+  /* No grid line in the file: only the white and the dots. */
+  assert_same_picture (easel_window_get_picture (win), art);
+  journey_stop ();
+}
+
+/* AS-8 (REQ-0028-09). */
+static void
+journey_5_rectangle_selection (void)
+{
+  static const int to[][2] = { { 4, 1 } };
+  g_autofree char *path = journey_file ("selection.png");
+  g_autoptr (EaselImage) start = NULL, moved = NULL, copied = NULL, smear = NULL;
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  const EaselImage *img;
+  int x, y, w, h;
+  gboolean floating;
+
+  journey_clean ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  img = easel_window_get_picture (win);
+  use_select (win);
+  start = paint_red_block (win);
+  easel_canvas_set_colors (canvas, 0xFF000000u, CYAN);
+  easel_canvas_set_guides_hidden (canvas, TRUE);
+  moved = moved_selection (start, 3, 0, CYAN);
+  copied = copied_selection (start, to, 1);
+  smear = smeared (start, FALSE, 3, 0);
+  /* A drag: the hole takes the background color. */
+  shape_press_move (win, 1, 1, 1, 5, 4);
+  shape_release (win, 1);
+  drag_selection (win, 2, 2, 5, 2);
+  g_assert_true (key_taken (win, GDK_KEY_Return, 0));
+  assert_same_picture (img, moved);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  assert_same_picture (img, start);
+  /* Ctrl and a drag: no hole. */
+  shape_press_move (win, 1, 1, 1, 5, 4);
+  shape_release (win, 1);
+  modifier_keys (win, GDK_CONTROL_MASK);
+  drag_selection (win, 2, 2, 5, 2);
+  modifier_keys (win, 0);
+  g_assert_true (key_taken (win, GDK_KEY_Return, 0));
+  assert_same_picture (img, copied);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  /* Shift and a drag, then Shift+Right three times: the same trail. */
+  shape_press_move (win, 1, 1, 1, 5, 4);
+  shape_release (win, 1);
+  modifier_keys (win, GDK_SHIFT_MASK);
+  drag_selection (win, 2, 2, 5, 2);
+  modifier_keys (win, 0);
+  g_assert_true (key_taken (win, GDK_KEY_Return, 0));
+  assert_same_picture (img, smear);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  assert_same_picture (img, start);
+  shape_press_move (win, 1, 1, 1, 5, 4);
+  shape_release (win, 1);
+  for (int k = 0; k < 3; k++)
+    g_assert_true (key_taken (win, GDK_KEY_Right, GDK_SHIFT_MASK));
+  g_assert_true (key_taken (win, GDK_KEY_Return, 0));
+  assert_same_picture (img, smear);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  /* Transparent mode, over a colored ground: the hole is clear, and the selection's own pixels cover the ground. */
+  g_signal_emit_by_name (find_mapped_by_tooltip (GTK_WIDGET (win), "Transparent: moving or clearing leaves a transparent hole"), "clicked");
+  shape_press_move (win, 1, 1, 1, 5, 4);
+  shape_release (win, 1);
+  drag_selection (win, 2, 2, 5, 2);
+  g_assert_true (key_taken (win, GDK_KEY_Return, 0));
+  g_assert_cmphex (easel_image_get (img, 1, 1) >> 24, ==, 0);
+  g_assert_cmphex (easel_image_get (img, 5, 2), ==, 0xFFFF0000u);
+  g_assert_cmphex (easel_image_get (img, 4, 1), ==, YELLOW);
+  /* Undo gives the picture before the lift, with no selection; Redo the put-down picture. */
+  {
+    g_autoptr (EaselImage) down = picture_copy (win);
+
+    g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+    assert_same_picture (img, start);
+    g_assert_false (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+    g_action_group_activate_action (G_ACTION_GROUP (win), "redo", NULL);
+    assert_same_picture (img, down);
+  }
+  journey_end (win, path);
+  journey_stop ();
+}
+
+/* AS-9 (REQ-0028-10). */
+static void
+journey_6_free_form_cut (void)
+{
+  g_autofree char *path = journey_file ("cut.png");
+  g_autoptr (EaselImage) start = NULL, after_cut = NULL;
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  const EaselImage *img;
+  int x, y, w, h;
+  gboolean floating;
+
+  journey_clean ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  (void) memory_clipboard (win);
+  img = easel_window_get_picture (win);
+  use_free_select (win);
+  start = paint_red_block (win);
+  easel_canvas_set_colors (canvas, 0xFF000000u, CYAN);
+  easel_canvas_set_guides_hidden (canvas, TRUE);
+  mark_triangle (win);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "cut", NULL);
+  wait_for_layout (win);
+  /* The triangle's pixels take the background color; a pixel outside stays. */
+  g_assert_cmphex (easel_image_get (img, 2, 2), ==, CYAN);
+  g_assert_cmphex (easel_image_get (img, 4, 3), ==, 0xFFFF0000u);
+  after_cut = picture_copy (win);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "paste", NULL);
+  wait_for_layout (win);
+  g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  g_assert_true (floating);
+  g_assert_cmpint (w, ==, 5);
+  /* Moved clear, stretched to twice its width, then the right handle past the left edge. */
+  drag_selection (win, x + 1, y + 1, x + 1 + 40, y + 1 + 20);
+  g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  drag_sel_handle (win, EASEL_SEL_HANDLE_R, 5, 0);
+  g_assert_true (selection_is (win, x, y, 10, h));
+  drag_sel_handle (win, EASEL_SEL_HANDLE_R, -15, 0);
+  g_assert_true (selection_is (win, x - 5, y, 5, h));
+  g_assert_true (key_taken (win, GDK_KEY_Return, 0));
+  /* The bounding rectangle's copy, mirrored: inside the triangle the start's pixels, outside it the picture as the cut left it. */
+  for (int j = 0; j < 5; j++)
+    for (int i = 0; i < 5; i++)
+      g_assert_cmphex (easel_image_get (img, x - 5 + (4 - i), y + j), ==,
+                       i + j <= 4 ? easel_image_get (start, 1 + i, 1 + j) : easel_image_get (after_cut, x - 5 + (4 - i), y + j));
+  journey_end (win, path);
+  journey_stop ();
+}
+
+/* AS-10 (REQ-0028-11). */
+static void
+journey_7_oversize_paste (void)
+{
+  g_autofree char *big = journey_file ("big.png");
+  g_autofree char *path = journey_file ("oversize.png");
+  g_autoptr (GFile) big_file = g_file_new_for_path (big);
+  g_autoptr (EaselImage) source = NULL, small = NULL;
+  AdwAlertDialog *dialog;
+  GtkEditable *width, *height;
+  EaselWindow *win;
+  EaselImage *img;
+  const EaselImage *now;
+
+  journey_clean ("[new-picture]\nwidth=400\nheight=300\ncanvas-color=#FFFFFF\n");
+  win = start_window ();
+  wait_for_layout (win);
+  img = (EaselImage *) easel_window_get_picture (win);
+  for (int y = 0; y < 300; y++)
+    for (int x = 0; x < 400; x++)
+      easel_image_set (img, x, y, 0xFF000000u | (uint32_t) (x * 255 / 399) << 16 | (uint32_t) (y * 255 / 299) << 8 | (uint32_t) (x < y ? 200 : 40));
+  easel_canvas_update (easel_window_get_canvas (win));
+  source = picture_copy (win);
+  use_select (win);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "select-all", NULL);
+  easel_window_copy_to_chosen (win, big);
+  g_assert_true (g_file_test (big, G_FILE_TEST_EXISTS));
+  g_assert_true (key_taken (win, GDK_KEY_Return, 0));
+  open_attributes (win, &dialog, &width, &height);
+  type_into (width, "200");
+  type_into (height, "150");
+  respond (win, "ok");
+  assert_size (win, 200, 150);
+  small = picture_copy (win);
+  /* Fit: the picture stays, and holds big.png scaled by the nearest pixel. */
+  easel_window_paste_from_file (win, big_file);
+  g_assert_nonnull (paste_prompt (win));
+  respond (win, "fit");
+  g_assert_true (key_taken (win, GDK_KEY_Return, 0));
+  wait_for_layout (win);
+  now = easel_window_get_picture (win);
+  assert_size (win, 200, 150);
+  for (int y = 0; y < 150; y += 7)
+    for (int x = 0; x < 200; x += 7)
+      g_assert_cmphex (easel_image_get (now, x, y), ==, easel_image_get (source, x * 2 + 1, y * 2 + 1));    /* the nearest to the cell's middle */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  wait_for_layout (win);
+  assert_same_picture (easel_window_get_picture (win), small);
+  /* Resize: the picture is the file's size and equals it. */
+  easel_window_paste_from_file (win, big_file);
+  g_assert_nonnull (paste_prompt (win));
+  respond (win, "resize");
+  g_assert_true (key_taken (win, GDK_KEY_Return, 0));
+  wait_for_layout (win);
+  assert_size (win, 400, 300);
+  assert_same_picture (easel_window_get_picture (win), source);
+  journey_end (win, path);
+  assert_same_picture (easel_window_get_picture (win), source);
+  journey_stop ();
+}
+
+/* One box, its text pasted rich and part of it restyled; zoomed while open if asked. */
+static EaselImage *
+journey8_box (gboolean zoom)
+{
+  static const char *html_plain[] = { "text/html", "text/plain;charset=utf-8" };
+  EaselWindow *win;
+  EaselMemoryClipboard *clipboard;
+  EaselImage *put_down;
+
+  journey_clean (TEXT_SETTINGS);
+  win = start_window ();
+  clipboard = memory_clipboard (win);
+  wait_for_layout (win);
+  use_tool (win, "text");
+  shape_press_move (win, 1, 10, 10, 200, 120);
+  shape_release (win, 1);
+  clipboard_offers (clipboard, html_plain, (const char *[]) { "<b>Bold</b> and <i>italic</i> words", "Bold and italic words" }, 2);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "paste", NULL);
+  g_assert_true (box_text_is (win, "Bold and italic words"));
+  /* The last five letters underlined. */
+  easel_text_buffer_select (easel_canvas_text_buffer (easel_window_get_canvas (win)), 16, 21);
+  g_assert_true (key_taken (win, GDK_KEY_u, GDK_CONTROL_MASK));
+  if (zoom)
+    {
+      g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-to", g_variant_new_int32 (800));
+      wait_for_layout (win);
+      g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-to", g_variant_new_int32 (100));
+      wait_for_layout (win);
+      g_assert_true (box_text_is (win, "Bold and italic words"));
+    }
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+  wait_for_layout (win);
+  put_down = picture_copy (win);
+  if (zoom)
+    {
+      g_autofree char *path = journey_file ("rich.png");
+
+      journey_end (win, path);
+    }
+  close_windows ();
+  return put_down;
+}
+
+/* AS-11 (REQ-0028-12). */
+static void
+journey_8_rich_text (void)
+{
+  g_autoptr (EaselImage) plain = journey8_box (FALSE), zoomed = journey8_box (TRUE);
+
+  assert_same_picture (zoomed, plain);
+  journey_stop ();
+}
+
+/* The four, on what is at hand. */
+static void
+journey9_four (EaselWindow *win)
+{
+  SkewDialog d;
+
+  g_action_group_activate_action (G_ACTION_GROUP (win), "rotate-90", NULL);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "flip-horizontal", NULL);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "invert", NULL);
+  wait_for_layout (win);
+  d = open_stretch_skew (win);
+  type_into (d.width, "150");
+  press_ok (win, &d);
+  wait_for_layout (win);
+}
+
+/* AS-12 (REQ-0028-13). */
+static void
+journey_9_transforms (void)
+{
+  g_autofree char *path = journey_file ("transforms.png");
+  g_autoptr (EaselImage) first = NULL;
+  EaselWindow *win;
+  int undos = 0;
+
+  journey_clean ("[new-picture]\nwidth=80\nheight=50\ncanvas-color=#FFFFFF\n");
+  win = start_window ();
+  wait_for_layout (win);
+  use_tool (win, "pencil");
+  easel_canvas_set_colors (easel_window_get_canvas (win), 0xFFFF0000u, 0xFFFFFFFFu);
+  shape_press_move (win, 1, 5, 5, 30, 12);
+  shape_release (win, 1);
+  g_assert_true (easel_window_save_to (win, path));
+  first = picture_copy (win);
+  journey9_four (win);
+  use_select (win);
+  shape_press_move (win, 1, 5, 5, 30, 20);
+  shape_release (win, 1);
+  journey9_four (win);
+  g_assert_true (key_taken (win, GDK_KEY_Return, 0));
+  wait_for_layout (win);
+  while (action_enabled (win, "undo") && undos < 20)
+    {
+      g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+      if (++undos == 5)
+        break;
+    }
+  g_assert_cmpint (undos, ==, 5);
+  assert_size (win, first->width, first->height);
+  assert_same_picture (easel_window_get_picture (win), first);
+  journey_end (win, path);
+  journey_stop ();
+}
+
+/* One shape waiting, at row y of the picture. */
+static void
+journey10_wait (EaselWindow *win, const char *tool, int y)
+{
+  use_tool (win, tool);
+  if (strcmp (tool, "polygon") == 0)
+    {
+      press_at (win, 1000, 10, y);
+      release_at (win, 0, 0, 40, y);
+      click_at (win, 3000, 40, y + 8);
+    }
+  else
+    {
+      shape_press_move (win, 1, 10, y, 50, y);
+      shape_release (win, 1);
+    }
+  g_assert_true (easel_canvas_is_pending (easel_window_get_canvas (win)));
+  /* A zoom leaves it waiting. */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-to", g_variant_new_int32 (200));
+  wait_for_layout (win);
+  g_assert_true (easel_canvas_is_pending (easel_window_get_canvas (win)));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-to", g_variant_new_int32 (100));
+  wait_for_layout (win);
+  g_assert_true (easel_canvas_is_pending (easel_window_get_canvas (win)));
+}
+
+/* AS-13 (REQ-0028-14). */
+static void
+journey_10_interrupted_tools (void)
+{
+  static const char *const tools[] = { "curve", "polygon", "gradient" };
+  g_autofree char *path = journey_file ("interrupted.png");
+  g_autoptr (EaselImage) first = NULL;
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  int row = 10, undos = 0;
+
+  journey_clean ("[new-picture]\nwidth=200\nheight=200\ncanvas-color=#FFFFFF\n");
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  wait_for_layout (win);
+  easel_canvas_set_colors (canvas, 0xFFFF0000u, 0xFFFFFFFFu);
+  first = picture_copy (win);
+  for (guint t = 0; t < G_N_ELEMENTS (tools); t++)
+    {
+      g_autoptr (EaselImage) before = picture_copy (win);
+
+      /* Esc drops it, with no step. */
+      journey10_wait (win, tools[t], row);
+      g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+      g_assert_false (easel_canvas_is_pending (canvas));
+      assert_same_picture (easel_window_get_picture (win), before);
+      row += 20;
+      /* Enter puts it down, with one step. */
+      journey10_wait (win, tools[t], row);
+      g_assert_true (key_taken (win, GDK_KEY_Return, 0));
+      g_assert_false (easel_canvas_is_pending (canvas));
+      row += 20;
+      /* Another tool puts it down, with one step. */
+      journey10_wait (win, tools[t], row);
+      use_tool (win, "pencil");
+      g_assert_false (easel_canvas_is_pending (canvas));
+      row += 20;
+    }
+  {
+    g_autoptr (EaselImage) six = picture_copy (win);
+    const EaselImage *now;
+
+    while (action_enabled (win, "undo") && undos < 20)
+      {
+        g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+        undos++;
+      }
+    g_assert_cmpint (undos, ==, 6);
+    assert_same_picture (easel_window_get_picture (win), first);
+    while (action_enabled (win, "redo"))
+      g_action_group_activate_action (G_ACTION_GROUP (win), "redo", NULL);
+    now = easel_window_get_picture (win);
+    assert_same_picture (now, six);
+  }
+  journey_end (win, path);
+  journey_stop ();
+}
+
+/* The answer to the dialog on top, with whatever comes after it left to come. */
+static void
+journey_answer (EaselWindow *win, const char *response)
+{
+  AdwAlertDialog *dialog = open_alert (win);
+
+  g_assert_nonnull (dialog);
+  g_signal_emit_by_name (dialog, "response", response);
+  adw_dialog_close (ADW_DIALOG (dialog));
+  wait_for_layout (win);
+}
+
+/* An edited window on an existing file, its prompt open. */
+static EaselWindow *
+journey11_edit_and_close (const char *path, int row)
+{
+  g_autoptr (GFile) file = g_file_new_for_path (path);
+  EaselWindow *win = journey_launch (&file);
+
+  use_tool (win, "pencil");
+  easel_canvas_set_colors (easel_window_get_canvas (win), 0xFFFF0000u, 0xFFFFFFFFu);
+  shape_press_move (win, 1, 5, row, 20, row);
+  shape_release (win, 1);
+  gtk_window_close (GTK_WINDOW (win));
+  wait_for_dialogs (win, 1);
+  g_assert_cmpstr (adw_alert_dialog_get_heading (open_alert (win)), ==, "Save Changes?");
+  return win;
+}
+
+/* AS-14 (REQ-0028-15). */
+static void
+journey_11_dont_lose_work (void)
+{
+  g_autofree char *path = journey_file ("work.png");
+  g_autofree char *dir = g_path_get_dirname (path);
+  g_autofree char *old = NULL, *now = NULL;
+  g_autoptr (EaselImage) edited = NULL;
+  gsize old_len = 0, now_len = 0;
+  EaselWindow *win;
+
+  if (geteuid () == 0)
+    {
+      g_test_skip ("root can write anywhere");
+      return;
+    }
+  journey_clean ("[new-picture]\nwidth=60\nheight=40\ncanvas-color=#FFFFFF\n");
+  win = start_window ();
+  wait_for_layout (win);
+  g_assert_true (easel_window_save_to (win, path));
+  close_windows ();
+  g_assert_true (g_file_get_contents (path, &old, &old_len, NULL));
+  /* Cancel stays, with the edit. */
+  win = journey11_edit_and_close (path, 5);
+  respond (win, "cancel");
+  g_assert_true (easel_window_get_modified (win));
+  g_assert_true (gtk_widget_get_visible (GTK_WIDGET (win)));
+  /* A Save into a folder that cannot be written stays, with its error; the file as it was. */
+  edited = picture_copy (win);
+  g_assert_cmpint (g_chmod (dir, 0555), ==, 0);
+  gtk_window_close (GTK_WINDOW (win));
+  wait_for_dialogs (win, 1);
+  journey_answer (win, "save");
+  wait_for_dialogs (win, 1);
+  g_assert_nonnull (open_alert (win));
+  g_assert_cmpstr (adw_alert_dialog_get_heading (open_alert (win)), !=, "Save Changes?");
+  journey_answer (win, "close");
+  g_assert_cmpint (g_chmod (dir, 0755), ==, 0);
+  g_assert_true (gtk_widget_get_visible (GTK_WIDGET (win)));
+  g_assert_true (easel_window_get_modified (win));
+  assert_same_picture (easel_window_get_picture (win), edited);
+  g_assert_true (g_file_get_contents (path, &now, &now_len, NULL));
+  g_assert_cmpmem (now, now_len, old, old_len);
+  /* A Save that works closes, with the new file. */
+  gtk_window_close (GTK_WINDOW (win));
+  wait_for_dialogs (win, 1);
+  g_signal_emit_by_name (open_alert (win), "response", "save");    /* the window goes, and the prompt with it */
+  wait_for_no_window ();
+  win = window_with ("[new-picture]\nwidth=60\nheight=40\ncanvas-color=#FFFFFF\n");
+  open_and_wait (win, path);
+  assert_same_picture (easel_window_get_picture (win), edited);
+  close_windows ();
+  /* Discard closes, with the file byte for byte. */
+  g_free (old);
+  old = NULL;
+  g_assert_true (g_file_get_contents (path, &old, &old_len, NULL));
+  win = journey11_edit_and_close (path, 9);                      /* another row: the same stroke again would change nothing */
+  g_signal_emit_by_name (open_alert (win), "response", "discard");
+  wait_for_no_window ();
+  g_free (now);
+  now = NULL;
+  g_assert_true (g_file_get_contents (path, &now, &now_len, NULL));
+  g_assert_cmpmem (now, now_len, old, old_len);
+  journey_stop ();
+}
+
+/* AS-15 (REQ-0028-16). */
+static void
+journey_12_big_picture (void)
+{
+  g_autofree char *path = journey_file ("big-picture.png");
+  AdwAlertDialog *dialog;
+  GtkEditable *width, *height;
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  const EaselImage *img;
+  int undos = 0, enough = 0;
+
+  journey_clean ("[new-picture]\nwidth=300\nheight=200\ncanvas-color=#FFFFFF\n\n[history]\nmemory=16\n");
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  wait_for_layout (win);
+  easel_canvas_set_colors (canvas, 0xFFFF0000u, 0xFF00FF00u);
+  open_attributes (win, &dialog, &width, &height);
+  type_into (width, "8000");
+  type_into (height, "8000");
+  respond (win, "ok");
+  assert_size (win, 8000, 8000);
+  img = easel_window_get_picture (win);
+  /* At 1600 %: a dot to carry, marked, moved and put down. */
+  zoom_exactly (win, 1600);
+  use_tool (win, "pencil");
+  click_pixel (win, 1, 3, 3);
+  g_assert_cmphex (easel_image_get (img, 3, 3), ==, 0xFFFF0000u);
+  use_select (win);
+  shape_press_move (win, 1, 1, 1, 40, 20);
+  shape_release (win, 1);
+  drag_selection (win, 3, 3, 13, 3);
+  g_assert_true (key_taken (win, GDK_KEY_Return, 0));
+  g_assert_cmphex (easel_image_get (img, 13, 3), ==, 0xFFFF0000u);
+  /* At 100 %: three inverted rectangles, each over a third of the budget once put down, and the steps of the start are gone. */
+  zoom_exactly (win, 100);
+  for (enough = 0; enough < 4; enough++)
+    {
+      shape_press_move (win, 1, 100 + enough * 10, 100 + enough * 10, 1099 + enough * 10, 799 + enough * 10);
+      shape_release (win, 1);
+      g_action_group_activate_action (G_ACTION_GROUP (win), "invert", NULL);
+      g_assert_true (key_taken (win, GDK_KEY_Return, 0));
+      wait_for_layout (win);
+    }
+  while (action_enabled (win, "undo") && undos < 40)
+    {
+      g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+      undos++;
+    }
+  /* Undo stopped short: the move's step went first, so the dot stays where the move left it. */
+  g_assert_cmpint (undos, <, enough);
+  g_assert_cmphex (easel_image_get (easel_window_get_picture (win), 13, 3), ==, 0xFFFF0000u);
+  g_assert_cmphex (easel_image_get (easel_window_get_picture (win), 3, 3), !=, 0xFFFF0000u);
+  g_assert_false (action_enabled (win, "undo"));
+  g_assert_true (easel_window_get_modified (win));
+  journey_end (win, path);
+  journey_stop ();
+}
+
+/* AS-16 (REQ-0028-17). */
+static void
+journey_13_preferences (void)
+{
+  const char *start = "# mine\n[new-picture]\nwidth=60\nheight=40\ncanvas-color=#FFFFFF\n[view]\ntint=12\n";
+  g_autofree char *path = journey_file ("new.png");
+  const uint32_t mine = 0xFF123456u;
+  EaselWindow *win;
+  AdwDialog *d;
+  g_autofree char *text = NULL;
+  uint32_t classic;
+
+  journey_clean (start);
+  win = start_window ();
+  wait_for_layout (win);
+  easel_palette_bar_press (easel_window_get_palette_bar (win), 1, 1, 2);
+  classic = easel_swatch_get_color (easel_palette_bar_get_swatch (easel_window_get_palette_bar (win), 1));
+  choose (win, &mine);
+  g_assert_cmphex (easel_swatch_get_color (easel_palette_bar_get_swatch (easel_window_get_palette_bar (win), 1)), ==, mine);
+  d = open_preferences (win);
+  set_switch (d, "Automatic size", FALSE);
+  type_into (GTK_EDITABLE (pref_row (d, "Width")), "300");
+  type_into (GTK_EDITABLE (pref_row (d, "Height")), "200");
+  set_swatch (d, "Canvas color", "#ABCDEF");
+  set_swatch (d, "Workspace color", "#223344");
+  g_signal_emit_by_name (find_button (GTK_WIDGET (d), "Reset Palette"), "clicked");
+  press_prefs (win, d, "_Apply");
+  type_into (GTK_EDITABLE (pref_row (d, "Tint strength")), "40");
+  press_prefs (win, d, "_Cancel");
+  wait_for_no_dialog (win);
+  g_assert_cmpint (easel_canvas_get_tint (easel_window_get_canvas (win)), ==, 12);
+  close_windows ();
+  /* A restart: a new window, reading the files. */
+  win = start_window ();
+  wait_for_layout (win);
+  g_assert_cmphex (easel_swatch_get_color (easel_palette_bar_get_swatch (easel_window_get_palette_bar (win), 1)), ==, classic);
+  g_assert_cmpint (easel_canvas_get_tint (easel_window_get_canvas (win)), ==, 12);
+  assert_size (win, 300, 200);
+  d = open_preferences (win);
+  g_assert_cmpint (field_value (GTK_EDITABLE (pref_row (d, "Width"))), ==, 300);
+  g_assert_cmpint (field_value (GTK_EDITABLE (pref_row (d, "Tint strength"))), ==, 12);
+  close_preferences (win, d);
+  text = settings_text ();
+  g_assert_nonnull (strstr (text, "# mine\n"));
+  g_assert_null (strstr (text, "tint=40"));
+  /* New has the kept size and color; drawn on, saved and read back. */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "new", NULL);
+  wait_for_layout (win);
+  assert_size (win, 300, 200);
+  g_assert_cmphex (easel_image_get (easel_window_get_picture (win), 5, 5), ==, 0xFFABCDEFu);
+  use_tool (win, "pencil");
+  shape_press_move (win, 1, 5, 5, 20, 5);
+  shape_release (win, 1);
+  journey_end (win, path);
+  journey_stop ();
+}
+
+/* The focus goes by the keys to the control with that tooltip, in the panel it is in. */
+static void
+journey14_walk_to (EaselWindow *win, GtkWidget *target)
+{
+  graphene_rect_t t = bounds_in (target, GTK_WIDGET (win));
+
+  for (int i = 0; i < 40 && win_focus (win) != target; i++)
+    {
+      graphene_rect_t f = bounds_in (win_focus (win), GTK_WIDGET (win));
+
+      press_key (win, t.origin.y > f.origin.y + 2 ? GDK_KEY_Down : t.origin.y < f.origin.y - 2 ? GDK_KEY_Up
+                      : t.origin.x > f.origin.x ? GDK_KEY_Right : GDK_KEY_Left, 0);
+    }
+  g_assert_true (win_focus (win) == target);
+}
+
+static void
+journey14_marker_to (EaselWindow *win, int x, int y)
+{
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  int mx, my;
+
+  easel_canvas_marker_get (canvas, &mx, &my);
+  taps (win, x > mx ? GDK_KEY_Right : GDK_KEY_Left, 0, abs (x - mx));
+  taps (win, y > my ? GDK_KEY_Down : GDK_KEY_Up, 0, abs (y - my));
+  easel_canvas_marker_get (canvas, &mx, &my);
+  g_assert_cmpint (mx, ==, x);
+  g_assert_cmpint (my, ==, y);
+}
+
+static void
+journey14_panel (EaselWindow *win, gpointer panel)
+{
+  for (int i = 0; i < 10 && !focus_in (win, panel); i++)
+    press_key (win, GDK_KEY_F6, 0);
+  g_assert_true (focus_in (win, panel));
+}
+
+/* AS-17 (REQ-0028-18): no pointer event in all of it. */
+static void
+journey_14_keyboard_only (void)
+{
+  g_autofree char *path = journey_file ("keys.png");
+  g_autoptr (GFile) file = g_file_new_for_path (path);
+  g_autoptr (EaselImage) blank = easel_image_new (60, 40, 0xFFFFFFFFu), held = NULL;
+  g_autoptr (GBytes) png = easel_picture_encode (blank, EASEL_FORMAT_PNG, 90, NULL);
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  EaselPaletteBar *bar;
+  uint32_t color;
+
+  g_assert_true (g_file_set_contents (path, g_bytes_get_data (png, NULL), (gssize) g_bytes_get_size (png), NULL));
+  journey_clean ("[new-picture]\nwidth=60\nheight=40\ncanvas-color=#FFFFFF\n");
+  win = journey_launch (&file);
+  canvas = easel_window_get_canvas (win);
+  bar = easel_window_get_palette_bar (win);
+  /* A tool, a swatch. */
+  journey14_panel (win, toolbox_of (win));
+  journey14_walk_to (win, tool_button (win, "Pencil"));
+  press_key (win, GDK_KEY_space, 0);
+  g_assert_cmpint (easel_window_get_tool (win), ==, EASEL_TOOL_PENCIL);
+  journey14_panel (win, bar);
+  journey14_walk_to (win, GTK_WIDGET (easel_palette_bar_get_swatch (bar, 4)));
+  press_key (win, GDK_KEY_space, 0);
+  color = easel_swatch_get_color (easel_palette_bar_get_swatch (bar, 4));
+  g_assert_cmphex (easel_window_get_foreground (win), ==, color);
+  /* Draw by Space, arrows, Space. */
+  journey14_panel (win, canvas);
+  journey14_marker_to (win, 5, 5);
+  tap (win, GDK_KEY_space, 0);
+  taps (win, GDK_KEY_Right, 0, 10);
+  tap (win, GDK_KEY_space, 0);
+  g_assert_cmphex (easel_image_get (easel_window_get_picture (win), 10, 5), ==, color);
+  /* Select by the same, arrows move it, Shift with an arrow smears it, Enter puts it down. */
+  journey14_panel (win, toolbox_of (win));
+  journey14_walk_to (win, tool_button (win, "Select"));
+  press_key (win, GDK_KEY_space, 0);
+  g_assert_cmpint (easel_window_get_tool (win), ==, EASEL_TOOL_SELECT);
+  journey14_panel (win, canvas);
+  journey14_marker_to (win, 5, 5);
+  tap (win, GDK_KEY_space, 0);
+  taps (win, GDK_KEY_Right, 0, 10);
+  tap (win, GDK_KEY_space, 0);
+  g_assert_true (selection_is (win, 5, 5, 11, 1));
+  taps (win, GDK_KEY_Down, 0, 10);
+  g_assert_true (selection_is (win, 5, 15, 11, 1));
+  taps (win, GDK_KEY_Down, GDK_SHIFT_MASK, 3);
+  g_assert_true (selection_is (win, 5, 18, 11, 1));
+  tap (win, GDK_KEY_Return, 0);
+  held = picture_copy (win);
+  /* The move's hole, and the smear's trail at each row it passed. */
+  g_assert_cmphex (easel_image_get (held, 10, 5), ==, 0xFFFFFFFFu);
+  for (int y = 15; y <= 18; y++)
+    g_assert_cmphex (easel_image_get (held, 10, y), ==, color);
+  /* Ctrl+S writes the opened file: its accelerator names the action. */
+  g_assert_true (has_accel ("win.save", GDK_KEY_s, GDK_CONTROL_MASK));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "save", NULL);
+  wait_for_layout (win);
+  g_assert_false (easel_window_get_modified (win));
+  open_and_wait (win, path);
+  assert_same_picture (easel_window_get_picture (win), held);
+  journey_stop ();
+}
+
+/* AS-18 (REQ-0028-19): main wrote `language=uk` (EASEL_CHOSEN) before the app read it, and the locale is C. */
+static void
+journey_15_another_language (void)
+{
+  g_autofree char *path = journey_file (_ ("Untitled.png"));
+  g_autoptr (EaselImage) want = easel_image_new (120, 80, 0xFFFFFFFFu);
+  g_autoptr (GPtrArray) shown = g_ptr_array_new_with_free_func (g_free);
+  gboolean found = FALSE;
+  EaselWindow *win;
+
+  g_assert_cmpstr (easel_i18n_language (), ==, "uk");
+  g_assert_cmpstr (setlocale (LC_MESSAGES, NULL), ==, "C");
+  journey_clean (JOURNEY1_SETTINGS);
+  win = start_window ();
+  wait_for_layout (win);
+  collect_shown_text (GTK_WIDGET (win), shown);
+  for (guint i = 0; i < shown->len; i++)
+    found |= strcmp (shown->pdata[i], "Пара_метри") == 0;
+  g_assert_true (found);
+  journey1_draw (win, want);
+  assert_same_picture (easel_window_get_picture (win), want);
+  journey_end (win, path);
+  assert_same_picture (easel_window_get_picture (win), want);
+  journey_stop ();
+}
+
+/* AS-2 (REQ-0028-03): journeys 1 and 4 on a screen of scale 2. */
+static void
+journey_1_at_scale_2 (void)
+{
+  if (session_of_scale_2 ())
+    journey_1_first_picture ();
+}
+
+static void
+journey_4_at_scale_2 (void)
+{
+  if (session_of_scale_2 ())
+    journey_4_pixel_art ();
+}
+
 /* The letter a mnemonic marks. */
 static gunichar
 mnemonic_of (const char *label)
@@ -33082,6 +34166,23 @@ main (int argc, char **argv)
   g_test_add_func ("/0027/as12_reset_palette", as12_reset_palette);
   g_test_add_func ("/0027/as13_write_fails", as13_write_fails);
   g_test_add_func ("/0027/as15_language_notice", as15_language_notice);
+  g_test_add_func ("/0028/journey_1_first_picture", journey_1_first_picture);
+  g_test_add_func ("/0028/journey_2_poster", journey_2_poster);
+  g_test_add_func ("/0028/journey_3_fix_a_screenshot", journey_3_fix_a_screenshot);
+  g_test_add_func ("/0028/journey_4_pixel_art", journey_4_pixel_art);
+  g_test_add_func ("/0028/journey_5_rectangle_selection", journey_5_rectangle_selection);
+  g_test_add_func ("/0028/journey_6_free_form_cut", journey_6_free_form_cut);
+  g_test_add_func ("/0028/journey_7_oversize_paste", journey_7_oversize_paste);
+  g_test_add_func ("/0028/journey_8_rich_text", journey_8_rich_text);
+  g_test_add_func ("/0028/journey_9_transforms", journey_9_transforms);
+  g_test_add_func ("/0028/journey_10_interrupted_tools", journey_10_interrupted_tools);
+  g_test_add_func ("/0028/journey_11_dont_lose_work", journey_11_dont_lose_work);
+  g_test_add_func ("/0028/journey_12_big_picture", journey_12_big_picture);
+  g_test_add_func ("/0028/journey_13_preferences", journey_13_preferences);
+  g_test_add_func ("/0028/journey_14_keyboard_only", journey_14_keyboard_only);
+  g_test_add_func ("/0028-uk/journey_15_another_language", journey_15_another_language);
+  g_test_add_func ("/0028-scale2/journey_1_at_scale_2", journey_1_at_scale_2);
+  g_test_add_func ("/0028-scale2/journey_4_at_scale_2", journey_4_at_scale_2);
   g_test_add_func ("/0023-start/as8_start_in_language", as8_start_in_language);
   g_test_add_func ("/0023-rtl/as7_not_mirrored", as7_not_mirrored);
   g_test_add_func ("/0023-long/as11_main_window", as11_main_window);
