@@ -4312,6 +4312,12 @@ easel_canvas_set_tint (EaselCanvas *self, int percent)
   gtk_widget_queue_draw (GTK_WIDGET (self));
 }
 
+int
+easel_canvas_get_tint (EaselCanvas *self)
+{
+  return self->tint;
+}
+
 void
 easel_canvas_set_overlay_probe (EaselCanvas *self, gboolean line, gboolean tint)
 {

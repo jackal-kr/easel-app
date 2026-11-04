@@ -347,15 +347,6 @@ msgstr "Použít výchozí"
 msgid "Canvas color"
 msgstr "Barva plátna"
 
-msgid "Reset the Palette?"
-msgstr "Obnovit paletu?"
-
-msgid "All 28 colors go back to the classic ones. This cannot be undone."
-msgstr "Všech 28 barev se vrátí ke klasickým. Nelze vrátit zpět."
-
-msgid "_Reset"
-msgstr "_Obnovit"
-
 msgid "Size and color"
 msgstr "Velikost a barva"
 
@@ -389,8 +380,8 @@ msgstr "Panely"
 msgid "Palette"
 msgstr "Paleta"
 
-msgid "Reset Palette…"
-msgstr "Obnovit paletu…"
+msgid "Reset Palette"
+msgstr "Obnovit paletu"
 
 msgid "System default"
 msgstr "Výchozí systému"
@@ -954,8 +945,8 @@ msgstr "Obrázek"
 msgid "Could Not Save the Preferences"
 msgstr "Nelze uložit předvolby"
 
-msgid "The change applies until Easel closes, but settings.ini could not be written."
-msgstr "Změna platí do zavření Easelu, ale settings.ini nelze zapsat."
+msgid "The changes apply until Easel closes where they can, but settings.ini could not be written."
+msgstr "Změny platí do zavření Easelu, kde je to možné, ale settings.ini nelze zapsat."
 
 msgid "Could Not Stretch or Skew the Picture"
 msgstr "Nelze roztáhnout nebo zkosit obrázek"
@@ -1195,3 +1186,12 @@ msgstr "Všechny soubory"
 
 msgid "Smear the selection 1 pixel"
 msgstr "Táhnout stopu výběru o 1 pixel"
+
+msgid "Interface"
+msgstr "Rozhraní"
+
+msgid "Language Changes at Next Start"
+msgstr "Jazyk se změní při příštím spuštění"
+
+msgid "Your changes are kept. The new language shows the next time Easel starts."
+msgstr "Vaše změny jsou zachovány. Nový jazyk se ukáže při příštím spuštění Easelu."

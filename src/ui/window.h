@@ -68,7 +68,14 @@ EaselToolOptions *easel_window_get_tool_options (EaselWindow *self);
 /* Preferences (0020): the settings the dialog's rows show and change; what a change does to the run, each part where it applies now. */
 EaselSettings *easel_window_get_chosen_settings (EaselWindow *self);
 /* The changes written to the settings file; one failure a dialog opening shows the error (REQ-0020-10). */
-void easel_window_write_settings (EaselWindow *self, const EaselSettingChange *changes, gsize n);
+/* One write of the settings file, both or neither; FALSE if it failed, and the file is as it was. */
+gboolean easel_window_write_settings (EaselWindow *self, const EaselSettingChange *changes, gsize n);
+/* The error of REQ-0027-12, over what is on top. */
+void easel_window_show_settings_error (EaselWindow *self);
+/* The notice of REQ-0027-16, over what is on top. */
+void easel_window_show_language_notice (EaselWindow *self);
+/* The workspace as draft has it, for the run only. */
+void easel_window_preview_workspace (EaselWindow *self, const EaselSettings *draft);
 void easel_window_apply_style (EaselWindow *self, EaselStyle style);
 void easel_window_apply_tint (EaselWindow *self, int percent);
 void easel_window_apply_frame_time (EaselWindow *self, gboolean shown);
@@ -76,7 +83,9 @@ void easel_window_apply_panels (EaselWindow *self, gboolean toolbox, gboolean co
 /* The chosen size, canvas color, JPEG quality and workspace colors take effect for what comes next. */
 void easel_window_apply_chosen (EaselWindow *self);
 void easel_window_automatic_size (EaselWindow *self, int *width, int *height);
-void easel_window_reset_palette (EaselWindow *self);
+const EaselPalette *easel_window_get_palette (EaselWindow *self);
+void easel_window_set_palette (EaselWindow *self, const EaselPalette *palette);
+void easel_window_remove_palette_file (EaselWindow *self);
 void easel_window_preferences_opened (EaselWindow *self, AdwDialog *dialog);
 void easel_window_preferences_closed (EaselWindow *self);
 /* The Text tool's mode: TRUE for Opaque (REQ-0017-02). */

@@ -53,6 +53,7 @@ void easel_canvas_drop_preview (EaselCanvas *self);
 void easel_canvas_set_overlay_probe (EaselCanvas *self, gboolean line, gboolean tint);
 /* The strength of the selection's tint, in percent (REQ-0014-17, REQ-0020-03): 0 draws none. */
 void easel_canvas_set_tint (EaselCanvas *self, int percent);
+int easel_canvas_get_tint (EaselCanvas *self);                  /* test hook */
 /* "painted" comes once after each frame the canvas draws (0021). The CPU time its last frame took to build, in milliseconds (REQ-0021-12). */
 double easel_canvas_get_frame_ms (EaselCanvas *self);
 /* Test hooks: a drawing made slower by this many milliseconds of work; how many frames it has drawn. */

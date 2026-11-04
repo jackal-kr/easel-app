@@ -31,6 +31,7 @@ Vertical slices first (a thin end-to-end feature), breadth later.
 | 0024 | packaging-release | Flatpak, deb, AppImage, metadata | Choose the minimum GTK, then re-decide the accepted mutant of REQ-0017-14 (JOD, 2026-11-02: GTK 4.24 cannot kill it) |
 | 0025 | pixel-contract-tests | The six points of P7 (ADR-0003) as requirements, one test per gap, and fixes for what the tests find wrong (fractional-zoom edges, the grid and the pointer on them): the picture as squares, the same drag at two zooms, overlays leaving the picture unchanged, shown equals put-down | Accepted 2026-10-28; runs in this order (JOD): /sdd-check 0018, the 0017 text and tint task, then this feature (its text-box cases fail until the 0017 fix lands); the number moves when it is placed in the order |
 | 0026 | print | Print the picture, with a Picture tab in the print dialog | Implemented 2026-11-03. Split from Window Extras (JOD, 2026-11-03); no Page Setup item, the print dialog has it |
+| 0027 | preferences-buttons | OK, Cancel and Apply in Preferences over a live preview; page Appearance split, with a new page Interface | Implemented 2026-11-04. JOD, 2026-11-04: a mistake in Preferences was hard to take back |
 
 ### Phase 2: Modern extras (optional, starts only after the core XP scope is delivered)
 | Feature | One line |
@@ -77,5 +78,5 @@ Vertical slices first (a thin end-to-end feature), breadth later.
 | M0 Pilot | 0001 | Whole loop felt once; templates and skills tuned |
 | M1 Core drawing | 0002-0009 | Usable paint program: draw, fill, pick, zoom, undo, open/save |
 | M2 Shapes and selection | 0010-0019 | XP feature parity for editing |
-| M3 Polish | 0020-0023, 0026 | Preferences, accessibility, languages |
+| M3 Polish | 0020-0023, 0026, 0027 | Preferences, accessibility, languages |
 | M4 Release | 0024 | Flatpak, deb, AppImage |

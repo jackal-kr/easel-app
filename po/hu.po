@@ -346,15 +346,6 @@ msgstr "Alapértelmezett használata"
 msgid "Canvas color"
 msgstr "Vászon színe"
 
-msgid "Reset the Palette?"
-msgstr "Visszaállítja a palettát?"
-
-msgid "All 28 colors go back to the classic ones. This cannot be undone."
-msgstr "Mind a 28 szín visszatér a klasszikushoz. Ez nem vonható vissza."
-
-msgid "_Reset"
-msgstr "_Visszaállítás"
-
 msgid "Size and color"
 msgstr "Méret és szín"
 
@@ -388,8 +379,8 @@ msgstr "Panelek"
 msgid "Palette"
 msgstr "Paletta"
 
-msgid "Reset Palette…"
-msgstr "Paletta visszaállítása…"
+msgid "Reset Palette"
+msgstr "Paletta visszaállítása"
 
 msgid "System default"
 msgstr "Rendszer szerint"
@@ -945,8 +936,8 @@ msgstr "Kép"
 msgid "Could Not Save the Preferences"
 msgstr "Nem sikerült menteni a beállításokat"
 
-msgid "The change applies until Easel closes, but settings.ini could not be written."
-msgstr "A módosítás az Easel bezárásáig érvényes, de a settings.ini nem írható."
+msgid "The changes apply until Easel closes where they can, but settings.ini could not be written."
+msgstr "A módosítások, ahol lehet, az Easel bezárásáig érvényesek, de a settings.ini nem írható."
 
 msgid "Could Not Stretch or Skew the Picture"
 msgstr "Nem sikerült nyújtani vagy dönteni a képet"
@@ -1185,3 +1176,12 @@ msgstr "Minden fájl"
 
 msgid "Smear the selection 1 pixel"
 msgstr "A kijelölés nyomának húzása 1 képponttal"
+
+msgid "Interface"
+msgstr "Felület"
+
+msgid "Language Changes at Next Start"
+msgstr "A nyelv a következő indításkor változik"
+
+msgid "Your changes are kept. The new language shows the next time Easel starts."
+msgstr "A módosítások megmaradtak. Az új nyelv az Easel következő indításakor jelenik meg."

@@ -13,5 +13,7 @@ AdwSpinRow *easel_unit_row_new (const char *title, int lower, int upper, int val
 void easel_unit_row_set_unit (AdwSpinRow *row, const char *unit);
 /* The wheel changes the value only while the field has the focus; otherwise it goes on to what holds the field (REQ-0020-06). */
 void easel_unit_row_wheel_with_focus (AdwSpinRow *row);
+/* The field holds text that is not yet its value: typed and not committed. */
+gboolean easel_unit_row_is_typed (AdwSpinRow *row);
 
 G_END_DECLS

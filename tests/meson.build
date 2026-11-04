@@ -59,6 +59,7 @@ ui_vulkan_env.set('EASEL_TEST_DATA', meson.current_source_dir() / 'data')
 ui_vulkan_env.set('GDK_DEBUG', 'no-portals')
 test('ui-0025-vulkan', test_window, args: ['-p', '/0025/as1_squares_at_whole_zooms', '-p', '/0025/as1c_edges_at_fractional_zoom', '-p', '/0025/as1d_grid_on_cell_edges', '-p', '/0025/as2c_pointer_hits_the_drawn_pixel'],
      env: ui_vulkan_env, suite: 'ui', timeout: 180, is_parallel: false)
+test('ui-0027', test_window, args: ['-p', '/0027'], env: ui_env, suite: 'ui', timeout: 300, is_parallel: false)
 # AS-1b of 0025 needs a screen of scale 2 and skips elsewhere: tools/isolated.sh --scale 2 meson test -C build ui-0025-scale2
 test('ui-0025-scale2', test_window, args: ['-p', '/0025-scale2'], env: ui_env, suite: 'ui', timeout: 180, is_parallel: false)
 test('ui-0019-scale2', test_window, args: ['-p', '/0019-scale2'], env: ui_env, suite: 'ui', timeout: 180, is_parallel: false)

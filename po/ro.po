@@ -26,7 +26,7 @@ msgid "Height"
 msgstr "Înălțime"
 
 msgid "_Cancel"
-msgstr "_Anulează"
+msgstr "A_nulează"
 
 msgid "_OK"
 msgstr "_OK"
@@ -347,15 +347,6 @@ msgstr "Folosește implicit"
 msgid "Canvas color"
 msgstr "Culoarea pânzei"
 
-msgid "Reset the Palette?"
-msgstr "Resetezi paleta?"
-
-msgid "All 28 colors go back to the classic ones. This cannot be undone."
-msgstr "Toate cele 28 de culori revin la cele clasice. Nu se poate anula."
-
-msgid "_Reset"
-msgstr "_Resetează"
-
 msgid "Size and color"
 msgstr "Dimensiune și culoare"
 
@@ -389,8 +380,8 @@ msgstr "Panouri"
 msgid "Palette"
 msgstr "Paletă"
 
-msgid "Reset Palette…"
-msgstr "Resetează paleta…"
+msgid "Reset Palette"
+msgstr "Resetează paleta"
 
 msgid "System default"
 msgstr "Implicit de sistem"
@@ -954,8 +945,8 @@ msgstr "Imagine"
 msgid "Could Not Save the Preferences"
 msgstr "Nu s-au putut salva preferințele"
 
-msgid "The change applies until Easel closes, but settings.ini could not be written."
-msgstr "Modificarea e valabilă până la închiderea Easel, dar settings.ini nu a putut fi scris."
+msgid "The changes apply until Easel closes where they can, but settings.ini could not be written."
+msgstr "Modificările sunt valabile unde este posibil până la închiderea Easel, dar settings.ini nu a putut fi scris."
 
 msgid "Could Not Stretch or Skew the Picture"
 msgstr "Nu s-a putut întinde sau înclina imaginea"
@@ -1195,3 +1186,12 @@ msgstr "Toate fișierele"
 
 msgid "Smear the selection 1 pixel"
 msgstr "Lasă o urmă a selecției cu 1 pixel"
+
+msgid "Interface"
+msgstr "Interfață"
+
+msgid "Language Changes at Next Start"
+msgstr "Limba se schimbă la următoarea pornire"
+
+msgid "Your changes are kept. The new language shows the next time Easel starts."
+msgstr "Modificările sunt păstrate. Noua limbă apare la următoarea pornire a Easel."

@@ -26,7 +26,7 @@ msgid "Height"
 msgstr "Hauteur"
 
 msgid "_Cancel"
-msgstr "_Annuler"
+msgstr "A_nnuler"
 
 msgid "_OK"
 msgstr "_OK"
@@ -346,15 +346,6 @@ msgstr "Utiliser la valeur par défaut"
 msgid "Canvas color"
 msgstr "Couleur du canevas"
 
-msgid "Reset the Palette?"
-msgstr "Réinitialiser la palette ?"
-
-msgid "All 28 colors go back to the classic ones. This cannot be undone."
-msgstr "Les 28 couleurs reviennent aux couleurs classiques. Cette action est irréversible."
-
-msgid "_Reset"
-msgstr "_Réinitialiser"
-
 msgid "Size and color"
 msgstr "Taille et couleur"
 
@@ -388,8 +379,8 @@ msgstr "Panneaux"
 msgid "Palette"
 msgstr "Palette"
 
-msgid "Reset Palette…"
-msgstr "Réinitialiser la palette…"
+msgid "Reset Palette"
+msgstr "Réinitialiser la palette"
 
 msgid "System default"
 msgstr "Valeur du système"
@@ -945,8 +936,8 @@ msgstr "Image"
 msgid "Could Not Save the Preferences"
 msgstr "Impossible d'enregistrer les préférences"
 
-msgid "The change applies until Easel closes, but settings.ini could not be written."
-msgstr "Le changement s'applique jusqu'à la fermeture d'Easel, mais settings.ini n'a pas pu être écrit."
+msgid "The changes apply until Easel closes where they can, but settings.ini could not be written."
+msgstr "Les modifications s'appliquent là où c'est possible jusqu'à la fermeture d'Easel, mais settings.ini n'a pas pu être écrit."
 
 msgid "Could Not Stretch or Skew the Picture"
 msgstr "Impossible d'étirer ou d'incliner l'image"
@@ -1185,3 +1176,12 @@ msgstr "Tous les fichiers"
 
 msgid "Smear the selection 1 pixel"
 msgstr "Laisser une traînée de la sélection de 1 pixel"
+
+msgid "Interface"
+msgstr "Interface"
+
+msgid "Language Changes at Next Start"
+msgstr "La langue change au prochain démarrage"
+
+msgid "Your changes are kept. The new language shows the next time Easel starts."
+msgstr "Vos modifications sont gardées. La nouvelle langue s'affichera au prochain démarrage d'Easel."

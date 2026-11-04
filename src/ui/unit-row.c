@@ -6,13 +6,19 @@
 
 #define UNIT_KEY "easel-unit"
 
+static char *
+unit_text (int value, const char *unit)
+{
+  return unit == NULL ? g_strdup_printf ("%d", value)
+         : g_str_equal (unit, "°") ? g_strdup_printf ("%d%s", value, unit) : g_strdup_printf ("%d %s", value, unit);
+}
+
 static int
 on_output (AdwSpinRow *row, gpointer data)
 {
   const char *unit = g_object_get_data (G_OBJECT (row), UNIT_KEY);
   int value = (int) adw_spin_row_get_value (row);
-  g_autofree char *text = unit == NULL ? g_strdup_printf ("%d", value)
-                          : g_str_equal (unit, "°") ? g_strdup_printf ("%d%s", value, unit) : g_strdup_printf ("%d %s", value, unit);
+  g_autofree char *text = unit_text (value, unit);
 
   gtk_editable_set_text (GTK_EDITABLE (row), text);
   return TRUE;
@@ -98,4 +104,12 @@ easel_unit_row_wheel_with_focus (AdwSpinRow *row)
   g_signal_connect (focus, "enter", G_CALLBACK (on_focus_enter), NULL);
   g_signal_connect (focus, "leave", G_CALLBACK (on_focus_leave), NULL);
   gtk_widget_add_controller (GTK_WIDGET (row), focus);
+}
+
+gboolean
+easel_unit_row_is_typed (AdwSpinRow *row)
+{
+  g_autofree char *shown = unit_text ((int) adw_spin_row_get_value (row), g_object_get_data (G_OBJECT (row), "easel-unit"));
+
+  return strcmp (gtk_editable_get_text (GTK_EDITABLE (row)), shown) != 0;
 }

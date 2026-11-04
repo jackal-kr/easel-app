@@ -11782,3 +11782,160 @@ test: ui-0021
 --- replace
   if (FALSE
       || EASEL_IS_SWATCH
+
+=== REQ-0027-07 OK and Apply do not commit a typed value
+file: src/ui/preferences-dialog.c
+test: ui-0027
+--- find
+  g_slist_foreach (p->fields, commit_field, NULL);
+  changes = g_new
+--- replace
+  changes = g_new
+
+=== REQ-0027-07 a key that does not differ is written all the same
+file: src/ui/preferences-dialog.c
+test: ui-0027
+--- find
+      if (g_strcmp0 (k->now, k->in_file) != 0)
+        changes[n++]
+--- replace
+      if (k->now != NULL)
+        changes[n++]
+
+=== REQ-0027-10 Cancel leaves the classic colors
+file: src/ui/preferences-dialog.c
+test: ui-0027
+--- find
+  easel_window_set_palette (p->win, &p->palette);
+}
+--- replace
+}
+
+=== REQ-0027-10 Cancel leaves the tint
+file: src/ui/preferences-dialog.c
+test: ui-0027
+--- find
+  if (p->draft.tint != p->state.tint)
+    easel_window_apply_tint (p->win, p->state.tint);
+--- replace
+
+=== REQ-0027-10 Cancel leaves the panels
+file: src/ui/preferences-dialog.c
+test: ui-0027
+--- find
+  easel_window_apply_panels (p->win, p->shown[0], p->shown[1], p->shown[2]);
+--- replace
+
+=== REQ-0027-05 a change that waits counts at once
+file: src/ui/preferences-dialog.c
+test: ui-0027
+--- find
+  p->draft = *p->chosen;
+--- replace
+  p->chosen = &p->draft;
+  p->draft = *easel_window_get_chosen_settings (win);
+
+=== REQ-0027-06 a switch moved back shows the panel by the switch
+file: src/ui/preferences-dialog.c
+test: ui-0027
+--- find
+                             p->draft.show_toolbox == p->state.show_toolbox ? p->shown[0] : p->draft.show_toolbox,
+--- replace
+                             p->draft.show_toolbox,
+
+=== REQ-0027-09 Automatic size off keeps the size shown, not the state's numbers
+file: src/ui/preferences-dialog.c
+test: ui-0027
+--- find
+  int w = state_on ? (int) adw_spin_row_get_value (p->width) : p->state.width;
+--- replace
+  int w = (int) adw_spin_row_get_value (p->width);
+
+=== REQ-0027-12 a failed write is not owing
+file: src/ui/preferences-dialog.c
+test: ui-0027
+--- find
+      if (written)
+        {
+          g_free (k->in_file);
+--- replace
+      if (TRUE)
+        {
+          g_free (k->in_file);
+
+=== REQ-0027-12 a failed Apply shows no error
+file: src/ui/preferences-dialog.c
+test: ui-0027
+--- find
+  if (!keep (p))
+    easel_window_show_settings_error (p->win);
+--- replace
+  if (!keep (p))
+    ;
+
+=== REQ-0027-12 a failed OK shows no error
+file: src/ui/preferences-dialog.c
+test: ui-0027
+--- find
+  if (!written)
+    easel_window_show_settings_error (win);
+--- replace
+  if (!written)
+    ;
+
+=== REQ-0027-14 the palette file goes though the palette did not change
+file: src/ui/preferences-dialog.c
+test: ui-0027
+--- find
+  if (memcmp (easel_window_get_palette (p->win), &p->palette, sizeof p->palette) != 0)
+    easel_window_remove_palette_file (p->win);
+--- replace
+  easel_window_remove_palette_file (p->win);
+
+=== REQ-0027-04 Apply ignores text not yet committed
+file: src/ui/preferences-dialog.c
+test: ui-0027
+--- find
+    differs = easel_unit_row_is_typed (l->data);
+--- replace
+    differs = FALSE;
+
+=== REQ-0027-11 a quit leaves the error of a failed write open
+file: src/ui/window.c
+test: ui-0027
+--- find
+      if (self->settings_error != NULL)
+        adw_dialog_force_close (self->settings_error);
+--- replace
+
+=== REQ-0027-03 Enter's repeat after OK goes on
+file: src/ui/window.c
+test: ui-0027
+--- find
+  if (repeat && keyval == self->closed_key)
+    return GDK_EVENT_STOP;
+--- replace
+
+=== REQ-0027-16 a new language says nothing, at Apply
+file: src/ui/preferences-dialog.c
+test: ui-0027
+--- find
+  else if (changes)
+    easel_window_show_language_notice (p->win);
+--- replace
+
+=== REQ-0027-16 a new language says nothing, at OK
+file: src/ui/preferences-dialog.c
+test: ui-0027
+--- find
+  else if (changes)
+    easel_window_show_language_notice (win);
+--- replace
+
+=== REQ-0027-16 the running language gets the notice too
+file: src/ui/preferences-dialog.c
+test: ui-0027
+--- find
+         && strcmp (easel_i18n_choose (p->draft.language), easel_i18n_language ()) != 0;
+--- replace
+         ;

@@ -346,15 +346,6 @@ msgstr "Usar padrão"
 msgid "Canvas color"
 msgstr "Cor da tela"
 
-msgid "Reset the Palette?"
-msgstr "Redefinir a paleta?"
-
-msgid "All 28 colors go back to the classic ones. This cannot be undone."
-msgstr "Todas as 28 cores voltam às clássicas. Isto não pode ser desfeito."
-
-msgid "_Reset"
-msgstr "_Redefinir"
-
 msgid "Size and color"
 msgstr "Tamanho e cor"
 
@@ -388,8 +379,8 @@ msgstr "Painéis"
 msgid "Palette"
 msgstr "Paleta"
 
-msgid "Reset Palette…"
-msgstr "Redefinir a paleta…"
+msgid "Reset Palette"
+msgstr "Redefinir a paleta"
 
 msgid "System default"
 msgstr "Padrão do sistema"
@@ -945,8 +936,8 @@ msgstr "Imagem"
 msgid "Could Not Save the Preferences"
 msgstr "Não foi possível salvar as preferências"
 
-msgid "The change applies until Easel closes, but settings.ini could not be written."
-msgstr "A alteração vale até o Easel fechar, mas não foi possível gravar settings.ini."
+msgid "The changes apply until Easel closes where they can, but settings.ini could not be written."
+msgstr "As alterações valem onde for possível até o Easel fechar, mas não foi possível gravar settings.ini."
 
 msgid "Could Not Stretch or Skew the Picture"
 msgstr "Não foi possível esticar ou inclinar a imagem"
@@ -1185,3 +1176,12 @@ msgstr "Todos os arquivos"
 
 msgid "Smear the selection 1 pixel"
 msgstr "Deixar um rastro da seleção de 1 pixel"
+
+msgid "Interface"
+msgstr "Interface"
+
+msgid "Language Changes at Next Start"
+msgstr "O idioma muda na próxima inicialização"
+
+msgid "Your changes are kept. The new language shows the next time Easel starts."
+msgstr "Suas alterações foram mantidas. O novo idioma aparecerá na próxima vez que o Easel iniciar."

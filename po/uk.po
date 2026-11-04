@@ -347,15 +347,6 @@ msgstr "Типово"
 msgid "Canvas color"
 msgstr "Колір полотна"
 
-msgid "Reset the Palette?"
-msgstr "Скинути палітру?"
-
-msgid "All 28 colors go back to the classic ones. This cannot be undone."
-msgstr "Усі 28 кольорів повернуться до класичних. Це не можна скасувати."
-
-msgid "_Reset"
-msgstr "_Скинути"
-
 msgid "Size and color"
 msgstr "Розмір і колір"
 
@@ -389,8 +380,8 @@ msgstr "Панелі"
 msgid "Palette"
 msgstr "Палітра"
 
-msgid "Reset Palette…"
-msgstr "Скинути палітру…"
+msgid "Reset Palette"
+msgstr "Скинути палітру"
 
 msgid "System default"
 msgstr "Як у системі"
@@ -954,8 +945,8 @@ msgstr "Малюнок"
 msgid "Could Not Save the Preferences"
 msgstr "Не вдалося зберегти параметри"
 
-msgid "The change applies until Easel closes, but settings.ini could not be written."
-msgstr "Зміна діє до закриття Easel, але файл settings.ini записати не вдалося."
+msgid "The changes apply until Easel closes where they can, but settings.ini could not be written."
+msgstr "Зміни діють там, де це можливо, до закриття Easel, але не вдалося записати settings.ini."
 
 msgid "Could Not Stretch or Skew the Picture"
 msgstr "Не вдалося розтягти або нахилити малюнок"
@@ -1195,3 +1186,12 @@ msgstr "Усі файли"
 
 msgid "Smear the selection 1 pixel"
 msgstr "Шлейф виділення на 1 піксель"
+
+msgid "Interface"
+msgstr "Інтерфейс"
+
+msgid "Language Changes at Next Start"
+msgstr "Мова зміниться під час наступного запуску"
+
+msgid "Your changes are kept. The new language shows the next time Easel starts."
+msgstr "Ваші зміни збережено. Нова мова з'явиться під час наступного запуску Easel."

@@ -68,7 +68,7 @@ msgid "Axonometric"
 msgstr "Axonométrica"
 
 msgid "_Apply"
-msgstr "_Aplicar"
+msgstr "A_plicar"
 
 msgid "File"
 msgstr "Archivo"
@@ -346,15 +346,6 @@ msgstr "Usar predeterminado"
 msgid "Canvas color"
 msgstr "Color del lienzo"
 
-msgid "Reset the Palette?"
-msgstr "¿Restablecer la paleta?"
-
-msgid "All 28 colors go back to the classic ones. This cannot be undone."
-msgstr "Los 28 colores vuelven a los clásicos. Esto no se puede deshacer."
-
-msgid "_Reset"
-msgstr "_Restablecer"
-
 msgid "Size and color"
 msgstr "Tamaño y color"
 
@@ -388,8 +379,8 @@ msgstr "Paneles"
 msgid "Palette"
 msgstr "Paleta"
 
-msgid "Reset Palette…"
-msgstr "Restablecer la paleta…"
+msgid "Reset Palette"
+msgstr "Restablecer la paleta"
 
 msgid "System default"
 msgstr "Según el sistema"
@@ -945,8 +936,8 @@ msgstr "Imagen"
 msgid "Could Not Save the Preferences"
 msgstr "No se pudieron guardar las preferencias"
 
-msgid "The change applies until Easel closes, but settings.ini could not be written."
-msgstr "El cambio se aplica hasta que Easel se cierre, pero no se pudo escribir settings.ini."
+msgid "The changes apply until Easel closes where they can, but settings.ini could not be written."
+msgstr "Los cambios se aplican donde es posible hasta que Easel se cierre, pero no se pudo escribir settings.ini."
 
 msgid "Could Not Stretch or Skew the Picture"
 msgstr "No se pudo estirar o inclinar la imagen"
@@ -1185,3 +1176,12 @@ msgstr "Todos los archivos"
 
 msgid "Smear the selection 1 pixel"
 msgstr "Dejar un rastro de la selección de 1 píxel"
+
+msgid "Interface"
+msgstr "Interfaz"
+
+msgid "Language Changes at Next Start"
+msgstr "El idioma cambia en el próximo inicio"
+
+msgid "Your changes are kept. The new language shows the next time Easel starts."
+msgstr "Sus cambios se conservan. El nuevo idioma se verá la próxima vez que Easel se inicie."

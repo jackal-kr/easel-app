@@ -76,7 +76,8 @@ struct _EaselWindow
   gboolean help_dropped;                        /* a quit has begun: Help's failure is not shown (REQ-0021-04) */
   guint help_error_timer;                       /* Help's failure waits for a free moment */
   guint key_down;                               /* the key last pressed and not yet released: another press of it is a repeat */
-  gboolean preferences_error_shown;
+  AdwDialog *settings_error;                    /* the error of a failed OK or Apply, while it shows (REQ-0027-12) */
+  guint closed_key;                             /* the Enter or Space held as Preferences closed: its repeats do nothing */
   gint64 frame_time_shown;                      /* when the Frame time part last changed (REQ-0021-12) */
   guint frame_time_timer;
   gsize transform_limit;                        /* tests: an Image command's allocation above this fails as for memory; G_MAXSIZE is off */
@@ -910,7 +911,7 @@ quit_now (EaselWindow *self)
 }
 
 /* An emission hook, since the handler libadwaita connects at the window's start stops a close request while a dialog is open, ahead of any handler of ours.
-   Preferences closes, a typed value kept (REQ-0020-01), so do Keyboard Shortcuts, About Easel and Help's error (REQ-0021-03), and the quit goes on;
+   Preferences closes, what is not kept dropped (REQ-0027-11), so do Keyboard Shortcuts, About Easel and Help's error (REQ-0021-03), and the quit goes on;
    a failure of Help not yet shown is dropped (REQ-0021-04). */
 static gboolean
 close_request_hook (GSignalInvocationHint *hint, guint n_values, const GValue *values, gpointer data)
@@ -921,6 +922,8 @@ close_request_hook (GSignalInvocationHint *hint, guint n_values, const GValue *v
     {
       EaselWindow *self = EASEL_WINDOW (window);
 
+      if (self->settings_error != NULL)
+        adw_dialog_force_close (self->settings_error);
       if (self->preferences != NULL)
         adw_dialog_force_close (self->preferences);
       if (self->extra_dialog != NULL)
@@ -3272,24 +3275,52 @@ void
 easel_window_preferences_opened (EaselWindow *self, AdwDialog *dialog)
 {
   self->preferences = dialog;
-  self->preferences_error_shown = FALSE;
 }
 
 void
 easel_window_preferences_closed (EaselWindow *self)
 {
   self->preferences = NULL;
+  if (self->key_down == GDK_KEY_Return || self->key_down == GDK_KEY_KP_Enter || self->key_down == GDK_KEY_ISO_Enter || self->key_down == GDK_KEY_space)
+    self->closed_key = self->key_down;
 }
 
-void
+gboolean
 easel_window_write_settings (EaselWindow *self, const EaselSettingChange *changes, gsize n)
 {
   g_autofree char *path = easel_settings_file_path ();
 
-  if (easel_settings_file_change (path, changes, n) || self->preferences_error_shown)
-    return;
-  self->preferences_error_shown = TRUE;
-  show_save_error (self, _ ("Could Not Save the Preferences"), _ ("The change applies until Easel closes, but settings.ini could not be written."));
+  return easel_settings_file_change (path, changes, n);
+}
+
+void
+easel_window_show_language_notice (EaselWindow *self)
+{
+  AdwDialog *dialog = adw_alert_dialog_new (_ ("Language Changes at Next Start"), _ ("Your changes are kept. The new language shows the next time Easel starts."));
+
+  adw_alert_dialog_add_response (ADW_ALERT_DIALOG (dialog), "ok", _ ("_OK"));
+  adw_dialog_present (dialog, GTK_WIDGET (self));
+}
+
+void
+easel_window_show_settings_error (EaselWindow *self)
+{
+  AdwDialog *dialog = adw_alert_dialog_new (_ ("Could Not Save the Preferences"),
+                                            _ ("The changes apply until Easel closes where they can, but settings.ini could not be written."));
+
+  adw_alert_dialog_add_response (ADW_ALERT_DIALOG (dialog), "close", _ ("Close"));
+  g_set_weak_pointer (&self->settings_error, dialog);
+  adw_dialog_present (dialog, GTK_WIDGET (self));
+}
+
+void
+easel_window_preview_workspace (EaselWindow *self, const EaselSettings *draft)
+{
+  self->settings.has_workspace_color = draft->has_workspace_color;
+  self->settings.workspace_color = draft->workspace_color;
+  self->settings.has_workspace_color_dark = draft->has_workspace_color_dark;
+  self->settings.workspace_color_dark = draft->workspace_color_dark;
+  apply_workspace_color (&self->settings);
 }
 
 void
@@ -3340,15 +3371,26 @@ easel_window_automatic_size (EaselWindow *self, int *width, int *height)
   easel_settings_resolve_size (&automatic, area_w, area_h, width, height);
 }
 
+const EaselPalette *
+easel_window_get_palette (EaselWindow *self)
+{
+  return &self->palette;
+}
+
 void
-easel_window_reset_palette (EaselWindow *self)
+easel_window_set_palette (EaselWindow *self, const EaselPalette *palette)
+{
+  self->palette = *palette;
+  easel_palette_bar_set_palette (self->palette_bar, &self->palette);
+}
+
+void
+easel_window_remove_palette_file (EaselWindow *self)
 {
   g_autofree char *path = easel_palette_file_path ();
 
-  easel_palette_defaults (&self->palette);
-  easel_palette_bar_set_palette (self->palette_bar, &self->palette);
   if (g_remove (path) != 0)
-    g_debug ("Cannot remove %s", path);          /* the swatches still change for this run, silently (REQ-0020-07) */
+    g_debug ("Cannot remove %s", path);          /* the swatches keep the classic colors for this run, silently (REQ-0027-12) */
 }
 
 /* ---- Stretch and Skew (0019) ---- */
@@ -3601,6 +3643,10 @@ on_key_pressed (EaselWindow *self, guint keyval, guint keycode, GdkModifierType 
 
   keyval = shortcut_keyval (self, keyval, keycode, state);
   repeat = keyval == self->key_down;
+  /* The Enter or Space that closed Preferences does nothing more while it is held (REQ-0027's edge cases). */
+  if (repeat && keyval == self->closed_key)
+    return GDK_EVENT_STOP;
+  self->closed_key = 0;
   /* A key repeat of F1 does nothing (REQ-0021-04). */
   if (keyval == GDK_KEY_F1 && repeat && (state & GDK_CONTROL_MASK) == 0)
     return GDK_EVENT_STOP;

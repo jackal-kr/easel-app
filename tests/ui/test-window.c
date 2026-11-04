@@ -27382,7 +27382,8 @@ open_preferences (EaselWindow *win)
   g_action_group_activate_action (G_ACTION_GROUP (win), "preferences", NULL);
   wait_for_layout (win);
   d = adw_application_window_get_visible_dialog (ADW_APPLICATION_WINDOW (win));
-  g_assert_true (ADW_IS_PREFERENCES_DIALOG (d));
+  g_assert_nonnull (d);
+  g_assert_cmpstr (adw_dialog_get_title (d), ==, _ ("Preferences"));
   return d;
 }
 
@@ -27392,6 +27393,44 @@ close_preferences (EaselWindow *win, AdwDialog *d)
   adw_dialog_force_close (d);
   wait_for_layout (win);
   g_assert_null (adw_application_window_get_visible_dialog (ADW_APPLICATION_WINDOW (win)));
+}
+
+/* Presses a button of the row, by its own words, as a press does: an insensitive one does nothing. */
+static void collect_widgets_of_type (GtkWidget *w, GType type, GPtrArray *out);
+static void wait_for_no_dialog (EaselWindow *win);
+
+static GtkWidget *
+prefs_button (AdwDialog *d, const char *label)
+{
+  g_autoptr (GPtrArray) buttons = g_ptr_array_new ();
+
+  collect_widgets_of_type (GTK_WIDGET (d), GTK_TYPE_BUTTON, buttons);
+  for (guint i = 0; i < buttons->len; i++)
+    if (g_strcmp0 (gtk_button_get_label (buttons->pdata[i]), _ (label)) == 0)
+      return buttons->pdata[i];
+  g_error ("no button %s", label);
+}
+
+static void
+press_prefs (EaselWindow *win, AdwDialog *d, const char *label)
+{
+  GtkWidget *button = prefs_button (d, label);
+
+  if (gtk_widget_get_sensitive (button))
+    g_signal_emit_by_name (button, "clicked");
+  wait_for_layout (win);
+}
+
+/* The notice of REQ-0027-16, closed: what a test that keeps a language goes on from. */
+static void
+close_language_notice (EaselWindow *win)
+{
+  AdwDialog *notice = adw_application_window_get_visible_dialog (ADW_APPLICATION_WINDOW (win));
+
+  g_assert_true (ADW_IS_ALERT_DIALOG (notice));
+  g_assert_cmpstr (adw_alert_dialog_get_heading (ADW_ALERT_DIALOG (notice)), ==, _ ("Language Changes at Next Start"));
+  adw_dialog_force_close (notice);
+  wait_for_layout (win);
 }
 
 static gboolean
@@ -27535,7 +27574,7 @@ as1_quit_closes_it (void)
 
   gtk_editable_set_text (GTK_EDITABLE (pref_row (d, "Tint strength")), "30");
   gtk_window_close (GTK_WINDOW (win));
-  g_assert_true (settings_has ("tint=30"));
+  g_assert_true (settings_has ("tint=12"));                     /* what is not kept is dropped (REQ-0027-11) */
   wait_for_no_window ();                        /* the quit went on */
   close_windows ();
   write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
@@ -27549,14 +27588,15 @@ as2_opens_on_appearance (void)
   AdwDialog *d = open_preferences (win);
   AdwPreferencesPage *page;
 
-  page = adw_preferences_dialog_get_visible_page (ADW_PREFERENCES_DIALOG (d));
+  page = ADW_PREFERENCES_PAGE (adw_view_stack_get_visible_child (ADW_VIEW_STACK (gtk_widget_get_ancestor (pref_row (d, "Style"), ADW_TYPE_VIEW_STACK))));
   g_assert_cmpstr (adw_preferences_page_get_title (page), ==, "Appearance");
   g_assert_nonnull (find_pref_row (GTK_WIDGET (d), "Line and shape width"));
-  adw_preferences_dialog_set_visible_page_name (ADW_PREFERENCES_DIALOG (d), "drawing");
+  adw_view_stack_set_visible_child_name (ADW_VIEW_STACK (gtk_widget_get_ancestor (pref_row (d, "Style"), ADW_TYPE_VIEW_STACK)), "drawing");
   type_into (GTK_EDITABLE (pref_row (d, "Tint strength")), "33");
-  close_preferences (win, d);
+  press_prefs (win, d, "_OK");                                  /* kept by OK, not by any close (REQ-0027-07) */
+  wait_for_no_dialog (win);
   d = open_preferences (win);
-  page = adw_preferences_dialog_get_visible_page (ADW_PREFERENCES_DIALOG (d));
+  page = ADW_PREFERENCES_PAGE (adw_view_stack_get_visible_child (ADW_VIEW_STACK (gtk_widget_get_ancestor (pref_row (d, "Style"), ADW_TYPE_VIEW_STACK))));
   g_assert_cmpstr (adw_preferences_page_get_title (page), ==, "Appearance");
   g_assert_cmpint (field_value (GTK_EDITABLE (pref_row (d, "Tint strength"))), ==, 33);
   close_preferences (win, d);
@@ -27576,21 +27616,26 @@ as3_style_and_workspace (void)
   g_assert_cmpint (adw_combo_row_get_selected (ADW_COMBO_ROW (pref_row (d, "Style"))), ==, 0);
   set_combo (d, "Style", 2);
   g_assert_cmpint (adw_style_manager_get_color_scheme (style), ==, ADW_COLOR_SCHEME_FORCE_DARK);
+  press_prefs (win, d, "_Apply");
   g_assert_true (settings_has ("style=dark"));
   set_combo (d, "Style", 1);
   g_assert_cmpint (adw_style_manager_get_color_scheme (style), ==, ADW_COLOR_SCHEME_FORCE_LIGHT);
+  press_prefs (win, d, "_Apply");
   g_assert_true (settings_has ("style=light"));
   set_combo (d, "Style", 0);
   g_assert_cmpint (adw_style_manager_get_color_scheme (style), ==, ADW_COLOR_SCHEME_DEFAULT);
+  press_prefs (win, d, "_Apply");
   g_assert_true (settings_has ("style=system"));
 
   use_default = find_button (pref_row (d, "Workspace color"), "Use Default");
   g_assert_nonnull (use_default);
   g_assert_false (gtk_widget_get_sensitive (GTK_WIDGET (use_default)));
   set_swatch (d, "Workspace color", "#123456");
+  press_prefs (win, d, "_Apply");
   g_assert_true (settings_has ("workspace-color=#123456"));
   g_assert_true (gtk_widget_get_sensitive (GTK_WIDGET (use_default)));
   g_signal_emit_by_name (use_default, "clicked");
+  press_prefs (win, d, "_Apply");
   g_assert_false (settings_has ("workspace-color=#123456"));
   g_assert_false (gtk_widget_get_sensitive (GTK_WIDGET (use_default)));
   close_preferences (win, d);
@@ -27607,6 +27652,7 @@ as5_panel_switches (void)
   g_autoptr (GVariant) state = NULL;
 
   set_switch (d, "Tool Box", FALSE);
+  press_prefs (win, d, "_Apply");
   g_assert_true (settings_has ("toolbox=off"));
   state = g_action_group_get_action_state (G_ACTION_GROUP (win), "show-toolbox");
   g_assert_false (g_variant_get_boolean (state));
@@ -27640,15 +27686,19 @@ as6_new_picture_rows (void)
     g_autofree char *w_line = g_strdup_printf ("width=%d", w0);
     g_autofree char *h_line = g_strdup_printf ("height=%d", field_value (height));
 
+    press_prefs (win, d, "_Apply");
     g_assert_true (settings_has (w_line));
     g_assert_true (settings_has (h_line));
   }
   type_into (width, "300");
   type_into (height, "120");
+  press_prefs (win, d, "_Apply");
   g_assert_true (settings_has ("width=300"));
   set_swatch (d, "Canvas color", "rgba(0,0,0,0)");
+  press_prefs (win, d, "_Apply");
   g_assert_true (settings_has ("canvas-color=#00000000"));
   set_swatch (d, "Canvas color", "#ABCDEF");
+  press_prefs (win, d, "_Apply");
   g_assert_true (settings_has ("canvas-color=#ABCDEF"));
   /* The open picture does not change. */
   assert_size (win, easel_window_get_picture (win)->width, easel_window_get_picture (win)->height);
@@ -27660,6 +27710,7 @@ as6_new_picture_rows (void)
   g_assert_cmphex (easel_image_get (easel_window_get_picture (win), 0, 0), ==, 0xFFABCDEFu);
   d = open_preferences (win);
   set_switch (d, "Automatic size", TRUE);
+  press_prefs (win, d, "_Apply");
   g_assert_true (settings_has ("width=auto"));
   g_assert_true (settings_has ("height=auto"));
   close_preferences (win, d);
@@ -27690,6 +27741,7 @@ as7_drawing_rows (void)
   set_switch (d, "Bold", TRUE);
   type_into (GTK_EDITABLE (pref_row (d, "Undo memory")), "1024");
   type_into (GTK_EDITABLE (pref_row (d, "JPEG quality")), "50");
+  press_prefs (win, d, "_Apply");
   g_assert_true (settings_has ("brush=square-5"));
   g_assert_true (settings_has ("airbrush=24"));
   g_assert_true (settings_has ("eraser=10"));
@@ -27767,56 +27819,11 @@ as8_number_fields (void)
   g_assert_cmpstr (gtk_editable_get_text (GTK_EDITABLE (pref_row (d, "JPEG quality"))), ==, "90");
   g_assert_cmpint (adw_combo_row_get_selected (ADW_COMBO_ROW (pref_row (d, "Line and shape width"))), ==, 0);
   g_assert_true (settings_has ("line-width=7"));                /* shown as the default, not rewritten */
-  /* 100 quick steps leave one line of the last value. */
+  /* 100 quick steps, kept by one Apply, leave one line of the last value. */
   for (int i = 0; i < 100; i++)
     gtk_adjustment_set_value (adj, i % 51);
+  press_prefs (win, d, "_Apply");
   g_assert_true (settings_has ("tint=48"));
-  close_preferences (win, d);
-  close_windows ();
-  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
-}
-
-/* AS-9 (REQ-0020-07): Reset Palette asks, and Reset takes the file away; the two colors stay. */
-static void
-as9_reset_palette (void)
-{
-  EaselWindow *win = window_with ("[new-picture]\nwidth=60\nheight=40\n");
-  g_autofree char *path = easel_palette_file_path ();
-  AdwDialog *d;
-  AdwAlertDialog *ask;
-
-  g_assert_true (g_file_set_contents (path, "[palette]\ncolor1=#123456\n", -1, NULL));
-  close_windows ();
-  win = start_window ();
-  wait_for_layout (win);
-  g_assert_cmphex (easel_swatch_get_color (easel_palette_bar_get_swatch (easel_window_get_palette_bar (win), 1)), ==, 0xFF123456u);
-  d = open_preferences (win);
-  g_signal_emit_by_name (find_button (GTK_WIDGET (d), "Reset Palette…"), "clicked");
-  wait_for_layout (win);
-  ask = ADW_ALERT_DIALOG (adw_application_window_get_visible_dialog (ADW_APPLICATION_WINDOW (win)));
-  g_assert_cmpstr (adw_alert_dialog_get_heading (ask), ==, "Reset the Palette?");
-  g_assert_cmpstr (adw_alert_dialog_get_default_response (ask), ==, "cancel");
-  g_assert_cmpstr (adw_alert_dialog_get_close_response (ask), ==, "cancel");
-  g_signal_emit_by_name (ask, "response", "cancel");
-  adw_dialog_close (ADW_DIALOG (ask));
-  wait_for_layout (win);
-  g_assert_true (g_file_test (path, G_FILE_TEST_EXISTS));
-  g_signal_emit_by_name (find_button (GTK_WIDGET (d), "Reset Palette…"), "clicked");
-  wait_for_layout (win);
-  ask = ADW_ALERT_DIALOG (adw_application_window_get_visible_dialog (ADW_APPLICATION_WINDOW (win)));
-  g_signal_emit_by_name (ask, "response", "reset");
-  adw_dialog_close (ADW_DIALOG (ask));
-  wait_for_layout (win);
-  g_assert_false (g_file_test (path, G_FILE_TEST_EXISTS));
-  g_assert_cmphex (easel_swatch_get_color (easel_palette_bar_get_swatch (easel_window_get_palette_bar (win), 1)), !=, 0xFF123456u);
-  /* With no file it is no failure. */
-  g_signal_emit_by_name (find_button (GTK_WIDGET (d), "Reset Palette…"), "clicked");
-  wait_for_layout (win);
-  ask = ADW_ALERT_DIALOG (adw_application_window_get_visible_dialog (ADW_APPLICATION_WINDOW (win)));
-  g_signal_emit_by_name (ask, "response", "reset");
-  adw_dialog_close (ADW_DIALOG (ask));
-  wait_for_layout (win);
-  g_assert_true (adw_application_window_get_visible_dialog (ADW_APPLICATION_WINDOW (win)) == d);
   close_preferences (win, d);
   close_windows ();
   write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
@@ -27856,40 +27863,6 @@ as10_picture_untouched (void)
 }
 
 /* AS-12 (REQ-0020-10): an unwritable file: the change applies, one error for this opening, the file as it was, the row keeps the value. */
-static void
-as12_error_once (void)
-{
-  const char *text = "this line has no equals sign\n";
-  EaselWindow *win;
-  AdwDialog *d;
-  EaselCanvas *canvas;
-  g_autofree char *path = easel_settings_file_path ();
-  g_autofree char *after = NULL;
-
-  win = window_with ("[new-picture]\nwidth=60\nheight=40\n");
-  canvas = easel_window_get_canvas (win);
-  (void) canvas;
-  write_settings (text);
-  d = open_preferences (win);
-  type_into (GTK_EDITABLE (pref_row (d, "Tint strength")), "40");
-  assert_alert (win, "Could Not Save the Preferences", "The change applies until Easel closes, but settings.ini could not be written.");
-  g_assert_cmpint (adw_style_manager_get_color_scheme (adw_style_manager_get_default ()), ==, ADW_COLOR_SCHEME_DEFAULT);
-  set_combo (d, "Style", 2);                                     /* no second dialog in this opening */
-  wait_for_layout (win);
-  g_assert_true (adw_application_window_get_visible_dialog (ADW_APPLICATION_WINDOW (win)) == d);
-  g_assert_cmpint (adw_style_manager_get_color_scheme (adw_style_manager_get_default ()), ==, ADW_COLOR_SCHEME_FORCE_DARK);
-  set_combo (d, "Style", 0);
-  g_assert_true (g_file_get_contents (path, &after, NULL, NULL));
-  g_assert_cmpstr (after, ==, text);
-  close_preferences (win, d);
-  /* Opened again, it still shows what was chosen, and may say so again. */
-  d = open_preferences (win);
-  g_assert_cmpint (field_value (GTK_EDITABLE (pref_row (d, "Tint strength"))), ==, 40);
-  close_preferences (win, d);
-  close_windows ();
-  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
-}
-
 /* ---- 0021 Window Extras ---- */
 
 static void
@@ -27902,8 +27875,6 @@ run_for_ms_0021 (int ms)
 }
 
 /* ---- 0021: the extras of the primary menu ---- */
-
-static void collect_widgets_of_type (GtkWidget *w, GType type, GPtrArray *out);
 
 /* The title of the header bar: its label outside any button. */
 static GtkWidget *
@@ -28390,6 +28361,7 @@ as12_frame_time (void)
   d = open_preferences (win);
   g_assert_false (adw_switch_row_get_active (ADW_SWITCH_ROW (pref_row (d, "Frame time"))));
   set_switch (d, "Frame time", TRUE);
+  press_prefs (win, d, "_Apply");
   g_assert_true (settings_has ("frame-time=on"));
   g_assert_true (gtk_widget_get_visible (GTK_WIDGET (label)));
   g_assert_cmpstr (easel_status_bar_get_text (bar, EASEL_STATUS_FRAME_TIME), ==, "– ms");
@@ -31277,11 +31249,14 @@ as4_language_row (void)
   g_assert_cmpuint (adw_combo_row_get_selected (row), ==, 0);
   g_assert_cmpstr (adw_action_row_get_subtitle (ADW_ACTION_ROW (row)), ==, "Takes effect the next time Easel starts.");
   set_combo (d, "Language", 8);
+  press_prefs (win, d, "_Apply");
   g_assert_true (settings_has ("language=pl"));
+  close_language_notice (win);
   /* The interface stays as it was. */
   g_assert_cmpstr (easel_i18n_language (), ==, "en");
   g_assert_cmpstr (adw_preferences_row_get_title (ADW_PREFERENCES_ROW (row)), ==, "Language");
   set_combo (d, "Language", 0);
+  press_prefs (win, d, "_Apply");
   g_assert_true (settings_has ("language=auto"));
   close_preferences (win, d);
   close_windows ();
@@ -31624,14 +31599,25 @@ as11_dialogs (void)
     g_assert_cmpuint (pages->len, >, 0);
     for (guint i = 0; i < pages->len; i++)
       {
-        /* libadwaita's own page for search has no title, and is not one of the dialog's. */
-        if (adw_preferences_page_get_title (pages->pdata[i])[0] == '\0')
-          continue;
-        adw_preferences_dialog_set_visible_page (ADW_PREFERENCES_DIALOG (d), pages->pdata[i]);
+        adw_view_stack_set_visible_child (ADW_VIEW_STACK (gtk_widget_get_ancestor (pages->pdata[i], ADW_TYPE_VIEW_STACK)), pages->pdata[i]);
         wait_for_layout (win);
         assert_fits (GTK_WIDGET (d), TRUE, "preferences");
         assert_labels_whole (GTK_WIDGET (d), adw_preferences_page_get_title (pages->pdata[i]));
       }
+  }
+  close_preferences (win, d);
+  /* The row and the four titles, in a window at its minimum size too (REQ-0027-15). */
+  d = open_preferences (win);
+  assert_labels_whole (GTK_WIDGET (d), "preferences, the row and the titles");
+  {
+    int min_w, min_h;
+
+    gtk_widget_measure (GTK_WIDGET (win), GTK_ORIENTATION_HORIZONTAL, -1, &min_w, NULL, NULL, NULL);
+    gtk_widget_measure (GTK_WIDGET (win), GTK_ORIENTATION_VERTICAL, min_w, &min_h, NULL, NULL, NULL);
+    gtk_window_unmaximize (GTK_WINDOW (win));
+    gtk_window_set_default_size (GTK_WINDOW (win), min_w, min_h);
+    wait_for_layout (win);
+    assert_labels_whole (GTK_WIDGET (d), "preferences at the window's minimum size");
   }
   close_preferences (win, d);
   close_windows ();
@@ -31711,6 +31697,781 @@ as11_picture_tab (void)
   gtk_window_destroy (GTK_WINDOW (top));
   close_windows ();
   assert_no_long_problems ();
+}
+
+/* ---- 0027 Preferences buttons ---- */
+
+#define PREFS_27 "[new-picture]\nwidth=60\nheight=40\n[view]\ntint=12\n"
+
+static gboolean
+apply_sensitive (AdwDialog *d)
+{
+  return gtk_widget_get_sensitive (prefs_button (d, "_Apply"));
+}
+
+static char *
+settings_text (void)
+{
+  g_autofree char *path = easel_settings_file_path ();
+  char *text = NULL;
+
+  g_assert_true (g_file_get_contents (path, &text, NULL, NULL));
+  return text;
+}
+
+static void
+assert_settings_are (const char *text)
+{
+  g_autofree char *now = settings_text ();
+
+  g_assert_cmpstr (now, ==, text);
+}
+
+static void
+restore_27 (void)
+{
+  g_autofree char *path = easel_settings_file_path ();
+
+  g_chmod (path, 0644);
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* The page of that title, shown. */
+static void
+show_page (AdwDialog *d, const char *title)
+{
+  g_autoptr (GPtrArray) pages = g_ptr_array_new ();
+
+  collect_widgets_of_type (GTK_WIDGET (d), ADW_TYPE_PREFERENCES_PAGE, pages);
+  for (guint i = 0; i < pages->len; i++)
+    if (g_strcmp0 (adw_preferences_page_get_title (pages->pdata[i]), title) == 0)
+      {
+        adw_view_stack_set_visible_child (ADW_VIEW_STACK (gtk_widget_get_ancestor (pages->pdata[i], ADW_TYPE_VIEW_STACK)), pages->pdata[i]);
+        return;
+      }
+  g_error ("no page %s", title);
+}
+
+/* AS-1 (REQ-0027-01): the four pages and where the groups are. */
+static void
+as1_pages (void)
+{
+  static const char *const titles[] = { "Appearance", "Interface", "New Picture", "Drawing" };
+  static const char *const appearance[] = { "Style", "Workspace", "Selection", "Palette" };
+  static const char *const interface[] = { "Language", "Panels" };
+  EaselWindow *win = window_with (PREFS_27);
+  AdwDialog *d = open_preferences (win);
+  g_autoptr (GPtrArray) pages = g_ptr_array_new (), groups0 = g_ptr_array_new (), groups1 = g_ptr_array_new ();
+
+  collect_widgets_of_type (GTK_WIDGET (d), ADW_TYPE_PREFERENCES_PAGE, pages);
+  g_assert_cmpuint (pages->len, ==, G_N_ELEMENTS (titles));
+  for (guint i = 0; i < pages->len; i++)
+    g_assert_cmpstr (adw_preferences_page_get_title (pages->pdata[i]), ==, titles[i]);
+  collect_widgets_of_type (pages->pdata[0], ADW_TYPE_PREFERENCES_GROUP, groups0);
+  collect_widgets_of_type (pages->pdata[1], ADW_TYPE_PREFERENCES_GROUP, groups1);
+  g_assert_cmpuint (groups0->len, ==, G_N_ELEMENTS (appearance));
+  g_assert_cmpuint (groups1->len, ==, G_N_ELEMENTS (interface));
+  for (guint i = 0; i < groups0->len; i++)
+    g_assert_cmpstr (adw_preferences_group_get_title (groups0->pdata[i]), ==, appearance[i]);
+  for (guint i = 0; i < groups1->len; i++)
+    g_assert_cmpstr (adw_preferences_group_get_title (groups1->pdata[i]), ==, interface[i]);
+  g_assert_true (gtk_widget_is_ancestor (pref_row (d, "Frame time"), pages->pdata[1]));
+  g_assert_true (gtk_widget_get_mapped (pages->pdata[0]));
+  show_page (d, "Interface");
+  wait_for_layout (win);
+  close_preferences (win, d);
+  d = open_preferences (win);
+  pages->len = 0;
+  collect_widgets_of_type (GTK_WIDGET (d), ADW_TYPE_PREFERENCES_PAGE, pages);
+  g_assert_true (gtk_widget_get_mapped (pages->pdata[0]));
+  close_preferences (win, d);
+  restore_27 ();
+}
+
+/* AS-3 (REQ-0027-03, REQ-0027-04): the row on every page, Apply's state, Enter, a typed value. */
+static void
+as3_buttons (void)
+{
+  static const char *const titles[] = { "Appearance", "Interface", "New Picture", "Drawing" };
+  EaselWindow *win = window_with (PREFS_27 "workspace-color=#aabbcc\n");
+  AdwDialog *d = open_preferences (win);
+  GtkWidget *ok = prefs_button (d, "_OK"), *cancel = prefs_button (d, "_Cancel"), *apply = prefs_button (d, "_Apply");
+  graphene_rect_t r_ok, r_cancel, r_apply, r_ok_again;
+  GtkEditable *tint = GTK_EDITABLE (pref_row (d, "Tint strength"));
+  g_autofree char *start = NULL;
+  GdkRGBA same = { 0xAA / 255.0f, 0xBB / 255.0f, 0xCC / 255.0f, 1 };
+
+  /* The order, at the right, on each page, not moved by a scroll. */
+  g_assert_true (gtk_widget_compute_bounds (ok, GTK_WIDGET (d), &r_ok));
+  g_assert_true (gtk_widget_compute_bounds (cancel, GTK_WIDGET (d), &r_cancel));
+  g_assert_true (gtk_widget_compute_bounds (apply, GTK_WIDGET (d), &r_apply));
+  g_assert_cmpfloat (r_ok.origin.x, <, r_cancel.origin.x);
+  g_assert_cmpfloat (r_cancel.origin.x, <, r_apply.origin.x);
+  for (guint i = 0; i < G_N_ELEMENTS (titles); i++)
+    {
+      show_page (d, titles[i]);
+      wait_for_layout (win);
+      g_assert_true (gtk_widget_get_mapped (ok));
+      g_assert_true (gtk_widget_compute_bounds (ok, GTK_WIDGET (d), &r_ok_again));
+      g_assert_cmpfloat (r_ok_again.origin.y, ==, r_ok.origin.y);
+    }
+  show_page (d, "Appearance");
+  start = settings_text ();
+  /* Apply follows a difference. */
+  g_assert_false (apply_sensitive (d));
+  g_assert_true (gtk_widget_get_sensitive (ok) && gtk_widget_get_sensitive (cancel));
+  set_combo (d, "Style", 2);
+  g_assert_true (apply_sensitive (d));
+  set_combo (d, "Style", 0);
+  g_assert_false (apply_sensitive (d));
+  /* The same color in another case is no difference. */
+  gtk_color_dialog_button_set_rgba (swatch_of (pref_row (d, "Workspace color")), &same);
+  g_assert_false (apply_sensitive (d));
+  /* A press, and a second press that does nothing. */
+  set_combo (d, "Style", 2);
+  press_prefs (win, d, "_Apply");
+  g_assert_false (apply_sensitive (d));
+  g_assert_true (settings_has ("style=dark"));
+  g_assert_true (visible_dialog (win) == d);
+  press_prefs (win, d, "_Apply");
+  g_assert_true (visible_dialog (win) == d);
+  set_combo (d, "Style", 0);
+  press_prefs (win, d, "_Apply");
+  /* Enter commits and stays: only text so far. */
+  gtk_editable_set_text (tint, "40");
+  g_assert_true (apply_sensitive (d));
+  press_prefs (win, d, "_Apply");
+  g_assert_cmpint (field_value (tint), ==, 40);
+  g_assert_true (settings_has ("tint=40"));
+  /* Text that goes back writes nothing. */
+  {
+    g_autofree char *before = settings_text ();
+
+    gtk_editable_set_text (tint, "abc");
+    g_assert_true (apply_sensitive (d));
+    press_prefs (win, d, "_Apply");
+    g_assert_cmpint (field_value (tint), ==, 40);
+    assert_settings_are (before);
+    g_assert_false (apply_sensitive (d));
+  }
+  close_preferences (win, d);
+  /* A held key that pressed OK does not reach what the dialog leaves: a floating selection, which Enter would put down, stays. */
+  {
+    gboolean floating = FALSE;
+    int x, y, w, h;
+
+    use_select (win);
+    shape_press_move (win, 1, 1, 1, 5, 4);
+    shape_release (win, 1);
+    g_assert_true (key_taken (win, GDK_KEY_Right, 0));
+    d = open_preferences (win);
+    key_taken (win, GDK_KEY_Return, 0);
+    press_prefs (win, d, "_OK");
+    wait_for_no_dialog (win);
+    g_assert_true (key_taken (win, GDK_KEY_Return, 0));
+    g_assert_true (easel_canvas_get_selection (easel_window_get_canvas (win), &x, &y, &w, &h, &floating));
+    g_assert_true (floating);
+    key_released (win, GDK_KEY_Return);
+    g_assert_true (key_taken (win, GDK_KEY_Return, 0));          /* released, Enter is Enter again */
+    g_assert_false (easel_canvas_get_selection (easel_window_get_canvas (win), &x, &y, &w, &h, &floating) && floating);
+    key_released (win, GDK_KEY_Return);
+  }
+  restore_27 ();
+}
+
+/* AS-4 (REQ-0027-05): what shows at once, what waits, and neither file touched. */
+static void
+as4_preview (void)
+{
+  EaselWindow *win = window_with (PREFS_27 "workspace-color=#112233\n");
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  g_autofree char *palette = easel_palette_file_path (), *start = NULL;
+  g_autoptr (EaselImage) before = NULL;
+  AdwStyleManager *style = adw_style_manager_get_default ();
+  GdkRGBA color = { 0.5f, 0.25f, 0.75f, 1 };
+  AdwDialog *d;
+  gsize undo_before;
+
+  g_assert_true (g_file_set_contents (palette, "[palette]\ncolor1=#123456\n", -1, NULL));
+  close_windows ();
+  win = start_window ();
+  wait_for_layout (win);
+  canvas = easel_window_get_canvas (win);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "tool", g_variant_new_string ("pencil"));
+  easel_canvas_press (canvas, 1, 3.5, 3.5);
+  easel_canvas_release (canvas, 1);
+  {
+    const EaselImage *img = easel_window_get_picture (win);
+
+    before = easel_image_new (img->width, img->height, 0);
+    memcpy (before->px, img->px, (size_t) img->width * img->height * sizeof img->px[0]);
+  }
+  undo_before = action_enabled (win, "undo");
+  d = open_preferences (win);
+  start = settings_text ();
+  set_combo (d, "Style", 2);
+  g_assert_cmpint (adw_style_manager_get_color_scheme (style), ==, ADW_COLOR_SCHEME_FORCE_DARK);
+  gtk_color_dialog_button_set_rgba (swatch_of (pref_row (d, "Workspace color")), &color);
+  type_into (GTK_EDITABLE (pref_row (d, "Tint strength")), "40");
+  set_switch (d, "Tool Box", FALSE);
+  wait_for_layout (win);
+  g_assert_false (panel_checked (win, "show-toolbox"));
+  set_switch (d, "Frame time", TRUE);
+  g_signal_emit_by_name (find_button (GTK_WIDGET (d), "Reset Palette"), "clicked");
+  wait_for_layout (win);
+  g_assert_true (visible_dialog (win) == d);
+  g_assert_cmphex (easel_swatch_get_color (easel_palette_bar_get_swatch (easel_window_get_palette_bar (win), 1)), !=, 0xFF123456u);
+  /* What waits. */
+  set_combo (d, "Language", 8);
+  set_combo (d, "Brush", 3);
+  type_into (GTK_EDITABLE (pref_row (d, "JPEG quality")), "50");
+  set_switch (d, "Automatic size", FALSE);
+  type_into (GTK_EDITABLE (pref_row (d, "Width")), "300");
+  /* 100 quick steps keep up and write nothing. */
+  for (int i = 0; i < 100; i++)
+    adw_spin_row_set_value (ADW_SPIN_ROW (pref_row (d, "Tint strength")), 1 + i % 50);
+  type_into (GTK_EDITABLE (pref_row (d, "Tint strength")), "41");
+  assert_settings_are (start);
+  g_assert_true (g_file_test (palette, G_FILE_TEST_EXISTS));
+  assert_same_picture (easel_window_get_picture (win), before);
+  g_assert_cmpint (action_enabled (win, "undo"), ==, undo_before);
+  press_prefs (win, d, "_Apply");
+  close_language_notice (win);
+  g_assert_true (settings_has ("tint=41"));
+  {
+    g_autofree char *text = settings_text ();
+
+    g_assert_null (strstr (text, "tint=40"));
+  }
+  g_assert_false (g_file_test (palette, G_FILE_TEST_EXISTS));
+  close_preferences (win, d);
+  /* Use Default follows the row, not the file. */
+  d = open_preferences (win);
+  {
+    GtkWidget *use_default = GTK_WIDGET (find_button (pref_row (d, "Workspace color"), "Use Default"));
+
+    g_assert_true (gtk_widget_get_sensitive (use_default));
+    g_signal_emit_by_name (use_default, "clicked");
+    g_assert_false (gtk_widget_get_sensitive (use_default));
+    {
+      g_autofree char *text = settings_text ();
+
+      g_assert_nonnull (strstr (text, "workspace-color=#"));
+    }
+    press_prefs (win, d, "_Cancel");
+    wait_for_no_dialog (win);
+    d = open_preferences (win);
+    use_default = GTK_WIDGET (find_button (pref_row (d, "Workspace color"), "Use Default"));
+    g_assert_true (gtk_widget_get_sensitive (use_default));
+    g_signal_emit_by_name (use_default, "clicked");
+    press_prefs (win, d, "_Apply");
+    {
+      g_autofree char *text = settings_text ();
+
+      g_assert_null (strstr (text, "workspace-color="));
+    }
+  }
+  close_preferences (win, d);
+  easel_window_apply_style (win, EASEL_STYLE_SYSTEM);
+  remove_palette_file ();
+  restore_27 ();
+}
+
+/* AS-5 (REQ-0027-06): the switch and the panel's shown state. */
+static void
+as5_panels (void)
+{
+  EaselWindow *win = window_with (PREFS_27 "toolbox=on\n");
+  AdwDialog *d;
+
+  /* On, hidden from the View menu: off and on leave it hidden, no difference. */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "show-toolbox", NULL);
+  g_assert_false (panel_checked (win, "show-toolbox"));
+  d = open_preferences (win);
+  set_switch (d, "Tool Box", FALSE);
+  g_assert_true (apply_sensitive (d));
+  set_switch (d, "Tool Box", TRUE);
+  wait_for_layout (win);
+  g_assert_false (panel_checked (win, "show-toolbox"));
+  g_assert_false (apply_sensitive (d));
+  /* Off, Apply, on, Cancel: hidden, the key off. */
+  set_switch (d, "Tool Box", FALSE);
+  press_prefs (win, d, "_Apply");
+  g_assert_true (settings_has ("toolbox=off"));
+  set_switch (d, "Tool Box", TRUE);
+  wait_for_layout (win);
+  g_assert_true (panel_checked (win, "show-toolbox"));
+  press_prefs (win, d, "_Cancel");
+  wait_for_no_dialog (win);
+  g_assert_false (panel_checked (win, "show-toolbox"));
+  g_assert_true (settings_has ("toolbox=off"));
+  /* Off in the file, shown from the View menu: on and Cancel leave it shown, the row off. */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "show-toolbox", NULL);
+  g_assert_true (panel_checked (win, "show-toolbox"));
+  d = open_preferences (win);
+  set_switch (d, "Tool Box", TRUE);
+  press_prefs (win, d, "_Cancel");
+  wait_for_no_dialog (win);
+  g_assert_true (panel_checked (win, "show-toolbox"));
+  d = open_preferences (win);
+  g_assert_false (adw_switch_row_get_active (ADW_SWITCH_ROW (pref_row (d, "Tool Box"))));
+  close_preferences (win, d);
+  restore_27 ();
+}
+
+/* AS-6 (REQ-0027-07): only what differs, the rest byte for byte, in the order of the rows. */
+static void
+as6_keep_writes_what_differs (void)
+{
+  const char *text = "# mine\n[view]\ntint=12\nunknown=1\n\n[drawing]\nline-width=7\n[new-picture]\nwidth=60\nheight=40\n";
+  EaselWindow *win = window_with (text);
+  AdwDialog *d = open_preferences (win);
+  g_autofree char *path = easel_settings_file_path ();
+  g_autofree char *edited = g_strconcat (text, "# by hand\n", NULL);
+  g_autofree char *now = NULL;
+
+  /* Changed back: nothing. */
+  set_combo (d, "Style", 2);
+  set_combo (d, "Style", 0);
+  press_prefs (win, d, "_Apply");
+  assert_settings_are (text);
+  /* A hand edit while it is open, and two rows. */
+  g_assert_true (g_file_set_contents (path, edited, -1, NULL));
+  type_into (GTK_EDITABLE (pref_row (d, "Tint strength")), "40");
+  set_combo (d, "Style", 2);
+  press_prefs (win, d, "_OK");
+  wait_for_no_dialog (win);
+  now = settings_text ();
+  g_assert_nonnull (strstr (now, "# by hand\n"));
+  g_assert_nonnull (strstr (now, "line-width=7\n"));
+  g_assert_nonnull (strstr (now, "tint=40\n"));
+  /* Style's row comes before Tint's, and both go after the section's last key. */
+  g_assert_cmpstr (now, ==, "# mine\n[view]\ntint=40\nunknown=1\nstyle=dark\n\n[drawing]\nline-width=7\n[new-picture]\nwidth=60\nheight=40\n# by hand\n");
+  easel_window_apply_style (win, EASEL_STYLE_SYSTEM);
+  restore_27 ();
+}
+
+/* AS-7 (REQ-0027-08): when a typed value counts. */
+static void
+as7_typed_value (void)
+{
+  EaselWindow *win = window_with (PREFS_27);
+  AdwDialog *d = open_preferences (win);
+  GtkEditable *tint = GTK_EDITABLE (pref_row (d, "Tint strength"));
+  g_autofree char *start = settings_text ();
+
+  type_into (tint, "40");
+  g_assert_cmpint (easel_canvas_get_tint (easel_window_get_canvas (win)), ==, 40);
+  assert_settings_are (start);
+  g_assert_true (visible_dialog (win) == d);
+  gtk_editable_set_text (tint, "45");
+  press_prefs (win, d, "_OK");
+  wait_for_no_dialog (win);
+  g_assert_true (settings_has ("tint=45"));
+  restore_27 ();
+}
+
+/* AS-8 (REQ-0027-09): the numbers of Automatic size. */
+static void
+as8_automatic_size (void)
+{
+  EaselWindow *win = window_with ("[new-picture]\nwidth=300\nheight=200\n");
+  AdwDialog *d = open_preferences (win);
+  g_autofree char *start = settings_text ();
+
+  set_switch (d, "Automatic size", TRUE);
+  g_assert_true (apply_sensitive (d));
+  set_switch (d, "Automatic size", FALSE);
+  g_assert_cmpint (field_value (GTK_EDITABLE (pref_row (d, "Width"))), ==, 300);
+  g_assert_cmpint (field_value (GTK_EDITABLE (pref_row (d, "Height"))), ==, 200);
+  g_assert_false (apply_sensitive (d));
+  press_prefs (win, d, "_Apply");
+  assert_settings_are (start);
+  close_preferences (win, d);
+  close_windows ();
+  /* Counts as on: off and on keep the file. */
+  win = window_with ("[new-picture]\nwidth=0\nheight=300\n");
+  d = open_preferences (win);
+  g_free (start);
+  start = settings_text ();
+  set_switch (d, "Automatic size", FALSE);
+  set_switch (d, "Automatic size", TRUE);
+  g_assert_false (apply_sensitive (d));
+  close_preferences (win, d);
+  assert_settings_are (start);
+  /* On, with Tool Box previewed off: the size shown, both written. */
+  d = open_preferences (win);
+  set_switch (d, "Tool Box", FALSE);
+  wait_for_layout (win);
+  set_switch (d, "Automatic size", FALSE);
+  {
+    g_autofree char *w = g_strdup_printf ("width=%d", field_value (GTK_EDITABLE (pref_row (d, "Width"))));
+    g_autofree char *h = g_strdup_printf ("height=%d", field_value (GTK_EDITABLE (pref_row (d, "Height"))));
+
+    press_prefs (win, d, "_Apply");
+    g_assert_true (settings_has (w));
+    g_assert_true (settings_has (h));
+  }
+  close_preferences (win, d);
+  restore_27 ();
+}
+
+/* AS-9 (REQ-0027-04, -05, -07, -10, -13): what Apply keeps and Cancel takes back, shown or not. */
+static void
+as9_apply_then_cancel (void)
+{
+  EaselWindow *win = window_with ("[new-picture]\nwidth=60\nheight=40\n[view]\ntint=12\n[drawing]\nline-width=7\n");
+  AdwDialog *d = open_preferences (win);
+  EaselSettings *chosen = easel_window_get_chosen_settings (win);
+
+  g_assert_cmpint (adw_combo_row_get_selected (ADW_COMBO_ROW (pref_row (d, "Line and shape width"))), ==, 0);
+  type_into (GTK_EDITABLE (pref_row (d, "Tint strength")), "40");
+  press_prefs (win, d, "_Apply");
+  type_into (GTK_EDITABLE (pref_row (d, "Tint strength")), "20");
+  press_prefs (win, d, "_Cancel");
+  wait_for_no_dialog (win);
+  g_assert_cmpint (easel_canvas_get_tint (easel_window_get_canvas (win)), ==, 40);
+  g_assert_true (settings_has ("tint=40"));
+  d = open_preferences (win);
+  g_assert_cmpint (field_value (GTK_EDITABLE (pref_row (d, "Tint strength"))), ==, 40);
+  /* What does not show waits, and goes back. */
+  set_switch (d, "Automatic size", FALSE);
+  type_into (GTK_EDITABLE (pref_row (d, "Width")), "300");
+  type_into (GTK_EDITABLE (pref_row (d, "JPEG quality")), "50");
+  g_assert_cmpint (chosen->width, ==, 60);
+  g_assert_cmpint (chosen->jpeg_quality, !=, 50);
+  press_prefs (win, d, "_Cancel");
+  wait_for_no_dialog (win);
+  g_assert_cmpint (chosen->width, ==, 60);
+  g_assert_cmpint (chosen->jpeg_quality, !=, 50);
+  d = open_preferences (win);
+  g_assert_cmpint (field_value (GTK_EDITABLE (pref_row (d, "Width"))), ==, 60);
+  /* Width: 300, Apply, 400, Cancel. */
+  type_into (GTK_EDITABLE (pref_row (d, "Width")), "300");
+  press_prefs (win, d, "_Apply");
+  g_assert_cmpint (chosen->width, ==, 300);
+  type_into (GTK_EDITABLE (pref_row (d, "Width")), "400");
+  press_prefs (win, d, "_Cancel");
+  wait_for_no_dialog (win);
+  g_assert_cmpint (chosen->width, ==, 300);
+  g_assert_true (settings_has ("width=300"));
+  /* A Brush, and the language. */
+  d = open_preferences (win);
+  set_combo (d, "Brush", 3);
+  set_combo (d, "Language", 8);
+  press_prefs (win, d, "_Apply");
+  g_assert_true (settings_has ("language=pl"));
+  close_language_notice (win);
+  set_combo (d, "Brush", 5);
+  set_combo (d, "Language", 0);
+  press_prefs (win, d, "_Cancel");
+  wait_for_no_dialog (win);
+  g_assert_true (settings_has ("language=pl"));
+  g_assert_cmpstr (easel_i18n_language (), ==, "en");
+  d = open_preferences (win);
+  g_assert_cmpint (adw_combo_row_get_selected (ADW_COMBO_ROW (pref_row (d, "Brush"))), ==, 3);
+  g_assert_cmpint (adw_combo_row_get_selected (ADW_COMBO_ROW (pref_row (d, "Language"))), ==, 8);
+  close_preferences (win, d);
+  /* The value made by a hand edit while the app runs is not reread. */
+  write_settings ("[view]\ntint=5\n");
+  d = open_preferences (win);
+  g_assert_cmpint (field_value (GTK_EDITABLE (pref_row (d, "Tint strength"))), ==, 40);
+  close_preferences (win, d);
+  restore_27 ();
+}
+
+/* AS-10 (REQ-0027-10): Cancel, Esc and the close button put everything back, the rendered window compared. */
+static void
+as10_cancel_goes_back (void)
+{
+  /* Cancel, and adw_dialog_close, which is what the close button and Esc call: real Esc in manual M1. */
+  for (int way = 0; way < 2; way++)
+    {
+      EaselWindow *win = window_with (PREFS_27);
+      g_autofree char *start = settings_text ();
+      GdkRGBA color = { 0.5f, 0.25f, 0.75f, 1 };
+      g_autofree uint32_t *before = NULL, *after = NULL;
+      int w0, h0, w1, h1, cx, cy;
+      AdwDialog *d;
+
+      before = render_pixels (win, &w0, &h0, &cx, &cy);
+      d = open_preferences (win);
+      /* Style is compared by its value, at the end: libadwaita's stylesheet, reloaded after dark and back, redraws its own text and
+         icons a little differently, with no setting of ours in it. */
+      gtk_color_dialog_button_set_rgba (swatch_of (pref_row (d, "Workspace color")), &color);
+      type_into (GTK_EDITABLE (pref_row (d, "Tint strength")), "40");
+      set_switch (d, "Tool Box", FALSE);
+      set_switch (d, "Status Bar", FALSE);
+      set_switch (d, "Frame time", TRUE);
+      g_signal_emit_by_name (find_button (GTK_WIDGET (d), "Reset Palette"), "clicked");
+      gtk_editable_set_text (GTK_EDITABLE (pref_row (d, "JPEG quality")), "50");
+      wait_for_layout (win);
+      if (way == 0)
+        press_prefs (win, d, "_Cancel");
+      else
+        adw_dialog_close (d);
+      wait_for_no_dialog (win);
+      wait_for_layout (win);
+      g_assert_true (panel_checked (win, "show-toolbox") && panel_checked (win, "show-statusbar"));
+      assert_settings_are (start);
+      after = render_pixels (win, &w1, &h1, &cx, &cy);
+      g_assert_cmpint (w0, ==, w1);
+      g_assert_cmpint (h0, ==, h1);
+      g_assert_cmpmem (before, (gsize) w0 * h0 * 4, after, (gsize) w1 * h1 * 4);
+      /* Typed text not committed is dropped. */
+      d = open_preferences (win);
+      gtk_editable_set_text (GTK_EDITABLE (pref_row (d, "Tint strength")), "40");
+      adw_dialog_close (d);
+      wait_for_no_dialog (win);
+      g_assert_cmpint (easel_canvas_get_tint (easel_window_get_canvas (win)), ==, 12);
+      d = open_preferences (win);
+      g_assert_cmpint (field_value (GTK_EDITABLE (pref_row (d, "Tint strength"))), ==, 12);
+      /* Style, by its value. */
+      set_combo (d, "Style", 2);
+      adw_dialog_close (d);
+      wait_for_no_dialog (win);
+      g_assert_cmpint (adw_style_manager_get_color_scheme (adw_style_manager_get_default ()), ==, ADW_COLOR_SCHEME_DEFAULT);
+      restore_27 ();
+    }
+}
+
+/* AS-11 (REQ-0027-11): a quit drops what is not kept. */
+static void
+as11_quit_drops (void)
+{
+  EaselWindow *win = window_with (PREFS_27);
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  g_autofree char *start = settings_text ();
+  AdwDialog *d;
+
+  /* A modified picture: the prompt shows, and Cancel there stays. */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "tool", g_variant_new_string ("pencil"));
+  easel_canvas_press (canvas, 1, 3.5, 3.5);
+  easel_canvas_release (canvas, 1);
+  d = open_preferences (win);
+  type_into (GTK_EDITABLE (pref_row (d, "Tint strength")), "30");
+  gtk_editable_set_text (GTK_EDITABLE (pref_row (d, "JPEG quality")), "50");
+  gtk_window_close (GTK_WINDOW (win));
+  wait_for_dialogs (win, 1);
+  assert_settings_are (start);
+  g_assert_cmpstr (adw_alert_dialog_get_heading (open_alert (win)), ==, "Save Changes?");
+  g_assert_cmpint (easel_canvas_get_tint (canvas), ==, 12);
+  g_signal_emit_by_name (open_alert (win), "response", "cancel");
+  adw_dialog_force_close (visible_dialog (win));
+  wait_for_layout (win);
+  g_assert_null (visible_dialog (win));
+  g_assert_true (gtk_widget_get_visible (GTK_WIDGET (win)));
+  /* With an error above it, and no picture to ask about. */
+  close_windows ();
+  win = window_with (PREFS_27);
+  write_settings ("this line has no equals sign\n");
+  d = open_preferences (win);
+  type_into (GTK_EDITABLE (pref_row (d, "Tint strength")), "30");
+  press_prefs (win, d, "_Apply");
+  g_assert_nonnull (open_alert (win));
+  gtk_window_close (GTK_WINDOW (win));
+  assert_settings_are ("this line has no equals sign\n");
+  wait_for_no_window ();
+  close_windows ();
+  restore_27 ();
+}
+
+/* AS-12 (REQ-0027-14): Reset Palette joins the rest. */
+static void
+as12_reset_palette (void)
+{
+  EaselWindow *win = window_with (PREFS_27);
+  g_autofree char *path = easel_palette_file_path ();
+  AdwDialog *d;
+  const uint32_t mine = 0xFF123456u;
+  uint32_t fg, bg;
+
+  g_assert_true (g_file_set_contents (path, "[palette]\ncolor1=#123456\n", -1, NULL));
+  close_windows ();
+  win = start_window ();
+  wait_for_layout (win);
+  fg = easel_window_get_foreground (win);
+  bg = easel_window_get_background (win);
+  d = open_preferences (win);
+  g_signal_emit_by_name (find_button (GTK_WIDGET (d), "Reset Palette"), "clicked");
+  wait_for_layout (win);
+  g_assert_true (visible_dialog (win) == d);
+  g_assert_cmphex (easel_swatch_get_color (easel_palette_bar_get_swatch (easel_window_get_palette_bar (win), 1)), !=, mine);
+  g_assert_true (g_file_test (path, G_FILE_TEST_EXISTS));
+  g_assert_true (apply_sensitive (d));
+  press_prefs (win, d, "_Cancel");
+  wait_for_no_dialog (win);
+  g_assert_cmphex (easel_swatch_get_color (easel_palette_bar_get_swatch (easel_window_get_palette_bar (win), 1)), ==, mine);
+  g_assert_true (g_file_test (path, G_FILE_TEST_EXISTS));
+  d = open_preferences (win);
+  g_signal_emit_by_name (find_button (GTK_WIDGET (d), "Reset Palette"), "clicked");
+  press_prefs (win, d, "_OK");
+  wait_for_no_dialog (win);
+  g_assert_false (g_file_test (path, G_FILE_TEST_EXISTS));
+  g_assert_cmphex (easel_swatch_get_color (easel_palette_bar_get_swatch (easel_window_get_palette_bar (win), 1)), !=, mine);
+  g_assert_cmphex (easel_window_get_foreground (win), ==, fg);
+  g_assert_cmphex (easel_window_get_background (win), ==, bg);
+  /* A keep with no change of the palette leaves its file (REQ-0027-12). */
+  g_assert_true (g_file_set_contents (path, "[palette]\ncolor1=#123456\n", -1, NULL));
+  d = open_preferences (win);
+  type_into (GTK_EDITABLE (pref_row (d, "Tint strength")), "40");
+  press_prefs (win, d, "_Apply");
+  g_assert_true (g_file_test (path, G_FILE_TEST_EXISTS));
+  close_preferences (win, d);
+  g_assert_cmpint (g_remove (path), ==, 0);
+  /* The classic colors already, and no file: no change. */
+  d = open_preferences (win);
+  g_signal_emit_by_name (find_button (GTK_WIDGET (d), "Reset Palette"), "clicked");
+  g_assert_false (apply_sensitive (d));
+  g_assert_true (gtk_widget_get_sensitive (GTK_WIDGET (find_button (GTK_WIDGET (d), "Reset Palette"))));
+  close_preferences (win, d);
+  restore_27 ();
+}
+
+/* AS-13 (REQ-0027-12): a write that fails, and the two files apart. */
+static void
+as13_write_fails (void)
+{
+  const char *bad = "this line has no equals sign\n";
+  EaselWindow *win = window_with (PREFS_27);
+  g_autofree char *settings = easel_settings_file_path ();
+  g_autofree char *palette = easel_palette_file_path ();
+  AdwDialog *d;
+
+  write_settings (bad);
+  d = open_preferences (win);
+  type_into (GTK_EDITABLE (pref_row (d, "Tint strength")), "40");
+  press_prefs (win, d, "_Apply");
+  assert_alert (win, "Could Not Save the Preferences", "The changes apply until Easel closes where they can, but settings.ini could not be written.");
+  assert_settings_are (bad);
+  g_assert_cmpint (easel_canvas_get_tint (easel_window_get_canvas (win)), ==, 40);
+  /* Still owing, and tried again: the error again while it fails. */
+  g_assert_true (apply_sensitive (d));
+  press_prefs (win, d, "_Apply");
+  assert_alert (win, "Could Not Save the Preferences", "The changes apply until Easel closes where they can, but settings.ini could not be written.");
+  /* The file made good: written, no error. */
+  write_settings (PREFS_27);
+  g_assert_true (apply_sensitive (d));
+  press_prefs (win, d, "_Apply");
+  g_assert_true (visible_dialog (win) == d);
+  g_assert_true (settings_has ("tint=40"));
+  g_assert_false (apply_sensitive (d));
+  /* Cancel does not take back what the error said applies. */
+  write_settings (bad);
+  type_into (GTK_EDITABLE (pref_row (d, "Tint strength")), "45");
+  press_prefs (win, d, "_Apply");
+  adw_dialog_force_close (visible_dialog (win));
+  wait_for_layout (win);
+  press_prefs (win, d, "_Cancel");
+  wait_for_no_dialog (win);
+  g_assert_cmpint (easel_canvas_get_tint (easel_window_get_canvas (win)), ==, 45);
+  /* OK: closed, the error over the window. */
+  d = open_preferences (win);
+  type_into (GTK_EDITABLE (pref_row (d, "Tint strength")), "46");
+  press_prefs (win, d, "_OK");
+  assert_alert (win, "Could Not Save the Preferences", "The changes apply until Easel closes where they can, but settings.ini could not be written.");
+  wait_for_no_dialog (win);
+  /* The palette alone: gone, no error, the settings file bad. */
+  g_assert_true (g_file_set_contents (palette, "[palette]\ncolor1=#123456\n", -1, NULL));
+  close_windows ();
+  win = start_window ();
+  wait_for_layout (win);
+  write_settings (bad);
+  d = open_preferences (win);
+  g_signal_emit_by_name (find_button (GTK_WIDGET (d), "Reset Palette"), "clicked");
+  press_prefs (win, d, "_Apply");
+  g_assert_true (visible_dialog (win) == d);
+  g_assert_false (g_file_test (palette, G_FILE_TEST_EXISTS));
+  close_preferences (win, d);
+  /* No file and no folder: created. */
+  g_assert_cmpint (g_remove (settings), ==, 0);
+  d = open_preferences (win);
+  type_into (GTK_EDITABLE (pref_row (d, "Tint strength")), "33");
+  press_prefs (win, d, "_Apply");
+  g_assert_true (visible_dialog (win) == d);
+  g_assert_true (settings_has ("tint=33"));
+  close_preferences (win, d);
+  restore_27 ();
+}
+
+/* AS-15 (REQ-0027-16): the notice of a new language, which changes nothing. */
+static void
+as15_language_notice (void)
+{
+  EaselWindow *win = window_with (PREFS_27);
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  AdwDialog *d;
+  g_autofree uint32_t *before = NULL;
+
+  g_action_group_activate_action (G_ACTION_GROUP (win), "tool", g_variant_new_string ("pencil"));
+  easel_canvas_press (canvas, 1, 3.5, 3.5);
+  easel_canvas_release (canvas, 1);
+  before = g_memdup2 (easel_window_get_picture (win)->px, 60 * 40 * sizeof (uint32_t));
+  d = open_preferences (win);
+  /* Another row: no notice. */
+  type_into (GTK_EDITABLE (pref_row (d, "Tint strength")), "40");
+  press_prefs (win, d, "_Apply");
+  g_assert_true (visible_dialog (win) == d);
+  /* A new language: over Preferences, which stays. */
+  set_combo (d, "Language", 8);
+  press_prefs (win, d, "_Apply");
+  g_assert_true (settings_has ("language=pl"));
+  assert_alert (win, "Language Changes at Next Start", "Your changes are kept. The new language shows the next time Easel starts.");
+  g_assert_true (visible_dialog (win) == d);
+  /* OK with nothing more: no notice. */
+  press_prefs (win, d, "_OK");
+  wait_for_no_dialog (win);
+  /* Back at the running language: no notice. */
+  d = open_preferences (win);
+  set_combo (d, "Language", 3);
+  press_prefs (win, d, "_Apply");
+  g_assert_true (visible_dialog (win) == d);
+  /* A write that fails: the error, no notice. */
+  write_settings ("this line has no equals sign\n");
+  set_combo (d, "Language", 8);
+  press_prefs (win, d, "_Apply");
+  assert_alert (win, "Could Not Save the Preferences", "The changes apply until Easel closes where they can, but settings.ini could not be written.");
+  g_assert_true (visible_dialog (win) == d);
+  /* The file made good: the retry writes it, and now the notice shows. */
+  write_settings (PREFS_27);
+  press_prefs (win, d, "_Apply");
+  g_assert_true (settings_has ("language=pl"));
+  assert_alert (win, "Language Changes at Next Start", "Your changes are kept. The new language shows the next time Easel starts.");
+  close_preferences (win, d);
+  /* OK: closed, the notice over the window; the picture and its steps as they were, and the window stays. */
+  write_settings (PREFS_27);
+  d = open_preferences (win);
+  set_combo (d, "Language", 3);                                 /* the failed write kept Polish for this run */
+  press_prefs (win, d, "_Apply");
+  set_combo (d, "Language", 8);
+  press_prefs (win, d, "_OK");
+  assert_alert (win, "Language Changes at Next Start", "Your changes are kept. The new language shows the next time Easel starts.");
+  wait_for_no_dialog (win);
+  g_assert_cmpint (memcmp (easel_window_get_picture (win)->px, before, 60 * 40 * sizeof (uint32_t)), ==, 0);
+  g_assert_true (easel_window_get_modified (win));
+  g_assert_true (action_enabled (win, "undo"));
+  g_assert_true (gtk_widget_get_visible (GTK_WIDGET (win)));
+  restore_27 ();
+}
+
+/* The letter a mnemonic marks. */
+static gunichar
+mnemonic_of (const char *label)
+{
+  const char *under = strchr (label, '_');
+
+  g_assert_nonnull (under);
+  return g_unichar_tolower (g_utf8_get_char (under + 1));
+}
+
+/* AS-3, AS-14 (REQ-0027-03): the row's three mnemonics differ in every language. */
+static void
+as14_mnemonics_differ (void)
+{
+  gunichar ok = mnemonic_of (_ ("_OK")), cancel = mnemonic_of (_ ("_Cancel")), apply = mnemonic_of (_ ("_Apply"));
+
+  g_assert_true (ok != cancel && ok != apply && cancel != apply);
 }
 
 /* AS-12 (REQ-0023-01): under a language written in another alphabet, no shown text has an English word. Run under ru and uk only. */
@@ -31817,6 +32578,19 @@ as9_help_page (void)
     g_assert_cmpstr (none, ==, english);
   }
   g_assert_true (g_file_get_contents (path, &text, NULL, NULL));
+  /* The part on Preferences names the buttons by their words (REQ-0027-15). */
+  for (guint i = 0; i < 3; i++)
+    {
+      static const char *const buttons[] = { "_OK", "_Cancel", "_Apply" };
+      g_autofree char *word = NULL;
+      char *under;
+
+      word = g_strdup (_ (buttons[i]));
+      under = strchr (word, '_');
+      memmove (under, under + 1, strlen (under));
+      if (strstr (text, word) == NULL)
+        g_error ("the page does not name %s", word);
+    }
   at = text;
   for (guint i = 0; i < G_N_ELEMENTS (tools); i++)
     {
@@ -32295,12 +33069,26 @@ main (int argc, char **argv)
   g_test_add_func ("/0021/as4_help_page_text", as4_help_page_text);
   g_test_add_func ("/0021/as5_about", as5_about);
   g_test_add_func ("/0021/as3_quit_closes_extras", as3_quit_closes_extras);
+  g_test_add_func ("/0027/as1_pages", as1_pages);
+  g_test_add_func ("/0027/as3_buttons", as3_buttons);
+  g_test_add_func ("/0027/as4_preview", as4_preview);
+  g_test_add_func ("/0027/as5_panels", as5_panels);
+  g_test_add_func ("/0027/as6_keep_writes_what_differs", as6_keep_writes_what_differs);
+  g_test_add_func ("/0027/as7_typed_value", as7_typed_value);
+  g_test_add_func ("/0027/as8_automatic_size", as8_automatic_size);
+  g_test_add_func ("/0027/as9_apply_then_cancel", as9_apply_then_cancel);
+  g_test_add_func ("/0027/as10_cancel_goes_back", as10_cancel_goes_back);
+  g_test_add_func ("/0027/as11_quit_drops", as11_quit_drops);
+  g_test_add_func ("/0027/as12_reset_palette", as12_reset_palette);
+  g_test_add_func ("/0027/as13_write_fails", as13_write_fails);
+  g_test_add_func ("/0027/as15_language_notice", as15_language_notice);
   g_test_add_func ("/0023-start/as8_start_in_language", as8_start_in_language);
   g_test_add_func ("/0023-rtl/as7_not_mirrored", as7_not_mirrored);
   g_test_add_func ("/0023-long/as11_main_window", as11_main_window);
   g_test_add_func ("/0023-long/as11_dialogs", as11_dialogs);
   g_test_add_func ("/0023-long/as11_alerts", as11_alerts);
   g_test_add_func ("/0023-long/as11_picture_tab", as11_picture_tab);
+  g_test_add_func ("/0023-lang/as14_mnemonics_differ", as14_mnemonics_differ);
   g_test_add_func ("/0023-lang/as12_no_english", as12_no_english);
   g_test_add_func ("/0023-lang/as5_sheets", as5_sheets);
   g_test_add_func ("/0023-lang/as9_help_page", as9_help_page);
@@ -32356,9 +33144,7 @@ main (int argc, char **argv)
   g_test_add_func ("/0020/as6_new_picture_rows", as6_new_picture_rows);
   g_test_add_func ("/0020/as7_drawing_rows", as7_drawing_rows);
   g_test_add_func ("/0020/as8_number_fields", as8_number_fields);
-  g_test_add_func ("/0020/as9_reset_palette", as9_reset_palette);
   g_test_add_func ("/0020/as10_picture_untouched", as10_picture_untouched);
-  g_test_add_func ("/0020/as12_error_once", as12_error_once);
   g_test_add_func ("/0019/as1_stretch_skew_opens", as1_stretch_skew_opens);
   g_test_add_func ("/0019/as2_dialog_starts_fresh", as2_dialog_starts_fresh);
   g_test_add_func ("/0019/as3_field_limits", as3_field_limits);
