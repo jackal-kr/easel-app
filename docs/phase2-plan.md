@@ -48,5 +48,9 @@ Known gaps from Phase 1 specs, to take up after the core XP scope is delivered. 
 - No test of their own: Esc with a chooser, a popover or an error above Preferences; a quit with a color chooser open; a truly read-only settings file; a Tint change with a palette reset at OK; a palette file that cannot be removed; a missing settings folder; Style against a desktop theme that changes during the dialog.
 - The new strings in the eleven translations are unread, as the rest.
 
+## Black and white (JOD, 2026-11-04: moved from Phase 1)
+- XP's behavior, as remembered and not checked against XP or jspaint: Image, Attributes has a Colors choice of "Black and white" or "Colors". Choosing Black and white warns that the color is lost and cannot be got back, then turns the picture to pure black and white, and the palette shows black, white and dithered patterns in place of colors. Going back to Colors does not bring the colors back.
+- Open question, for its spec: the conversion. A threshold on brightness (at what value, and by which weights), or a dither (which one, and whether it is repeatable, for P7's "the same input gives the same pixels")? What happens to transparency, whether it is one undo step, and whether the palette changes or only the picture.
+
 ## From the mutation list
 - REQ-0017-14, the popover's scroll guard: survives on GTK 4.24, accepted (JOD, 2026-11-02). Re-decide at packaging-release, when the minimum GTK is chosen.

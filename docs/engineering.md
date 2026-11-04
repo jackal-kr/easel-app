@@ -131,7 +131,7 @@ Defined by the packaging and release feature.
   - **A task that changes a shared menu or window furniture** also runs the features whose tests count its sections or items (0021: two separators in the primary menu broke `ui-0013`, seen only at `/sdd-check`).
   - **At the end of a spec:** `tools/mutate.sh --core`, once, in the background: only the mutants of files under `src/core`. `src/ui/canvas.c` and `src/ui/window.c` are not mutated per spec.
   - **At `/sdd-check`:** the full `meson test` and the scale 2 run through `tools/isolated.sh`, with the result of that core run.
-  - **At the phase gate:** one full run of the list (`tools/mutate.sh`), together with the phase's acceptance spec. A clean full run records its commit and the GTK, Pango, Cairo and GNOME Shell versions in `docs/specs/INDEX.md`, and names any that changed since the last record.
+  - **At the phase gate:** one full run of the list (`tools/mutate.sh`), together with the phase's acceptance spec, which also runs once under Vulkan, and its journeys 1 and 4 on a screen of scale 2. A clean full run records its commit and the GTK, Pango, Cairo and GNOME Shell versions in `docs/specs/INDEX.md`, and names any that changed since the last record.
   - **A survivor** is one line in the spec's Check section ("survivor, accepted, reason"). It becomes a task only if it shows a user-visible bug.
 - **Code that can abort the process** (a failed allocation in GLib, gdk-pixbuf or glycin) is tested in a subprocess
   (`g_test_trap_subprocess`, as `as19_save_without_memory` and `as8_open_without_memory` do), so that an abort is a failed
