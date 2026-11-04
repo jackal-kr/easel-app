@@ -2,6 +2,7 @@
 #include "thumbnail-card.h"
 
 #include "view.h"
+#include "i18n.h"
 
 #define AREA_WIDTH 160
 #define AREA_HEIGHT 120
@@ -87,7 +88,7 @@ easel_thumbnail_card_init (EaselThumbnailCard *self)
   gtk_widget_add_css_class (widget, "card");
   gtk_widget_add_css_class (widget, "font-card");       /* the font card's look (REQ-0021-07) */
   gtk_widget_set_cursor_from_name (widget, "default");
-  gtk_accessible_update_property (GTK_ACCESSIBLE (widget), GTK_ACCESSIBLE_PROPERTY_LABEL, "Thumbnail", -1);
+  gtk_accessible_update_property (GTK_ACCESSIBLE (widget), GTK_ACCESSIBLE_PROPERTY_LABEL, _ ("Thumbnail"), -1);
   self->area = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
   gtk_widget_add_css_class (self->area, "thumbnail-area");
   gtk_widget_set_size_request (self->area, AREA_WIDTH, AREA_HEIGHT);

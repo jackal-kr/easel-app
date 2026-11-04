@@ -1,0 +1,16 @@
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+
+#, c-format
+msgid "Saved %s"
+msgstr ""
+
+msgid "Open"
+msgstr ""
+
+#, c-format
+msgid "Takes %d sheet"
+msgid_plural "Takes %d sheets"
+msgstr[0] ""
+msgstr[1] ""

@@ -1,0 +1,1197 @@
+# Russian translation of Easel. A draft.
+# SPDX-License-Identifier: GPL-3.0-or-later
+msgid ""
+msgstr ""
+"Project-Id-Version: easel\n"
+"Language: ru\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
+"X-Easel-Reviewed: no\n"
+
+msgid "Default"
+msgstr "По умолчанию"
+
+msgid "Attributes"
+msgstr "Атрибуты"
+
+msgid "New area is filled with the background color; a smaller size crops the picture."
+msgstr "Новая область заливается цветом фона; меньший размер обрезает рисунок."
+
+msgid "Width"
+msgstr "Ширина"
+
+msgid "Height"
+msgstr "Высота"
+
+msgid "_Cancel"
+msgstr "_Отмена"
+
+msgid "_OK"
+msgstr "_ОК"
+
+#, c-format
+msgid "Picture, %d by %d pixel"
+msgid_plural "Picture, %d by %d pixels"
+msgstr[0] "Рисунок, %d на %d пиксель"
+msgstr[1] "Рисунок, %d на %d пикселя"
+msgstr[2] "Рисунок, %d на %d пикселей"
+
+msgid "Bold (Ctrl+B)"
+msgstr "Полужирный (Ctrl+B)"
+
+msgid "Italic (Ctrl+I)"
+msgstr "Курсив (Ctrl+I)"
+
+msgid "Underline (Ctrl+U)"
+msgstr "Подчёркнутый (Ctrl+U)"
+
+msgid "Strikethrough (Ctrl+Shift+5)"
+msgstr "Зачёркнутый (Ctrl+Shift+5)"
+
+msgid "Font family (Ctrl+Shift+F)"
+msgstr "Гарнитура (Ctrl+Shift+F)"
+
+msgid "Font family"
+msgstr "Гарнитура"
+
+msgid "Font size (Ctrl+] larger, Ctrl+[ smaller)"
+msgstr "Размер шрифта (Ctrl+] больше, Ctrl+[ меньше)"
+
+msgid "Grid"
+msgstr "Сетка"
+
+msgid "Cell size in picture pixels (1 to 1000)"
+msgstr "Ячейка в пикселях (1–1000)"
+
+msgid "Axonometric"
+msgstr "Аксонометрическая"
+
+msgid "_Apply"
+msgstr "_Применить"
+
+msgid "File"
+msgstr "Файл"
+
+msgid "New"
+msgstr "Создать"
+
+msgid "Open…"
+msgstr "Открыть…"
+
+msgid "Save"
+msgstr "Сохранить"
+
+msgid "Save As…"
+msgstr "Сохранить как…"
+
+msgid "Print…"
+msgstr "Печать…"
+
+msgid "Preferences"
+msgstr "Параметры"
+
+msgid "Keyboard Shortcuts"
+msgstr "Клавиатурные сокращения"
+
+msgid "Help"
+msgstr "Справка"
+
+msgid "Close the window"
+msgstr "Закрыть окно"
+
+msgid "Quit"
+msgstr "Выйти"
+
+msgid "Edit"
+msgstr "Правка"
+
+msgid "Undo"
+msgstr "Отменить"
+
+msgid "Redo"
+msgstr "Повторить"
+
+msgid "Cut"
+msgstr "Вырезать"
+
+msgid "Copy"
+msgstr "Копировать"
+
+msgid "Paste"
+msgstr "Вставить"
+
+msgid "Select All"
+msgstr "Выделить всё"
+
+msgid "Clear the selection"
+msgstr "Очистить выделение"
+
+msgid "Move the selection 1 pixel"
+msgstr "Сдвинуть выделение на 1 пиксель"
+
+msgid "Move the selection 10 pixels"
+msgstr "Сдвинуть выделение на 10 пикселей"
+
+msgid "Put down a selection or a waiting shape"
+msgstr "Положить выделение или ожидающую фигуру"
+
+msgid "Put down a selection, drop a waiting shape, cancel a drag"
+msgstr "Положить выделение, сбросить ожидающую фигуру, отменить перетаскивание"
+
+msgid "Image"
+msgstr "Изображение"
+
+msgid "Rotate 90°"
+msgstr "Повернуть на 90°"
+
+msgid "Rotate 270°"
+msgstr "Повернуть на 270°"
+
+msgid "Stretch and Skew…"
+msgstr "Растянуть и наклонить…"
+
+msgid "Invert Colors"
+msgstr "Обратить цвета"
+
+msgid "Attributes…"
+msgstr "Атрибуты…"
+
+msgid "Clear Image"
+msgstr "Очистить изображение"
+
+msgid "View"
+msgstr "Вид"
+
+msgid "Zoom In"
+msgstr "Увеличить"
+
+msgid "Zoom Out"
+msgstr "Уменьшить"
+
+msgid "Normal Size"
+msgstr "Обычный размер"
+
+msgid "Large Size"
+msgstr "Крупный размер"
+
+msgid "Fit to Window"
+msgstr "По размеру окна"
+
+msgid "Show Grid"
+msgstr "Показать сетку"
+
+msgid "Close the thumbnail"
+msgstr "Закрыть миниатюру"
+
+msgid "Move the focus"
+msgstr "Переместить фокус"
+
+msgid "Move to the next or the previous panel"
+msgstr "Перейти к следующей или предыдущей панели"
+
+msgid "Tools"
+msgstr "Инструменты"
+
+msgid "The next larger size of the tool"
+msgstr "Следующий больший размер инструмента"
+
+msgid "The next smaller size of the tool"
+msgstr "Следующий меньший размер инструмента"
+
+msgid "Move the focus in a panel"
+msgstr "Переместить фокус в панели"
+
+msgid "Choose the focused control"
+msgstr "Выбрать элемент в фокусе"
+
+msgid "Press or release at the marker"
+msgstr "Нажать или отпустить у маркера"
+
+msgid "Press with the secondary button at the marker"
+msgstr "Нажать дополнительной кнопкой у маркера"
+
+msgid "Press for a copy of a selection"
+msgstr "Нажать для копии выделения"
+
+msgid "Press for a smear of a selection"
+msgstr "Нажать для шлейфа выделения"
+
+msgid "Move the marker 1 pixel"
+msgstr "Сдвинуть маркер на 1 пиксель"
+
+msgid "Move the marker 10 pixels"
+msgstr "Сдвинуть маркер на 10 пикселей"
+
+msgid "Move the marker alone, with a selection"
+msgstr "Сдвинуть только маркер при выделении"
+
+msgid "Open the menu at the marker"
+msgstr "Открыть меню у маркера"
+
+msgid "Say the marker's place and color"
+msgstr "Назвать место и цвет маркера"
+
+msgid "Colors"
+msgstr "Цвета"
+
+msgid "Swap foreground and background"
+msgstr "Поменять основной цвет и цвет фона"
+
+msgid "Edit the focused swatch"
+msgstr "Изменить образец в фокусе"
+
+msgid "Move among the swatches"
+msgstr "Перемещаться между образцами"
+
+msgid "Make the focused swatch the foreground color"
+msgstr "Сделать образец в фокусе основным цветом"
+
+msgid "Make the focused swatch the background color"
+msgstr "Сделать образец в фокусе цветом фона"
+
+msgid "Text"
+msgstr "Текст"
+
+msgid "Bold"
+msgstr "Полужирный"
+
+msgid "Italic"
+msgstr "Курсив"
+
+msgid "Underline"
+msgstr "Подчёркнутый"
+
+msgid "Strikethrough"
+msgstr "Зачёркнутый"
+
+msgid "Font size 1 point larger or smaller"
+msgstr "Размер шрифта на 1 пункт больше или меньше"
+
+msgid "Open the font family list"
+msgstr "Открыть список гарнитур"
+
+msgid "Move the highlight in the family list"
+msgstr "Переместить подсветку в списке гарнитур"
+
+msgid "Choose the highlighted family"
+msgstr "Выбрать подсвеченную гарнитуру"
+
+msgid "Close the family list"
+msgstr "Закрыть список гарнитур"
+
+msgid "New line"
+msgstr "Новая строка"
+
+msgid "Delete before or after the caret"
+msgstr "Удалить до или после курсора"
+
+msgid "Move the caret"
+msgstr "Сдвинуть курсор"
+
+msgid "Move the caret by a word"
+msgstr "Сдвинуть курсор на слово"
+
+msgid "To the start or the end of the line"
+msgstr "К началу или концу строки"
+
+msgid "Extend the text selection"
+msgstr "Расширить выделение текста"
+
+msgid "Cut the selected text"
+msgstr "Вырезать выделенный текст"
+
+msgid "Copy the selected text"
+msgstr "Копировать выделенный текст"
+
+msgid "Paste into the box"
+msgstr "Вставить в рамку"
+
+msgid "Paste as Plain Text"
+msgstr "Вставить как простой текст"
+
+msgid "Select all the box's text"
+msgstr "Выделить весь текст рамки"
+
+msgid "Put the box down"
+msgstr "Положить рамку"
+
+msgid "Move the box 1 pixel"
+msgstr "Сдвинуть рамку на 1 пиксель"
+
+msgid "Move the box's far corner 1 pixel"
+msgstr "Сдвинуть дальний угол рамки на 1 пиксель"
+
+#, c-format
+msgid "Color %d, %s"
+msgstr "Цвет %d, %s"
+
+#, c-format
+msgid "Foreground color, %s"
+msgstr "Основной цвет, %s"
+
+#, c-format
+msgid "Background color, %s"
+msgstr "Цвет фона, %s"
+
+msgid "Swap foreground and background (Ctrl+Shift+X)"
+msgstr "Поменять основной цвет и цвет фона (Ctrl+Shift+X)"
+
+msgid "Takes effect the next time Easel starts."
+msgstr "Вступит в силу при следующем запуске Easel."
+
+msgid "Use Default"
+msgstr "По умолчанию"
+
+msgid "Canvas color"
+msgstr "Цвет холста"
+
+msgid "Reset the Palette?"
+msgstr "Сбросить палитру?"
+
+msgid "All 28 colors go back to the classic ones. This cannot be undone."
+msgstr "Все 28 цветов вернутся к классическим. Это нельзя отменить."
+
+msgid "_Reset"
+msgstr "_Сбросить"
+
+msgid "Size and color"
+msgstr "Размер и цвет"
+
+msgid "Automatic size"
+msgstr "Автоматический размер"
+
+msgid "System"
+msgstr "Системный"
+
+msgid "Light"
+msgstr "Светлый"
+
+msgid "Dark"
+msgstr "Тёмный"
+
+msgid "Style"
+msgstr "Стиль"
+
+msgid "Language"
+msgstr "Язык"
+
+msgid "Workspace"
+msgstr "Рабочая область"
+
+msgid "Selection"
+msgstr "Выделение"
+
+msgid "Panels"
+msgstr "Панели"
+
+msgid "Palette"
+msgstr "Палитра"
+
+msgid "Reset Palette…"
+msgstr "Сбросить палитру…"
+
+msgid "System default"
+msgstr "Как в системе"
+
+msgid "Workspace color"
+msgstr "Цвет рабочей области"
+
+msgid "Workspace color, dark"
+msgstr "Цвет рабочей области, тёмный"
+
+msgid "Tint strength"
+msgstr "Насыщенность подсветки"
+
+msgid "Tool Box"
+msgstr "Панель инструментов"
+
+msgid "Color Box"
+msgstr "Панель цветов"
+
+msgid "Status Bar"
+msgstr "Строка состояния"
+
+msgid "Frame time"
+msgstr "Время кадра"
+
+msgid "Automatic"
+msgstr "Автоматически"
+
+msgid "Font"
+msgstr "Шрифт"
+
+msgid "Circle, 7 pixels"
+msgstr "Круг, 7 пикселей"
+
+msgid "Circle, 4 pixels"
+msgstr "Круг, 4 пикселя"
+
+msgid "Circle, 1 pixel"
+msgstr "Круг, 1 пиксель"
+
+msgid "Square, 8 pixels"
+msgstr "Квадрат, 8 пикселей"
+
+msgid "Square, 5 pixels"
+msgstr "Квадрат, 5 пикселей"
+
+msgid "Square, 2 pixels"
+msgstr "Квадрат, 2 пикселя"
+
+msgid "Slash, 8 pixels"
+msgstr "Косая, 8 пикселей"
+
+msgid "Slash, 5 pixels"
+msgstr "Косая, 5 пикселей"
+
+msgid "Slash, 2 pixels"
+msgstr "Косая, 2 пикселя"
+
+msgid "Backslash, 8 pixels"
+msgstr "Обратная косая, 8 пикселей"
+
+msgid "Backslash, 5 pixels"
+msgstr "Обратная косая, 5 пикселей"
+
+msgid "Backslash, 2 pixels"
+msgstr "Обратная косая, 2 пикселя"
+
+msgid "9 pixels"
+msgstr "9 пикселей"
+
+msgid "16 pixels"
+msgstr "16 пикселей"
+
+msgid "24 pixels"
+msgstr "24 пикселя"
+
+msgid "4 pixels"
+msgstr "4 пикселя"
+
+msgid "6 pixels"
+msgstr "6 пикселей"
+
+msgid "8 pixels"
+msgstr "8 пикселей"
+
+msgid "10 pixels"
+msgstr "10 пикселей"
+
+msgid "Opaque"
+msgstr "Непрозрачный"
+
+msgid "Transparent"
+msgstr "Прозрачный"
+
+msgid "1 pixel"
+msgstr "1 пиксель"
+
+msgid "2 pixels"
+msgstr "2 пикселя"
+
+msgid "3 pixels"
+msgstr "3 пикселя"
+
+msgid "5 pixels"
+msgstr "5 пикселей"
+
+msgid "Outline"
+msgstr "Контур"
+
+msgid "Outline and fill"
+msgstr "Контур и заливка"
+
+msgid "Fill"
+msgstr "Заливка"
+
+msgid "History"
+msgstr "История"
+
+msgid "Saving"
+msgstr "Сохранение"
+
+msgid "Brush"
+msgstr "Кисть"
+
+msgid "Airbrush"
+msgstr "Распылитель"
+
+msgid "Eraser size"
+msgstr "Размер ластика"
+
+msgid "Eraser mode"
+msgstr "Режим ластика"
+
+msgid "Line and shape width"
+msgstr "Толщина линий и фигур"
+
+msgid "Fill style"
+msgstr "Стиль заливки"
+
+msgid "Magnifier level"
+msgstr "Уровень лупы"
+
+msgid "Size"
+msgstr "Размер"
+
+msgid "Undo memory"
+msgstr "Память для отмены"
+
+msgid "JPEG quality"
+msgstr "Качество JPEG"
+
+msgid "Appearance"
+msgstr "Внешний вид"
+
+msgid "New Picture"
+msgstr "Новый рисунок"
+
+msgid "Drawing"
+msgstr "Рисование"
+
+#, c-format
+msgid "Takes %d sheet"
+msgid_plural "Takes %d sheets"
+msgstr[0] "Занимает %d лист"
+msgstr[1] "Занимает %d листа"
+msgstr[2] "Занимает %d листов"
+
+msgid "Pixels"
+msgstr "Пиксели"
+
+msgid "Sharp"
+msgstr "Чёткие"
+
+msgid "Each pixel a sharp square"
+msgstr "Каждый пиксель — чёткий квадрат"
+
+msgid "Smooth when shrunk"
+msgstr "Сглаживать при уменьшении"
+
+msgid "Sharp, but averaged where a printer's dot covers several pixels"
+msgstr "Чёткие, но усредняются, когда точка принтера покрывает несколько пикселей"
+
+msgid "Smooth"
+msgstr "Сглаженные"
+
+msgid "Blended between pixels"
+msgstr "С переходом между пикселями"
+
+msgid "Fit on one page"
+msgstr "Уместить на одну страницу"
+
+#, c-format
+msgid "Too large: %d × %d; the most is 10000 × 10000"
+msgstr "Слишком большой: %d × %d; предел 10000 × 10000"
+
+#, c-format
+msgid "New size: %d × %d"
+msgstr "Новый размер: %d × %d"
+
+msgid "Keep aspect ratio"
+msgstr "Сохранять пропорции"
+
+msgid "Stretch and Skew"
+msgstr "Растянуть и наклонить"
+
+msgid "Stretch"
+msgstr "Растянуть"
+
+msgid "Percent"
+msgstr "Проценты"
+
+msgid "Skew"
+msgstr "Наклонить"
+
+msgid "Degrees"
+msgstr "Градусы"
+
+msgid "Horizontal"
+msgstr "По горизонтали"
+
+msgid "Vertical"
+msgstr "По вертикали"
+
+msgid "Thumbnail"
+msgstr "Миниатюра"
+
+#, c-format
+msgid "Eraser, %d pixel"
+msgid_plural "Eraser, %d pixels"
+msgstr[0] "Ластик, %d пиксель"
+msgstr[1] "Ластик, %d пикселя"
+msgstr[2] "Ластик, %d пикселей"
+
+#, c-format
+msgid "Spray, %d pixel"
+msgid_plural "Spray, %d pixels"
+msgstr[0] "Распыление, %d пиксель"
+msgstr[1] "Распыление, %d пикселя"
+msgstr[2] "Распыление, %d пикселей"
+
+#, c-format
+msgid "Circle, %d pixel"
+msgid_plural "Circle, %d pixels"
+msgstr[0] "Круг, %d пиксель"
+msgstr[1] "Круг, %d пикселя"
+msgstr[2] "Круг, %d пикселей"
+
+#, c-format
+msgid "Square, %d pixel"
+msgid_plural "Square, %d pixels"
+msgstr[0] "Квадрат, %d пиксель"
+msgstr[1] "Квадрат, %d пикселя"
+msgstr[2] "Квадрат, %d пикселей"
+
+#, c-format
+msgid "Slash, %d pixel"
+msgid_plural "Slash, %d pixels"
+msgstr[0] "Косая, %d пиксель"
+msgstr[1] "Косая, %d пикселя"
+msgstr[2] "Косая, %d пикселей"
+
+#, c-format
+msgid "Backslash, %d pixel"
+msgid_plural "Backslash, %d pixels"
+msgstr[0] "Обратная косая, %d пиксель"
+msgstr[1] "Обратная косая, %d пикселя"
+msgstr[2] "Обратная косая, %d пикселей"
+
+msgid "Opaque: erase to the background color"
+msgstr "Непрозрачный: стирать до цвета фона"
+
+msgid "Transparent: erase to transparency"
+msgstr "Прозрачный: стирать до прозрачности"
+
+msgid "Opaque: keep background color"
+msgstr "Непрозрачный: оставлять цвет фона"
+
+msgid "Transparent: moving or clearing leaves a transparent hole"
+msgstr "Прозрачный: перемещение или очистка оставляют прозрачную дыру"
+
+msgid "Opaque: fill the text box with the background color"
+msgstr "Непрозрачный: заливать рамку цветом фона"
+
+msgid "Transparent: only the text"
+msgstr "Прозрачный: только текст"
+
+msgid "Untitled"
+msgstr "Без имени"
+
+#, c-format
+msgid "• %s – Easel"
+msgstr "• %s – Easel"
+
+#, c-format
+msgid "%s – Easel"
+msgstr "%s – Easel"
+
+msgid "Close"
+msgstr "Закрыть"
+
+#, c-format
+msgid "Could Not Save “%s”"
+msgstr "Не удалось сохранить «%s»"
+
+#, c-format
+msgid "“%s” could not be saved: %s"
+msgstr "Не удалось сохранить «%s»: %s"
+
+#, c-format
+msgid "Saved %s"
+msgstr "Сохранено: %s"
+
+#, c-format
+msgid "Replace “%s”?"
+msgstr "Заменить «%s»?"
+
+msgid "A file with this name already exists."
+msgstr "Файл с таким именем уже существует."
+
+msgid "_Replace"
+msgstr "_Заменить"
+
+msgid "Cannot Save This Kind of File"
+msgstr "Нельзя сохранить файл такого вида"
+
+msgid "Pictures can be saved as PNG, JPEG, BMP, TIFF or WebP."
+msgstr "Рисунки можно сохранять в PNG, JPEG, BMP, TIFF или WebP."
+
+msgid "Copy To"
+msgstr "Копировать в"
+
+msgid "Untitled.png"
+msgstr "Без имени.png"
+
+msgid "Save Picture As"
+msgstr "Сохранить рисунок как"
+
+#, c-format
+msgid "“%s” has unsaved changes."
+msgstr "В «%s» есть несохранённые изменения."
+
+msgid "Save Changes?"
+msgstr "Сохранить изменения?"
+
+msgid "_Discard"
+msgstr "_Не сохранять"
+
+msgid "_Save"
+msgstr "_Сохранить"
+
+#, c-format
+msgid "Opened %s"
+msgstr "Открыто: %s"
+
+msgid "Could Not Create a New Picture"
+msgstr "Не удалось создать новый рисунок"
+
+#, c-format
+msgid "Could Not Open “%s”"
+msgstr "Не удалось открыть «%s»"
+
+msgid "The file cannot be read."
+msgstr "Не удаётся прочитать файл."
+
+msgid "This is not a picture the app can open."
+msgstr "Это не рисунок, который приложение может открыть."
+
+msgid "The picture is bigger than 10000 pixels in width or height."
+msgstr "Рисунок больше 10000 пикселей в ширину или высоту."
+
+msgid "Open Picture"
+msgstr "Открыть рисунок"
+
+msgid "Draw with the foreground color. The secondary button uses the background color."
+msgstr "Рисует основным цветом. Дополнительная кнопка рисует цветом фона."
+
+msgid "Paint with the foreground color. The secondary button uses the background color."
+msgstr "Красит основным цветом. Дополнительная кнопка красит цветом фона."
+
+msgid "Spray with the foreground color. The secondary button uses the background color."
+msgstr "Распыляет основной цвет. Дополнительная кнопка распыляет цвет фона."
+
+msgid "Erase to transparency. The secondary button erases only the foreground color."
+msgstr "Стирает до прозрачности. Дополнительная кнопка стирает только основной цвет."
+
+msgid "Erase to the background color. The secondary button changes only the foreground color."
+msgstr "Стирает до цвета фона. Дополнительная кнопка меняет только основной цвет."
+
+msgid "Changes the magnification."
+msgstr "Меняет увеличение."
+
+msgid "Draws a straight line with the selected line width."
+msgstr "Рисует прямую линию выбранной толщины."
+
+msgid "Draws a rectangle with the selected fill style."
+msgstr "Рисует прямоугольник выбранным стилем заливки."
+
+msgid "Draws a rounded rectangle with the selected fill style."
+msgstr "Рисует скруглённый прямоугольник выбранным стилем заливки."
+
+msgid "Draws an ellipse with the selected fill style."
+msgstr "Рисует эллипс выбранным стилем заливки."
+
+msgid "Draws a curved line with the selected line width."
+msgstr "Рисует кривую линию выбранной толщины."
+
+msgid "Draws a polygon with the selected fill style."
+msgstr "Рисует многоугольник выбранным стилем заливки."
+
+msgid "Selects a rectangular part of the picture to move, copy, or edit."
+msgstr "Выделяет прямоугольную часть рисунка, чтобы переместить, скопировать или изменить её."
+
+msgid "Selects a free-form part of the picture to move, copy, or edit."
+msgstr "Выделяет произвольную часть рисунка, чтобы переместить, скопировать или изменить её."
+
+msgid "Fades the drawing color to transparent along a drag. A click or Enter applies it, Esc cancels it."
+msgstr "Плавно переводит цвет в прозрачный вдоль перетаскивания. Щелчок или Enter применяет, Esc отменяет."
+
+msgid "Picks up a color from the picture for drawing."
+msgstr "Берёт цвет с рисунка для рисования."
+
+msgid "Fills an area with the current drawing color."
+msgstr "Заливает область текущим цветом."
+
+msgid "Inserts text into the picture."
+msgstr "Вставляет текст в рисунок."
+
+msgid "Drag to pan. Ctrl+wheel zooms."
+msgstr "Перетаскивайте для сдвига. Ctrl+колесо меняет масштаб."
+
+msgid "Zoom"
+msgstr "Масштаб"
+
+msgid "Zoom Out (Ctrl+-)"
+msgstr "Уменьшить (Ctrl+-)"
+
+msgid "Zoom In (Ctrl+=)"
+msgstr "Увеличить (Ctrl+=)"
+
+#, c-format
+msgid "There is not enough memory for a picture of %d × %d pixel."
+msgid_plural "There is not enough memory for a picture of %d × %d pixels."
+msgstr[0] "Не хватает памяти для рисунка %d × %d пиксель."
+msgstr[1] "Не хватает памяти для рисунка %d × %d пикселя."
+msgstr[2] "Не хватает памяти для рисунка %d × %d пикселей."
+
+msgid "Could Not Resize the Picture"
+msgstr "Не удалось изменить размер рисунка"
+
+msgid "Could Not Invert the Colors"
+msgstr "Не удалось обратить цвета"
+
+msgid "Could Not Clear the Picture"
+msgstr "Не удалось очистить рисунок"
+
+msgid "Could Not Flip the Picture"
+msgstr "Не удалось отразить рисунок"
+
+msgid "Could Not Rotate the Picture"
+msgstr "Не удалось повернуть рисунок"
+
+msgid "There is not enough memory for this change."
+msgstr "Не хватает памяти для этого изменения."
+
+msgid "Space to finish, Esc to cancel"
+msgstr "Space — закончить, Esc — отменить"
+
+msgid "Done"
+msgstr "Готово"
+
+msgid "Cancelled"
+msgstr "Отменено"
+
+#, c-format
+msgid "Foreground %s"
+msgstr "Основной цвет %s"
+
+#, c-format
+msgid "Background %s"
+msgstr "Цвет фона %s"
+
+msgid "Text box open"
+msgstr "Рамка текста открыта"
+
+msgid "Text box closed"
+msgstr "Рамка текста закрыта"
+
+#, c-format
+msgid "Selection %d by %d"
+msgstr "Выделение %d на %d"
+
+msgid "Selection put down"
+msgstr "Выделение положено"
+
+msgid "Selection removed"
+msgstr "Выделение снято"
+
+msgid "Polygon closed"
+msgstr "Многоугольник замкнут"
+
+msgid "Pan"
+msgstr "Сдвиг"
+
+msgid "Pencil"
+msgstr "Карандаш"
+
+msgid "Eraser"
+msgstr "Ластик"
+
+msgid "Magnifier"
+msgstr "Лупа"
+
+msgid "Pick Color"
+msgstr "Выбор цвета"
+
+msgid "Line"
+msgstr "Линия"
+
+msgid "Rectangle"
+msgstr "Прямоугольник"
+
+msgid "Rounded Rectangle"
+msgstr "Скруглённый прямоугольник"
+
+msgid "Ellipse"
+msgstr "Эллипс"
+
+msgid "Curve"
+msgstr "Кривая"
+
+msgid "Polygon"
+msgstr "Многоугольник"
+
+msgid "Gradient"
+msgstr "Градиент"
+
+msgid "Select"
+msgstr "Выделение"
+
+msgid "Free-Form Select"
+msgstr "Произвольное выделение"
+
+msgid "Could Not Open Help"
+msgstr "Не удалось открыть справку"
+
+msgid "The help page could not be opened."
+msgstr "Не удалось открыть страницу справки."
+
+msgid "OK"
+msgstr "ОК"
+
+msgid "Could Not Print"
+msgstr "Не удалось напечатать"
+
+msgid "The picture could not be printed."
+msgstr "Не удалось напечатать рисунок."
+
+msgid "Picture"
+msgstr "Рисунок"
+
+msgid "Could Not Save the Preferences"
+msgstr "Не удалось сохранить параметры"
+
+msgid "The change applies until Easel closes, but settings.ini could not be written."
+msgstr "Изменение действует до закрытия Easel, но файл settings.ini записать не удалось."
+
+msgid "Could Not Stretch or Skew the Picture"
+msgstr "Не удалось растянуть или наклонить рисунок"
+
+msgid "Undone"
+msgstr "Отменено"
+
+msgid "Redone"
+msgstr "Повторено"
+
+msgid "Could Not Fill"
+msgstr "Не удалось залить"
+
+msgid "There is not enough memory to fill this area."
+msgstr "Не хватает памяти для заливки этой области."
+
+msgid "Could Not Draw the Shape"
+msgstr "Не удалось нарисовать фигуру"
+
+msgid "There is not enough memory to draw this shape."
+msgstr "Не хватает памяти, чтобы нарисовать эту фигуру."
+
+msgid "Could Not Apply the Gradient"
+msgstr "Не удалось применить градиент"
+
+msgid "There is not enough memory to apply this gradient."
+msgstr "Не хватает памяти, чтобы применить этот градиент."
+
+msgid "Could Not Clear the Selection"
+msgstr "Не удалось очистить выделение"
+
+msgid "There is not enough memory to clear this selection."
+msgstr "Не хватает памяти, чтобы очистить это выделение."
+
+msgid "Could Not Make the Selection"
+msgstr "Не удалось создать выделение"
+
+msgid "There is not enough memory to make this selection."
+msgstr "Не хватает памяти, чтобы создать это выделение."
+
+msgid "Could Not Stretch the Selection"
+msgstr "Не удалось растянуть выделение"
+
+msgid "There is not enough memory to stretch this selection."
+msgstr "Не хватает памяти, чтобы растянуть это выделение."
+
+msgid "Could Not Flip the Selection"
+msgstr "Не удалось отразить выделение"
+
+msgid "Could Not Rotate the Selection"
+msgstr "Не удалось повернуть выделение"
+
+msgid "Could Not Invert the Selection"
+msgstr "Не удалось обратить цвета выделения"
+
+msgid "Could Not Stretch or Skew the Selection"
+msgstr "Не удалось растянуть или наклонить выделение"
+
+msgid "Could Not Move the Selection"
+msgstr "Не удалось переместить выделение"
+
+msgid "There is not enough memory to move this selection."
+msgstr "Не хватает памяти, чтобы переместить это выделение."
+
+msgid "Could Not Add the Text"
+msgstr "Не удалось добавить текст"
+
+msgid "There is not enough memory to show this text."
+msgstr "Не хватает памяти, чтобы показать этот текст."
+
+msgid "There is not enough memory to add this text."
+msgstr "Не хватает памяти, чтобы добавить этот текст."
+
+msgid "Could Not Copy the Selection"
+msgstr "Не удалось скопировать выделение"
+
+msgid "There is not enough memory to copy this selection."
+msgstr "Не хватает памяти, чтобы скопировать это выделение."
+
+#, c-format
+msgid "Could Not Paste “%s”"
+msgstr "Не удалось вставить «%s»"
+
+msgid "Could Not Paste"
+msgstr "Не удалось вставить"
+
+msgid "There is not enough memory to paste this picture."
+msgstr "Не хватает памяти, чтобы вставить этот рисунок."
+
+msgid "The clipboard's picture cannot be read."
+msgstr "Не удаётся прочитать рисунок из буфера обмена."
+
+#, c-format
+msgid "The picture is %d × %d pixel; the canvas is %d × %d."
+msgid_plural "The picture is %d × %d pixels; the canvas is %d × %d."
+msgstr[0] "Рисунок %d × %d пиксель; холст %d × %d."
+msgstr[1] "Рисунок %d × %d пикселя; холст %d × %d."
+msgstr[2] "Рисунок %d × %d пикселей; холст %d × %d."
+
+msgid "Pasted Picture Is Larger Than the Canvas"
+msgstr "Вставленный рисунок больше холста"
+
+msgid "_Fit Picture to Canvas"
+msgstr "_Уместить рисунок на холсте"
+
+msgid "_Resize Canvas to Picture"
+msgstr "_Подогнать холст под рисунок"
+
+msgid "The clipboard's text cannot be read."
+msgstr "Не удаётся прочитать текст из буфера обмена."
+
+msgid "There is not enough memory to paste this text."
+msgstr "Не хватает памяти, чтобы вставить этот текст."
+
+msgid "Could Not Copy the Text"
+msgstr "Не удалось скопировать текст"
+
+msgid "There is not enough memory to copy this text."
+msgstr "Не хватает памяти, чтобы скопировать этот текст."
+
+msgid "Paste From"
+msgstr "Вставить из"
+
+msgid "Open"
+msgstr "Открыть"
+
+msgid "Main Menu"
+msgstr "Главное меню"
+
+msgid "Text box"
+msgstr "Рамка текста"
+
+msgid "_Flip"
+msgstr "_Отразить"
+
+msgid "Flip _Horizontal"
+msgstr "Отразить по _горизонтали"
+
+msgid "Flip _Vertical"
+msgstr "Отразить по _вертикали"
+
+msgid "_Rotate"
+msgstr "По_вернуть"
+
+msgid "Rotate _90°"
+msgstr "Повернуть на _90°"
+
+msgid "Rotate 1_80°"
+msgstr "Повернуть на 1_80°"
+
+msgid "Rotate _270°"
+msgstr "Повернуть на _270°"
+
+msgid "Stretch and _Skew…"
+msgstr "Растянуть и _наклонить…"
+
+msgid "_Invert Colors"
+msgstr "_Обратить цвета"
+
+msgid "_Clear Image"
+msgstr "_Очистить изображение"
+
+msgid "Grid…"
+msgstr "Сетка…"
+
+msgid "Show Thumbnail"
+msgstr "Показать миниатюру"
+
+msgid "Cu_t"
+msgstr "Выр_езать"
+
+msgid "_Copy"
+msgstr "_Копировать"
+
+msgid "_Paste"
+msgstr "Вст_авить"
+
+msgid "_Clear Selection"
+msgstr "_Очистить выделение"
+
+msgid "Select _All"
+msgstr "Выделить _всё"
+
+msgid "Copy _To…"
+msgstr "Копировать _в…"
+
+msgid "Paste as Plain _Text"
+msgstr "Вставить как простой _текст"
+
+msgid "Paste _From…"
+msgstr "Вставить _из…"
+
+msgid "Zoom _In"
+msgstr "_Увеличить"
+
+msgid "Zoom _Out"
+msgstr "У_меньшить"
+
+msgid "_Normal Size"
+msgstr "_Обычный размер"
+
+msgid "_New"
+msgstr "Со_здать"
+
+msgid "_Open…"
+msgstr "_Открыть…"
+
+msgid "Save _As…"
+msgstr "Сохранить _как…"
+
+msgid "_Print…"
+msgstr "_Печать…"
+
+msgid "_Edit"
+msgstr "П_равка"
+
+msgid "_Preferences"
+msgstr "Пара_метры"
+
+msgid "_Keyboard Shortcuts"
+msgstr "_Клавиатурные сокращения"
+
+msgid "_Help"
+msgstr "Спр_авка"
+
+msgid "_About Easel"
+msgstr "О _Easel"
+
+msgid "_Quit"
+msgstr "_Выйти"
+
+msgid "Pictures"
+msgstr "Рисунки"
+
+msgid "All Files"
+msgstr "Все файлы"
+
+msgid "Smear the selection 1 pixel"
+msgstr "Шлейф выделения на 1 пиксель"

@@ -437,7 +437,7 @@ file: src/ui/window.c
 test: ui-0005
 --- find
     case EASEL_OPEN_TOO_BIG:
-      show_save_error (self, heading, "The picture is bigger than 10000 pixels in width or height.");
+      show_save_error (self, heading, _ ("The picture is bigger than 10000 pixels in width or height."));
       break;
 --- replace
     case EASEL_OPEN_TOO_BIG:
@@ -507,9 +507,9 @@ test: ui-0005
 file: src/ui/window.c
 test: ui-0005
 --- find
-      show_save_error (req->self, "Cannot Save This Kind of File"
+      show_save_error (req->self, _ ("Cannot Save This Kind of File")
 --- replace
-      show_save_error (req->self, "Only PNG"
+      show_save_error (req->self, _ ("Only PNG")
 
 === REQ-0001-42 an existing file is replaced without the question when .png was added
 file: src/ui/window.c
@@ -908,9 +908,9 @@ test: ui-0006
 file: src/ui/window.c
 test: ui-0006
 --- find
-      return transparent ? "Erase to transparency. The secondary button erases only the foreground color."
+      return transparent ? _ ("Erase to transparency. The secondary button erases only the foreground color.")
 --- replace
-      return !transparent ? "Erase to transparency. The secondary button erases only the foreground color."
+      return !transparent ? _ ("Erase to transparency. The secondary button erases only the foreground color.")
 
 === REQ-0006-17 a change of mode leaves the old hint
 file: src/ui/window.c
@@ -925,9 +925,9 @@ test: ui-0006
 file: src/ui/window.c
 test: ui-0006
 --- find
-      return "Spray with the foreground color. The secondary button uses the background color.";
+      return _ ("Spray with the foreground color. The secondary button uses the background color.");
 --- replace
-      return "Paint with the foreground color. The secondary button uses the background color.";
+      return _ ("Paint with the foreground color. The secondary button uses the background color.");
 
 === REQ-0007-05 undo of a fill writes the new color back
 file: src/core/history.c
@@ -1044,9 +1044,9 @@ test: core-magnifier
 file: src/ui/window.c
 test: ui-0007
 --- find
-      return "Picks up a color from the picture for drawing.";
+      return _ ("Picks up a color from the picture for drawing.");
 --- replace
-      return "Fills an area with the current drawing color.";
+      return _ ("Fills an area with the current drawing color.");
 
 === REQ-0007-01 the Magnifier button is not in the toolbox's first row
 file: src/ui/window.ui
@@ -1836,9 +1836,9 @@ test: ui-0011
 file: src/ui/window.c
 test: ui-0011
 --- find
-      return "Draws a curved line with the selected line width.";
+      return _ ("Draws a curved line with the selected line width.");
 --- replace
-      return "Draws a polygon with the selected fill style.";
+      return _ ("Draws a polygon with the selected fill style.");
 
 === REQ-0011-03 Curve and Polygon have no crosshair
 file: src/ui/canvas.c
@@ -2430,9 +2430,9 @@ test: ui-0012
 file: src/ui/window.c
 test: ui-0012
 --- find
-      return "Fades the drawing color to transparent along a drag. A click or Enter applies it, Esc cancels it.";
+      return _ ("Fades the drawing color to transparent along a drag. A click or Enter applies it, Esc cancels it.");
 --- replace
-      return "Draws a polygon with the selected fill style.";
+      return _ ("Draws a polygon with the selected fill style.");
 
 === REQ-0012-04 a half of the gradient's opacity rounds down
 file: src/core/gradient.c
@@ -2766,9 +2766,9 @@ test: core-gradient
 file: src/ui/window.c
 test: ui-0012
 --- find
-      return "Fades the drawing color to transparent along a drag. A click or Enter applies it, Esc cancels it.";
+      return _ ("Fades the drawing color to transparent along a drag. A click or Enter applies it, Esc cancels it.");
 --- replace
-      return "Fades the drawing color to transparent along a drag. Enter applies it, Esc cancels it.";
+      return _ ("Fades the drawing color to transparent along a drag. Enter applies it, Esc cancels it.");
 
 === REQ-0012-04 the colors are fixed while a gradient is pending (a waiting gradient keeps the color of its press)
 file: src/ui/canvas.c
@@ -3029,9 +3029,9 @@ test: ui-0013
 file: src/ui/window.c
 test: ui-0013
 --- find
-      return "Selects a rectangular part of the picture to move, copy, or edit.";
+      return _ ("Selects a rectangular part of the picture to move, copy, or edit.");
 --- replace
-      return "Draws a polygon with the selected fill style.";
+      return _ ("Draws a polygon with the selected fill style.");
 
 === REQ-0013-03 Select has no crosshair
 file: src/ui/canvas.c
@@ -3314,17 +3314,17 @@ test: ui-0013
 file: src/ui/window.c
 test: ui-0013
 --- find
-      if (easel_canvas_move_selection (self->canvas, dx, dy))
+      if (shift && !ctrl ? easel_canvas_smear_selection (self->canvas, dx, dy) : easel_canvas_move_selection (self->canvas, dx, dy))
         return GDK_EVENT_STOP;
 --- replace
       easel_canvas_move_selection (self->canvas, dx, dy);
       return GDK_EVENT_STOP;
 
-=== REQ-0013-10 Shift with an arrow moves by 1
+=== REQ-0013-10 Ctrl+Shift with an arrow moves by 1
 file: src/ui/window.c
-test: ui-0013
+test: ui-0014
 --- find
-      int step = (state & GDK_SHIFT_MASK) ? 10 : 1;
+      int step = ctrl ? 10 : 1;
 --- replace
       int step = 1;
 
@@ -3336,19 +3336,19 @@ test: ui-0013
     return FALSE;
   if (self->sel_state == 1)
     {
-      /* The first key lifts it
+      /* The first key lifts it as a move does
 --- replace
   if (self->sel_state == 0)
     return FALSE;
   if (self->sel_state == 1)
     {
-      /* The first key lifts it
+      /* The first key lifts it as a move does
 
 === REQ-0013-10 Ctrl with an arrow moves the selection
 file: src/ui/window.c
 test: ui-0013
 --- find
-      && (state & (GDK_CONTROL_MASK | GDK_ALT_MASK)) == 0 && !dialog_is_open (self))
+      && (state & GDK_ALT_MASK) == 0 && (state & (GDK_CONTROL_MASK | GDK_SHIFT_MASK)) != GDK_CONTROL_MASK && !dialog_is_open (self))
 --- replace
       && (state & GDK_ALT_MASK) == 0 && !dialog_is_open (self))
 
@@ -3785,11 +3785,13 @@ test: ui-0013
 file: src/ui/canvas.c
 test: ui-0013
 --- find
+                                FALSE, hole_color (self), self->sel_lift_max) != EASEL_SELECTION_DONE)
         {
           g_signal_emit (self, signals[SIGNAL_SELECTION_FAILED], 0, 0);
           return TRUE;
         }
 --- replace
+                                FALSE, hole_color (self), self->sel_lift_max) != EASEL_SELECTION_DONE)
         return TRUE;
 
 === REQ-0013-19 a Ctrl copy that cannot be made does not end the drag
@@ -3828,9 +3830,9 @@ test: ui-0013
 file: src/ui/window.c
 test: ui-0013
 --- find
-      && (state & (GDK_CONTROL_MASK | GDK_ALT_MASK)) == 0 && !dialog_is_open (self))
+      && (state & GDK_ALT_MASK) == 0 && (state & (GDK_CONTROL_MASK | GDK_SHIFT_MASK)) != GDK_CONTROL_MASK && !dialog_is_open (self))
 --- replace
-      && (state & (GDK_CONTROL_MASK | GDK_ALT_MASK)) == 0)
+      && (state & GDK_ALT_MASK) == 0 && (state & (GDK_CONTROL_MASK | GDK_SHIFT_MASK)) != GDK_CONTROL_MASK)
 
 === REQ-0013-20 Esc puts a selection down while a dialog is open
 file: src/ui/window.c
@@ -4106,9 +4108,9 @@ test: core-selection
 file: src/ui/window.c
 test: ui-0014
 --- find
-      return "Selects a free-form part of the picture to move, copy, or edit.";
+      return _ ("Selects a free-form part of the picture to move, copy, or edit.");
 --- replace
-      return "Selects a rectangular part of the picture to move, copy, or edit.";
+      return _ ("Selects a rectangular part of the picture to move, copy, or edit.");
 
 === REQ-0014-03 the cursor over the canvas with Free-Form Select is not the crosshair
 file: src/ui/canvas.c
@@ -5770,10 +5772,10 @@ file: src/ui/window.c
 test: ui-0015
 --- find
   else if (kind == 3)
-    show_save_error (self, "Could Not Stretch the Selection"
+    show_save_error (self, _ ("Could Not Stretch the Selection")
 --- replace
   else if (kind == 7)
-    show_save_error (self, "Could Not Stretch the Selection"
+    show_save_error (self, _ ("Could Not Stretch the Selection")
 
 === REQ-0015-09 a refused stretch leaves the selection at the size it reached
 file: src/ui/canvas.c
@@ -6509,36 +6511,36 @@ test: ui-0016
 file: src/ui/window.c
 test: ui-0016
 --- find
-      body = "The picture is bigger than 10000 pixels in width or height.";
+      body = _ ("The picture is bigger than 10000 pixels in width or height.");
 --- replace
-      body = "This is not a picture the app can open.";
+      body = _ ("This is not a picture the app can open.");
 
 === REQ-0016-10 a file's error does not name the file
 file: src/ui/window.c
 test: ui-0016
 --- find
-  g_autofree char *heading = name != NULL ? g_strdup_printf ("Could Not Paste “%s”", name) : g_strdup ("Could Not Paste");
+  g_autofree char *heading = name != NULL ? g_strdup_printf (_ ("Could Not Paste “%s”"), name) : g_strdup (_ ("Could Not Paste"));
 --- replace
-  g_autofree char *heading = g_strdup ("Could Not Paste");
+  g_autofree char *heading = g_strdup (_ ("Could Not Paste"));
 
 === REQ-0016-10 a file that cannot be read gives the clipboard's body
 file: src/ui/window.c
 test: ui-0016
 --- find
-      body = name != NULL ? "The file cannot be read." : "The clipboard's picture cannot be read.";
+      body = name != NULL ? _ ("The file cannot be read.") : _ ("The clipboard's picture cannot be read.");
 --- replace
-      body = "The clipboard's picture cannot be read.";
+      body = _ ("The clipboard's picture cannot be read.");
 
 === REQ-0016-10 a text file is reported as unreadable, not as no picture
 file: src/ui/window.c
 test: ui-0016
 --- find
     case EASEL_OPEN_NOT_PICTURE:
-      body = "This is not a picture the app can open.";
+      body = _ ("This is not a picture the app can open.");
       break;
 --- replace
     case EASEL_OPEN_NOT_PICTURE:
-      body = "The file cannot be read.";
+      body = _ ("The file cannot be read.");
       break;
 
 === REQ-0016-15 a copied file is read from the last of the list
@@ -6557,9 +6559,9 @@ test: ui-0016
 file: src/ui/window.c
 test: ui-0016
 --- find
-  dialog = make_picture_dialog (self, "Paste From");
+  dialog = easel_window_picture_dialog (self, _ ("Paste From"));
 --- replace
-  dialog = make_picture_dialog (self, "Open Picture");
+  dialog = easel_window_picture_dialog (self, _ ("Open Picture"));
 
 === REQ-0016-08 a quit request puts the floating selection down while the file dialog is open
 file: src/ui/window.c
@@ -6616,9 +6618,9 @@ test: ui-0016
 file: src/ui/window.c
 test: ui-0016
 --- find
-  gtk_file_dialog_set_title (dialog, "Copy To");
+  gtk_file_dialog_set_title (dialog, _ ("Copy To"));
 --- replace
-  gtk_file_dialog_set_title (dialog, "Save Picture As");
+  gtk_file_dialog_set_title (dialog, _ ("Save Picture As"));
 
 === REQ-0016-09 Copy To does not ask before replacing a name it completed
 file: src/ui/window.c
@@ -7285,10 +7287,10 @@ file: src/ui/window.c
 test: ui-0017
 --- find
     case EASEL_TOOL_TEXT:
-      return "Inserts text into the picture.";
+      return _ ("Inserts text into the picture.");
 --- replace
     case EASEL_TOOL_TEXT:
-      return "Draws a straight line with the selected line width.";
+      return _ ("Draws a straight line with the selected line width.");
 
 === REQ-0017-01 the cursor of the Text tool is the hand
 file: src/ui/canvas.c
@@ -7928,9 +7930,9 @@ test: ui-0017
 file: src/ui/window.c
 test: ui-0017
 --- find
-kind == 0 ? "There is not enough memory to show this text." : "There is not enough memory to add this text.");
+kind == 0 ? _ ("There is not enough memory to show this text.") : _ ("There is not enough memory to add this text."));
 --- replace
-"There is not enough memory to show this text.");
+_ ("There is not enough memory to show this text."));
 
 === REQ-0017-18 a press outside a box that could not be put down makes a new box
 file: src/ui/canvas.c
@@ -8340,17 +8342,17 @@ test: ui-0017
 file: src/ui/font-card.c
 test: ui-0017
 --- find
-  gtk_widget_set_tooltip_text (GTK_WIDGET (self->size), "Font size (Ctrl+] larger, Ctrl+[ smaller)");
+  gtk_widget_set_tooltip_text (GTK_WIDGET (self->size), _ ("Font size (Ctrl+] larger, Ctrl+[ smaller)"));
 --- replace
-  gtk_widget_set_tooltip_text (GTK_WIDGET (self->size), "Size");
+  gtk_widget_set_tooltip_text (GTK_WIDGET (self->size), _ ("Size"));
 
 === REQ-0017-14 the Strikethrough toggle's tooltip names no key
 file: src/ui/font-card.c
 test: ui-0017
 --- find
-"format-text-strikethrough-symbolic", "Strikethrough (Ctrl+Shift+5)" },
+"format-text-strikethrough-symbolic", N_ ("Strikethrough (Ctrl+Shift+5)") },
 --- replace
-"format-text-strikethrough-symbolic", "Strikethrough" },
+"format-text-strikethrough-symbolic", N_ ("Strikethrough") },
 
 === REQ-0017-12 the next box starts in the settings' style, not the last box's
 file: src/ui/canvas.c
@@ -8769,7 +8771,7 @@ test: ui-0017
 file: src/ui/font-card.c
 test: ui-0017
 --- find
-  gtk_widget_set_tooltip_text (GTK_WIDGET (self->family), "Font family (Ctrl+Shift+F)");   /* each control and its key (REQ-0017-14) */
+  gtk_widget_set_tooltip_text (GTK_WIDGET (self->family), _ ("Font family (Ctrl+Shift+F)"));   /* each control and its key (REQ-0017-14) */
 --- replace
   (void) 0;
 
@@ -9004,7 +9006,7 @@ file: src/ui/window.c
 test: ui-0017
 --- find
   if (bytes == NULL)
-    show_save_error (self, "Could Not Paste", "The clipboard's text cannot be read.");
+    show_save_error (self, _ ("Could Not Paste"), _ ("The clipboard's text cannot be read."));
 --- replace
   (void) 0;
 
@@ -9077,7 +9079,7 @@ test: ui-0017
 file: src/ui/window.c
 test: ui-0017
 --- find
-      show_save_error (self, "Could Not Copy the Text", "There is not enough memory to copy this text.");
+      show_save_error (self, _ ("Could Not Copy the Text"), _ ("There is not enough memory to copy this text."));
 --- replace
       (void) 0;
 
@@ -9103,7 +9105,7 @@ test: ui-0017
 file: src/ui/window.c
 test: ui-0017
 --- find
-          show_save_error (self, "Could Not Paste", "There is not enough memory to paste this text.");
+          show_save_error (self, _ ("Could Not Paste"), _ ("There is not enough memory to paste this text."));
 --- replace
           (void) 0;
 
@@ -9601,33 +9603,33 @@ test: ui-0018
 file: src/ui/window.c
 test: ui-0018
 --- find
-  const char *heading = op == EASEL_OP_INVERT ? "Could Not Invert the Colors"
+  const char *heading = op == EASEL_OP_INVERT ? _ ("Could Not Invert the Colors")
 --- replace
-  const char *heading = op == EASEL_OP_INVERT ? "Could Not Flip the Picture"
+  const char *heading = op == EASEL_OP_INVERT ? _ ("Could Not Flip the Picture")
 
 === REQ-0018-10 a Clear Image that could not be made says Rotate
 file: src/ui/window.c
 test: ui-0018
 --- find
-                        : op == EASEL_OP_CLEAR ? "Could Not Clear the Picture"
+                        : op == EASEL_OP_CLEAR ? _ ("Could Not Clear the Picture")
 --- replace
-                        : op == EASEL_OP_CLEAR ? "Could Not Rotate the Picture"
+                        : op == EASEL_OP_CLEAR ? _ ("Could Not Rotate the Picture")
 
 === REQ-0018-10 a Flip that could not be made says Rotate
 file: src/ui/window.c
 test: ui-0018
 --- find
-                        : (op == EASEL_OP_FLIP_H || op == EASEL_OP_FLIP_V) ? "Could Not Flip the Picture"
+                        : (op == EASEL_OP_FLIP_H || op == EASEL_OP_FLIP_V) ? _ ("Could Not Flip the Picture")
 --- replace
-                        : (op == EASEL_OP_FLIP_H) ? "Could Not Flip the Picture"
+                        : (op == EASEL_OP_FLIP_H) ? _ ("Could Not Flip the Picture")
 
 === REQ-0018-10 the memory dialog has another body
 file: src/ui/window.c
 test: ui-0018
 --- find
-  show_save_error (self, heading, "There is not enough memory for this change.");
+  show_save_error (self, heading, _ ("There is not enough memory for this change."));
 --- replace
-  show_save_error (self, heading, "There is not enough memory.");
+  show_save_error (self, heading, _ ("There is not enough memory."));
 
 === REQ-0018-01 Ctrl+I does not invert when no text box is open
 file: src/ui/window.c
@@ -9919,9 +9921,9 @@ test: ui-0018
 file: src/ui/window.c
 test: ui-0018
 --- find
-    show_save_error (self, "Could Not Rotate the Selection", "There is not enough memory for this change.");
+    show_save_error (self, _ ("Could Not Rotate the Selection"), _ ("There is not enough memory for this change."));
 --- replace
-    show_save_error (self, "Could Not Rotate the Selection", "There is not enough memory to rotate this selection.");
+    show_save_error (self, _ ("Could Not Rotate the Selection"), _ ("There is not enough memory to rotate this selection."));
 
 === REQ-0018-02 the selection menu has no Invert Colors
 file: src/ui/window.ui
@@ -11596,3 +11598,152 @@ test: ui-0022
 --- replace
   if (FALSE)
 
+
+=== REQ-0023-06 French and Portuguese take the English rule at 0
+file: src/core/catalog.c
+test: core-catalog
+--- find
+    return n > 1;
+--- replace
+    return n != 1;
+
+=== REQ-0023-06 Czech's few reaches 5
+file: src/core/catalog.c
+test: core-catalog
+--- find
+    return n == 1 ? 0 : n >= 2 && n <= 4 ? 1 : 2;
+--- replace
+    return n == 1 ? 0 : n >= 2 && n <= 5 ? 1 : 2;
+
+=== REQ-0023-06 Polish takes few for 12, 13 and 14
+file: src/core/catalog.c
+test: core-catalog
+--- find
+  int few = last >= 2 && last <= 4 && (two < 10 || two >= 20);
+--- replace
+  int few = last >= 2 && last <= 4;
+
+=== REQ-0023-06 Russian's one reaches 11
+file: src/core/catalog.c
+test: core-catalog
+--- find
+    return last == 1 && two != 11 ? 0 : few ? 1 : 2;
+--- replace
+    return last == 1 ? 0 : few ? 1 : 2;
+
+=== REQ-0023-06 Romanian's few stops before 19
+file: src/core/catalog.c
+test: core-catalog
+--- find
+    return n == 1 ? 0 : n == 0 || (two > 0 && two < 20) ? 1 : 2;
+--- replace
+    return n == 1 ? 0 : n == 0 || (two > 0 && two < 19) ? 1 : 2;
+
+=== REQ-0023-02 An empty translation shows as nothing, not the English
+file: src/core/catalog.c
+test: core-catalog
+--- find
+  return found != NULL && found[0] != '\0' ? found : msgid;
+--- replace
+  return found != NULL ? found : msgid;
+
+=== REQ-0023-06 A plural the catalog lacks is always in the plural
+file: src/core/catalog.c
+test: core-catalog
+--- find
+    return n == 1 ? msgid : msgid_plural;
+--- replace
+    return msgid_plural;
+
+=== REQ-0023-06 A file with fewer forms than the rule runs off its end
+file: src/core/catalog.c
+test: core-catalog
+--- find
+      if ((size_t) (form - found) + skip > len)
+--- replace
+      if (0 && (size_t) (form - found) + skip > len)
+
+=== REQ-0023-05 A cut file is read past its end
+file: src/core/catalog.c
+test: core-catalog
+--- find
+  return (size_t) offset < len && (size_t) entry_len < len - offset && data[(size_t) offset + entry_len] == '\0';
+--- replace
+  return (size_t) offset < len;
+
+=== REQ-0023-03 The system's region is not taken off the language
+file: src/core/catalog.c
+test: core-catalog
+--- find
+      size_t part = strcspn (*names, "_.@");
+--- replace
+      size_t part = strlen (*names);
+
+=== REQ-0023-03 The first preferred language wins even if not one of the twelve
+file: src/core/catalog.c
+test: core-catalog
+--- find
+          return languages[i].code;
+    }
+  return "en";
+--- replace
+          return languages[i].code;
+      break;
+    }
+  return "en";
+
+=== REQ-0023-02 The chosen language is ignored
+file: src/core/catalog.c
+test: core-catalog
+--- find
+  if (strcmp (setting, "auto") != 0)
+    return setting;
+--- replace
+  (void) setting;
+
+=== REQ-0023-04 A language the app does not have is kept in the setting
+file: src/core/settings.c
+test: core-settings core-catalog
+--- find
+          if (easel_language_known (code))
+            strcpy (s->language, code);
+--- replace
+          strcpy (s->language, code);
+
+=== REQ-0014-11 Shift with an arrow lifts with a hole, in the canvas's keys
+file: src/ui/canvas.c
+test: ui-0014
+--- find
+      /* The first key lifts it with no hole, as a Shift drag does (REQ-0014-11). */
+      if (easel_selection_lift (&self->sel_float, self->img, self->sel_x, self->sel_y, self->sel_w, self->sel_h, self->sel_mask,
+                                TRUE, hole_color (self), self->sel_lift_max) != EASEL_SELECTION_DONE)
+--- replace
+      /* The first key lifts it with no hole, as a Shift drag does (REQ-0014-11). */
+      if (easel_selection_lift (&self->sel_float, self->img, self->sel_x, self->sel_y, self->sel_w, self->sel_h, self->sel_mask,
+                                FALSE, hole_color (self), self->sel_lift_max) != EASEL_SELECTION_DONE)
+
+=== REQ-0013-10 Shift with an arrow is a plain move, with the focus on the canvas
+file: src/ui/window.c
+test: ui-0014
+--- find
+  if (moves_selection && shift && !ctrl)
+    easel_canvas_smear_selection (self->canvas, dx, dy);
+--- replace
+  if (FALSE)
+    easel_canvas_smear_selection (self->canvas, dx, dy);
+
+=== REQ-0013-10 Shift with an arrow moves by 10, with the focus on the canvas
+file: src/ui/window.c
+test: ui-0014
+--- find
+  step = shift && (!moves_selection || ctrl) ? 10 : 1;
+--- replace
+  step = shift ? 10 : 1;
+
+=== REQ-0014-13 A failed key smear moves the selection anyway
+file: src/ui/canvas.c
+test: ui-0014
+--- find
+  if (!easel_selection_smear (&self->sel_float, self->sel_x + dx, self->sel_y + dy, self->sel_lift_max))
+--- replace
+  if (!easel_selection_smear (&self->sel_float, self->sel_x + dx, self->sel_y + dy, self->sel_lift_max) && (self->sel_x += dx, TRUE))

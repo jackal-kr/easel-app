@@ -2,6 +2,7 @@
 
 #include "magnifier.h"
 #include "tool-options.h"
+#include "i18n.h"
 
 enum { SIGNAL_PRESET_CHANGED, N_SIGNALS };
 static guint signals[N_SIGNALS];
@@ -82,11 +83,20 @@ draw_preset (GtkDrawingArea *area, cairo_t *cr, int width, int height, gpointer 
 static char *
 preset_name (EaselFootprint f, EaselTool tool)
 {
-  const char *what = tool == EASEL_TOOL_ERASER ? "Eraser" : tool == EASEL_TOOL_AIRBRUSH ? "Spray"
-                     : f.shape == EASEL_SHAPE_CIRCLE ? "Circle" : f.shape == EASEL_SHAPE_SQUARE ? "Square"
-                     : f.shape == EASEL_SHAPE_SLASH ? "Slash" : "Backslash";
+  /* A whole sentence for each: no translated word in a placeholder (REQ-0023-01). */
+  unsigned long n = (unsigned long) f.size;
 
-  return g_strdup_printf (f.size == 1 ? "%s, %d pixel" : "%s, %d pixels", what, f.size);
+  if (tool == EASEL_TOOL_ERASER)
+    return g_strdup_printf (_n ("Eraser, %d pixel", "Eraser, %d pixels", n), f.size);
+  if (tool == EASEL_TOOL_AIRBRUSH)
+    return g_strdup_printf (_n ("Spray, %d pixel", "Spray, %d pixels", n), f.size);
+  if (f.shape == EASEL_SHAPE_CIRCLE)
+    return g_strdup_printf (_n ("Circle, %d pixel", "Circle, %d pixels", n), f.size);
+  if (f.shape == EASEL_SHAPE_SQUARE)
+    return g_strdup_printf (_n ("Square, %d pixel", "Square, %d pixels", n), f.size);
+  if (f.shape == EASEL_SHAPE_SLASH)
+    return g_strdup_printf (_n ("Slash, %d pixel", "Slash, %d pixels", n), f.size);
+  return g_strdup_printf (_n ("Backslash, %d pixel", "Backslash, %d pixels", n), f.size);
 }
 
 static void
@@ -206,10 +216,10 @@ add_shape_button (GtkBox *box, const char *tip, const char *action, int target, 
 static void
 add_width_buttons (GtkBox *box)
 {
-  static const char *const tips[5] = { "1 pixel", "2 pixels", "3 pixels", "4 pixels", "5 pixels" };
+  static const char *const tips[5] = { N_ ("1 pixel"), N_ ("2 pixels"), N_ ("3 pixels"), N_ ("4 pixels"), N_ ("5 pixels") };
 
   for (int w = 1; w <= 5; w++)
-    add_shape_button (box, tips[w - 1], "win.line-width", w, draw_width, 52, 14);
+    add_shape_button (box, _ (tips[w - 1]), "win.line-width", w, draw_width, 52, 14);
 }
 
 static GtkWidget *
@@ -223,10 +233,10 @@ new_shape_box (gboolean with_fill_styles)
   gtk_widget_set_margin_bottom (box, 6);
   if (with_fill_styles)
     {
-      static const char *const tips[3] = { "Outline", "Outline and fill", "Fill" };
+      static const char *const tips[3] = { N_ ("Outline"), N_ ("Outline and fill"), N_ ("Fill") };
 
       for (int i = 0; i < 3; i++)
-        add_shape_button (GTK_BOX (box), tips[i], "win.fill-style", i, draw_fill_style, 52, 22);
+        add_shape_button (GTK_BOX (box), _ (tips[i]), "win.fill-style", i, draw_fill_style, 52, 22);
       gtk_box_append (GTK_BOX (box), gtk_separator_new (GTK_ORIENTATION_HORIZONTAL));
     }
   add_width_buttons (GTK_BOX (box));
@@ -286,9 +296,9 @@ build_presets (EaselToolOptions *self)
                                     i ? self->eraser[0] : NULL);
     }
   /* The modes are a group of their own, one under the other, after a line. */
-  self->modes[0] = add_button (self, GTK_GRID (mode_grid), 0, 1, "Opaque: erase to the background color",
+  self->modes[0] = add_button (self, GTK_GRID (mode_grid), 0, 1, _ ("Opaque: erase to the background color"),
                                preset_data ((EaselFootprint) { EASEL_SHAPE_SQUARE, 1 }, 0), NULL);
-  self->modes[1] = add_button (self, GTK_GRID (mode_grid), 1, 1, "Transparent: erase to transparency",
+  self->modes[1] = add_button (self, GTK_GRID (mode_grid), 1, 1, _ ("Transparent: erase to transparency"),
                                preset_data ((EaselFootprint) { EASEL_SHAPE_SQUARE, 1 }, 1), self->modes[0]);
   gtk_box_append (GTK_BOX (eraser_box), size_grid);
   gtk_box_append (GTK_BOX (eraser_box), gtk_separator_new (GTK_ORIENTATION_HORIZONTAL));
@@ -297,9 +307,9 @@ build_presets (EaselToolOptions *self)
     /* The selection's modes, one under the other, as the Eraser's (REQ-0013-02). */
     GtkWidget *select_grid = new_grid ();
 
-    self->select_modes[0] = add_button (self, GTK_GRID (select_grid), 0, 1, "Opaque: keep background color",
+    self->select_modes[0] = add_button (self, GTK_GRID (select_grid), 0, 1, _ ("Opaque: keep background color"),
                                         preset_data ((EaselFootprint) { EASEL_SHAPE_SQUARE, 1 }, 0), NULL);
-    self->select_modes[1] = add_button (self, GTK_GRID (select_grid), 1, 1, "Transparent: moving or clearing leaves a transparent hole",
+    self->select_modes[1] = add_button (self, GTK_GRID (select_grid), 1, 1, _ ("Transparent: moving or clearing leaves a transparent hole"),
                                         preset_data ((EaselFootprint) { EASEL_SHAPE_SQUARE, 1 }, 1), self->select_modes[0]);
     self->groups[6] = select_grid;
   }
@@ -307,9 +317,9 @@ build_presets (EaselToolOptions *self)
     /* The Text tool's own modes, drawn as Select's, and nothing else (REQ-0017-02). */
     GtkWidget *text_grid = new_grid ();
 
-    self->text_modes[0] = add_button (self, GTK_GRID (text_grid), 0, 1, "Opaque: fill the text box with the background color",
+    self->text_modes[0] = add_button (self, GTK_GRID (text_grid), 0, 1, _ ("Opaque: fill the text box with the background color"),
                                       preset_data ((EaselFootprint) { EASEL_SHAPE_SQUARE, 1 }, 0), NULL);
-    self->text_modes[1] = add_button (self, GTK_GRID (text_grid), 1, 1, "Transparent: only the text",
+    self->text_modes[1] = add_button (self, GTK_GRID (text_grid), 1, 1, _ ("Transparent: only the text"),
                                       preset_data ((EaselFootprint) { EASEL_SHAPE_SQUARE, 1 }, 1), self->text_modes[0]);
     self->groups[7] = text_grid;
   }

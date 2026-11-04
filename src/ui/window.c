@@ -31,6 +31,7 @@
 
 #include "font-card.h"
 #include "rich-text.h"
+#include "i18n.h"
 
 struct _EaselWindow
 {
@@ -263,8 +264,8 @@ set_initial_size (EaselWindow *self)
 static void
 update_title (EaselWindow *self)
 {
-  g_autofree char *name = self->path ? g_path_get_basename (self->path) : g_strdup ("Untitled");
-  g_autofree char *title = g_strdup_printf (easel_history_is_modified (self->history) ? "• %s – Easel" : "%s – Easel",
+  g_autofree char *name = self->path ? g_path_get_basename (self->path) : g_strdup (_ ("Untitled"));
+  g_autofree char *title = g_strdup_printf (easel_history_is_modified (self->history) ? _ ("• %s – Easel") : _ ("%s – Easel"),
                                             name);
 
   gtk_window_set_title (GTK_WINDOW (self), title);
@@ -469,7 +470,7 @@ show_save_error (EaselWindow *self, const char *heading, const char *body)
 {
   AdwDialog *dialog = adw_alert_dialog_new (heading, body);
 
-  adw_alert_dialog_add_response (ADW_ALERT_DIALOG (dialog), "close", "Close");
+  adw_alert_dialog_add_response (ADW_ALERT_DIALOG (dialog), "close", _ ("Close"));
   adw_dialog_present (dialog, GTK_WIDGET (self));
 }
 
@@ -493,8 +494,8 @@ easel_window_save_to (EaselWindow *self, const char *path)
   if (!easel_picture_save (self->picture, path, save_format (path), self->settings.jpeg_quality, &error))
     {
       g_autofree char *name = g_path_get_basename (path);
-      g_autofree char *heading = g_strdup_printf ("Could Not Save “%s”", name);
-      g_autofree char *body = g_strdup_printf ("“%s” could not be saved: %s", path, error->message);
+      g_autofree char *heading = g_strdup_printf (_ ("Could Not Save “%s”"), name);
+      g_autofree char *body = g_strdup_printf (_ ("“%s” could not be saved: %s"), path, error->message);
 
       /* The picture, its title and its modified state stay as they were (REQ-0001-31). */
       show_save_error (self, heading, body);
@@ -511,7 +512,7 @@ easel_window_save_to (EaselWindow *self, const char *path)
   update_title (self);
   {
     g_autofree char *name = g_path_get_basename (self->path);
-    g_autofree char *text = g_strdup_printf ("Saved %s", name);
+    g_autofree char *text = g_strdup_printf (_ ("Saved %s"), name);
 
     easel_window_announce (self, text);
   }
@@ -547,8 +548,8 @@ write_copy (EaselWindow *self, const EaselImage *copy, const char *path)
   if (!easel_picture_save (copy, path, save_format (path), self->settings.jpeg_quality, &error))
     {
       g_autofree char *name = g_path_get_basename (path);
-      g_autofree char *heading = g_strdup_printf ("Could Not Save “%s”", name);
-      g_autofree char *body = g_strdup_printf ("“%s” could not be saved: %s", path, error->message);
+      g_autofree char *heading = g_strdup_printf (_ ("Could Not Save “%s”"), name);
+      g_autofree char *body = g_strdup_printf (_ ("“%s” could not be saved: %s"), path, error->message);
 
       show_save_error (self, heading, body);
       return FALSE;
@@ -580,10 +581,10 @@ static void
 ask_replace (SaveRequest *req)
 {
   g_autofree char *name = g_path_get_basename (req->path);
-  g_autofree char *heading = g_strdup_printf ("Replace “%s”?", name);
-  AdwDialog *dialog = adw_alert_dialog_new (heading, "A file with this name already exists.");
+  g_autofree char *heading = g_strdup_printf (_ ("Replace “%s”?"), name);
+  AdwDialog *dialog = adw_alert_dialog_new (heading, _ ("A file with this name already exists."));
 
-  adw_alert_dialog_add_responses (ADW_ALERT_DIALOG (dialog), "cancel", "_Cancel", "replace", "_Replace", NULL);
+  adw_alert_dialog_add_responses (ADW_ALERT_DIALOG (dialog), "cancel", _ ("_Cancel"), "replace", _ ("_Replace"), NULL);
   adw_alert_dialog_set_response_appearance (ADW_ALERT_DIALOG (dialog), "replace", ADW_RESPONSE_DESTRUCTIVE);
   adw_alert_dialog_set_default_response (ADW_ALERT_DIALOG (dialog), "cancel");
   adw_alert_dialog_set_close_response (ADW_ALERT_DIALOG (dialog), "cancel");
@@ -601,7 +602,7 @@ save_chosen (SaveRequest *req, const char *chosen)
   switch (easel_format_fix_name (chosen, &fixed, &format))
     {
     case EASEL_FORMAT_UNKNOWN_EXTENSION:
-      show_save_error (req->self, "Cannot Save This Kind of File", "Pictures can be saved as PNG, JPEG, BMP, TIFF or WebP.");
+      show_save_error (req->self, _ ("Cannot Save This Kind of File"), _ ("Pictures can be saved as PNG, JPEG, BMP, TIFF or WebP."));
       save_request_finish (req, FALSE);
       return;
     case EASEL_FORMAT_NO_MEMORY:
@@ -711,9 +712,9 @@ copy_to_activated (GSimpleAction *action, GVariant *parameter, gpointer user_dat
       g_clear_object (&folder);
       folder = g_file_new_for_path (pictures && g_file_test (pictures, G_FILE_TEST_IS_DIR) ? pictures : g_get_home_dir ());
     }
-  gtk_file_dialog_set_title (dialog, "Copy To");
+  gtk_file_dialog_set_title (dialog, _ ("Copy To"));
   gtk_file_dialog_set_initial_folder (dialog, folder);
-  gtk_file_dialog_set_initial_name (dialog, "Untitled.png");
+  gtk_file_dialog_set_initial_name (dialog, _ ("Untitled.png"));
   self->save_dialog_open = TRUE;                 /* a quit request behaves as for Save As (REQ-0001-43) */
   gtk_file_dialog_save (dialog, GTK_WINDOW (self), NULL, (GAsyncReadyCallback) on_copy_to_dialog_done, g_object_ref (self));
 }
@@ -775,16 +776,16 @@ save (EaselWindow *self, SaveDone done, gboolean as_new)
                                                                                               : png_name_for (self->path);
 
       suggestion = g_file_new_for_path (suggested);
-      gtk_file_dialog_set_title (dialog, "Save Picture As");
+      gtk_file_dialog_set_title (dialog, _ ("Save Picture As"));
       gtk_file_dialog_set_initial_file (dialog, suggestion);
     }
   else
     {
       suggestion = g_file_new_for_path (pictures ? pictures : g_get_home_dir ());
       gtk_file_dialog_set_initial_folder (dialog, suggestion);
-      gtk_file_dialog_set_initial_name (dialog, "Untitled.png");
+      gtk_file_dialog_set_initial_name (dialog, _ ("Untitled.png"));
       if (as_new)
-        gtk_file_dialog_set_title (dialog, "Save Picture As");
+        gtk_file_dialog_set_title (dialog, _ ("Save Picture As"));
     }
   self->save_dialog_open = TRUE;
   gtk_file_dialog_save (dialog, GTK_WINDOW (self), NULL, (GAsyncReadyCallback) on_save_dialog_done, req);
@@ -824,12 +825,12 @@ on_prompt_response (AdwAlertDialog *dialog, const char *response, EaselWindow *s
 static void
 ask_unsaved (EaselWindow *self, void (*then) (EaselWindow *self))
 {
-  g_autofree char *name = self->path ? g_path_get_basename (self->path) : g_strdup ("Untitled");
-  g_autofree char *body = g_strdup_printf ("“%s” has unsaved changes.", name);
-  AdwDialog *dialog = adw_alert_dialog_new ("Save Changes?", body);
+  g_autofree char *name = self->path ? g_path_get_basename (self->path) : g_strdup (_ ("Untitled"));
+  g_autofree char *body = g_strdup_printf (_ ("“%s” has unsaved changes."), name);
+  AdwDialog *dialog = adw_alert_dialog_new (_ ("Save Changes?"), body);
 
   adw_alert_dialog_add_responses (ADW_ALERT_DIALOG (dialog),
-                                  "cancel", "_Cancel", "discard", "_Discard", "save", "_Save", NULL);
+                                  "cancel", _ ("_Cancel"), "discard", _ ("_Discard"), "save", _ ("_Save"), NULL);
   adw_alert_dialog_set_response_appearance (ADW_ALERT_DIALOG (dialog), "discard", ADW_RESPONSE_DESTRUCTIVE);
   adw_alert_dialog_set_response_appearance (ADW_ALERT_DIALOG (dialog), "save", ADW_RESPONSE_SUGGESTED);
   adw_alert_dialog_set_default_response (ADW_ALERT_DIALOG (dialog), "save");
@@ -998,7 +999,7 @@ replace_picture (EaselWindow *self, EaselImage *img, char *path)
   if (path != NULL)
     {
       g_autofree char *name = g_path_get_basename (path);
-      g_autofree char *text = g_strdup_printf ("Opened %s", name);
+      g_autofree char *text = g_strdup_printf (_ ("Opened %s"), name);
 
       easel_window_announce (self, text);
     }
@@ -1025,7 +1026,7 @@ new_picture (EaselWindow *self)
   easel_settings_resolve_size (&self->settings, area_w, area_h, &w, &h);
   img = easel_image_new (w, h, self->settings.background);
   if (img == NULL || !replace_picture (self, img, NULL))
-    show_memory_error (self, "Could Not Create a New Picture", w, h);
+    show_memory_error (self, _ ("Could Not Create a New Picture"), w, h);
 }
 
 /* New, Open, Save and Save As: nothing before the start-up picture exists or while a dialog or prompt is open; a stroke
@@ -1068,18 +1069,18 @@ static void
 show_open_error (EaselWindow *self, GFile *file, EaselOpenResult result, int width, int height)
 {
   g_autofree char *name = g_file_get_basename (file);
-  g_autofree char *heading = g_strdup_printf ("Could Not Open “%s”", name);
+  g_autofree char *heading = g_strdup_printf (_ ("Could Not Open “%s”"), name);
 
   switch (result)
     {
     case EASEL_OPEN_UNREADABLE:
-      show_save_error (self, heading, "The file cannot be read.");
+      show_save_error (self, heading, _ ("The file cannot be read."));
       break;
     case EASEL_OPEN_NOT_PICTURE:
-      show_save_error (self, heading, "This is not a picture the app can open.");
+      show_save_error (self, heading, _ ("This is not a picture the app can open."));
       break;
     case EASEL_OPEN_TOO_BIG:
-      show_save_error (self, heading, "The picture is bigger than 10000 pixels in width or height.");
+      show_save_error (self, heading, _ ("The picture is bigger than 10000 pixels in width or height."));
       break;
     case EASEL_OPEN_NO_MEMORY:
       show_memory_error (self, heading, width, height);
@@ -1185,8 +1186,8 @@ on_open_dialog_done (GtkFileDialog *dialog, GAsyncResult *result, EaselWindow *s
 }
 
 /* A file dialog for pictures with Open's folders and filters (REQ-0005-05), titled title: Open's, and Paste From's (REQ-0016-08). */
-static GtkFileDialog *
-make_picture_dialog (EaselWindow *self, const char *title)
+GtkFileDialog *
+easel_window_picture_dialog (EaselWindow *self, const char *title)
 {
   GtkFileDialog *dialog = gtk_file_dialog_new ();
   g_autoptr (GListStore) filters = g_list_store_new (GTK_TYPE_FILE_FILTER);
@@ -1209,10 +1210,10 @@ make_picture_dialog (EaselWindow *self, const char *title)
       folder = g_file_new_for_path (pictures_dir && g_file_test (pictures_dir, G_FILE_TEST_IS_DIR) ? pictures_dir
                                                                                                      : g_get_home_dir ());
     }
-  gtk_file_filter_set_name (pictures, "Pictures");
+  gtk_file_filter_set_name (pictures, _ ("Pictures"));
   for (gsize i = 0; i < G_N_ELEMENTS (mime_types); i++)
     gtk_file_filter_add_mime_type (pictures, mime_types[i]);
-  gtk_file_filter_set_name (all, "All Files");
+  gtk_file_filter_set_name (all, _ ("All Files"));
   gtk_file_filter_add_pattern (all, "*");
   g_list_store_append (filters, pictures);
   g_list_store_append (filters, all);
@@ -1226,7 +1227,7 @@ make_picture_dialog (EaselWindow *self, const char *title)
 static void
 show_open_dialog (EaselWindow *self)
 {
-  g_autoptr (GtkFileDialog) dialog = make_picture_dialog (self, "Open Picture");
+  g_autoptr (GtkFileDialog) dialog = easel_window_picture_dialog (self, _ ("Open Picture"));
 
   self->open_dialog_open = TRUE;
   gtk_file_dialog_open (dialog, GTK_WINDOW (self), NULL, (GAsyncReadyCallback) on_open_dialog_done, g_object_ref (self));
@@ -1539,42 +1540,42 @@ tool_hint (EaselTool tool, gboolean transparent)
   switch (tool)
     {
     case EASEL_TOOL_PENCIL:
-      return "Draw with the foreground color. The secondary button uses the background color.";
+      return _ ("Draw with the foreground color. The secondary button uses the background color.");
     case EASEL_TOOL_BRUSH:
-      return "Paint with the foreground color. The secondary button uses the background color.";
+      return _ ("Paint with the foreground color. The secondary button uses the background color.");
     case EASEL_TOOL_AIRBRUSH:
-      return "Spray with the foreground color. The secondary button uses the background color.";
+      return _ ("Spray with the foreground color. The secondary button uses the background color.");
     case EASEL_TOOL_ERASER:
-      return transparent ? "Erase to transparency. The secondary button erases only the foreground color."
-                         : "Erase to the background color. The secondary button changes only the foreground color.";
+      return transparent ? _ ("Erase to transparency. The secondary button erases only the foreground color.")
+                         : _ ("Erase to the background color. The secondary button changes only the foreground color.");
     case EASEL_TOOL_MAGNIFIER:
-      return "Changes the magnification.";
+      return _ ("Changes the magnification.");
     case EASEL_TOOL_LINE:
-      return "Draws a straight line with the selected line width.";
+      return _ ("Draws a straight line with the selected line width.");
     case EASEL_TOOL_RECTANGLE:
-      return "Draws a rectangle with the selected fill style.";
+      return _ ("Draws a rectangle with the selected fill style.");
     case EASEL_TOOL_ROUNDED_RECTANGLE:
-      return "Draws a rounded rectangle with the selected fill style.";
+      return _ ("Draws a rounded rectangle with the selected fill style.");
     case EASEL_TOOL_ELLIPSE:
-      return "Draws an ellipse with the selected fill style.";
+      return _ ("Draws an ellipse with the selected fill style.");
     case EASEL_TOOL_CURVE:
-      return "Draws a curved line with the selected line width.";
+      return _ ("Draws a curved line with the selected line width.");
     case EASEL_TOOL_POLYGON:
-      return "Draws a polygon with the selected fill style.";
+      return _ ("Draws a polygon with the selected fill style.");
     case EASEL_TOOL_SELECT:
-      return "Selects a rectangular part of the picture to move, copy, or edit.";
+      return _ ("Selects a rectangular part of the picture to move, copy, or edit.");
     case EASEL_TOOL_FREE_SELECT:
-      return "Selects a free-form part of the picture to move, copy, or edit.";
+      return _ ("Selects a free-form part of the picture to move, copy, or edit.");
     case EASEL_TOOL_GRADIENT:
-      return "Fades the drawing color to transparent along a drag. A click or Enter applies it, Esc cancels it.";
+      return _ ("Fades the drawing color to transparent along a drag. A click or Enter applies it, Esc cancels it.");
     case EASEL_TOOL_PICK:
-      return "Picks up a color from the picture for drawing.";
+      return _ ("Picks up a color from the picture for drawing.");
     case EASEL_TOOL_FILL:
-      return "Fills an area with the current drawing color.";
+      return _ ("Fills an area with the current drawing color.");
     case EASEL_TOOL_TEXT:
-      return "Inserts text into the picture.";
+      return _ ("Inserts text into the picture.");
     default:
-      return "Drag to pan. Ctrl+wheel zooms.";
+      return _ ("Drag to pan. Ctrl+wheel zooms.");
     }
 }
 
@@ -2082,7 +2083,7 @@ add_zoom_submenu (EaselWindow *self)
       g_menu_item_set_action_and_target_value (item, "win.zoom-to", g_variant_new_int32 (easel_view_presets[i]));
       g_menu_append_item (sub, item);
     }
-  g_menu_insert_submenu (G_MENU (section), 0, "Zoom", G_MENU_MODEL (sub));
+  g_menu_insert_submenu (G_MENU (section), 0, _ ("Zoom"), G_MENU_MODEL (sub));
 }
 
 static void
@@ -2112,8 +2113,8 @@ make_zoom_row (EaselWindow *self)
   gtk_widget_add_css_class (zoom_in, "flat");
   gtk_actionable_set_action_name (GTK_ACTIONABLE (zoom_out), "win.zoom-out");
   gtk_actionable_set_action_name (GTK_ACTIONABLE (zoom_in), "win.zoom-in");
-  gtk_widget_set_tooltip_text (zoom_out, "Zoom Out (Ctrl+-)");
-  gtk_widget_set_tooltip_text (zoom_in, "Zoom In (Ctrl+=)");
+  gtk_widget_set_tooltip_text (zoom_out, _ ("Zoom Out (Ctrl+-)"));
+  gtk_widget_set_tooltip_text (zoom_in, _ ("Zoom In (Ctrl+=)"));
   self->zoom_label = GTK_LABEL (gtk_label_new ("100%"));
   gtk_widget_set_hexpand (GTK_WIDGET (self->zoom_label), TRUE);
   gtk_widget_add_css_class (GTK_WIDGET (self->zoom_label), "numeric");
@@ -2128,17 +2129,17 @@ make_zoom_row (EaselWindow *self)
 static void
 show_memory_error (EaselWindow *self, const char *heading, int width, int height)
 {
-  g_autofree char *body = g_strdup_printf ("There is not enough memory for a picture of %d × %d pixels.", width, height);
+  g_autofree char *body = g_strdup_printf (_n ("There is not enough memory for a picture of %d × %d pixel.", "There is not enough memory for a picture of %d × %d pixels.", (unsigned long) height), width, height);
   AdwDialog *dialog = adw_alert_dialog_new (heading, body);
 
-  adw_alert_dialog_add_response (ADW_ALERT_DIALOG (dialog), "close", "Close");
+  adw_alert_dialog_add_response (ADW_ALERT_DIALOG (dialog), "close", _ ("Close"));
   adw_dialog_present (dialog, GTK_WIDGET (self));
 }
 
 static void
 show_resize_error (EaselWindow *self, int width, int height)
 {
-  show_memory_error (self, "Could Not Resize the Picture", width, height);
+  show_memory_error (self, _ ("Could Not Resize the Picture"), width, height);
 }
 
 /* The pixel buffer was replaced: the canvas builds its tiles again (zoom and scroll stay, GTK clamps the scroll to the
@@ -2198,12 +2199,12 @@ attributes_activated (GSimpleAction *action, GVariant *parameter, gpointer user_
 static void
 show_transform_error (EaselWindow *self, EaselOp op)
 {
-  const char *heading = op == EASEL_OP_INVERT ? "Could Not Invert the Colors"
-                        : op == EASEL_OP_CLEAR ? "Could Not Clear the Picture"
-                        : (op == EASEL_OP_FLIP_H || op == EASEL_OP_FLIP_V) ? "Could Not Flip the Picture"
-                        : "Could Not Rotate the Picture";
+  const char *heading = op == EASEL_OP_INVERT ? _ ("Could Not Invert the Colors")
+                        : op == EASEL_OP_CLEAR ? _ ("Could Not Clear the Picture")
+                        : (op == EASEL_OP_FLIP_H || op == EASEL_OP_FLIP_V) ? _ ("Could Not Flip the Picture")
+                        : _ ("Could Not Rotate the Picture");
 
-  show_save_error (self, heading, "There is not enough memory for this change.");
+  show_save_error (self, heading, _ ("There is not enough memory for this change."));
 }
 
 /* The one function every Image command goes through: nothing before the picture exists, with a dialog open or while a button is held
@@ -2604,9 +2605,9 @@ sync_key_hold (EaselWindow *self)
   if (held == self->said_key_held)
     return;
   self->said_key_held = held;
-  easel_status_bar_set_hint (self->status_bar, held ? "Space to finish, Esc to cancel"
+  easel_status_bar_set_hint (self->status_bar, held ? _ ("Space to finish, Esc to cancel")
                                                     : tool_hint (self->tool, easel_tool_options_get_transparent (self->tool_options)));
-  easel_window_announce (self, held ? "Drawing" : self->key_releasing ? "Done" : "Cancelled");
+  easel_window_announce (self, held ? _ ("Drawing") : self->key_releasing ? _ ("Done") : _ ("Cancelled"));
 }
 
 /* The view scrolls by the least to show the marker's square; a square wider than the view shows its start (REQ-0022-06, -08). */
@@ -2632,7 +2633,7 @@ static gboolean
 pointer_key (EaselWindow *self, guint keyval, GdkModifierType state, gboolean repeat)
 {
   gboolean shift = (state & GDK_SHIFT_MASK) != 0, ctrl = (state & GDK_CONTROL_MASK) != 0, alt = (state & GDK_ALT_MASK) != 0;
-  gboolean held, mouse_held, box;
+  gboolean held, mouse_held, box, moves_selection;
   int dx = 0, dy = 0, w, h, step;
 
   if (gtk_root_get_focus (GTK_ROOT (self)) != GTK_WIDGET (self->canvas) || dialog_is_open (self) || self->picture == NULL)
@@ -2710,14 +2711,18 @@ pointer_key (EaselWindow *self, guint keyval, GdkModifierType state, gboolean re
     case GDK_KEY_Down: case GDK_KEY_KP_Down: dy = 1; break;
     default: return FALSE;
     }
-  if (ctrl || mouse_held)
+  moves_selection = !held && !alt && easel_canvas_get_selection_size (self->canvas, &w, &h);
+  if ((ctrl && !(shift && moves_selection)) || mouse_held)
     return mouse_held;
-  step = shift ? 10 : 1;
+  /* With a selection, Shift smears by 1 and Ctrl+Shift moves by 10 (REQ-0013-10); else Shift is the marker's 10. */
+  step = shift && (!moves_selection || ctrl) ? 10 : 1;
   easel_canvas_marker_show (self->canvas, TRUE);
   if (held)
     easel_canvas_set_shift (self->canvas, shift);
   /* With a selection and nothing held, an arrow moves it and the marker goes along; Alt moves the marker alone (REQ-0022-08). */
-  if (!held && !alt && easel_canvas_get_selection_size (self->canvas, &w, &h))
+  if (moves_selection && shift && !ctrl)
+    easel_canvas_smear_selection (self->canvas, dx, dy);
+  else if (moves_selection)
     easel_canvas_move_selection (self->canvas, dx * step, dy * step);
   else if (alt && !easel_canvas_get_selection_size (self->canvas, &w, &h))
     return FALSE;
@@ -2759,10 +2764,11 @@ easel_window_take_announcements (EaselWindow *self)
 }
 
 static void
-announce_color (EaselWindow *self, const char *which, uint32_t c)
+announce_color (EaselWindow *self, gboolean foreground, uint32_t c)
 {
-  g_autofree char *text = (c >> 24) == 0xFF ? g_strdup_printf ("%s #%06X", which, (unsigned) (c & 0xFFFFFF))
-                                            : g_strdup_printf ("%s #%06X%02X", which, (unsigned) (c & 0xFFFFFF), (unsigned) (c >> 24));
+  g_autofree char *hex = (c >> 24) == 0xFF ? g_strdup_printf ("#%06X", (unsigned) (c & 0xFFFFFF))
+                                           : g_strdup_printf ("#%06X%02X", (unsigned) (c & 0xFFFFFF), (unsigned) (c >> 24));
+  g_autofree char *text = g_strdup_printf (foreground ? _ ("Foreground %s") : _ ("Background %s"), hex);
 
   easel_window_announce (self, text);
 }
@@ -2774,9 +2780,9 @@ announce_colors (EaselWindow *self)
   if (self->tool == EASEL_TOOL_PICK && easel_canvas_is_stroking (self->canvas))
     return;
   if (self->foreground != self->said_foreground)
-    announce_color (self, "Foreground", self->foreground);
+    announce_color (self, TRUE, self->foreground);
   if (self->background != self->said_background)
-    announce_color (self, "Background", self->background);
+    announce_color (self, FALSE, self->background);
   self->said_foreground = self->foreground;
   self->said_background = self->background;
 }
@@ -2789,18 +2795,18 @@ announce_selection (EaselWindow *self)
   gboolean exists = !box && !easel_canvas_is_stroking (self->canvas) && easel_canvas_get_selection (self->canvas, &x, &y, &w, &h, &floating);
 
   if (box != self->said_box)
-    easel_window_announce (self, box ? "Text box open" : "Text box closed");
+    easel_window_announce (self, box ? _ ("Text box open") : _ ("Text box closed"));
   self->said_box = box;
   if (easel_canvas_is_stroking (self->canvas))
     return;
   if (exists && !self->said_selection)
     {
-      g_autofree char *text = g_strdup_printf ("Selection %d by %d", w, h);
+      g_autofree char *text = g_strdup_printf (_ ("Selection %d by %d"), w, h);
 
       easel_window_announce (self, text);
     }
   else if (!exists && self->said_selection)
-    easel_window_announce (self, self->said_floating ? "Selection put down" : "Selection removed");
+    easel_window_announce (self, self->said_floating ? _ ("Selection put down") : _ ("Selection removed"));
   self->said_selection = exists;
   self->said_floating = exists && floating;
 }
@@ -2808,20 +2814,20 @@ announce_selection (EaselWindow *self)
 static void
 on_polygon_closed (EaselWindow *self)
 {
-  easel_window_announce (self, "Polygon closed");
+  easel_window_announce (self, _ ("Polygon closed"));
 }
 
 static const char *
 tool_title (EaselTool tool)
 {
   static const char *const titles[] = {
-    [EASEL_TOOL_PAN] = "Pan", [EASEL_TOOL_PENCIL] = "Pencil", [EASEL_TOOL_BRUSH] = "Brush", [EASEL_TOOL_AIRBRUSH] = "Airbrush", [EASEL_TOOL_ERASER] = "Eraser",
-    [EASEL_TOOL_MAGNIFIER] = "Magnifier", [EASEL_TOOL_PICK] = "Pick Color", [EASEL_TOOL_FILL] = "Fill", [EASEL_TOOL_LINE] = "Line", [EASEL_TOOL_RECTANGLE] = "Rectangle",
-    [EASEL_TOOL_ROUNDED_RECTANGLE] = "Rounded Rectangle", [EASEL_TOOL_ELLIPSE] = "Ellipse", [EASEL_TOOL_CURVE] = "Curve", [EASEL_TOOL_POLYGON] = "Polygon",
-    [EASEL_TOOL_GRADIENT] = "Gradient", [EASEL_TOOL_SELECT] = "Select", [EASEL_TOOL_FREE_SELECT] = "Free-Form Select", [EASEL_TOOL_TEXT] = "Text",
+    [EASEL_TOOL_PAN] = N_ ("Pan"), [EASEL_TOOL_PENCIL] = N_ ("Pencil"), [EASEL_TOOL_BRUSH] = N_ ("Brush"), [EASEL_TOOL_AIRBRUSH] = N_ ("Airbrush"), [EASEL_TOOL_ERASER] = N_ ("Eraser"),
+    [EASEL_TOOL_MAGNIFIER] = N_ ("Magnifier"), [EASEL_TOOL_PICK] = N_ ("Pick Color"), [EASEL_TOOL_FILL] = N_ ("Fill"), [EASEL_TOOL_LINE] = N_ ("Line"), [EASEL_TOOL_RECTANGLE] = N_ ("Rectangle"),
+    [EASEL_TOOL_ROUNDED_RECTANGLE] = N_ ("Rounded Rectangle"), [EASEL_TOOL_ELLIPSE] = N_ ("Ellipse"), [EASEL_TOOL_CURVE] = N_ ("Curve"), [EASEL_TOOL_POLYGON] = N_ ("Polygon"),
+    [EASEL_TOOL_GRADIENT] = N_ ("Gradient"), [EASEL_TOOL_SELECT] = N_ ("Select"), [EASEL_TOOL_FREE_SELECT] = N_ ("Free-Form Select"), [EASEL_TOOL_TEXT] = N_ ("Text"),
   };
 
-  return titles[tool];
+  return _ (titles[tool]);
 }
 
 /* A button with no words of its own is named by its tooltip (REQ-0022-14). */
@@ -2890,9 +2896,9 @@ extras_can_show_error (EaselWindow *self)
 static void
 show_help_error (EaselWindow *self)
 {
-  AdwDialog *dialog = adw_alert_dialog_new ("Could Not Open Help", "The help page could not be opened.");
+  AdwDialog *dialog = adw_alert_dialog_new (_ ("Could Not Open Help"), _ ("The help page could not be opened."));
 
-  adw_alert_dialog_add_response (ADW_ALERT_DIALOG (dialog), "ok", "OK");
+  adw_alert_dialog_add_response (ADW_ALERT_DIALOG (dialog), "ok", _ ("OK"));
   adw_alert_dialog_set_default_response (ADW_ALERT_DIALOG (dialog), "ok");
   adw_alert_dialog_set_close_response (ADW_ALERT_DIALOG (dialog), "ok");
   present_extra_dialog (self, dialog);
@@ -2990,9 +2996,9 @@ print_error_timer_fired (gpointer data)
     }
   if (extras_can_show_error (self))
     {
-      AdwDialog *dialog = adw_alert_dialog_new ("Could Not Print", "The picture could not be printed.");
+      AdwDialog *dialog = adw_alert_dialog_new (_ ("Could Not Print"), _ ("The picture could not be printed."));
 
-      adw_alert_dialog_add_response (ADW_ALERT_DIALOG (dialog), "ok", "OK");
+      adw_alert_dialog_add_response (ADW_ALERT_DIALOG (dialog), "ok", _ ("OK"));
       adw_alert_dialog_set_default_response (ADW_ALERT_DIALOG (dialog), "ok");
       adw_alert_dialog_set_close_response (ADW_ALERT_DIALOG (dialog), "ok");
       self->print_errors--;
@@ -3188,7 +3194,7 @@ run_print (EaselWindow *self, gpointer data)
   gtk_print_operation_set_use_full_page (op, TRUE);
   gtk_print_operation_set_allow_async (op, TRUE);
   gtk_print_operation_set_embed_page_setup (op, TRUE);       /* so that the dialog's Orientation shows what the page is (a probe, T009) */
-  gtk_print_operation_set_custom_tab_label (op, "Picture");
+  gtk_print_operation_set_custom_tab_label (op, _ ("Picture"));
   g_signal_connect (op, "create-custom-widget", G_CALLBACK (on_create_custom_widget), self);
   g_signal_connect (op, "update-custom-widget", G_CALLBACK (on_update_custom_widget), self);
   g_signal_connect (op, "custom-widget-apply", G_CALLBACK (on_custom_widget_apply), self);
@@ -3260,7 +3266,7 @@ easel_window_write_settings (EaselWindow *self, const EaselSettingChange *change
   if (easel_settings_file_change (path, changes, n) || self->preferences_error_shown)
     return;
   self->preferences_error_shown = TRUE;
-  show_save_error (self, "Could Not Save the Preferences", "The change applies until Easel closes, but settings.ini could not be written.");
+  show_save_error (self, _ ("Could Not Save the Preferences"), _ ("The change applies until Easel closes, but settings.ini could not be written."));
 }
 
 void
@@ -3338,7 +3344,7 @@ stretch_skew_applied (int W, int H, int amount_h, int amount_v, gpointer data)
     }
   r = easel_image_stretch_skew (self->picture, self->history, W, H, amount_h, amount_v, self->background, self->transform_limit);
   if (r == EASEL_TRANSFORM_NO_MEMORY)
-    show_save_error (self, "Could Not Stretch or Skew the Picture", "There is not enough memory for this change.");
+    show_save_error (self, _ ("Could Not Stretch or Skew the Picture"), _ ("There is not enough memory for this change."));
   if (r != EASEL_TRANSFORM_DONE)
     return;
   picture_size_changed (self);
@@ -3407,7 +3413,7 @@ step_history (EaselWindow *self, gboolean undo)
      actions through selection-changed. */
   if (easel_canvas_text_step (self->canvas, undo))
     {
-      easel_window_announce (self, undo ? "Undone" : "Redone");
+      easel_window_announce (self, undo ? _ ("Undone") : _ ("Redone"));
       return;
     }
   old_w = self->picture->width;
@@ -3421,7 +3427,7 @@ step_history (EaselWindow *self, gboolean undo)
         show_resize_error (self, w, h);
       return;
     }
-  easel_window_announce (self, undo ? "Undone" : "Redone");
+  easel_window_announce (self, undo ? _ ("Undone") : _ ("Redone"));
   easel_canvas_deselect (self->canvas);           /* Undo or Redo removes a marked selection (REQ-0013-12) */
   if (self->picture->width != old_w || self->picture->height != old_h)
     picture_size_changed (self);
@@ -3628,15 +3634,16 @@ on_key_pressed (EaselWindow *self, guint keyval, guint keycode, GdkModifierType 
       && easel_canvas_clear_selection (self->canvas))
     return GDK_EVENT_STOP;                      /* Delete clears a selection wherever the focus is (REQ-0013-14) */
   if ((keyval == GDK_KEY_Left || keyval == GDK_KEY_Right || keyval == GDK_KEY_Up || keyval == GDK_KEY_Down)
-      && (state & (GDK_CONTROL_MASK | GDK_ALT_MASK)) == 0 && !dialog_is_open (self))
+      && (state & GDK_ALT_MASK) == 0 && (state & (GDK_CONTROL_MASK | GDK_SHIFT_MASK)) != GDK_CONTROL_MASK && !dialog_is_open (self))
     {
-      /* The arrows move the selection wherever the focus is, Shift by 10 (REQ-0013-10); without one, or while a button is
-         held, they are not taken. */
-      int step = (state & GDK_SHIFT_MASK) ? 10 : 1;
+      /* The arrows move the selection wherever the focus is, Shift smears it by 1, Ctrl+Shift moves it by 10 (REQ-0013-10);
+         without one, or while a button is held, they are not taken. */
+      gboolean shift = (state & GDK_SHIFT_MASK) != 0, ctrl = (state & GDK_CONTROL_MASK) != 0;
+      int step = ctrl ? 10 : 1;
       int dx = keyval == GDK_KEY_Left ? -step : keyval == GDK_KEY_Right ? step : 0;
       int dy = keyval == GDK_KEY_Up ? -step : keyval == GDK_KEY_Down ? step : 0;
 
-      if (easel_canvas_move_selection (self->canvas, dx, dy))
+      if (shift && !ctrl ? easel_canvas_smear_selection (self->canvas, dx, dy) : easel_canvas_move_selection (self->canvas, dx, dy))
         return GDK_EVENT_STOP;
     }
   if (keyval == GDK_KEY_Escape && !dialog_is_open (self) && easel_canvas_finish_selection (self->canvas))
@@ -3751,7 +3758,7 @@ show_fill_error (gpointer data)
 {
   EaselWindow *self = data;
 
-  show_save_error (self, "Could Not Fill", "There is not enough memory to fill this area.");
+  show_save_error (self, _ ("Could Not Fill"), _ ("There is not enough memory to fill this area."));
   g_object_unref (self);
   return G_SOURCE_REMOVE;
 }
@@ -3768,7 +3775,7 @@ show_shape_error (gpointer data)
 {
   EaselWindow *self = data;
 
-  show_save_error (self, "Could Not Draw the Shape", "There is not enough memory to draw this shape.");
+  show_save_error (self, _ ("Could Not Draw the Shape"), _ ("There is not enough memory to draw this shape."));
   g_object_unref (self);
   return G_SOURCE_REMOVE;
 }
@@ -3786,7 +3793,7 @@ show_gradient_error (gpointer data)
 {
   EaselWindow *self = data;
 
-  show_save_error (self, "Could Not Apply the Gradient", "There is not enough memory to apply this gradient.");
+  show_save_error (self, _ ("Could Not Apply the Gradient"), _ ("There is not enough memory to apply this gradient."));
   g_object_unref (self);
   return G_SOURCE_REMOVE;
 }
@@ -3807,21 +3814,21 @@ show_selection_error (gpointer data)
   int kind = GPOINTER_TO_INT (g_object_get_data (G_OBJECT (self), "selection-error-kind"));
 
   if (kind == 1)
-    show_save_error (self, "Could Not Clear the Selection", "There is not enough memory to clear this selection.");
+    show_save_error (self, _ ("Could Not Clear the Selection"), _ ("There is not enough memory to clear this selection."));
   else if (kind == 2)
-    show_save_error (self, "Could Not Make the Selection", "There is not enough memory to make this selection.");
+    show_save_error (self, _ ("Could Not Make the Selection"), _ ("There is not enough memory to make this selection."));
   else if (kind == 3)
-    show_save_error (self, "Could Not Stretch the Selection", "There is not enough memory to stretch this selection.");
+    show_save_error (self, _ ("Could Not Stretch the Selection"), _ ("There is not enough memory to stretch this selection."));
   else if (kind == 4)
-    show_save_error (self, "Could Not Flip the Selection", "There is not enough memory for this change.");
+    show_save_error (self, _ ("Could Not Flip the Selection"), _ ("There is not enough memory for this change."));
   else if (kind == 5)
-    show_save_error (self, "Could Not Rotate the Selection", "There is not enough memory for this change.");
+    show_save_error (self, _ ("Could Not Rotate the Selection"), _ ("There is not enough memory for this change."));
   else if (kind == 6)
-    show_save_error (self, "Could Not Invert the Selection", "There is not enough memory for this change.");
+    show_save_error (self, _ ("Could Not Invert the Selection"), _ ("There is not enough memory for this change."));
   else if (kind == 7)
-    show_save_error (self, "Could Not Stretch or Skew the Selection", "There is not enough memory for this change.");
+    show_save_error (self, _ ("Could Not Stretch or Skew the Selection"), _ ("There is not enough memory for this change."));
   else
-    show_save_error (self, "Could Not Move the Selection", "There is not enough memory to move this selection.");
+    show_save_error (self, _ ("Could Not Move the Selection"), _ ("There is not enough memory to move this selection."));
   g_object_unref (self);
   return G_SOURCE_REMOVE;
 }
@@ -3831,8 +3838,8 @@ static void
 on_text_failed (EaselWindow *self, int kind)
 {
   /* kind 0: the box's text could not be shown (REQ-0017-07); 1: the put-down's step could not be had (REQ-0017-18) */
-  show_save_error (self, "Could Not Add the Text",
-                   kind == 0 ? "There is not enough memory to show this text." : "There is not enough memory to add this text.");
+  show_save_error (self, _ ("Could Not Add the Text"),
+                   kind == 0 ? _ ("There is not enough memory to show this text.") : _ ("There is not enough memory to add this text."));
 }
 
 static void
@@ -3977,7 +3984,7 @@ on_stroking_changed (EaselWindow *self, gboolean stroking)
 static void
 show_copy_error (EaselWindow *self)
 {
-  show_save_error (self, "Could Not Copy the Selection", "There is not enough memory to copy this selection.");
+  show_save_error (self, _ ("Could Not Copy the Selection"), _ ("There is not enough memory to copy this selection."));
 }
 
 /* Copy (REQ-0016-03): the selection's copy on the clipboard, replacing what it held. FALSE if there was nothing to copy or no memory for
@@ -4071,7 +4078,7 @@ clipboard_wait_end (EaselWindow *self, ClipboardWait *wait)
 static void
 paste_error (EaselWindow *self, const char *name, EaselOpenResult why)
 {
-  g_autofree char *heading = name != NULL ? g_strdup_printf ("Could Not Paste “%s”", name) : g_strdup ("Could Not Paste");
+  g_autofree char *heading = name != NULL ? g_strdup_printf (_ ("Could Not Paste “%s”"), name) : g_strdup (_ ("Could Not Paste"));
   const char *body;
 
   if (self->close_after_reading)
@@ -4080,17 +4087,17 @@ paste_error (EaselWindow *self, const char *name, EaselOpenResult why)
   switch (why)
     {
     case EASEL_OPEN_TOO_BIG:
-      body = "The picture is bigger than 10000 pixels in width or height.";
+      body = _ ("The picture is bigger than 10000 pixels in width or height.");
       break;
     case EASEL_OPEN_NO_MEMORY:
-      body = "There is not enough memory to paste this picture.";
+      body = _ ("There is not enough memory to paste this picture.");
       break;
     case EASEL_OPEN_NOT_PICTURE:
-      body = "This is not a picture the app can open.";
+      body = _ ("This is not a picture the app can open.");
       break;
     case EASEL_OPEN_UNREADABLE:
     default:
-      body = name != NULL ? "The file cannot be read." : "The clipboard's picture cannot be read.";
+      body = name != NULL ? _ ("The file cannot be read.") : _ ("The clipboard's picture cannot be read.");
       break;
     }
   show_save_error (self, heading, body);
@@ -4275,13 +4282,13 @@ on_paste_prompt_answered (AdwAlertDialog *dialog, const char *answer, EaselWindo
 static void
 ask_paste_size (EaselWindow *self, EaselImage *pic)
 {
-  g_autofree char *body = g_strdup_printf ("The picture is %d × %d pixels; the canvas is %d × %d.", pic->width, pic->height,
+  g_autofree char *body = g_strdup_printf (_n ("The picture is %d × %d pixel; the canvas is %d × %d.", "The picture is %d × %d pixels; the canvas is %d × %d.", (unsigned long) pic->height), pic->width, pic->height,
                                            self->picture->width, self->picture->height);
-  AdwDialog *dialog = adw_alert_dialog_new ("Pasted Picture Is Larger Than the Canvas", body);
+  AdwDialog *dialog = adw_alert_dialog_new (_ ("Pasted Picture Is Larger Than the Canvas"), body);
 
   /* Added as Cancel, Fit, Resize: side by side they read so, stacked (the long labels) the suggested one is on top. */
-  adw_alert_dialog_add_responses (ADW_ALERT_DIALOG (dialog), "cancel", "_Cancel", "fit", "_Fit Picture to Canvas", "resize",
-                                  "_Resize Canvas to Picture", NULL);
+  adw_alert_dialog_add_responses (ADW_ALERT_DIALOG (dialog), "cancel", _ ("_Cancel"), "fit", _ ("_Fit Picture to Canvas"), "resize",
+                                  _ ("_Resize Canvas to Picture"), NULL);
   adw_alert_dialog_set_response_appearance (ADW_ALERT_DIALOG (dialog), "resize", ADW_RESPONSE_SUGGESTED);
   adw_alert_dialog_set_default_response (ADW_ALERT_DIALOG (dialog), "resize");
   adw_alert_dialog_set_close_response (ADW_ALERT_DIALOG (dialog), "cancel");
@@ -4391,7 +4398,7 @@ read_clipboard_text (EaselWindow *self, gboolean rich, gboolean *is_html)
       return NULL;
     }
   if (bytes == NULL)
-    show_save_error (self, "Could Not Paste", "The clipboard's text cannot be read.");
+    show_save_error (self, _ ("Could Not Paste"), _ ("The clipboard's text cannot be read."));
   return bytes;
 }
 
@@ -4414,7 +4421,7 @@ paste_box_text (EaselWindow *self, gboolean rich)
 
       if (n > self->rich_limit || !easel_rich_text_from_html (data != NULL ? data : "", n, &rt))
         {
-          show_save_error (self, "Could Not Paste", "There is not enough memory to paste this text.");
+          show_save_error (self, _ ("Could Not Paste"), _ ("There is not enough memory to paste this text."));
           return;
         }
       easel_canvas_text_paste (self->canvas, rt.text, rt.len, rich ? rt.runs : NULL, rich ? rt.n : 0);
@@ -4466,7 +4473,7 @@ copy_box_text (EaselWindow *self)
   plain = g_strndup (text + from, to - from);
   if (html == NULL || plain == NULL)
     {
-      show_save_error (self, "Could Not Copy the Text", "There is not enough memory to copy this text.");
+      show_save_error (self, _ ("Could Not Copy the Text"), _ ("There is not enough memory to copy this text."));
       return FALSE;
     }
   html_bytes = g_bytes_new_take (g_steal_pointer (&html), html_len);
@@ -4549,7 +4556,7 @@ paste_from_activated (GSimpleAction *action, GVariant *parameter, gpointer user_
   if (self->picture == NULL || dialog_is_open (self) || easel_canvas_is_stroking (self->canvas)
       || easel_canvas_is_resizing (self->canvas))
     return;
-  dialog = make_picture_dialog (self, "Paste From");
+  dialog = easel_window_picture_dialog (self, _ ("Paste From"));
   self->open_dialog_open = TRUE;                 /* a quit request does nothing meanwhile, as for Open (REQ-0005-02) */
   gtk_file_dialog_open (dialog, GTK_WINDOW (self), NULL, (GAsyncReadyCallback) on_paste_from_dialog_done, g_object_ref (self));
 }
@@ -4906,7 +4913,16 @@ easel_window_class_init (EaselWindowClass *klass)
   g_type_ensure (EASEL_TYPE_STATUS_BAR);
   g_type_ensure (EASEL_TYPE_FONT_CARD);
   g_type_ensure (EASEL_TYPE_THUMBNAIL_CARD);
-  gtk_widget_class_set_template_from_resource (widget_class, RESOURCE_PATH "/window.ui");
+  /* The template's marked strings in the language of this run, as text, so that no system locale is needed (REQ-0023-05). */
+  {
+    g_autoptr (GBytes) ui = g_resources_lookup_data (RESOURCE_PATH "/window.ui", G_RESOURCE_LOOKUP_FLAGS_NONE, NULL);
+    gsize len = 0;
+    const char *xml = g_bytes_get_data (ui, &len);
+    char *translated = easel_i18n_translate_template (xml);
+    g_autoptr (GBytes) bytes = translated != NULL ? g_bytes_new_with_free_func (translated, strlen (translated), free, translated) : g_bytes_ref (ui);
+
+    gtk_widget_class_set_template (widget_class, bytes);
+  }
   gtk_widget_class_bind_template_child (widget_class, EaselWindow, scroller);
   gtk_widget_class_bind_template_child (widget_class, EaselWindow, canvas_overlay);
   gtk_widget_class_bind_template_child (widget_class, EaselWindow, font_card);

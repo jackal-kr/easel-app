@@ -3,6 +3,7 @@
 #include "font-card.h"
 
 #include "text-render.h"
+#include "i18n.h"
 
 static const struct
 {
@@ -10,10 +11,10 @@ static const struct
   EaselTextField field;
   const char *icon, *tip;
 } toggles[] = {
-  { EASEL_TEXT_BOLD, EASEL_TEXT_FLAG_BOLD, "format-text-bold-symbolic", "Bold (Ctrl+B)" },
-  { EASEL_TEXT_ITALIC, EASEL_TEXT_FLAG_ITALIC, "format-text-italic-symbolic", "Italic (Ctrl+I)" },
-  { EASEL_TEXT_UNDERLINE, EASEL_TEXT_FLAG_UNDERLINE, "format-text-underline-symbolic", "Underline (Ctrl+U)" },
-  { EASEL_TEXT_STRIKE, EASEL_TEXT_FLAG_STRIKE, "format-text-strikethrough-symbolic", "Strikethrough (Ctrl+Shift+5)" },
+  { EASEL_TEXT_BOLD, EASEL_TEXT_FLAG_BOLD, "format-text-bold-symbolic", N_ ("Bold (Ctrl+B)") },
+  { EASEL_TEXT_ITALIC, EASEL_TEXT_FLAG_ITALIC, "format-text-italic-symbolic", N_ ("Italic (Ctrl+I)") },
+  { EASEL_TEXT_UNDERLINE, EASEL_TEXT_FLAG_UNDERLINE, "format-text-underline-symbolic", N_ ("Underline (Ctrl+U)") },
+  { EASEL_TEXT_STRIKE, EASEL_TEXT_FLAG_STRIKE, "format-text-strikethrough-symbolic", N_ ("Strikethrough (Ctrl+Shift+5)") },
 };
 
 struct _EaselFontCard
@@ -516,8 +517,8 @@ easel_font_card_init (EaselFontCard *self)
   gtk_widget_set_focusable (GTK_WIDGET (self->family), FALSE);
   for (GtkWidget *c = gtk_widget_get_first_child (GTK_WIDGET (self->family)); c != NULL; c = gtk_widget_get_next_sibling (c))
     gtk_widget_set_focusable (c, FALSE);
-  gtk_widget_set_tooltip_text (GTK_WIDGET (self->family), "Font family (Ctrl+Shift+F)");   /* each control and its key (REQ-0017-14) */
-  gtk_accessible_update_property (GTK_ACCESSIBLE (self->family), GTK_ACCESSIBLE_PROPERTY_LABEL, "Font family", -1);
+  gtk_widget_set_tooltip_text (GTK_WIDGET (self->family), _ ("Font family (Ctrl+Shift+F)"));   /* each control and its key (REQ-0017-14) */
+  gtk_accessible_update_property (GTK_ACCESSIBLE (self->family), GTK_ACCESSIBLE_PROPERTY_LABEL, _ ("Font family"), -1);
   gtk_menu_button_set_create_popup_func (self->family, create_popup, self, NULL);
   g_signal_connect_swapped (self->family, "notify::active", G_CALLBACK (on_family_active), self);
   gtk_box_append (GTK_BOX (self), GTK_WIDGET (self->family));
@@ -529,7 +530,7 @@ easel_font_card_init (EaselFontCard *self)
   gtk_widget_set_focus_on_click (GTK_WIDGET (self->size), FALSE);    /* − and + take no focus; a click in the text still types there */
   gtk_spin_button_set_value (self->size, 12);
   self->shown_size = 12;
-  gtk_widget_set_tooltip_text (GTK_WIDGET (self->size), "Font size (Ctrl+] larger, Ctrl+[ smaller)");
+  gtk_widget_set_tooltip_text (GTK_WIDGET (self->size), _ ("Font size (Ctrl+] larger, Ctrl+[ smaller)"));
   g_signal_connect (self->size, "output", G_CALLBACK (on_size_output), self);
   g_signal_connect (self->size, "input", G_CALLBACK (on_size_input), self);
   g_signal_connect_swapped (self->size, "change-value", G_CALLBACK (on_size_key_step), self);
@@ -554,7 +555,7 @@ easel_font_card_init (EaselFontCard *self)
       GtkWidget *button = gtk_toggle_button_new ();
 
       gtk_button_set_icon_name (GTK_BUTTON (button), toggles[i].icon);
-      gtk_widget_set_tooltip_text (button, toggles[i].tip);
+      gtk_widget_set_tooltip_text (button, _ (toggles[i].tip));
       gtk_widget_set_focusable (button, FALSE);
       gtk_widget_set_focus_on_click (button, FALSE);
       gtk_widget_add_css_class (button, "flat");

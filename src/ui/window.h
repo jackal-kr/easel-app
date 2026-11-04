@@ -152,4 +152,7 @@ gboolean easel_window_save_to (EaselWindow *self, const char *path);
    the error dialog of REQ-0004-26 and changes nothing. */
 EaselResizeResult easel_window_resize_picture (EaselWindow *self, int width, int height);
 
+/* The dialog of Open and Paste From, not yet shown (tests read its filters). */
+GtkFileDialog *easel_window_picture_dialog (EaselWindow *self, const char *title);
+
 G_END_DECLS

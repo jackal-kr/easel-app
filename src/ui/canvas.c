@@ -22,6 +22,7 @@
 #include "text-put.h"
 #include "text-render.h"
 #include "view.h"
+#include "i18n.h"
 
 /* Straight-alpha 0xAARRGGBB in memory order (ADR-0002). */
 #if G_BYTE_ORDER == G_LITTLE_ENDIAN
@@ -369,7 +370,7 @@ easel_canvas_set_image (EaselCanvas *self, EaselImage *img)
 
   if (img != NULL)
     {
-      g_autofree char *name = g_strdup_printf ("Picture, %d by %d pixels", img->width, img->height);
+      g_autofree char *name = g_strdup_printf (_n ("Picture, %d by %d pixel", "Picture, %d by %d pixels", (unsigned long) img->height), img->width, img->height);
 
       gtk_accessible_update_property (GTK_ACCESSIBLE (self), GTK_ACCESSIBLE_PROPERTY_LABEL, name, -1);
       self->marker_x = MIN (self->marker_x, img->width - 1);
@@ -3817,6 +3818,46 @@ easel_canvas_move_selection (EaselCanvas *self, int dx, int dy)
     }
   self->sel_x = self->sel_float.x = self->sel_x + dx;
   self->sel_y = self->sel_float.y = self->sel_y + dy;
+  g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);
+  gtk_widget_queue_draw (GTK_WIDGET (self));
+  return TRUE;
+}
+
+gboolean
+easel_canvas_smear_selection (EaselCanvas *self, int dx, int dy)
+{
+  gboolean lifted = FALSE;
+
+  if (self->sel_state == 0 || easel_canvas_is_stroking (self))
+    return FALSE;
+  if (self->sel_state == 1)
+    {
+      /* The first key lifts it with no hole, as a Shift drag does (REQ-0014-11). */
+      if (easel_selection_lift (&self->sel_float, self->img, self->sel_x, self->sel_y, self->sel_w, self->sel_h, self->sel_mask,
+                                TRUE, hole_color (self), self->sel_lift_max) != EASEL_SELECTION_DONE)
+        {
+          g_signal_emit (self, signals[SIGNAL_SELECTION_FAILED], 0, 0);
+          return TRUE;
+        }
+      lifted = TRUE;
+      self->sel_state = 2;
+    }
+  if (!easel_selection_smear (&self->sel_float, self->sel_x + dx, self->sel_y + dy, self->sel_lift_max))
+    {
+      /* As it was before this key: marked if this key lifted it, the copies of earlier keys kept (REQ-0014-13). */
+      if (lifted)
+        {
+          drop_float (self);
+          self->sel_state = 1;
+        }
+      g_signal_emit (self, signals[SIGNAL_SELECTION_FAILED], 0, 0);
+      gtk_widget_queue_draw (GTK_WIDGET (self));
+      return TRUE;
+    }
+  self->sel_x = self->sel_float.x;
+  self->sel_y = self->sel_float.y;
+  if (lifted)
+    g_signal_emit (self, signals[SIGNAL_PENDING_CHANGED], 0);
   g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);
   gtk_widget_queue_draw (GTK_WIDGET (self));
   return TRUE;

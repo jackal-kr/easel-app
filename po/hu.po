@@ -1,0 +1,1187 @@
+# Hungarian translation of Easel. A draft.
+# SPDX-License-Identifier: GPL-3.0-or-later
+msgid ""
+msgstr ""
+"Project-Id-Version: easel\n"
+"Language: hu\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"X-Easel-Reviewed: no\n"
+
+msgid "Default"
+msgstr "Alapértelmezett"
+
+msgid "Attributes"
+msgstr "Tulajdonságok"
+
+msgid "New area is filled with the background color; a smaller size crops the picture."
+msgstr "Az új terület a háttérszínnel telik ki; kisebb méret levágja a képet."
+
+msgid "Width"
+msgstr "Szélesség"
+
+msgid "Height"
+msgstr "Magasság"
+
+msgid "_Cancel"
+msgstr "_Mégse"
+
+msgid "_OK"
+msgstr "_OK"
+
+#, c-format
+msgid "Picture, %d by %d pixel"
+msgid_plural "Picture, %d by %d pixels"
+msgstr[0] "Kép, %d × %d képpont"
+msgstr[1] "Kép, %d × %d képpont"
+
+msgid "Bold (Ctrl+B)"
+msgstr "Félkövér (Ctrl+B)"
+
+msgid "Italic (Ctrl+I)"
+msgstr "Dőlt (Ctrl+I)"
+
+msgid "Underline (Ctrl+U)"
+msgstr "Aláhúzott (Ctrl+U)"
+
+msgid "Strikethrough (Ctrl+Shift+5)"
+msgstr "Áthúzott (Ctrl+Shift+5)"
+
+msgid "Font family (Ctrl+Shift+F)"
+msgstr "Betűcsalád (Ctrl+Shift+F)"
+
+msgid "Font family"
+msgstr "Betűcsalád"
+
+msgid "Font size (Ctrl+] larger, Ctrl+[ smaller)"
+msgstr "Betűméret (Ctrl+] nagyobb, Ctrl+[ kisebb)"
+
+msgid "Grid"
+msgstr "Rács"
+
+msgid "Cell size in picture pixels (1 to 1000)"
+msgstr "Cellaméret a kép képpontjaiban (1–1000)"
+
+msgid "Axonometric"
+msgstr "Axonometrikus"
+
+msgid "_Apply"
+msgstr "_Alkalmaz"
+
+msgid "File"
+msgstr "Fájl"
+
+msgid "New"
+msgstr "Új"
+
+msgid "Open…"
+msgstr "Megnyitás…"
+
+msgid "Save"
+msgstr "Mentés"
+
+msgid "Save As…"
+msgstr "Mentés másként…"
+
+msgid "Print…"
+msgstr "Nyomtatás…"
+
+msgid "Preferences"
+msgstr "Beállítások"
+
+msgid "Keyboard Shortcuts"
+msgstr "Gyorsbillentyűk"
+
+msgid "Help"
+msgstr "Súgó"
+
+msgid "Close the window"
+msgstr "Ablak bezárása"
+
+msgid "Quit"
+msgstr "Kilépés"
+
+msgid "Edit"
+msgstr "Szerkesztés"
+
+msgid "Undo"
+msgstr "Visszavonás"
+
+msgid "Redo"
+msgstr "Ismétlés"
+
+msgid "Cut"
+msgstr "Kivágás"
+
+msgid "Copy"
+msgstr "Másolás"
+
+msgid "Paste"
+msgstr "Beillesztés"
+
+msgid "Select All"
+msgstr "Összes kijelölése"
+
+msgid "Clear the selection"
+msgstr "Kijelölés törlése"
+
+msgid "Move the selection 1 pixel"
+msgstr "Kijelölés mozgatása 1 képponttal"
+
+msgid "Move the selection 10 pixels"
+msgstr "Kijelölés mozgatása 10 képponttal"
+
+msgid "Put down a selection or a waiting shape"
+msgstr "Kijelölés vagy várakozó alakzat lerakása"
+
+msgid "Put down a selection, drop a waiting shape, cancel a drag"
+msgstr "Kijelölés lerakása, várakozó alakzat eldobása, húzás megszakítása"
+
+msgid "Image"
+msgstr "Kép"
+
+msgid "Rotate 90°"
+msgstr "Forgatás 90°-kal"
+
+msgid "Rotate 270°"
+msgstr "Forgatás 270°-kal"
+
+msgid "Stretch and Skew…"
+msgstr "Nyújtás és döntés…"
+
+msgid "Invert Colors"
+msgstr "Színek invertálása"
+
+msgid "Attributes…"
+msgstr "Tulajdonságok…"
+
+msgid "Clear Image"
+msgstr "Kép törlése"
+
+msgid "View"
+msgstr "Nézet"
+
+msgid "Zoom In"
+msgstr "Nagyítás"
+
+msgid "Zoom Out"
+msgstr "Kicsinyítés"
+
+msgid "Normal Size"
+msgstr "Normál méret"
+
+msgid "Large Size"
+msgstr "Nagy méret"
+
+msgid "Fit to Window"
+msgstr "Ablakhoz igazítás"
+
+msgid "Show Grid"
+msgstr "Rács megjelenítése"
+
+msgid "Close the thumbnail"
+msgstr "Bélyegkép bezárása"
+
+msgid "Move the focus"
+msgstr "Fókusz mozgatása"
+
+msgid "Move to the next or the previous panel"
+msgstr "Ugrás a következő vagy az előző panelre"
+
+msgid "Tools"
+msgstr "Eszközök"
+
+msgid "The next larger size of the tool"
+msgstr "Az eszköz következő nagyobb mérete"
+
+msgid "The next smaller size of the tool"
+msgstr "Az eszköz következő kisebb mérete"
+
+msgid "Move the focus in a panel"
+msgstr "Fókusz mozgatása a panelen belül"
+
+msgid "Choose the focused control"
+msgstr "A fókuszban lévő vezérlő kiválasztása"
+
+msgid "Press or release at the marker"
+msgstr "Lenyomás vagy felengedés a jelölőnél"
+
+msgid "Press with the secondary button at the marker"
+msgstr "Lenyomás a másodlagos gombbal a jelölőnél"
+
+msgid "Press for a copy of a selection"
+msgstr "Lenyomás a kijelölés másolásához"
+
+msgid "Press for a smear of a selection"
+msgstr "Lenyomás a kijelölés nyomának húzásához"
+
+msgid "Move the marker 1 pixel"
+msgstr "Jelölő mozgatása 1 képponttal"
+
+msgid "Move the marker 10 pixels"
+msgstr "Jelölő mozgatása 10 képponttal"
+
+msgid "Move the marker alone, with a selection"
+msgstr "Csak a jelölő mozgatása, kijelöléssel"
+
+msgid "Open the menu at the marker"
+msgstr "Menü megnyitása a jelölőnél"
+
+msgid "Say the marker's place and color"
+msgstr "A jelölő helyének és színének kimondása"
+
+msgid "Colors"
+msgstr "Színek"
+
+msgid "Swap foreground and background"
+msgstr "Előtér és háttér felcserélése"
+
+msgid "Edit the focused swatch"
+msgstr "A fókuszban lévő színminta szerkesztése"
+
+msgid "Move among the swatches"
+msgstr "Mozgás a színminták között"
+
+msgid "Make the focused swatch the foreground color"
+msgstr "A fókuszban lévő színminta legyen az előtérszín"
+
+msgid "Make the focused swatch the background color"
+msgstr "A fókuszban lévő színminta legyen a háttérszín"
+
+msgid "Text"
+msgstr "Szöveg"
+
+msgid "Bold"
+msgstr "Félkövér"
+
+msgid "Italic"
+msgstr "Dőlt"
+
+msgid "Underline"
+msgstr "Aláhúzott"
+
+msgid "Strikethrough"
+msgstr "Áthúzott"
+
+msgid "Font size 1 point larger or smaller"
+msgstr "Betűméret 1 ponttal nagyobb vagy kisebb"
+
+msgid "Open the font family list"
+msgstr "A betűcsaládok listájának megnyitása"
+
+msgid "Move the highlight in the family list"
+msgstr "Kiemelés mozgatása a családok listájában"
+
+msgid "Choose the highlighted family"
+msgstr "A kiemelt család kiválasztása"
+
+msgid "Close the family list"
+msgstr "A családok listájának bezárása"
+
+msgid "New line"
+msgstr "Új sor"
+
+msgid "Delete before or after the caret"
+msgstr "Törlés a kurzor előtt vagy után"
+
+msgid "Move the caret"
+msgstr "Kurzor mozgatása"
+
+msgid "Move the caret by a word"
+msgstr "Kurzor mozgatása egy szóval"
+
+msgid "To the start or the end of the line"
+msgstr "A sor elejére vagy végére"
+
+msgid "Extend the text selection"
+msgstr "Szövegkijelölés bővítése"
+
+msgid "Cut the selected text"
+msgstr "A kijelölt szöveg kivágása"
+
+msgid "Copy the selected text"
+msgstr "A kijelölt szöveg másolása"
+
+msgid "Paste into the box"
+msgstr "Beillesztés a keretbe"
+
+msgid "Paste as Plain Text"
+msgstr "Beillesztés egyszerű szövegként"
+
+msgid "Select all the box's text"
+msgstr "A keret teljes szövegének kijelölése"
+
+msgid "Put the box down"
+msgstr "A keret lerakása"
+
+msgid "Move the box 1 pixel"
+msgstr "A keret mozgatása 1 képponttal"
+
+msgid "Move the box's far corner 1 pixel"
+msgstr "A keret távoli sarkának mozgatása 1 képponttal"
+
+#, c-format
+msgid "Color %d, %s"
+msgstr "%d. szín, %s"
+
+#, c-format
+msgid "Foreground color, %s"
+msgstr "Előtérszín, %s"
+
+#, c-format
+msgid "Background color, %s"
+msgstr "Háttérszín, %s"
+
+msgid "Swap foreground and background (Ctrl+Shift+X)"
+msgstr "Előtér és háttér felcserélése (Ctrl+Shift+X)"
+
+msgid "Takes effect the next time Easel starts."
+msgstr "Az Easel következő indításakor lép életbe."
+
+msgid "Use Default"
+msgstr "Alapértelmezett használata"
+
+msgid "Canvas color"
+msgstr "Vászon színe"
+
+msgid "Reset the Palette?"
+msgstr "Visszaállítja a palettát?"
+
+msgid "All 28 colors go back to the classic ones. This cannot be undone."
+msgstr "Mind a 28 szín visszatér a klasszikushoz. Ez nem vonható vissza."
+
+msgid "_Reset"
+msgstr "_Visszaállítás"
+
+msgid "Size and color"
+msgstr "Méret és szín"
+
+msgid "Automatic size"
+msgstr "Automatikus méret"
+
+msgid "System"
+msgstr "Rendszer"
+
+msgid "Light"
+msgstr "Világos"
+
+msgid "Dark"
+msgstr "Sötét"
+
+msgid "Style"
+msgstr "Stílus"
+
+msgid "Language"
+msgstr "Nyelv"
+
+msgid "Workspace"
+msgstr "Munkaterület"
+
+msgid "Selection"
+msgstr "Kijelölés"
+
+msgid "Panels"
+msgstr "Panelek"
+
+msgid "Palette"
+msgstr "Paletta"
+
+msgid "Reset Palette…"
+msgstr "Paletta visszaállítása…"
+
+msgid "System default"
+msgstr "Rendszer szerint"
+
+msgid "Workspace color"
+msgstr "Munkaterület színe"
+
+msgid "Workspace color, dark"
+msgstr "Munkaterület színe, sötét"
+
+msgid "Tint strength"
+msgstr "Árnyalat erőssége"
+
+msgid "Tool Box"
+msgstr "Eszköztár"
+
+msgid "Color Box"
+msgstr "Színtár"
+
+msgid "Status Bar"
+msgstr "Állapotsor"
+
+msgid "Frame time"
+msgstr "Képkocka ideje"
+
+msgid "Automatic"
+msgstr "Automatikus"
+
+msgid "Font"
+msgstr "Betűtípus"
+
+msgid "Circle, 7 pixels"
+msgstr "Kör, 7 képpont"
+
+msgid "Circle, 4 pixels"
+msgstr "Kör, 4 képpont"
+
+msgid "Circle, 1 pixel"
+msgstr "Kör, 1 képpont"
+
+msgid "Square, 8 pixels"
+msgstr "Négyzet, 8 képpont"
+
+msgid "Square, 5 pixels"
+msgstr "Négyzet, 5 képpont"
+
+msgid "Square, 2 pixels"
+msgstr "Négyzet, 2 képpont"
+
+msgid "Slash, 8 pixels"
+msgstr "Perjel, 8 képpont"
+
+msgid "Slash, 5 pixels"
+msgstr "Perjel, 5 képpont"
+
+msgid "Slash, 2 pixels"
+msgstr "Perjel, 2 képpont"
+
+msgid "Backslash, 8 pixels"
+msgstr "Fordított perjel, 8 képpont"
+
+msgid "Backslash, 5 pixels"
+msgstr "Fordított perjel, 5 képpont"
+
+msgid "Backslash, 2 pixels"
+msgstr "Fordított perjel, 2 képpont"
+
+msgid "9 pixels"
+msgstr "9 képpont"
+
+msgid "16 pixels"
+msgstr "16 képpont"
+
+msgid "24 pixels"
+msgstr "24 képpont"
+
+msgid "4 pixels"
+msgstr "4 képpont"
+
+msgid "6 pixels"
+msgstr "6 képpont"
+
+msgid "8 pixels"
+msgstr "8 képpont"
+
+msgid "10 pixels"
+msgstr "10 képpont"
+
+msgid "Opaque"
+msgstr "Átlátszatlan"
+
+msgid "Transparent"
+msgstr "Átlátszó"
+
+msgid "1 pixel"
+msgstr "1 képpont"
+
+msgid "2 pixels"
+msgstr "2 képpont"
+
+msgid "3 pixels"
+msgstr "3 képpont"
+
+msgid "5 pixels"
+msgstr "5 képpont"
+
+msgid "Outline"
+msgstr "Körvonal"
+
+msgid "Outline and fill"
+msgstr "Körvonal és kitöltés"
+
+msgid "Fill"
+msgstr "Kitöltés"
+
+msgid "History"
+msgstr "Előzmények"
+
+msgid "Saving"
+msgstr "Mentés módja"
+
+msgid "Brush"
+msgstr "Ecset"
+
+msgid "Airbrush"
+msgstr "Festékszóró"
+
+msgid "Eraser size"
+msgstr "Radír mérete"
+
+msgid "Eraser mode"
+msgstr "Radír módja"
+
+msgid "Line and shape width"
+msgstr "Vonalak és alakzatok vastagsága"
+
+msgid "Fill style"
+msgstr "Kitöltés stílusa"
+
+msgid "Magnifier level"
+msgstr "Nagyító szintje"
+
+msgid "Size"
+msgstr "Méret"
+
+msgid "Undo memory"
+msgstr "Memória a visszavonáshoz"
+
+msgid "JPEG quality"
+msgstr "JPEG minősége"
+
+msgid "Appearance"
+msgstr "Megjelenés"
+
+msgid "New Picture"
+msgstr "Új kép"
+
+msgid "Drawing"
+msgstr "Rajzolás"
+
+#, c-format
+msgid "Takes %d sheet"
+msgid_plural "Takes %d sheets"
+msgstr[0] "%d lapot foglal"
+msgstr[1] "%d lapot foglal"
+
+msgid "Pixels"
+msgstr "Képpontok"
+
+msgid "Sharp"
+msgstr "Éles"
+
+msgid "Each pixel a sharp square"
+msgstr "Minden képpont éles négyzet"
+
+msgid "Smooth when shrunk"
+msgstr "Simítás kicsinyítéskor"
+
+msgid "Sharp, but averaged where a printer's dot covers several pixels"
+msgstr "Éles, de átlagolt ott, ahol a nyomtató egy pontja több képpontot fed"
+
+msgid "Smooth"
+msgstr "Sima"
+
+msgid "Blended between pixels"
+msgstr "Képpontok között összemosva"
+
+msgid "Fit on one page"
+msgstr "Igazítás egy oldalra"
+
+#, c-format
+msgid "Too large: %d × %d; the most is 10000 × 10000"
+msgstr "Túl nagy: %d × %d; a legnagyobb 10000 × 10000"
+
+#, c-format
+msgid "New size: %d × %d"
+msgstr "Új méret: %d × %d"
+
+msgid "Keep aspect ratio"
+msgstr "Méretarány megtartása"
+
+msgid "Stretch and Skew"
+msgstr "Nyújtás és döntés"
+
+msgid "Stretch"
+msgstr "Nyújtás"
+
+msgid "Percent"
+msgstr "Százalék"
+
+msgid "Skew"
+msgstr "Döntés"
+
+msgid "Degrees"
+msgstr "Fok"
+
+msgid "Horizontal"
+msgstr "Vízszintes"
+
+msgid "Vertical"
+msgstr "Függőleges"
+
+msgid "Thumbnail"
+msgstr "Bélyegkép"
+
+#, c-format
+msgid "Eraser, %d pixel"
+msgid_plural "Eraser, %d pixels"
+msgstr[0] "Radír, %d képpont"
+msgstr[1] "Radír, %d képpont"
+
+#, c-format
+msgid "Spray, %d pixel"
+msgid_plural "Spray, %d pixels"
+msgstr[0] "Szóró, %d képpont"
+msgstr[1] "Szóró, %d képpont"
+
+#, c-format
+msgid "Circle, %d pixel"
+msgid_plural "Circle, %d pixels"
+msgstr[0] "Kör, %d képpont"
+msgstr[1] "Kör, %d képpont"
+
+#, c-format
+msgid "Square, %d pixel"
+msgid_plural "Square, %d pixels"
+msgstr[0] "Négyzet, %d képpont"
+msgstr[1] "Négyzet, %d képpont"
+
+#, c-format
+msgid "Slash, %d pixel"
+msgid_plural "Slash, %d pixels"
+msgstr[0] "Perjel, %d képpont"
+msgstr[1] "Perjel, %d képpont"
+
+#, c-format
+msgid "Backslash, %d pixel"
+msgid_plural "Backslash, %d pixels"
+msgstr[0] "Fordított perjel, %d képpont"
+msgstr[1] "Fordított perjel, %d képpont"
+
+msgid "Opaque: erase to the background color"
+msgstr "Átlátszatlan: törlés a háttérszínre"
+
+msgid "Transparent: erase to transparency"
+msgstr "Átlátszó: törlés átlátszóra"
+
+msgid "Opaque: keep background color"
+msgstr "Átlátszatlan: a háttérszín megtartása"
+
+msgid "Transparent: moving or clearing leaves a transparent hole"
+msgstr "Átlátszó: a mozgatás vagy törlés átlátszó lyukat hagy"
+
+msgid "Opaque: fill the text box with the background color"
+msgstr "Átlátszatlan: a keret kitöltése a háttérszínnel"
+
+msgid "Transparent: only the text"
+msgstr "Átlátszó: csak a szöveg"
+
+msgid "Untitled"
+msgstr "Névtelen"
+
+#, c-format
+msgid "• %s – Easel"
+msgstr "• %s – Easel"
+
+#, c-format
+msgid "%s – Easel"
+msgstr "%s – Easel"
+
+msgid "Close"
+msgstr "Bezárás"
+
+#, c-format
+msgid "Could Not Save “%s”"
+msgstr "Nem sikerült menteni: „%s”"
+
+#, c-format
+msgid "“%s” could not be saved: %s"
+msgstr "„%s” nem menthető: %s"
+
+#, c-format
+msgid "Saved %s"
+msgstr "Mentve: %s"
+
+#, c-format
+msgid "Replace “%s”?"
+msgstr "Lecseréli: „%s”?"
+
+msgid "A file with this name already exists."
+msgstr "Már létezik ilyen nevű fájl."
+
+msgid "_Replace"
+msgstr "_Csere"
+
+msgid "Cannot Save This Kind of File"
+msgstr "Ez a fájltípus nem menthető"
+
+msgid "Pictures can be saved as PNG, JPEG, BMP, TIFF or WebP."
+msgstr "A képek PNG, JPEG, BMP, TIFF vagy WebP formátumban menthetők."
+
+msgid "Copy To"
+msgstr "Másolás ide"
+
+msgid "Untitled.png"
+msgstr "Névtelen.png"
+
+msgid "Save Picture As"
+msgstr "Kép mentése másként"
+
+#, c-format
+msgid "“%s” has unsaved changes."
+msgstr "„%s” nem mentett módosításokat tartalmaz."
+
+msgid "Save Changes?"
+msgstr "Menti a módosításokat?"
+
+msgid "_Discard"
+msgstr "_Eldobás"
+
+msgid "_Save"
+msgstr "_Mentés"
+
+#, c-format
+msgid "Opened %s"
+msgstr "Megnyitva: %s"
+
+msgid "Could Not Create a New Picture"
+msgstr "Nem sikerült új képet létrehozni"
+
+#, c-format
+msgid "Could Not Open “%s”"
+msgstr "Nem sikerült megnyitni: „%s”"
+
+msgid "The file cannot be read."
+msgstr "A fájl nem olvasható."
+
+msgid "This is not a picture the app can open."
+msgstr "Ez nem olyan kép, amelyet az alkalmazás meg tud nyitni."
+
+msgid "The picture is bigger than 10000 pixels in width or height."
+msgstr "A kép szélessége vagy magassága több mint 10000 képpont."
+
+msgid "Open Picture"
+msgstr "Kép megnyitása"
+
+msgid "Draw with the foreground color. The secondary button uses the background color."
+msgstr "Rajzol az előtérszínnel. A másodlagos gomb a háttérszínt használja."
+
+msgid "Paint with the foreground color. The secondary button uses the background color."
+msgstr "Fest az előtérszínnel. A másodlagos gomb a háttérszínt használja."
+
+msgid "Spray with the foreground color. The secondary button uses the background color."
+msgstr "Fúj az előtérszínnel. A másodlagos gomb a háttérszínt használja."
+
+msgid "Erase to transparency. The secondary button erases only the foreground color."
+msgstr "Átlátszóra töröl. A másodlagos gomb csak az előtérszínt törli."
+
+msgid "Erase to the background color. The secondary button changes only the foreground color."
+msgstr "A háttérszínre töröl. A másodlagos gomb csak az előtérszínt cseréli."
+
+msgid "Changes the magnification."
+msgstr "Módosítja a nagyítást."
+
+msgid "Draws a straight line with the selected line width."
+msgstr "Egyenes vonalat rajzol a választott vastagsággal."
+
+msgid "Draws a rectangle with the selected fill style."
+msgstr "Téglalapot rajzol a választott kitöltési stílussal."
+
+msgid "Draws a rounded rectangle with the selected fill style."
+msgstr "Lekerekített téglalapot rajzol a választott kitöltési stílussal."
+
+msgid "Draws an ellipse with the selected fill style."
+msgstr "Ellipszist rajzol a választott kitöltési stílussal."
+
+msgid "Draws a curved line with the selected line width."
+msgstr "Görbe vonalat rajzol a választott vastagsággal."
+
+msgid "Draws a polygon with the selected fill style."
+msgstr "Sokszöget rajzol a választott kitöltési stílussal."
+
+msgid "Selects a rectangular part of the picture to move, copy, or edit."
+msgstr "A kép téglalap alakú részét jelöli ki mozgatásra, másolásra vagy szerkesztésre."
+
+msgid "Selects a free-form part of the picture to move, copy, or edit."
+msgstr "A kép szabad alakú részét jelöli ki mozgatásra, másolásra vagy szerkesztésre."
+
+msgid "Fades the drawing color to transparent along a drag. A click or Enter applies it, Esc cancels it."
+msgstr "A színt átlátszóba úsztatja egy húzás mentén. Kattintás vagy Enter alkalmazza, Esc megszakítja."
+
+msgid "Picks up a color from the picture for drawing."
+msgstr "Színt vesz fel a képről a rajzoláshoz."
+
+msgid "Fills an area with the current drawing color."
+msgstr "Egy területet kitölt az aktuális színnel."
+
+msgid "Inserts text into the picture."
+msgstr "Szöveget illeszt a képbe."
+
+msgid "Drag to pan. Ctrl+wheel zooms."
+msgstr "Húzással mozgat. Ctrl+görgő nagyít."
+
+msgid "Zoom"
+msgstr "Nagyítás"
+
+msgid "Zoom Out (Ctrl+-)"
+msgstr "Kicsinyítés (Ctrl+-)"
+
+msgid "Zoom In (Ctrl+=)"
+msgstr "Nagyítás (Ctrl+=)"
+
+#, c-format
+msgid "There is not enough memory for a picture of %d × %d pixel."
+msgid_plural "There is not enough memory for a picture of %d × %d pixels."
+msgstr[0] "Nincs elég memória egy %d × %d képpontos képhez."
+msgstr[1] "Nincs elég memória egy %d × %d képpontos képhez."
+
+msgid "Could Not Resize the Picture"
+msgstr "Nem sikerült átméretezni a képet"
+
+msgid "Could Not Invert the Colors"
+msgstr "Nem sikerült invertálni a színeket"
+
+msgid "Could Not Clear the Picture"
+msgstr "Nem sikerült törölni a képet"
+
+msgid "Could Not Flip the Picture"
+msgstr "Nem sikerült tükrözni a képet"
+
+msgid "Could Not Rotate the Picture"
+msgstr "Nem sikerült elforgatni a képet"
+
+msgid "There is not enough memory for this change."
+msgstr "Nincs elég memória ehhez a módosításhoz."
+
+msgid "Space to finish, Esc to cancel"
+msgstr "Space a befejezéshez, Esc a megszakításhoz"
+
+msgid "Done"
+msgstr "Kész"
+
+msgid "Cancelled"
+msgstr "Megszakítva"
+
+#, c-format
+msgid "Foreground %s"
+msgstr "Előtér: %s"
+
+#, c-format
+msgid "Background %s"
+msgstr "Háttér: %s"
+
+msgid "Text box open"
+msgstr "Szövegkeret megnyitva"
+
+msgid "Text box closed"
+msgstr "Szövegkeret bezárva"
+
+#, c-format
+msgid "Selection %d by %d"
+msgstr "Kijelölés: %d × %d"
+
+msgid "Selection put down"
+msgstr "Kijelölés lerakva"
+
+msgid "Selection removed"
+msgstr "Kijelölés eltávolítva"
+
+msgid "Polygon closed"
+msgstr "Sokszög lezárva"
+
+msgid "Pan"
+msgstr "Mozgatás"
+
+msgid "Pencil"
+msgstr "Ceruza"
+
+msgid "Eraser"
+msgstr "Radír"
+
+msgid "Magnifier"
+msgstr "Nagyító"
+
+msgid "Pick Color"
+msgstr "Színfelvétel"
+
+msgid "Line"
+msgstr "Vonal"
+
+msgid "Rectangle"
+msgstr "Téglalap"
+
+msgid "Rounded Rectangle"
+msgstr "Lekerekített téglalap"
+
+msgid "Ellipse"
+msgstr "Ellipszis"
+
+msgid "Curve"
+msgstr "Görbe"
+
+msgid "Polygon"
+msgstr "Sokszög"
+
+msgid "Gradient"
+msgstr "Színátmenet"
+
+msgid "Select"
+msgstr "Kijelölés"
+
+msgid "Free-Form Select"
+msgstr "Szabad kijelölés"
+
+msgid "Could Not Open Help"
+msgstr "Nem sikerült megnyitni a súgót"
+
+msgid "The help page could not be opened."
+msgstr "A súgóoldal nem nyitható meg."
+
+msgid "OK"
+msgstr "OK"
+
+msgid "Could Not Print"
+msgstr "Nem sikerült nyomtatni"
+
+msgid "The picture could not be printed."
+msgstr "A kép nem nyomtatható ki."
+
+msgid "Picture"
+msgstr "Kép"
+
+msgid "Could Not Save the Preferences"
+msgstr "Nem sikerült menteni a beállításokat"
+
+msgid "The change applies until Easel closes, but settings.ini could not be written."
+msgstr "A módosítás az Easel bezárásáig érvényes, de a settings.ini nem írható."
+
+msgid "Could Not Stretch or Skew the Picture"
+msgstr "Nem sikerült nyújtani vagy dönteni a képet"
+
+msgid "Undone"
+msgstr "Visszavonva"
+
+msgid "Redone"
+msgstr "Megismételve"
+
+msgid "Could Not Fill"
+msgstr "Nem sikerült kitölteni"
+
+msgid "There is not enough memory to fill this area."
+msgstr "Nincs elég memória ennek a területnek a kitöltéséhez."
+
+msgid "Could Not Draw the Shape"
+msgstr "Nem sikerült megrajzolni az alakzatot"
+
+msgid "There is not enough memory to draw this shape."
+msgstr "Nincs elég memória ennek az alakzatnak a megrajzolásához."
+
+msgid "Could Not Apply the Gradient"
+msgstr "Nem sikerült alkalmazni a színátmenetet"
+
+msgid "There is not enough memory to apply this gradient."
+msgstr "Nincs elég memória ennek a színátmenetnek az alkalmazásához."
+
+msgid "Could Not Clear the Selection"
+msgstr "Nem sikerült törölni a kijelölést"
+
+msgid "There is not enough memory to clear this selection."
+msgstr "Nincs elég memória ennek a kijelölésnek a törléséhez."
+
+msgid "Could Not Make the Selection"
+msgstr "Nem sikerült létrehozni a kijelölést"
+
+msgid "There is not enough memory to make this selection."
+msgstr "Nincs elég memória ennek a kijelölésnek a létrehozásához."
+
+msgid "Could Not Stretch the Selection"
+msgstr "Nem sikerült nyújtani a kijelölést"
+
+msgid "There is not enough memory to stretch this selection."
+msgstr "Nincs elég memória ennek a kijelölésnek a nyújtásához."
+
+msgid "Could Not Flip the Selection"
+msgstr "Nem sikerült tükrözni a kijelölést"
+
+msgid "Could Not Rotate the Selection"
+msgstr "Nem sikerült elforgatni a kijelölést"
+
+msgid "Could Not Invert the Selection"
+msgstr "Nem sikerült invertálni a kijelölést"
+
+msgid "Could Not Stretch or Skew the Selection"
+msgstr "Nem sikerült nyújtani vagy dönteni a kijelölést"
+
+msgid "Could Not Move the Selection"
+msgstr "Nem sikerült mozgatni a kijelölést"
+
+msgid "There is not enough memory to move this selection."
+msgstr "Nincs elég memória ennek a kijelölésnek a mozgatásához."
+
+msgid "Could Not Add the Text"
+msgstr "Nem sikerült hozzáadni a szöveget"
+
+msgid "There is not enough memory to show this text."
+msgstr "Nincs elég memória ennek a szövegnek a megjelenítéséhez."
+
+msgid "There is not enough memory to add this text."
+msgstr "Nincs elég memória ennek a szövegnek a hozzáadásához."
+
+msgid "Could Not Copy the Selection"
+msgstr "Nem sikerült másolni a kijelölést"
+
+msgid "There is not enough memory to copy this selection."
+msgstr "Nincs elég memória ennek a kijelölésnek a másolásához."
+
+#, c-format
+msgid "Could Not Paste “%s”"
+msgstr "Nem sikerült beilleszteni: „%s”"
+
+msgid "Could Not Paste"
+msgstr "Nem sikerült beilleszteni"
+
+msgid "There is not enough memory to paste this picture."
+msgstr "Nincs elég memória ennek a képnek a beillesztéséhez."
+
+msgid "The clipboard's picture cannot be read."
+msgstr "A vágólapon lévő kép nem olvasható."
+
+#, c-format
+msgid "The picture is %d × %d pixel; the canvas is %d × %d."
+msgid_plural "The picture is %d × %d pixels; the canvas is %d × %d."
+msgstr[0] "A kép %d × %d képpont; a vászon %d × %d."
+msgstr[1] "A kép %d × %d képpont; a vászon %d × %d."
+
+msgid "Pasted Picture Is Larger Than the Canvas"
+msgstr "A beillesztett kép nagyobb a vászonnál"
+
+msgid "_Fit Picture to Canvas"
+msgstr "_Kép igazítása a vászonhoz"
+
+msgid "_Resize Canvas to Picture"
+msgstr "_Vászon méretezése a képhez"
+
+msgid "The clipboard's text cannot be read."
+msgstr "A vágólapon lévő szöveg nem olvasható."
+
+msgid "There is not enough memory to paste this text."
+msgstr "Nincs elég memória ennek a szövegnek a beillesztéséhez."
+
+msgid "Could Not Copy the Text"
+msgstr "Nem sikerült másolni a szöveget"
+
+msgid "There is not enough memory to copy this text."
+msgstr "Nincs elég memória ennek a szövegnek a másolásához."
+
+msgid "Paste From"
+msgstr "Beillesztés innen"
+
+msgid "Open"
+msgstr "Megnyitás"
+
+msgid "Main Menu"
+msgstr "Főmenü"
+
+msgid "Text box"
+msgstr "Szövegkeret"
+
+msgid "_Flip"
+msgstr "_Tükrözés"
+
+msgid "Flip _Horizontal"
+msgstr "_Vízszintes tükrözés"
+
+msgid "Flip _Vertical"
+msgstr "_Függőleges tükrözés"
+
+msgid "_Rotate"
+msgstr "_Forgatás"
+
+msgid "Rotate _90°"
+msgstr "Forgatás _90°-kal"
+
+msgid "Rotate 1_80°"
+msgstr "Forgatás 1_80°-kal"
+
+msgid "Rotate _270°"
+msgstr "Forgatás _270°-kal"
+
+msgid "Stretch and _Skew…"
+msgstr "Nyújtás és _döntés…"
+
+msgid "_Invert Colors"
+msgstr "Színek _invertálása"
+
+msgid "_Clear Image"
+msgstr "Kép _törlése"
+
+msgid "Grid…"
+msgstr "Rács…"
+
+msgid "Show Thumbnail"
+msgstr "Bélyegkép megjelenítése"
+
+msgid "Cu_t"
+msgstr "_Kivágás"
+
+msgid "_Copy"
+msgstr "_Másolás"
+
+msgid "_Paste"
+msgstr "_Beillesztés"
+
+msgid "_Clear Selection"
+msgstr "Kijelölés _törlése"
+
+msgid "Select _All"
+msgstr "Ö_sszes kijelölése"
+
+msgid "Copy _To…"
+msgstr "Másolás _ide…"
+
+msgid "Paste as Plain _Text"
+msgstr "Beillesztés _egyszerű szövegként"
+
+msgid "Paste _From…"
+msgstr "Beillesztés _innen…"
+
+msgid "Zoom _In"
+msgstr "_Nagyítás"
+
+msgid "Zoom _Out"
+msgstr "Ki_csinyítés"
+
+msgid "_Normal Size"
+msgstr "_Normál méret"
+
+msgid "_New"
+msgstr "Ú_j"
+
+msgid "_Open…"
+msgstr "_Megnyitás…"
+
+msgid "Save _As…"
+msgstr "Mentés más_ként…"
+
+msgid "_Print…"
+msgstr "Nyomta_tás…"
+
+msgid "_Edit"
+msgstr "_Szerkesztés"
+
+msgid "_Preferences"
+msgstr "_Beállítások"
+
+msgid "_Keyboard Shortcuts"
+msgstr "_Gyorsbillentyűk"
+
+msgid "_Help"
+msgstr "Sú_gó"
+
+msgid "_About Easel"
+msgstr "Az Easel _névjegye"
+
+msgid "_Quit"
+msgstr "_Kilépés"
+
+msgid "Pictures"
+msgstr "Képek"
+
+msgid "All Files"
+msgstr "Minden fájl"
+
+msgid "Smear the selection 1 pixel"
+msgstr "A kijelölés nyomának húzása 1 képponttal"

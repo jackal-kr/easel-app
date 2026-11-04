@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 #include "print.h"
+#include "i18n.h"
 
 #include <adwaita.h>
 #include <math.h>
@@ -61,7 +62,7 @@ tab_sync (PrintTab *t)
   gboolean fit = adw_switch_row_get_active (t->fit);
   EaselPrintLayout l = easel_print_layout (t->w, t->h, t->paper_w_mm - 2 * MARGINS_MM, t->paper_h_mm - 2 * MARGINS_MM, fit, 100);
   int n = easel_print_sheets (&l);
-  g_autofree char *text = g_strdup_printf ("Takes %d sheets", n);
+  g_autofree char *text = g_strdup_printf (_n ("Takes %d sheet", "Takes %d sheets", (unsigned long) n), n);
 
   gtk_label_set_text (t->sheets, text);
   gtk_widget_set_visible (GTK_WIDGET (t->sheets), n > 1);
@@ -85,7 +86,7 @@ GtkWidget *
 easel_print_tab_new (const EaselPageSetup *setup, int w, int h)
 {
   PrintTab *t = g_new0 (PrintTab, 1);
-  GtkWidget *tab = gtk_box_new (GTK_ORIENTATION_VERTICAL, 8), *heading = gtk_label_new ("Pixels"), *row = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
+  GtkWidget *tab = gtk_box_new (GTK_ORIENTATION_VERTICAL, 8), *heading = gtk_label_new (_ ("Pixels")), *row = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
   GtkWidget *list = gtk_list_box_new (), *sheets = gtk_label_new (NULL), *fit = adw_switch_row_new ();
   GtkToggleButton *sharp;
   EaselPrintPage page;
@@ -106,15 +107,15 @@ easel_print_tab_new (const EaselPageSetup *setup, int w, int h)
   gtk_widget_add_css_class (heading, "heading");
   gtk_widget_add_css_class (row, "linked");
   gtk_widget_set_halign (row, GTK_ALIGN_START);
-  sharp = tab_choice (row, NULL, "Sharp", "sharp", "Each pixel a sharp square", setup->pixels == EASEL_PRINT_SHARP);
-  t->smooth_shrunk = tab_choice (row, sharp, "Smooth when shrunk", "smooth-when-shrunk", "Sharp, but averaged where a printer's dot covers several pixels",
+  sharp = tab_choice (row, NULL, _ ("Sharp"), "sharp", _ ("Each pixel a sharp square"), setup->pixels == EASEL_PRINT_SHARP);
+  t->smooth_shrunk = tab_choice (row, sharp, _ ("Smooth when shrunk"), "smooth-when-shrunk", _ ("Sharp, but averaged where a printer's dot covers several pixels"),
                                  setup->pixels == EASEL_PRINT_SMOOTH_WHEN_SHRUNK);
-  t->smooth = tab_choice (row, sharp, "Smooth", "smooth", "Blended between pixels", setup->pixels == EASEL_PRINT_SMOOTH);
+  t->smooth = tab_choice (row, sharp, _ ("Smooth"), "smooth", _ ("Blended between pixels"), setup->pixels == EASEL_PRINT_SMOOTH);
   gtk_box_append (GTK_BOX (tab), heading);
   gtk_box_append (GTK_BOX (tab), row);
   gtk_list_box_set_selection_mode (GTK_LIST_BOX (list), GTK_SELECTION_NONE);
   gtk_widget_add_css_class (list, "boxed-list");
-  adw_preferences_row_set_title (ADW_PREFERENCES_ROW (fit), "Fit on one page");
+  adw_preferences_row_set_title (ADW_PREFERENCES_ROW (fit), _ ("Fit on one page"));
   gtk_widget_set_name (fit, "fit");
   adw_switch_row_set_active (t->fit, setup->fit);
   gtk_list_box_append (GTK_LIST_BOX (list), fit);

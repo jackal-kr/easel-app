@@ -198,6 +198,8 @@ void easel_canvas_set_ctrl (EaselCanvas *self, gboolean down);
 /* An arrow key's move of the selection by (dx, dy) picture pixels (REQ-0013-10): the first lifts a marked one. FALSE, and
    nothing done, without a selection or while a button is held. */
 gboolean easel_canvas_move_selection (EaselCanvas *self, int dx, int dy);
+/* Shift with an arrow: as a Shift drag, no hole on a lift and a copy left behind (REQ-0014-11). */
+gboolean easel_canvas_smear_selection (EaselCanvas *self, int dx, int dy);
 /* Esc and Enter (REQ-0013-11, -12): puts a floating selection down and removes the selection; FALSE, nothing done, without
    one or while a button is held. */
 gboolean easel_canvas_finish_selection (EaselCanvas *self);

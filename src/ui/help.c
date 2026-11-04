@@ -1,92 +1,94 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 #include "config.h"
 #include "help.h"
+#include "i18n.h"
 
 /* Every key of the app, with the action that holds it or NULL (REQ-0021-02); a key with two meanings has a row for each. */
 static const EaselShortcut shortcuts[] = {
-  { "File", "New", "<Control>n", "win.new" },
-  { "File", "Open…", "<Control>o", "win.open" },
-  { "File", "Save", "<Control>s", "win.save" },
-  { "File", "Save As…", "<Control><Shift>s", "win.save-as" },
-  { "File", "Print…", "<Control>p", "win.print" },
-  { "File", "Preferences", "<Control>comma", "win.preferences" },
-  { "File", "Keyboard Shortcuts", "<Control>question <Control>F1", "win.shortcuts" },
-  { "File", "Help", "F1", "win.help" },
-  { "File", "Close the window", "<Control>w", "win.close" },
-  { "File", "Quit", "<Control>q", "app.quit" },
+  { N_ ("File"), N_ ("New"), "<Control>n", "win.new" },
+  { N_ ("File"), N_ ("Open…"), "<Control>o", "win.open" },
+  { N_ ("File"), N_ ("Save"), "<Control>s", "win.save" },
+  { N_ ("File"), N_ ("Save As…"), "<Control><Shift>s", "win.save-as" },
+  { N_ ("File"), N_ ("Print…"), "<Control>p", "win.print" },
+  { N_ ("File"), N_ ("Preferences"), "<Control>comma", "win.preferences" },
+  { N_ ("File"), N_ ("Keyboard Shortcuts"), "<Control>question <Control>F1", "win.shortcuts" },
+  { N_ ("File"), N_ ("Help"), "F1", "win.help" },
+  { N_ ("File"), N_ ("Close the window"), "<Control>w", "win.close" },
+  { N_ ("File"), N_ ("Quit"), "<Control>q", "app.quit" },
 
-  { "Edit", "Undo", "<Control>z", "win.undo" },
-  { "Edit", "Redo", "<Control>y <Control><Shift>z", "win.redo" },
-  { "Edit", "Cut", "<Control>x", "win.cut" },
-  { "Edit", "Copy", "<Control>c", "win.copy" },
-  { "Edit", "Paste", "<Control>v", "win.paste" },
-  { "Edit", "Select All", "<Control>a", "win.select-all" },
-  { "Edit", "Clear the selection", "Delete", NULL },
-  { "Edit", "Move the selection 1 pixel", "Left Right Up Down", NULL },
-  { "Edit", "Move the selection 10 pixels", "<Shift>Left <Shift>Right <Shift>Up <Shift>Down", NULL },
-  { "Edit", "Put down a selection or a waiting shape", "Return", NULL },
-  { "Edit", "Put down a selection, drop a waiting shape, cancel a drag", "Escape", NULL },
+  { N_ ("Edit"), N_ ("Undo"), "<Control>z", "win.undo" },
+  { N_ ("Edit"), N_ ("Redo"), "<Control>y <Control><Shift>z", "win.redo" },
+  { N_ ("Edit"), N_ ("Cut"), "<Control>x", "win.cut" },
+  { N_ ("Edit"), N_ ("Copy"), "<Control>c", "win.copy" },
+  { N_ ("Edit"), N_ ("Paste"), "<Control>v", "win.paste" },
+  { N_ ("Edit"), N_ ("Select All"), "<Control>a", "win.select-all" },
+  { N_ ("Edit"), N_ ("Clear the selection"), "Delete", NULL },
+  { N_ ("Edit"), N_ ("Move the selection 1 pixel"), "Left Right Up Down", NULL },
+  { N_ ("Edit"), N_ ("Smear the selection 1 pixel"), "<Shift>Left <Shift>Right <Shift>Up <Shift>Down", NULL },
+  { N_ ("Edit"), N_ ("Move the selection 10 pixels"), "<Control><Shift>Left <Control><Shift>Right <Control><Shift>Up <Control><Shift>Down", NULL },
+  { N_ ("Edit"), N_ ("Put down a selection or a waiting shape"), "Return", NULL },
+  { N_ ("Edit"), N_ ("Put down a selection, drop a waiting shape, cancel a drag"), "Escape", NULL },
 
-  { "Image", "Rotate 90°", "<Control>r", "win.rotate-90" },
-  { "Image", "Rotate 270°", "<Control>l", "win.rotate-270" },
-  { "Image", "Stretch and Skew…", "<Control>t", "win.stretch-skew" },
-  { "Image", "Invert Colors", "<Control>i", NULL },
-  { "Image", "Attributes…", "<Control>e", "win.attributes" },
-  { "Image", "Clear Image", "<Control><Shift>n", "win.clear-image" },
+  { N_ ("Image"), N_ ("Rotate 90°"), "<Control>r", "win.rotate-90" },
+  { N_ ("Image"), N_ ("Rotate 270°"), "<Control>l", "win.rotate-270" },
+  { N_ ("Image"), N_ ("Stretch and Skew…"), "<Control>t", "win.stretch-skew" },
+  { N_ ("Image"), N_ ("Invert Colors"), "<Control>i", NULL },
+  { N_ ("Image"), N_ ("Attributes…"), "<Control>e", "win.attributes" },
+  { N_ ("Image"), N_ ("Clear Image"), "<Control><Shift>n", "win.clear-image" },
 
-  { "View", "Zoom In", "<Control>equal <Control>plus <Control>KP_Add", "win.zoom-in" },
-  { "View", "Zoom Out", "<Control>minus <Control>KP_Subtract", "win.zoom-out" },
-  { "View", "Normal Size", "<Control>Page_Up", "win.zoom-normal" },
-  { "View", "Large Size", "<Control>Page_Down", "win.zoom-large" },
-  { "View", "Fit to Window", "<Control>0", "win.zoom-fit" },
-  { "View", "Show Grid", "<Control>g", "win.grid" },
-  { "View", "Close the thumbnail", "Escape", NULL },
-  { "View", "Move the focus", "Tab <Shift>Tab", NULL },
-  { "View", "Move to the next or the previous panel", "F6 <Shift>F6", NULL },
+  { N_ ("View"), N_ ("Zoom In"), "<Control>equal <Control>plus <Control>KP_Add", "win.zoom-in" },
+  { N_ ("View"), N_ ("Zoom Out"), "<Control>minus <Control>KP_Subtract", "win.zoom-out" },
+  { N_ ("View"), N_ ("Normal Size"), "<Control>Page_Up", "win.zoom-normal" },
+  { N_ ("View"), N_ ("Large Size"), "<Control>Page_Down", "win.zoom-large" },
+  { N_ ("View"), N_ ("Fit to Window"), "<Control>0", "win.zoom-fit" },
+  { N_ ("View"), N_ ("Show Grid"), "<Control>g", "win.grid" },
+  { N_ ("View"), N_ ("Close the thumbnail"), "Escape", NULL },
+  { N_ ("View"), N_ ("Move the focus"), "Tab <Shift>Tab", NULL },
+  { N_ ("View"), N_ ("Move to the next or the previous panel"), "F6 <Shift>F6", NULL },
 
-  { "Tools", "The next larger size of the tool", "KP_Add", "win.preset-larger" },
-  { "Tools", "The next smaller size of the tool", "KP_Subtract", "win.preset-smaller" },
-  { "Tools", "Move the focus in a panel", "Left Right Up Down", NULL },
-  { "Tools", "Choose the focused control", "space Return", NULL },
-  { "Tools", "Press or release at the marker", "space", NULL },
-  { "Tools", "Press with the secondary button at the marker", "<Shift>space", NULL },
-  { "Tools", "Press for a copy of a selection", "<Control>space", NULL },
-  { "Tools", "Press for a smear of a selection", "<Control><Shift>space", NULL },
-  { "Tools", "Move the marker 1 pixel", "Left Right Up Down", NULL },
-  { "Tools", "Move the marker 10 pixels", "<Shift>Left <Shift>Right <Shift>Up <Shift>Down", NULL },
-  { "Tools", "Move the marker alone, with a selection", "<Alt>Left <Alt>Right <Alt>Up <Alt>Down", NULL },
-  { "Tools", "Open the menu at the marker", "Menu <Shift>F10", NULL },
-  { "Tools", "Say the marker's place and color", "F7", NULL },
+  { N_ ("Tools"), N_ ("The next larger size of the tool"), "KP_Add", "win.preset-larger" },
+  { N_ ("Tools"), N_ ("The next smaller size of the tool"), "KP_Subtract", "win.preset-smaller" },
+  { N_ ("Tools"), N_ ("Move the focus in a panel"), "Left Right Up Down", NULL },
+  { N_ ("Tools"), N_ ("Choose the focused control"), "space Return", NULL },
+  { N_ ("Tools"), N_ ("Press or release at the marker"), "space", NULL },
+  { N_ ("Tools"), N_ ("Press with the secondary button at the marker"), "<Shift>space", NULL },
+  { N_ ("Tools"), N_ ("Press for a copy of a selection"), "<Control>space", NULL },
+  { N_ ("Tools"), N_ ("Press for a smear of a selection"), "<Control><Shift>space", NULL },
+  { N_ ("Tools"), N_ ("Move the marker 1 pixel"), "Left Right Up Down", NULL },
+  { N_ ("Tools"), N_ ("Move the marker 10 pixels"), "<Shift>Left <Shift>Right <Shift>Up <Shift>Down", NULL },
+  { N_ ("Tools"), N_ ("Move the marker alone, with a selection"), "<Alt>Left <Alt>Right <Alt>Up <Alt>Down", NULL },
+  { N_ ("Tools"), N_ ("Open the menu at the marker"), "Menu <Shift>F10", NULL },
+  { N_ ("Tools"), N_ ("Say the marker's place and color"), "F7", NULL },
 
-  { "Colors", "Swap foreground and background", "<Control><Shift>x", "win.swap-colors" },
-  { "Colors", "Edit the focused swatch", "F2", NULL },
-  { "Colors", "Move among the swatches", "Left Right Up Down", NULL },
-  { "Colors", "Make the focused swatch the foreground color", "space Return", NULL },
-  { "Colors", "Make the focused swatch the background color", "<Shift>space <Shift>Return", NULL },
+  { N_ ("Colors"), N_ ("Swap foreground and background"), "<Control><Shift>x", "win.swap-colors" },
+  { N_ ("Colors"), N_ ("Edit the focused swatch"), "F2", NULL },
+  { N_ ("Colors"), N_ ("Move among the swatches"), "Left Right Up Down", NULL },
+  { N_ ("Colors"), N_ ("Make the focused swatch the foreground color"), "space Return", NULL },
+  { N_ ("Colors"), N_ ("Make the focused swatch the background color"), "<Shift>space <Shift>Return", NULL },
 
-  { "Text", "Bold", "<Control>b", NULL },
-  { "Text", "Italic", "<Control>i", NULL },
-  { "Text", "Underline", "<Control>u", NULL },
-  { "Text", "Strikethrough", "<Control><Shift>5", NULL },
-  { "Text", "Font size 1 point larger or smaller", "<Control>bracketright <Control>bracketleft", NULL },
-  { "Text", "Open the font family list", "<Control><Shift>f", NULL },
-  { "Text", "Move the highlight in the family list", "Up Down", NULL },
-  { "Text", "Choose the highlighted family", "Return", NULL },
-  { "Text", "Close the family list", "Escape", NULL },
-  { "Text", "New line", "Return", NULL },
-  { "Text", "Delete before or after the caret", "BackSpace Delete", NULL },
-  { "Text", "Move the caret", "Left Right Up Down", NULL },
-  { "Text", "Move the caret by a word", "<Control>Left <Control>Right", NULL },
-  { "Text", "To the start or the end of the line", "Home End", NULL },
-  { "Text", "Extend the text selection", "<Shift>Left <Shift>Right <Shift>Up <Shift>Down <Shift>Home <Shift>End", NULL },
-  { "Text", "Cut the selected text", "<Control>x", "win.cut" },
-  { "Text", "Copy the selected text", "<Control>c", "win.copy" },
-  { "Text", "Paste into the box", "<Control>v", "win.paste" },
-  { "Text", "Paste as Plain Text", "<Control><Shift>v", "win.paste-plain" },
-  { "Text", "Select all the box's text", "<Control>a", "win.select-all" },
-  { "Text", "Put the box down", "Escape", NULL },
-  { "Text", "Move the box 1 pixel", "<Alt>Left <Alt>Right <Alt>Up <Alt>Down", NULL },
-  { "Text", "Move the box's far corner 1 pixel", "<Alt><Shift>Left <Alt><Shift>Right <Alt><Shift>Up <Alt><Shift>Down", NULL },
+  { N_ ("Text"), N_ ("Bold"), "<Control>b", NULL },
+  { N_ ("Text"), N_ ("Italic"), "<Control>i", NULL },
+  { N_ ("Text"), N_ ("Underline"), "<Control>u", NULL },
+  { N_ ("Text"), N_ ("Strikethrough"), "<Control><Shift>5", NULL },
+  { N_ ("Text"), N_ ("Font size 1 point larger or smaller"), "<Control>bracketright <Control>bracketleft", NULL },
+  { N_ ("Text"), N_ ("Open the font family list"), "<Control><Shift>f", NULL },
+  { N_ ("Text"), N_ ("Move the highlight in the family list"), "Up Down", NULL },
+  { N_ ("Text"), N_ ("Choose the highlighted family"), "Return", NULL },
+  { N_ ("Text"), N_ ("Close the family list"), "Escape", NULL },
+  { N_ ("Text"), N_ ("New line"), "Return", NULL },
+  { N_ ("Text"), N_ ("Delete before or after the caret"), "BackSpace Delete", NULL },
+  { N_ ("Text"), N_ ("Move the caret"), "Left Right Up Down", NULL },
+  { N_ ("Text"), N_ ("Move the caret by a word"), "<Control>Left <Control>Right", NULL },
+  { N_ ("Text"), N_ ("To the start or the end of the line"), "Home End", NULL },
+  { N_ ("Text"), N_ ("Extend the text selection"), "<Shift>Left <Shift>Right <Shift>Up <Shift>Down <Shift>Home <Shift>End", NULL },
+  { N_ ("Text"), N_ ("Cut the selected text"), "<Control>x", "win.cut" },
+  { N_ ("Text"), N_ ("Copy the selected text"), "<Control>c", "win.copy" },
+  { N_ ("Text"), N_ ("Paste into the box"), "<Control>v", "win.paste" },
+  { N_ ("Text"), N_ ("Paste as Plain Text"), "<Control><Shift>v", "win.paste-plain" },
+  { N_ ("Text"), N_ ("Select all the box's text"), "<Control>a", "win.select-all" },
+  { N_ ("Text"), N_ ("Put the box down"), "Escape", NULL },
+  { N_ ("Text"), N_ ("Move the box 1 pixel"), "<Alt>Left <Alt>Right <Alt>Up <Alt>Down", NULL },
+  { N_ ("Text"), N_ ("Move the box's far corner 1 pixel"), "<Alt><Shift>Left <Alt><Shift>Right <Alt><Shift>Up <Alt><Shift>Down", NULL },
 };
 
 static const char *const acknowledgements[] = { "Microsoft Paint in Windows XP", "JS Paint by Isaiah Odhner" };
@@ -110,31 +112,44 @@ easel_shortcuts_dialog_new (void)
       if (g_strcmp0 (group, shortcuts[i].group) != 0)
         {
           group = shortcuts[i].group;
-          section = adw_shortcuts_section_new (group);
+          section = adw_shortcuts_section_new (_ (group));
           adw_shortcuts_dialog_add (dialog, section);
         }
-      adw_shortcuts_section_add (section, adw_shortcuts_item_new (shortcuts[i].title, shortcuts[i].accel));
+      adw_shortcuts_section_add (section, adw_shortcuts_item_new (_ (shortcuts[i].title), shortcuts[i].accel));
     }
   return ADW_DIALOG (dialog);
+}
+
+char *
+easel_help_page_for (const char *language)
+{
+  g_autofree char *program = g_file_read_link ("/proc/self/exe", NULL);
+  g_autofree char *folder = program != NULL ? g_path_get_dirname (program) : g_strdup (".");
+  g_autofree char *base = g_path_get_dirname (HELP_PAGE);
+  g_autofree char *build_page = g_strdup_printf ("help-%s.html", language);
+  g_autofree char *in_build = g_build_filename (folder, "..", "data", build_page, NULL);
+  g_autofree char *installed = g_build_filename (base, language, "index.html", NULL);
+  g_autofree char *english = g_build_filename (folder, "..", "data", "help-index.html", NULL);
+
+  /* An uninstalled build: its own copy, beside the program's folder, however it was started. A language whose page is missing opens the English one (REQ-0023-09). */
+  if (g_file_test (in_build, G_FILE_TEST_IS_REGULAR))
+    return g_steal_pointer (&in_build);
+  if (strcmp (language, "en") != 0 && g_file_test (installed, G_FILE_TEST_IS_REGULAR))
+    return g_steal_pointer (&installed);
+  return g_strdup (g_file_test (english, G_FILE_TEST_IS_REGULAR) ? english : HELP_PAGE);
 }
 
 const char *
 easel_help_page_path (void)
 {
-  static char *in_build;
+  static char *path;
   const char *set = g_getenv ("EASEL_HELP_PAGE");
 
   if (set != NULL)
     return set;
-  /* An uninstalled build: its own copy, beside the program's folder, however the program was started. */
-  if (in_build == NULL)
-    {
-      g_autofree char *program = g_file_read_link ("/proc/self/exe", NULL);
-      g_autofree char *folder = program != NULL ? g_path_get_dirname (program) : g_strdup (".");
-
-      in_build = g_build_filename (folder, "..", "data", "help-index.html", NULL);
-    }
-  return g_file_test (in_build, G_FILE_TEST_IS_REGULAR) ? in_build : HELP_PAGE;
+  g_free (path);
+  path = easel_help_page_for (easel_i18n_language ());
+  return path;
 }
 
 const char *

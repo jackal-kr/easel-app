@@ -3,6 +3,7 @@
 #include "grid-dialog.h"
 #include "number.h"
 #include "settings.h"
+#include "i18n.h"
 
 typedef struct
 {
@@ -74,22 +75,22 @@ easel_grid_dialog_present (GtkWidget *parent, int cell, gboolean axonometric, Ea
 
   g->applied = applied;
   g->data = data;
-  g->dialog = ADW_ALERT_DIALOG (adw_alert_dialog_new ("Grid", NULL));
+  g->dialog = ADW_ALERT_DIALOG (adw_alert_dialog_new (_ ("Grid"), NULL));
 
   g->entry = GTK_EDITABLE (adw_entry_row_new ());
-  adw_preferences_row_set_title (ADW_PREFERENCES_ROW (g->entry), "Cell size in picture pixels (1 to 1000)");
+  adw_preferences_row_set_title (ADW_PREFERENCES_ROW (g->entry), _ ("Cell size in picture pixels (1 to 1000)"));
   gtk_editable_set_text (g->entry, text);
   gtk_list_box_set_selection_mode (GTK_LIST_BOX (list), GTK_SELECTION_NONE);
   gtk_widget_add_css_class (list, "boxed-list");
   gtk_list_box_append (GTK_LIST_BOX (list), GTK_WIDGET (g->entry));
 
-  g->axonometric = GTK_CHECK_BUTTON (gtk_check_button_new_with_label ("Axonometric"));
+  g->axonometric = GTK_CHECK_BUTTON (gtk_check_button_new_with_label (_ ("Axonometric")));
   gtk_check_button_set_active (g->axonometric, axonometric);
 
   gtk_box_append (GTK_BOX (box), list);
   gtk_box_append (GTK_BOX (box), GTK_WIDGET (g->axonometric));
   adw_alert_dialog_set_extra_child (g->dialog, box);
-  adw_alert_dialog_add_responses (g->dialog, "cancel", "_Cancel", "apply", "_Apply", NULL);
+  adw_alert_dialog_add_responses (g->dialog, "cancel", _ ("_Cancel"), "apply", _ ("_Apply"), NULL);
   adw_alert_dialog_set_response_appearance (g->dialog, "apply", ADW_RESPONSE_SUGGESTED);
   adw_alert_dialog_set_default_response (g->dialog, "apply");
   adw_alert_dialog_set_close_response (g->dialog, "cancel");

@@ -7,6 +7,7 @@ easel_core = static_library('easel-core',
   'core/cursor-shape.c',
   'core/fill.c',
   'core/frame-time.c',
+  'core/catalog.c',
   'core/print-layout.c',
   'core/figure.c',
   'core/footprint.c',
@@ -55,6 +56,7 @@ ui_conf = configuration_data()
 ui_conf.set_quoted('APP_ID', app_id)
 ui_conf.set_quoted('RESOURCE_PATH', resource_path)
 ui_conf.set_quoted('VERSION', meson.project_version())
+ui_conf.set_quoted('LOCALE_DIR', get_option('prefix') / get_option('localedir'))
 ui_conf.set_quoted('HELP_PAGE', get_option('prefix') / get_option('datadir') / 'easel' / 'help' / 'index.html')
 configure_file(output: 'config.h', configuration: ui_conf)
 
@@ -71,6 +73,7 @@ easel_ui = static_library('easel-ui',
   'ui/attributes-dialog.c',
   'ui/stretch-skew-dialog.c',
   'ui/help.c',
+  'ui/i18n.c',
   'ui/preferences-dialog.c',
   'ui/print.c',
   'ui/unit-row.c',

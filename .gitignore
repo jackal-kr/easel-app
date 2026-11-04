@@ -8,3 +8,4 @@
 .flatpak-builder/
 .claude/settings.local.json
 .vscode/settings.json
+__pycache__/

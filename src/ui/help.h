@@ -23,6 +23,8 @@ AdwDialog *easel_about_dialog_new (void);
 
 /* Where the Help page is: EASEL_HELP_PAGE if set (the tests), else a build tree's own copy, else where it was installed. */
 const char *easel_help_page_path (void);
+/* Where a language's page is: its own, else the English one (REQ-0023-09). */
+char *easel_help_page_for (const char *language);
 
 /* The build's version, and the About dialog's acknowledgements (REQ-0021-05). */
 const char *easel_build_version (void);

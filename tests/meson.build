@@ -3,7 +3,7 @@ core_wrap = {
   'stretch-skew': ['-Wl,--wrap=malloc', '-Wl,--wrap=calloc', '-Wl,--wrap=realloc'],
   'settings-edit': ['-Wl,--wrap=malloc'],
 }
-foreach name : ['cursor', 'stretch-skew', 'settings-edit', 'window-extras', 'print-layout', 'figure', 'figure-apply', 'figure-curve', 'figure-polygon', 'figure-step', 'gradient', 'selection', 'fill', 'footprint', 'format', 'grid', 'history', 'image', 'lasso', 'lattice', 'magnifier', 'number', 'palette', 'resize', 'settings', 'spray', 'stroke', 'rich-text', 'text-buffer', 'text-put', 'transform', 'view']
+foreach name : ['cursor', 'stretch-skew', 'settings-edit', 'window-extras', 'print-layout', 'catalog', 'figure', 'figure-apply', 'figure-curve', 'figure-polygon', 'figure-step', 'gradient', 'selection', 'fill', 'footprint', 'format', 'grid', 'history', 'image', 'lasso', 'lattice', 'magnifier', 'number', 'palette', 'resize', 'settings', 'spray', 'stroke', 'rich-text', 'text-buffer', 'text-put', 'transform', 'view']
   test('core-' + name,
     executable('test-' + name, 'core/test-' + name + '.c', dependencies: easel_core_dep,
                link_args: core_wrap.get(name, [])),
@@ -23,6 +23,7 @@ endforeach
 ui_env = environment()
 ui_env.set('GSK_RENDERER', 'cairo')
 ui_env.set('GTK_A11Y', 'none')
+ui_env.set('EASEL_TEST_LANGUAGE', 'en')    # the suite compares English (AS-13 of 0023)
 ui_env.set('EASEL_TEST_DATA', meson.current_source_dir() / 'data')
 ui_env.set('EASEL_HELP_PAGE', help_page)
 # File dialogs open in-process, so tests can find and close them.
@@ -35,7 +36,7 @@ test_window = executable('test-window', 'ui/test-window.c', 'ui/memory-clipboard
 # registered as /0001/..., /0002/..., so every case is in exactly one of them); see docs/engineering.md, Testing.
 # Not parallel: run in parallel, the ui windows failed as5_zoom_keeps_center with a stale layout (598.25 against 1196.5)
 # in 2 of 3 runs. Earlier one-off failures of the ui tests, run as a single executable, are unexplained.
-foreach feature : ['0001', '0002', '0003', '0004', '0005', '0006', '0007', '0008', '0009', '0010', '0011', '0012', '0013', '0014', '0015', '0016', '0017', '0018', '0019', '0020', '0021', '0025', '0026']
+foreach feature : ['0001', '0002', '0003', '0004', '0005', '0006', '0007', '0008', '0009', '0010', '0011', '0012', '0013', '0014', '0015', '0016', '0017', '0018', '0019', '0020', '0021', '0025', '0026', '0023']
   test('ui-' + feature, test_window, args: ['-p', '/' + feature], env: ui_env, suite: 'ui', timeout: 180,
        is_parallel: false)
 endforeach
@@ -44,6 +45,7 @@ endforeach
 ui_a11y_env = environment()
 ui_a11y_env.set('GSK_RENDERER', 'cairo')
 ui_a11y_env.set('GTK_A11Y', 'test')
+ui_a11y_env.set('EASEL_TEST_LANGUAGE', 'en')
 ui_a11y_env.set('EASEL_TEST_DATA', meson.current_source_dir() / 'data')
 ui_a11y_env.set('EASEL_HELP_PAGE', help_page)
 ui_a11y_env.set('GDK_DEBUG', 'no-portals')
@@ -52,6 +54,7 @@ test('ui-0022', test_window, args: ['-p', '/0022'], env: ui_a11y_env, suite: 'ui
 ui_vulkan_env = environment()
 ui_vulkan_env.set('GSK_RENDERER', 'vulkan')
 ui_vulkan_env.set('GTK_A11Y', 'none')
+ui_vulkan_env.set('EASEL_TEST_LANGUAGE', 'en')
 ui_vulkan_env.set('EASEL_TEST_DATA', meson.current_source_dir() / 'data')
 ui_vulkan_env.set('GDK_DEBUG', 'no-portals')
 test('ui-0025-vulkan', test_window, args: ['-p', '/0025/as1_squares_at_whole_zooms', '-p', '/0025/as1c_edges_at_fractional_zoom', '-p', '/0025/as1d_grid_on_cell_edges', '-p', '/0025/as2c_pointer_hits_the_drawn_pixel'],
@@ -125,4 +128,70 @@ benchmark('perf-0008', executable('perf-0008', 'perf/perf-0008.c', dependencies:
   timeout: 600)
 benchmark('perf-0025', executable('perf-0025', 'perf/perf-0025.c', dependencies: easel_ui_dep), env: perf_env,
   timeout: 600)
+
+# Languages (0023): every translation complete and right, and the bad examples refused.
+check_translations = find_program('python3')
+test('translations', check_translations, args: [meson.project_source_root() / 'tools/check-translations.py', '--all', meson.project_source_root() / 'po'], suite: 'core')
+test('translations-refuse', check_translations, args: [meson.project_source_root() / 'tools/check-translations.py', '--refuse', meson.current_source_dir() / 'data/po'], suite: 'core')
+
+# One run per language: a process has one language (REQ-0023-05). The Help page is found as in an uninstalled build.
+foreach code : ['cs', 'de', 'en', 'es', 'fr', 'hu', 'it', 'pl', 'pt', 'ro', 'ru', 'uk']
+  lang_env = environment()
+  lang_env.set('GSK_RENDERER', 'cairo')
+  lang_env.set('GTK_A11Y', 'none')
+  lang_env.set('EASEL_TEST_DATA', meson.current_source_dir() / 'data')
+  lang_env.set('GDK_DEBUG', 'no-portals')
+  lang_env.set('EASEL_TEST_LANGUAGE', code)
+  test('ui-0023-' + code, test_window, args: ['-p', '/0023-lang'], env: lang_env, suite: 'ui', timeout: 180, is_parallel: false)
+
+  # The only locale installed is C (REQ-0023-05): a user's start, with the language in the settings file.
+  only_c_env = environment()
+  only_c_env.set('GSK_RENDERER', 'cairo')
+  only_c_env.set('GTK_A11Y', 'none')
+  only_c_env.set('EASEL_TEST_DATA', meson.current_source_dir() / 'data')
+  only_c_env.set('GDK_DEBUG', 'no-portals')
+  only_c_env.set('LOCPATH', '/nonexistent')
+  only_c_env.set('LC_ALL', 'C')
+  only_c_env.set('EASEL_ONLY_C', '1')
+  only_c_env.set('EASEL_CHOSEN', code)
+  only_c_env.set('EASEL_EXPECTED', code)
+  test('ui-0023-only-c-' + code, test_window, args: ['-p', '/0023-start', '-p', '/0023-lang'], env: only_c_env, suite: 'ui', timeout: 180, is_parallel: false)
+endforeach
+
+# The system's language, with the setting at auto (AS-1, AS-2): each list and the language it gives.
+foreach run : [['de-at', 'de_AT', 'de'], ['pt-pt', 'pt_PT', 'pt'], ['ja-pl', 'ja:pl', 'pl'], ['uk', 'uk_UA', 'uk'], ['ja', 'ja_JP', 'en']]
+  auto_env = environment()
+  auto_env.set('GSK_RENDERER', 'cairo')
+  auto_env.set('GTK_A11Y', 'none')
+  auto_env.set('EASEL_TEST_DATA', meson.current_source_dir() / 'data')
+  auto_env.set('GDK_DEBUG', 'no-portals')
+  auto_env.set('LANGUAGE', run[1])
+  auto_env.set('EASEL_EXPECTED', run[2])
+  test('ui-0023-auto-' + run[0], test_window, args: ['-p', '/0023-start'], env: auto_env, suite: 'ui', timeout: 180, is_parallel: false)
+endforeach
+
+# AS-7: a right-to-left system.
+rtl_env = ui_env
+rtl_env.set('EASEL_SYSTEM_RTL', '1')
+test('ui-0023-rtl', test_window, args: ['-p', '/0023-rtl'], env: rtl_env, suite: 'ui', timeout: 180, is_parallel: false)
+
+# AS-11: the long test language, built here and never installed.
+long_language = custom_target('long-language',
+  output: 'long-locale.stamp',
+  command: [check_translations, meson.project_source_root() / 'tools/po-long.py', meson.project_source_root() / 'po', meson.current_build_dir() / 'long-locale', '@OUTPUT@'],
+  depend_files: files('../tools/po-long.py', '../tools/check-translations.py', '../po/de.po', '../po/ru.po', '../po/easel.pot'),
+  build_by_default: true)
+long_env = environment()
+long_env.set('GSK_RENDERER', 'cairo')
+long_env.set('GTK_A11Y', 'none')
+long_env.set('EASEL_TEST_DATA', meson.current_source_dir() / 'data')
+long_env.set('GDK_DEBUG', 'no-portals')
+long_env.set('EASEL_TEST_LANGUAGE', 'xl')
+long_env.set('EASEL_LOCALE_DIR', meson.current_build_dir() / 'long-locale')
+test('ui-0023-long', test_window, args: ['-k', '-p', '/0023-long'], env: long_env, depends: long_language, suite: 'ui', timeout: 300, is_parallel: false)
+
+# AS-13: a German system, and the suite still compares English.
+suite_de_env = ui_env
+suite_de_env.set('LANGUAGE', 'de')
+test('ui-0023-suite-in-english', test_window, args: ['-p', '/0020'], env: suite_de_env, suite: 'ui', timeout: 600, is_parallel: false)
 

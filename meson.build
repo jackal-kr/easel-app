@@ -23,6 +23,7 @@ add_project_arguments(cc.get_supported_arguments([
 gtk_dep = dependency('gtk4', version: '>= 4.16')
 adw_dep = dependency('libadwaita-1', version: '>= 1.8')
 
+subdir('po')
 subdir('data')
 subdir('src')
 subdir('tests')

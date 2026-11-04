@@ -62,6 +62,7 @@ typedef struct
   char text_font[EASEL_TEXT_FONT_MAX];   /* `[text] font`, trimmed; empty for `auto`, the desktop's document font (REQ-0017-24) */
   int text_size;          /* EASEL_TEXT_SIZE_MIN..EASEL_TEXT_SIZE_MAX points */
   bool text_bold, text_italic, text_underline, text_strike;
+  char language[8];       /* `[interface] language`: "auto", or a language's code (REQ-0023-04) */
   bool frame_time;        /* `[view] frame-time`: the status bar shows it (REQ-0021-12) */
   EaselStyle style;       /* `[view] style` (REQ-0020-03) */
   int tint;               /* `[view] tint`, the selection's tint in percent, EASEL_TINT_MIN..EASEL_TINT_MAX */

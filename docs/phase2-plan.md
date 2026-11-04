@@ -36,5 +36,10 @@ Known gaps from Phase 1 specs, to take up after the core XP scope is delivered. 
 - A key before the marker was ever placed, when a mouse press outside the picture gave the canvas the focus: it starts at pixel (0, 0), not at the view's corner.
 - A selection move refused by memory: the marker still moves.
 
+## From 0023 (Languages)
+- JOD's thorough reading of ru, uk and pl and their Help pages (JOD, 2026-11-04: later); then the mark and the date. The eight other drafts are read by nobody.
+- No test of their own: the Language row in Russian; a test translation in the ui (core only); the announcements in the walk for English; the alerts raised by their real failures (built from their strings).
+- The layout test runs only the long language, which takes de and ru: a wording long only in another language needs a one-off run over all of them. `easel.pot` going stale fails no test.
+
 ## From the mutation list
 - REQ-0017-14, the popover's scroll guard: survives on GTK 4.24, accepted (JOD, 2026-11-02). Re-decide at packaging-release, when the minimum GTK is chosen.

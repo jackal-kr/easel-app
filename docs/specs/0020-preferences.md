@@ -13,7 +13,7 @@ Everything a person can set in Easel is a line in a hand-edited file today. Pref
 - REQ-0020-02 It shall be a modal GNOME preferences dialog titled "Preferences" with three pages, Appearance, New Picture and Drawing, which opens on Appearance every time. It has no OK or Cancel: a change applies at once (REQ-0020-08). Esc and the close button close it. Each row shows the value last chosen in this run or, if none, the value read at start-up.
 
 ### The rows
-- REQ-0020-03 (Pointer note, Window Extras, 2026-11-03: group Panels also holds Frame time, REQ-0021-12.) Page Appearance:
+- REQ-0020-03 (Pointer note, Languages, 2026-11-04: group Language follows group Style, REQ-0023-04.) (Pointer note, Window Extras, 2026-11-03: group Panels also holds Frame time, REQ-0021-12.) Page Appearance:
   - Group Style: "Style", a choice of System, Light and Dark, key `[view] style` (`system`, `light`, `dark`; default `system`). Light and Dark override the desktop's setting for the whole app; System follows it (REQ-0009-06).
   - Group Workspace: "Workspace color" and "Workspace color, dark" (REQ-0009-04), each a color swatch that opens the system color chooser with no alpha, and a button "Use Default" that removes the key, insensitive while the key is not set. An unset swatch shows what that theme would use without it (REQ-0009-06): light #E7E7E7; dark `workspace-color` if set, else #2C2C2C. Written as `#RRGGBB`, upper case.
   - Group Selection: "Tint strength", a number field in percent from 0 to 50, key `[view] tint` (default 12; REQ-0014-17). 0 draws no tint. It covers Select, Free-Form Select and the text box.

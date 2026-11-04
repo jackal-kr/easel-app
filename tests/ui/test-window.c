@@ -3,6 +3,7 @@
 
 #include <adwaita.h>
 #include <gdk-pixbuf/gdk-pixbuf.h>
+#include <locale.h>
 #include <glib/gstdio.h>
 #include <math.h>
 #include <stdio.h>
@@ -19,8 +20,11 @@
 #include "lasso.h"
 #include "stretch-skew.h"
 #include "help.h"
+#include "catalog.h"
+#include "i18n.h"
 #include "memory-clipboard.h"
 #include "picture-file.h"
+#include "font-card.h"
 #include "print.h"
 #include "palette-file.h"
 #include "status-bar.h"
@@ -46,6 +50,8 @@ view_to_canvas (GtkAdjustment *adj, double view_point)
 {
   return gtk_adjustment_get_value (adj) + view_point - EASEL_VIEW_MARGIN;
 }
+
+static gboolean key_released (EaselWindow *win, guint keyval);
 
 static void
 close_windows (void)
@@ -6904,7 +6910,7 @@ static const char *const width_tips[5] = { "1 pixel", "2 pixels", "3 pixels", "4
 static GtkWidget *
 toolbox_panel (EaselWindow *win)
 {
-  GtkWidget *grid = gtk_widget_get_parent (find_by_tooltip (GTK_WIDGET (win), "Pan"));
+  GtkWidget *grid = gtk_widget_get_parent (find_by_tooltip (GTK_WIDGET (win), _ ("Pan")));
 
   return gtk_widget_get_parent (gtk_widget_get_parent (grid));
 }
@@ -9519,7 +9525,8 @@ as6_enter_with_a_toolbox_button_focused (void)
   g_assert_cmpint (count_color (img, fg), ==, 60);
   g_assert_cmpint (easel_window_get_tool (win), ==, EASEL_TOOL_POLYGON);
   g_assert_false (gtk_toggle_button_get_active (GTK_TOGGLE_BUTTON (pencil)));
-  /* With nothing pending the focused button gets it (REQ-0022-02). */
+  /* With nothing pending the focused button gets it (REQ-0022-02), the key released first: a repeat chooses nothing. */
+  key_released (win, GDK_KEY_Return);
   g_assert_true (enter_taken (win, GDK_KEY_Return));
   g_assert_cmpint (easel_window_get_tool (win), ==, EASEL_TOOL_PENCIL);
   close_windows ();
@@ -12028,8 +12035,8 @@ as5_arrow_keys (void)
   easel_canvas_marker_show (canvas, FALSE);       /* the keyboard's marker lies over the frame (REQ-0022-05) */
   assert_shown (win, right1);
   g_assert_true (gtk_window_get_focus (GTK_WINDOW (win)) == GTK_WIDGET (canvas));
-  /* Shift+Down by 10, then Up five times (a repeat is a press again): at (2, 6). */
-  g_assert_true (key_taken (win, GDK_KEY_Down, GDK_SHIFT_MASK));
+  /* Ctrl+Shift+Down by 10, then Up five times (a repeat is a press again): at (2, 6). */
+  g_assert_true (key_taken (win, GDK_KEY_Down, GDK_CONTROL_MASK | GDK_SHIFT_MASK));
   g_assert_true (selection_is (win, 2, 11, 5, 4));
   for (int k = 0; k < 5; k++)
     g_assert_true (key_taken (win, GDK_KEY_Up, 0));
@@ -13655,7 +13662,7 @@ as16_free_arrow_keys (void)
   g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
   g_assert_true (floating);
   assert_same_picture (img, start);
-  g_assert_true (key_taken (win, GDK_KEY_Down, GDK_SHIFT_MASK));
+  g_assert_true (key_taken (win, GDK_KEY_Down, GDK_CONTROL_MASK | GDK_SHIFT_MASK));
   g_assert_true (selection_is (win, 2, 11, 5, 5));
   g_assert_true (key_taken (win, GDK_KEY_Return, 0));
   g_assert_false (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
@@ -13741,6 +13748,94 @@ smeared (const EaselImage *base, gboolean free_form, int dx, int dy)
   g_assert_cmpint (easel_selection_put_down (&f, TRUE, want, NULL, SIZE_MAX), !=, EASEL_SELECTION_NO_MEMORY);
   easel_float_free (&f);
   return want;
+}
+
+/* AS-8b (REQ-0014-11, REQ-0013-10, REQ-0014-13): Shift with an arrow smears by 1, as a Shift drag does; Ctrl+Shift moves by 10 with
+   no copy; a failed copy leaves the selection as it was before that key. */
+static void
+as8b_smear_by_keys (void)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  g_autoptr (EaselImage) start = NULL, trail = NULL;
+  int x, y, w, h;
+  gboolean floating;
+  gsize copies = 0;
+
+  use_select (win);
+  start = paint_red_block (win);
+  easel_canvas_set_colors (canvas, 0xFF000000u, CYAN);
+  easel_canvas_set_guides_hidden (canvas, TRUE);
+  trail = smeared (start, FALSE, 3, 0);
+  g_assert_cmpint (differing_pixels (start, trail), >, 0);
+  /* Three presses from marked: no hole, the trail of a drag by 3, one step. */
+  shape_press_move (win, 1, 1, 1, 5, 4);
+  shape_release (win, 1);
+  easel_canvas_marker_get (canvas, &x, &y);
+  for (int k = 0; k < 3; k++)
+    g_assert_true (key_taken (win, GDK_KEY_Right, GDK_SHIFT_MASK));
+  /* The marker goes along, by 1 a press (REQ-0022-08). */
+  {
+    int mx, my;
+
+    easel_canvas_marker_get (canvas, &mx, &my);
+    g_assert_cmpint (mx, ==, x + 3);
+    g_assert_cmpint (my, ==, y);
+  }
+  g_assert_true (selection_is (win, 4, 1, 5, 4));
+  g_assert_cmpuint (easel_canvas_get_selection_copies (canvas), ==, 3);
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+  assert_same_picture (img, trail);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  assert_same_picture (img, start);
+  g_assert_false (action_enabled (win, "undo"));
+  /* Ctrl+Shift moves by 10 and leaves no copy of its own. */
+  shape_press_move (win, 1, 1, 1, 5, 4);
+  shape_release (win, 1);
+  g_assert_true (key_taken (win, GDK_KEY_Right, GDK_SHIFT_MASK));
+  g_assert_cmpuint (easel_canvas_get_selection_copies (canvas), ==, 1);
+  g_assert_true (key_taken (win, GDK_KEY_Right, GDK_CONTROL_MASK | GDK_SHIFT_MASK));
+  g_assert_true (selection_is (win, 12, 1, 5, 4));
+  g_assert_cmpuint (easel_canvas_get_selection_copies (canvas), ==, 1);
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  assert_same_picture (img, start);
+  /* With the focus off the canvas (on a header button) the same keys do the same (REQ-0013-10). */
+  shape_press_move (win, 1, 1, 1, 5, 4);
+  shape_release (win, 1);
+  g_assert_true (gtk_widget_grab_focus (find_by_tooltip (GTK_WIDGET (win), "Open")));
+  g_assert_true (key_taken (win, GDK_KEY_Right, GDK_SHIFT_MASK));
+  g_assert_true (selection_is (win, 2, 1, 5, 4));
+  g_assert_cmpuint (easel_canvas_get_selection_copies (canvas), ==, 1);
+  g_assert_true (key_taken (win, GDK_KEY_Right, GDK_CONTROL_MASK | GDK_SHIFT_MASK));
+  g_assert_true (selection_is (win, 12, 1, 5, 4));
+  g_assert_cmpuint (easel_canvas_get_selection_copies (canvas), ==, 1);
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  assert_same_picture (img, start);
+  gtk_widget_grab_focus (GTK_WIDGET (canvas));
+  /* Ctrl alone is still not taken. */
+  shape_press_move (win, 1, 1, 1, 5, 4);
+  shape_release (win, 1);
+  g_assert_false (key_taken (win, GDK_KEY_Right, GDK_CONTROL_MASK));
+  /* No memory for one more copy: the dialog, and the selection where it was before that key, its copies kept. */
+  easel_canvas_set_selection_lift_limit (canvas, 130);
+  g_assert_true (key_taken (win, GDK_KEY_Right, GDK_SHIFT_MASK));
+  for (int k = 0; k < 100 && open_alert (win) == NULL; k++)
+    {
+      copies = easel_canvas_get_selection_copies (canvas);
+      g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+      g_assert_true (key_taken (win, GDK_KEY_Right, GDK_SHIFT_MASK));
+      wait_for_layout (win);
+    }
+  assert_alert (win, MOVE_HEADING, MOVE_BODY);
+  g_assert_cmpuint (copies, >, 1);
+  g_assert_cmpuint (easel_canvas_get_selection_copies (canvas), ==, copies);
+  g_assert_true (selection_is (win, x, y, w, h));
+  g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  g_assert_true (floating);
+  close_windows ();
 }
 
 /* A drag of the selection from pixel (x0, y0) to (x1, y1) in one pointer event, as the pointer in the window gives it. */
@@ -27909,6 +28004,7 @@ as1_extras_in_the_menu (void)
 static const struct { const char *group, *title; } unbound_keys[] = {
   { "Edit", "Clear the selection" },
   { "Edit", "Move the selection 1 pixel" },
+  { "Edit", "Smear the selection 1 pixel" },
   { "Edit", "Move the selection 10 pixels" },
   { "Edit", "Put down a selection or a waiting shape" },
   { "Edit", "Put down a selection, drop a waiting shape, cancel a drag" },
@@ -31069,6 +31165,588 @@ as16_keys_listed (void)
   g_assert_nonnull (strstr (text, "<h2>Using only the keyboard</h2>"));
 }
 
+/* ---- 0023: languages ---- */
+
+/* AS-4, AS-8 (REQ-0023-04, -05): the row, its order, its key and its subtitle; the interface stays until the next start. */
+static void
+as4_language_row (void)
+{
+  static const char *const names[] = { "System default", "Čeština", "Deutsch", "English", "Español", "Français", "Magyar", "Italiano", "Polski", "Português", "Română", "Русский", "Українська" };
+  EaselWindow *win = window_with ("[new-picture]\nwidth=60\nheight=40\n");
+  AdwDialog *d = open_preferences (win);
+  AdwComboRow *row = ADW_COMBO_ROW (pref_row (d, "Language"));
+  GListModel *model = adw_combo_row_get_model (row);
+
+  g_assert_cmpuint (g_list_model_get_n_items (model), ==, G_N_ELEMENTS (names));
+  for (guint i = 0; i < G_N_ELEMENTS (names); i++)
+    {
+      g_autoptr (GtkStringObject) item = g_list_model_get_item (model, i);
+
+      g_assert_cmpstr (gtk_string_object_get_string (item), ==, names[i]);
+    }
+  g_assert_cmpuint (adw_combo_row_get_selected (row), ==, 0);
+  g_assert_cmpstr (adw_action_row_get_subtitle (ADW_ACTION_ROW (row)), ==, "Takes effect the next time Easel starts.");
+  set_combo (d, "Language", 8);
+  g_assert_true (settings_has ("language=pl"));
+  /* The interface stays as it was. */
+  g_assert_cmpstr (easel_i18n_language (), ==, "en");
+  g_assert_cmpstr (adw_preferences_row_get_title (ADW_PREFERENCES_ROW (row)), ==, "Language");
+  set_combo (d, "Language", 0);
+  g_assert_true (settings_has ("language=auto"));
+  close_preferences (win, d);
+  close_windows ();
+  /* What the file says, shown. */
+  {
+    static const struct { const char *text; guint selected; } cases[] = {
+      { "[interface]\nlanguage=pl\n", 8 }, { "[interface]\nlanguage=PL\n", 8 }, { "[interface]\nlanguage=xx\n", 0 }, { "[interface]\nlanguage=\n", 0 },
+      { "[interface]\nlanguage=pt_BR\n", 0 }, { "[new-picture]\nwidth=60\n", 0 },
+    };
+
+    for (guint c = 0; c < G_N_ELEMENTS (cases); c++)
+      {
+        win = window_with (cases[c].text);
+        d = open_preferences (win);
+        g_assert_cmpuint (adw_combo_row_get_selected (ADW_COMBO_ROW (pref_row (d, "Language"))), ==, cases[c].selected);
+        close_preferences (win, d);
+        close_windows ();
+      }
+  }
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* AS-1 (REQ-0023-03): the system's list, as the desktop gives it; the logic's cases are the core's. */
+static void
+as1_system_language (void)
+{
+  g_autofree char *language = g_strdup (g_getenv ("LANGUAGE"));
+
+  g_setenv ("LANGUAGE", "de_AT:pl", TRUE);
+  g_assert_cmpstr (easel_i18n_choose ("auto"), ==, "de");
+  g_setenv ("LANGUAGE", "ja:pl", TRUE);
+  g_assert_cmpstr (easel_i18n_choose ("auto"), ==, "pl");
+  g_setenv ("LANGUAGE", "ja", TRUE);
+  g_assert_cmpstr (easel_i18n_choose ("auto"), ==, "en");
+  g_assert_cmpstr (easel_i18n_choose ("ru"), ==, "ru");
+  if (language != NULL)
+    g_setenv ("LANGUAGE", language, TRUE);
+  else
+    g_unsetenv ("LANGUAGE");
+}
+
+/* AS-3 (REQ-0023-02): a string the language lacks shows in English; in this run's language too. */
+static void
+as3_missing_string (void)
+{
+  g_assert_cmpstr (_ ("No translation has this, in any language"), ==, "No translation has this, in any language");
+}
+
+/* Text of a menu model, with what it holds. */
+static void
+collect_menu_text (GMenuModel *menu, GPtrArray *out)
+{
+  for (int i = 0; i < g_menu_model_get_n_items (menu); i++)
+    {
+      g_autofree char *label = NULL;
+      g_autoptr (GMenuLinkIter) links = g_menu_model_iterate_item_links (menu, i);
+
+      if (g_menu_model_get_item_attribute (menu, i, "label", "s", &label))
+        g_ptr_array_add (out, g_strdup (label));
+      while (g_menu_link_iter_next (links))
+        {
+          g_autoptr (GMenuModel) below = g_menu_link_iter_get_value (links);
+
+          collect_menu_text (below, out);
+        }
+    }
+}
+
+/* Every text the widgets under w show: labels, tooltips, row titles, menu buttons' menus. */
+static void
+collect_shown_text (GtkWidget *w, GPtrArray *out)
+{
+  const char *tip = gtk_widget_get_tooltip_text (w);
+
+  /* GTK's and libadwaita's own words are theirs (REQ-0023-01). */
+  if (GTK_IS_SEARCH_ENTRY (w) || GTK_IS_SEARCH_BAR (w) || GTK_IS_WINDOW_CONTROLS (w) || ADW_IS_STATUS_PAGE (w))
+    return;
+  if (tip != NULL)
+    g_ptr_array_add (out, g_strdup (tip));
+  if (GTK_IS_LABEL (w) && gtk_label_get_text (GTK_LABEL (w)) != NULL)
+    g_ptr_array_add (out, g_strdup (gtk_label_get_text (GTK_LABEL (w))));
+  if (ADW_IS_PREFERENCES_ROW (w))
+    g_ptr_array_add (out, g_strdup (adw_preferences_row_get_title (ADW_PREFERENCES_ROW (w))));
+  /* Font names are not translated (REQ-0023-01). */
+  if (ADW_IS_PREFERENCES_ROW (w) && strcmp (adw_preferences_row_get_title (ADW_PREFERENCES_ROW (w)), _ ("Font")) == 0)
+    return;
+  if (GTK_IS_MENU_BUTTON (w) && gtk_menu_button_get_menu_model (GTK_MENU_BUTTON (w)) != NULL)
+    collect_menu_text (gtk_menu_button_get_menu_model (GTK_MENU_BUTTON (w)), out);
+  for (GtkWidget *c = gtk_widget_get_first_child (w); c != NULL; c = gtk_widget_get_next_sibling (c))
+    collect_shown_text (c, out);
+}
+
+/* A word of two Latin letters or more that REQ-0023-01 does not let stand. */
+static const char *
+english_word_in (const char *text)
+{
+  static const char *const allowed[] = { "Easel", "Ctrl", "Shift", "Esc", "Enter", "Space", "Tab", "Alt", "px", "MB", "pt", "ms", "JPEG", "PNG", "BMP", "TIFF", "WebP", "RGB",
+                                         "settings", "ini", "png", "Numpad", "Page", "Up", "Down", "Sans", "Delete", "Backspace", "Home", "End", "Left", "Right", "Menu", "Search", NULL };   /* Search: libadwaita's own */
+  static char word[64];
+  const char *p = text;
+
+  while (*p != '\0')
+    {
+      size_t n = 0;
+
+      while (g_ascii_isalpha (p[n]))
+        n++;
+      if (n >= 2 && n < sizeof word)
+        {
+          gboolean ok = FALSE;
+
+          memcpy (word, p, n);
+          word[n] = '\0';
+          for (guint i = 0; allowed[i] != NULL; i++)
+            ok = ok || strcmp (allowed[i], word) == 0;
+          /* A letter of a mnemonic, a size like 2x. */
+          if (!ok)
+            return word;
+        }
+      p += n > 0 ? n : 1;
+    }
+  return NULL;
+}
+
+/* The Preferences item of each language, from the requirement and not from the catalog under test. */
+static const char *
+preferences_item_of (const char *code)
+{
+  static const char *const items[][2] = {
+    { "cs", "Před_volby" }, { "de", "_Einstellungen" }, { "en", "_Preferences" }, { "es", "_Preferencias" },
+    { "fr", "_Préférences" }, { "hu", "_Beállítások" }, { "it", "_Preferenze" }, { "pl", "_Preferencje" },
+    { "pt", "_Preferências" }, { "ro", "_Preferințe" }, { "ru", "Пара_метры" }, { "uk", "Пара_метри" },
+  };
+
+  for (gsize i = 0; i < G_N_ELEMENTS (items); i++)
+    if (strcmp (items[i][0], code) == 0)
+      return items[i][1];
+  g_assert_not_reached ();
+}
+
+/* AS-1, AS-2, AS-8: the app as a user starts it, with no test language: main writes the setting (EASEL_CHOSEN, none for
+   auto) to the settings file before the app reads it, and the window's menu is in the language expected. With EASEL_ONLY_C
+   the run also proves that no locale but C can be had (REQ-0023-05). */
+static void
+as8_start_in_language (void)
+{
+  const char *expected = g_getenv ("EASEL_EXPECTED");
+  g_autoptr (GPtrArray) shown = g_ptr_array_new_with_free_func (g_free);
+  gboolean found = FALSE;
+  EaselWindow *win;
+
+  if (expected == NULL)
+    {
+      g_test_skip ("run by ui-0023-only-c-* and ui-0023-auto-*");
+      return;
+    }
+  g_assert_null (g_getenv ("EASEL_TEST_LANGUAGE"));
+  if (g_getenv ("EASEL_ONLY_C") != NULL)
+    {
+      g_assert_cmpstr (setlocale (LC_MESSAGES, NULL), ==, "C");
+      for (const char *const *l = (const char *const[]){ "cs_CZ.UTF-8", "de_DE.UTF-8", "en_US.UTF-8", "pl_PL.UTF-8", "ru_RU.UTF-8", "uk_UA.UTF-8", NULL }; *l != NULL; l++)
+        {
+          g_assert_null (setlocale (LC_MESSAGES, *l));
+          g_assert_cmpstr (setlocale (LC_MESSAGES, NULL), ==, "C");
+        }
+    }
+  win = window_with ("[new-picture]\nwidth=60\nheight=40\n");
+  g_assert_cmpstr (easel_i18n_language (), ==, expected);
+  /* GTK's own strings in the same language: Portuguese as in Brazil (REQ-0023-01). */
+  g_assert_cmpstr (g_getenv ("LANGUAGE"), ==, strcmp (expected, "pt") == 0 ? "pt_BR:pt" : expected);
+  collect_shown_text (GTK_WIDGET (win), shown);
+  for (guint i = 0; i < shown->len; i++)
+    found |= strcmp (shown->pdata[i], preferences_item_of (expected)) == 0;
+  g_assert_true (found);
+  close_windows ();
+}
+
+/* The widgets of a type under w, shown or not. */
+static void
+collect_widgets_of_type (GtkWidget *w, GType type, GPtrArray *out)
+{
+  if (g_type_is_a (G_OBJECT_TYPE (w), type))
+    g_ptr_array_add (out, w);
+  for (GtkWidget *c = gtk_widget_get_first_child (w); c != NULL; c = gtk_widget_get_next_sibling (c))
+    collect_widgets_of_type (c, type, out);
+}
+
+/* The labels under w: each shows whole, and inside root's width. A wrapped label may take more lines, an ellipsized one
+   is allowed only where REQ-0023-11 says so. What is wrong is added to bad. */
+static void
+find_cut_labels (GtkWidget *w, GtkWidget *root, GString *bad)
+{
+  if (!gtk_widget_get_mapped (w))
+    return;
+  if (GTK_IS_LABEL (w) && gtk_label_get_text (GTK_LABEL (w))[0] != '\0')
+    {
+      GtkLabel *label = GTK_LABEL (w);
+      PangoLayout *layout = gtk_label_get_layout (label);
+      gboolean excepted = gtk_widget_get_ancestor (w, EASEL_TYPE_STATUS_BAR) != NULL || gtk_widget_get_ancestor (w, EASEL_TYPE_FONT_CARD) != NULL;
+      int width = gtk_widget_get_width (w), height = gtk_widget_get_height (w), text_width, text_height;
+      graphene_rect_t r = bounds_in (w, root);
+
+      pango_layout_get_pixel_size (layout, &text_width, &text_height);
+      if (pango_layout_is_ellipsized (layout) && !excepted)
+        g_string_append_printf (bad, "%s: ellipsized at %d, in %s\n", gtk_label_get_text (label), width, G_OBJECT_TYPE_NAME (gtk_widget_get_parent (w)));
+      if (text_width > width + 1 || text_height > height + 1)
+        g_string_append_printf (bad, "%s: text %d x %d in %d x %d\n", gtk_label_get_text (label), text_width, text_height, width, height);
+      if (r.origin.x < -0.5 || r.origin.x + r.size.width > gtk_widget_get_width (root) + 0.5)
+        g_string_append_printf (bad, "%s: outside, at %.0f and %.0f wide, in %d\n", gtk_label_get_text (label), r.origin.x, r.size.width, gtk_widget_get_width (root));
+    }
+  for (GtkWidget *c = gtk_widget_get_first_child (w); c != NULL; c = gtk_widget_get_next_sibling (c))
+    find_cut_labels (c, root, bad);
+}
+
+/* What a case of AS-11 finds, all of it, reported at the case's end. */
+static GString *long_problems;
+
+static void
+assert_labels_whole (GtkWidget *root, const char *where)
+{
+  g_autoptr (GString) bad = g_string_new (NULL);
+
+  find_cut_labels (root, root, bad);
+  if (bad->len > 0)
+    g_string_append_printf (long_problems, "%s: %s", where, bad->str);
+}
+
+static void
+assert_no_long_problems (void)
+{
+  g_autofree char *found = g_string_free (long_problems, FALSE);
+
+  long_problems = NULL;
+  if (found[0] != '\0')
+    g_error ("%s", found);
+}
+
+/* Natural size within 1024 x 768 logical pixels; a scrolled page by its width only (REQ-0023-11). */
+static void
+assert_fits (GtkWidget *w, gboolean scrolled, const char *where)
+{
+  int nat_w, nat_h;
+
+  gtk_widget_measure (w, GTK_ORIENTATION_HORIZONTAL, -1, NULL, &nat_w, NULL, NULL);
+  gtk_widget_measure (w, GTK_ORIENTATION_VERTICAL, nat_w, NULL, &nat_h, NULL, NULL);
+  g_test_message ("%s: %d x %d", where, nat_w, nat_h);
+  if (nat_w > 1024 || (!scrolled && nat_h > 768))
+    g_string_append_printf (long_problems, "%s: %d x %d does not fit\n", where, nat_w, nat_h);
+}
+
+/* A big window, for the dialogs: a dialog's size is its own, not what a small window leaves it. */
+static EaselWindow *
+long_language_window (void)
+{
+  EaselWindow *win = window_with ("[new-picture]\nwidth=60\nheight=40\n");
+
+  long_problems = g_string_new (NULL);
+  g_assert_cmpstr (easel_i18n_language (), ==, "xl");
+  gtk_window_set_default_size (GTK_WINDOW (win), 1024, 768);
+  wait_for_layout (win);
+  return win;
+}
+
+/* AS-7 (REQ-0023-08): never mirrored, also when GTK has taken a right-to-left direction from the system. */
+static void
+as7_not_mirrored (void)
+{
+  EaselWindow *win = window_with ("[new-picture]\nwidth=60\nheight=40\n");
+
+  g_assert_cmpint (gtk_widget_get_default_direction (), ==, GTK_TEXT_DIR_LTR);
+  g_assert_cmpfloat (bounds_in (toolbox_panel (win), GTK_WIDGET (win)).origin.x, <, bounds_in (GTK_WIDGET (easel_window_get_canvas (win)), GTK_WIDGET (win)).origin.x);
+  close_windows ();
+}
+
+/* The file dialogs' filters are in the interface's language (REQ-0023-01). */
+static void
+assert_filters_translated (EaselWindow *win)
+{
+  g_autoptr (GtkFileDialog) dialog = easel_window_picture_dialog (win, "Title");
+  GListModel *filters = gtk_file_dialog_get_filters (dialog);
+
+  for (guint i = 0; i < g_list_model_get_n_items (filters); i++)
+    {
+      g_autoptr (GtkFileFilter) filter = g_list_model_get_item (filters, i);
+
+      g_assert_null (english_word_in (gtk_file_filter_get_name (filter)));
+    }
+}
+
+/* AS-11 (REQ-0023-11): the main window's minimum size, and the toolbox with each tool's options. */
+static void
+as11_main_window (void)
+{
+  static const char *const tools[] = { "pan", "pencil", "brush", "airbrush", "eraser", "magnifier", "select", "free-select", "pick", "fill", "gradient",
+                                       "line", "curve", "rectangle", "rounded-rectangle", "ellipse", "polygon", "text" };
+  EaselWindow *win = long_language_window ();
+  int min_w, min_h;
+
+  gtk_widget_measure (GTK_WIDGET (win), GTK_ORIENTATION_HORIZONTAL, -1, &min_w, NULL, NULL, NULL);
+  gtk_widget_measure (GTK_WIDGET (win), GTK_ORIENTATION_VERTICAL, min_w, &min_h, NULL, NULL, NULL);
+  g_test_message ("window minimum %d x %d", min_w, min_h);
+  g_assert_cmpint (min_w, <=, 1024);
+  g_assert_cmpint (min_h, <=, 768);
+  for (guint i = 0; i < G_N_ELEMENTS (tools); i++)
+    {
+      use_tool (win, tools[i]);
+      wait_for_layout (win);
+      g_assert_cmpint (gtk_widget_get_width (toolbox_panel (win)), ==, 87);        /* REQ-0008-07 */
+      assert_labels_whole (toolbox_panel (win), tools[i]);
+    }
+  assert_labels_whole (GTK_WIDGET (win), "window");
+  close_windows ();
+  assert_no_long_problems ();
+}
+
+/* AS-11: each dialog with its own action. */
+static void
+as11_dialogs (void)
+{
+  static const char *const actions[] = { "attributes", "grid-dialog", "stretch-skew", "shortcuts", "about" };
+  EaselWindow *win = long_language_window ();
+  AdwDialog *d;
+
+  for (guint i = 0; i < G_N_ELEMENTS (actions); i++)
+    {
+      g_action_group_activate_action (G_ACTION_GROUP (win), actions[i], NULL);
+      wait_for_layout (win);
+      d = visible_dialog (win);
+      g_assert_nonnull (d);
+      assert_fits (GTK_WIDGET (d), strcmp (actions[i], "shortcuts") == 0 || strcmp (actions[i], "about") == 0, actions[i]);
+      assert_labels_whole (GTK_WIDGET (d), actions[i]);
+      adw_dialog_force_close (d);
+      wait_for_no_dialog (win);
+    }
+  d = open_preferences (win);
+  {
+    g_autoptr (GPtrArray) pages = g_ptr_array_new ();
+
+    collect_widgets_of_type (GTK_WIDGET (d), ADW_TYPE_PREFERENCES_PAGE, pages);
+    g_assert_cmpuint (pages->len, >, 0);
+    for (guint i = 0; i < pages->len; i++)
+      {
+        /* libadwaita's own page for search has no title, and is not one of the dialog's. */
+        if (adw_preferences_page_get_title (pages->pdata[i])[0] == '\0')
+          continue;
+        adw_preferences_dialog_set_visible_page (ADW_PREFERENCES_DIALOG (d), pages->pdata[i]);
+        wait_for_layout (win);
+        assert_fits (GTK_WIDGET (d), TRUE, "preferences");
+        assert_labels_whole (GTK_WIDGET (d), adw_preferences_page_get_title (pages->pdata[i]));
+      }
+  }
+  close_preferences (win, d);
+  close_windows ();
+  assert_no_long_problems ();
+}
+
+/* AS-11: the Save prompt as the window opens it, and each other alert from the app's own strings: all are one kind of
+   dialog, and what differs is the text and the buttons. */
+static void
+as11_alerts (void)
+{
+  static const char *const texts[][2] = {
+    { N_ ("Could Not Stretch or Skew the Selection"), N_ ("There is not enough memory to stretch this selection.") },
+    { N_ ("Could Not Save the Preferences"), N_ ("The change applies until Easel closes, but settings.ini could not be written.") },
+    { N_ ("Cannot Save This Kind of File"), N_ ("Pictures can be saved as PNG, JPEG, BMP, TIFF or WebP.") },
+    { N_ ("Could Not Open Help"), N_ ("The help page could not be opened.") },
+    { N_ ("Could Not Print"), N_ ("The picture could not be printed.") },
+    { N_ ("Could Not Create a New Picture"), N_ ("The picture is bigger than 10000 pixels in width or height.") },
+    { N_ ("Could Not Add the Text"), N_ ("There is not enough memory to add this text.") },
+    { N_ ("Reset the Palette?"), N_ ("All 28 colors go back to the classic ones. This cannot be undone.") },
+  };
+  EaselWindow *win = long_language_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  AdwDialog *d;
+
+  /* The picture's name is the longest the prompt is likely to show: Untitled. */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "tool", g_variant_new_string ("pencil"));
+  easel_canvas_press (canvas, 1, 3.5, 3.5);
+  easel_canvas_release (canvas, 1);
+  gtk_window_close (GTK_WINDOW (win));
+  wait_for_dialogs (win, 1);
+  wait_for_layout (win);
+  d = visible_dialog (win);
+  assert_fits (GTK_WIDGET (d), FALSE, "save prompt");
+  assert_labels_whole (GTK_WIDGET (d), "save prompt");
+  adw_dialog_force_close (d);
+  wait_for_no_dialog (win);
+  for (guint i = 0; i < G_N_ELEMENTS (texts) + 2; i++)
+    {
+      gboolean paste = i == G_N_ELEMENTS (texts), replace = i == G_N_ELEMENTS (texts) + 1;
+      g_autofree char *body = paste ? g_strdup_printf (_n ("The picture is %d × %d pixel; the canvas is %d × %d.", "The picture is %d × %d pixels; the canvas is %d × %d.", 10000), 10000, 10000, 10000, 10000) : NULL;
+
+      d = adw_alert_dialog_new (paste ? _ ("Pasted Picture Is Larger Than the Canvas") : replace ? _ ("Replace “%s”?") : _ (texts[i][0]),
+                                paste ? body : replace ? _ ("A file with this name already exists.") : _ (texts[i][1]));
+      if (paste)
+        adw_alert_dialog_add_responses (ADW_ALERT_DIALOG (d), "cancel", _ ("_Cancel"), "fit", _ ("_Fit Picture to Canvas"), "resize", _ ("_Resize Canvas to Picture"), NULL);
+      else if (replace)
+        adw_alert_dialog_add_responses (ADW_ALERT_DIALOG (d), "cancel", _ ("_Cancel"), "replace", _ ("_Replace"), NULL);
+      else
+        adw_alert_dialog_add_response (ADW_ALERT_DIALOG (d), "close", _ ("Close"));
+      adw_dialog_present (d, GTK_WIDGET (win));
+      wait_for_layout (win);
+      assert_fits (GTK_WIDGET (d), FALSE, adw_alert_dialog_get_heading (ADW_ALERT_DIALOG (d)));
+      assert_labels_whole (GTK_WIDGET (d), adw_alert_dialog_get_heading (ADW_ALERT_DIALOG (d)));
+      adw_dialog_force_close (d);
+      wait_for_no_dialog (win);
+    }
+  close_windows ();
+  assert_no_long_problems ();
+}
+
+/* AS-11: the Picture tab, measured on its own, as the print dialog holds it. */
+static void
+as11_picture_tab (void)
+{
+  EaselWindow *win = long_language_window ();
+  GtkWidget *top = gtk_window_new (), *tab = easel_print_tab_new (easel_window_get_page_setup (win), 800, 600);
+
+  gtk_window_set_child (GTK_WINDOW (top), tab);
+  gtk_window_present (GTK_WINDOW (top));
+  wait_for_layout (win);
+  for (int i = 0; i < 20 && !gtk_widget_get_mapped (tab); i++)
+    wait_for_layout (win);
+  g_assert_true (gtk_widget_get_mapped (tab));
+  assert_fits (tab, FALSE, "picture tab");
+  assert_labels_whole (tab, "picture tab");
+  gtk_window_destroy (GTK_WINDOW (top));
+  close_windows ();
+  assert_no_long_problems ();
+}
+
+/* AS-12 (REQ-0023-01): under a language written in another alphabet, no shown text has an English word. Run under ru and uk only. */
+static void
+as12_no_english (void)
+{
+  const char *lang = easel_i18n_language ();
+  EaselWindow *win;
+  g_autoptr (GPtrArray) shown = g_ptr_array_new_with_free_func (g_free);
+
+  if (strcmp (lang, "ru") != 0 && strcmp (lang, "uk") != 0)
+    {
+      g_test_skip ("the other languages are in the Latin alphabet");
+      return;
+    }
+  win = window_with ("[new-picture]\nwidth=60\nheight=40\n");
+  assert_filters_translated (win);
+  collect_shown_text (GTK_WIDGET (win), shown);
+  {
+    AdwDialog *d = open_preferences (win);
+
+    collect_shown_text (GTK_WIDGET (d), shown);
+    close_preferences (win, d);
+  }
+  /* Keyboard Shortcuts' own rows; libadwaita's words around them are libadwaita's (REQ-0023-01). */
+  {
+    gsize n = 0;
+    const EaselShortcut *table = easel_shortcuts_table (&n);
+
+    for (gsize i = 0; i < n; i++)
+      {
+        g_ptr_array_add (shown, g_strdup (_ (table[i].group)));
+        g_ptr_array_add (shown, g_strdup (_ (table[i].title)));
+      }
+  }
+  {
+    GtkWidget *tab = easel_print_tab_new (easel_window_get_page_setup (win), 800, 600);
+    g_autoptr (GObject) keep = G_OBJECT (g_object_ref_sink (tab));
+
+    collect_shown_text (tab, shown);
+  }
+  g_assert_cmpuint (shown->len, >, 100);
+  for (guint i = 0; i < shown->len; i++)
+    {
+      const char *word = english_word_in (shown->pdata[i]);
+
+      /* The languages' own names are never translated (REQ-0023-04). */
+      for (int l = 0; l < easel_language_count (); l++)
+        if (strcmp (shown->pdata[i], easel_language_name (l)) == 0)
+          word = NULL;
+      if (word != NULL)
+        g_error ("\"%s\" has the English word %s", (char *) shown->pdata[i], word);
+    }
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* AS-5 (REQ-0023-06): the form each count takes, in the language of this run: three different forms where it has three. */
+static void
+as5_sheets (void)
+{
+  const char *lang = easel_i18n_language ();
+
+  if (strcmp (lang, "ru") == 0)
+    {
+      g_assert_cmpstr (_n ("Takes %d sheet", "Takes %d sheets", 2), ==, "Занимает %d листа");
+      g_assert_cmpstr (_n ("Takes %d sheet", "Takes %d sheets", 5), ==, "Занимает %d листов");
+      g_assert_cmpstr (_n ("Takes %d sheet", "Takes %d sheets", 21), ==, "Занимает %d лист");
+    }
+  if (strcmp (lang, "en") != 0)
+    g_assert_cmpstr (_ ("Open"), !=, "Open");
+  /* A plural's forms differ where the rule makes them differ. */
+  {
+    const char *one = _n ("Takes %d sheet", "Takes %d sheets", 1), *many = _n ("Takes %d sheet", "Takes %d sheets", 5);
+
+    if (easel_plural_form (lang, 1) != easel_plural_form (lang, 5) && strcmp (lang, "hu") != 0)
+      g_assert_cmpstr (one, !=, many);
+  }
+}
+
+/* AS-9 (REQ-0023-09): the page in the language of this run: every tool in the toolbox's order, every row and key of Keyboard Shortcuts. */
+static void
+as9_help_page (void)
+{
+  static const char *const tools[] = { "Pan", "Magnifier", "Select", "Free-Form Select", "Eraser", "Pick Color", "Fill", "Gradient", "Pencil", "Brush",
+                                       "Airbrush", "Text", "Line", "Curve", "Rectangle", "Rounded Rectangle", "Ellipse", "Polygon" };
+  g_autofree char *text = NULL;
+  const char *path = easel_help_page_path ();
+  const char *at;
+  gsize n = 0;
+  const EaselShortcut *table = easel_shortcuts_table (&n);
+
+  if (strcmp (easel_i18n_language (), "en") != 0)
+    {
+      g_autofree char *wanted = g_strdup_printf ("%s", easel_i18n_language ());
+
+      g_assert_nonnull (strstr (path, wanted));
+    }
+  /* A language whose page is missing: the English one. */
+  {
+    g_autofree char *none = easel_help_page_for ("xx");
+    g_autofree char *english = easel_help_page_for ("en");
+
+    g_assert_cmpstr (none, ==, english);
+  }
+  g_assert_true (g_file_get_contents (path, &text, NULL, NULL));
+  at = text;
+  for (guint i = 0; i < G_N_ELEMENTS (tools); i++)
+    {
+      g_autofree char *escaped = g_markup_escape_text (_ (tools[i]), -1);
+      g_autofree char *heading = g_strdup_printf ("<h3>%s</h3>", escaped);
+
+      at = strstr (at, heading);
+      if (at == NULL)
+        g_error ("the page has no %s after the tool before it", heading);
+    }
+  for (gsize i = 0; i < n; i++)
+    {
+      g_autofree char *title = g_markup_escape_text (_ (table[i].title), -1);
+      g_autofree char *cell = g_strdup_printf ("<td>%s</td>", title);
+
+      if (strstr (text, cell) == NULL)
+        g_error ("the page has no row %s", cell);
+    }
+}
+
 int
 main (int argc, char **argv)
 {
@@ -31127,7 +31805,17 @@ main (int argc, char **argv)
      as25_dashes_move turns them on. */
   animations (FALSE);
 
+  /* A start in a chosen language (AS-8): the file is there before the process reads it, once, as for a user. */
+  if (g_getenv ("EASEL_CHOSEN") != NULL)
+    {
+      g_autofree char *text = g_strdup_printf ("[interface]\nlanguage=%s\n", g_getenv ("EASEL_CHOSEN"));
+
+      write_settings (text);
+    }
   app = easel_application_new ();
+  /* What GTK does on a right-to-left system, before the app's start-up runs (AS-7). */
+  if (g_getenv ("EASEL_SYSTEM_RTL") != NULL)
+    gtk_widget_set_default_direction (GTK_TEXT_DIR_RTL);
   /* Do not talk to a running Easel on the session bus. */
   g_application_set_flags (G_APPLICATION (app), G_APPLICATION_NON_UNIQUE | G_APPLICATION_HANDLES_OPEN);
   g_assert_true (g_application_register (G_APPLICATION (app), NULL, NULL));
@@ -31276,6 +31964,7 @@ main (int argc, char **argv)
   g_test_add_func ("/0013/as3_move_selection", as3_move_selection);
   g_test_add_func ("/0013/as4_ctrl_copies", as4_ctrl_copies);
   g_test_add_func ("/0013/as5_arrow_keys", as5_arrow_keys);
+  g_test_add_func ("/0014/as8b_smear_by_keys", as8b_smear_by_keys);
   g_test_add_func ("/0013/as6_esc_enter_undo", as6_esc_enter_undo);
   g_test_add_func ("/0013/as7_put_down_sites", as7_put_down_sites);
   g_test_add_func ("/0013/as8_transparent_mode", as8_transparent_mode);
@@ -31516,6 +32205,18 @@ main (int argc, char **argv)
   g_test_add_func ("/0021/as4_help_page_text", as4_help_page_text);
   g_test_add_func ("/0021/as5_about", as5_about);
   g_test_add_func ("/0021/as3_quit_closes_extras", as3_quit_closes_extras);
+  g_test_add_func ("/0023-start/as8_start_in_language", as8_start_in_language);
+  g_test_add_func ("/0023-rtl/as7_not_mirrored", as7_not_mirrored);
+  g_test_add_func ("/0023-long/as11_main_window", as11_main_window);
+  g_test_add_func ("/0023-long/as11_dialogs", as11_dialogs);
+  g_test_add_func ("/0023-long/as11_alerts", as11_alerts);
+  g_test_add_func ("/0023-long/as11_picture_tab", as11_picture_tab);
+  g_test_add_func ("/0023-lang/as12_no_english", as12_no_english);
+  g_test_add_func ("/0023-lang/as5_sheets", as5_sheets);
+  g_test_add_func ("/0023-lang/as9_help_page", as9_help_page);
+  g_test_add_func ("/0023/as4_language_row", as4_language_row);
+  g_test_add_func ("/0023/as1_system_language", as1_system_language);
+  g_test_add_func ("/0023/as3_missing_string", as3_missing_string);
   g_test_add_func ("/0022/as14_names", as14_names);
   g_test_add_func ("/0022/as5_marker", as5_marker);
   g_test_add_func ("/0022/as6_keyboard_draws", as6_keyboard_draws);

@@ -1,0 +1,1197 @@
+# Czech translation of Easel. A draft.
+# SPDX-License-Identifier: GPL-3.0-or-later
+msgid ""
+msgstr ""
+"Project-Id-Version: easel\n"
+"Language: cs\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=3; plural=(n==1 ? 0 : n>=2 && n<=4 ? 1 : 2);\n"
+"X-Easel-Reviewed: no\n"
+
+msgid "Default"
+msgstr "Výchozí"
+
+msgid "Attributes"
+msgstr "Vlastnosti"
+
+msgid "New area is filled with the background color; a smaller size crops the picture."
+msgstr "Nová oblast se vyplní barvou pozadí; menší velikost obrázek ořízne."
+
+msgid "Width"
+msgstr "Šířka"
+
+msgid "Height"
+msgstr "Výška"
+
+msgid "_Cancel"
+msgstr "_Zrušit"
+
+msgid "_OK"
+msgstr "_OK"
+
+#, c-format
+msgid "Picture, %d by %d pixel"
+msgid_plural "Picture, %d by %d pixels"
+msgstr[0] "Obrázek, %d na %d pixel"
+msgstr[1] "Obrázek, %d na %d pixely"
+msgstr[2] "Obrázek, %d na %d pixelů"
+
+msgid "Bold (Ctrl+B)"
+msgstr "Tučné (Ctrl+B)"
+
+msgid "Italic (Ctrl+I)"
+msgstr "Kurzíva (Ctrl+I)"
+
+msgid "Underline (Ctrl+U)"
+msgstr "Podtržené (Ctrl+U)"
+
+msgid "Strikethrough (Ctrl+Shift+5)"
+msgstr "Přeškrtnuté (Ctrl+Shift+5)"
+
+msgid "Font family (Ctrl+Shift+F)"
+msgstr "Rodina písma (Ctrl+Shift+F)"
+
+msgid "Font family"
+msgstr "Rodina písma"
+
+msgid "Font size (Ctrl+] larger, Ctrl+[ smaller)"
+msgstr "Velikost písma (Ctrl+] větší, Ctrl+[ menší)"
+
+msgid "Grid"
+msgstr "Mřížka"
+
+msgid "Cell size in picture pixels (1 to 1000)"
+msgstr "Buňka v pixelech (1–1000)"
+
+msgid "Axonometric"
+msgstr "Axonometrická"
+
+msgid "_Apply"
+msgstr "_Použít"
+
+msgid "File"
+msgstr "Soubor"
+
+msgid "New"
+msgstr "Nový"
+
+msgid "Open…"
+msgstr "Otevřít…"
+
+msgid "Save"
+msgstr "Uložit"
+
+msgid "Save As…"
+msgstr "Uložit jako…"
+
+msgid "Print…"
+msgstr "Tisk…"
+
+msgid "Preferences"
+msgstr "Předvolby"
+
+msgid "Keyboard Shortcuts"
+msgstr "Klávesové zkratky"
+
+msgid "Help"
+msgstr "Nápověda"
+
+msgid "Close the window"
+msgstr "Zavřít okno"
+
+msgid "Quit"
+msgstr "Ukončit"
+
+msgid "Edit"
+msgstr "Úpravy"
+
+msgid "Undo"
+msgstr "Zpět"
+
+msgid "Redo"
+msgstr "Znovu"
+
+msgid "Cut"
+msgstr "Vyjmout"
+
+msgid "Copy"
+msgstr "Kopírovat"
+
+msgid "Paste"
+msgstr "Vložit"
+
+msgid "Select All"
+msgstr "Vybrat vše"
+
+msgid "Clear the selection"
+msgstr "Vymazat výběr"
+
+msgid "Move the selection 1 pixel"
+msgstr "Posunout výběr o 1 pixel"
+
+msgid "Move the selection 10 pixels"
+msgstr "Posunout výběr o 10 pixelů"
+
+msgid "Put down a selection or a waiting shape"
+msgstr "Položit výběr nebo čekající tvar"
+
+msgid "Put down a selection, drop a waiting shape, cancel a drag"
+msgstr "Položit výběr, zahodit čekající tvar, zrušit tažení"
+
+msgid "Image"
+msgstr "Obrázek"
+
+msgid "Rotate 90°"
+msgstr "Otočit o 90°"
+
+msgid "Rotate 270°"
+msgstr "Otočit o 270°"
+
+msgid "Stretch and Skew…"
+msgstr "Roztáhnout a zkosit…"
+
+msgid "Invert Colors"
+msgstr "Invertovat barvy"
+
+msgid "Attributes…"
+msgstr "Vlastnosti…"
+
+msgid "Clear Image"
+msgstr "Vymazat obrázek"
+
+msgid "View"
+msgstr "Zobrazení"
+
+msgid "Zoom In"
+msgstr "Přiblížit"
+
+msgid "Zoom Out"
+msgstr "Oddálit"
+
+msgid "Normal Size"
+msgstr "Normální velikost"
+
+msgid "Large Size"
+msgstr "Velká velikost"
+
+msgid "Fit to Window"
+msgstr "Přizpůsobit oknu"
+
+msgid "Show Grid"
+msgstr "Zobrazit mřížku"
+
+msgid "Close the thumbnail"
+msgstr "Zavřít náhled"
+
+msgid "Move the focus"
+msgstr "Přesunout zaměření"
+
+msgid "Move to the next or the previous panel"
+msgstr "Přejít na další nebo předchozí panel"
+
+msgid "Tools"
+msgstr "Nástroje"
+
+msgid "The next larger size of the tool"
+msgstr "Další větší velikost nástroje"
+
+msgid "The next smaller size of the tool"
+msgstr "Další menší velikost nástroje"
+
+msgid "Move the focus in a panel"
+msgstr "Přesunout zaměření v panelu"
+
+msgid "Choose the focused control"
+msgstr "Zvolit zaměřený ovládací prvek"
+
+msgid "Press or release at the marker"
+msgstr "Stisknout nebo uvolnit na značce"
+
+msgid "Press with the secondary button at the marker"
+msgstr "Stisknout sekundárním tlačítkem na značce"
+
+msgid "Press for a copy of a selection"
+msgstr "Stisknout pro kopii výběru"
+
+msgid "Press for a smear of a selection"
+msgstr "Stisknout pro stopu výběru"
+
+msgid "Move the marker 1 pixel"
+msgstr "Posunout značku o 1 pixel"
+
+msgid "Move the marker 10 pixels"
+msgstr "Posunout značku o 10 pixelů"
+
+msgid "Move the marker alone, with a selection"
+msgstr "Posunout jen značku, s výběrem"
+
+msgid "Open the menu at the marker"
+msgstr "Otevřít nabídku na značce"
+
+msgid "Say the marker's place and color"
+msgstr "Říct místo a barvu značky"
+
+msgid "Colors"
+msgstr "Barvy"
+
+msgid "Swap foreground and background"
+msgstr "Prohodit popředí a pozadí"
+
+msgid "Edit the focused swatch"
+msgstr "Upravit zaměřený vzorek"
+
+msgid "Move among the swatches"
+msgstr "Pohyb mezi vzorky"
+
+msgid "Make the focused swatch the foreground color"
+msgstr "Nastavit zaměřený vzorek jako barvu popředí"
+
+msgid "Make the focused swatch the background color"
+msgstr "Nastavit zaměřený vzorek jako barvu pozadí"
+
+msgid "Text"
+msgstr "Text"
+
+msgid "Bold"
+msgstr "Tučné"
+
+msgid "Italic"
+msgstr "Kurzíva"
+
+msgid "Underline"
+msgstr "Podtržené"
+
+msgid "Strikethrough"
+msgstr "Přeškrtnuté"
+
+msgid "Font size 1 point larger or smaller"
+msgstr "Velikost písma o 1 bod větší nebo menší"
+
+msgid "Open the font family list"
+msgstr "Otevřít seznam rodin písma"
+
+msgid "Move the highlight in the family list"
+msgstr "Posunout zvýraznění v seznamu rodin"
+
+msgid "Choose the highlighted family"
+msgstr "Zvolit zvýrazněnou rodinu"
+
+msgid "Close the family list"
+msgstr "Zavřít seznam rodin"
+
+msgid "New line"
+msgstr "Nový řádek"
+
+msgid "Delete before or after the caret"
+msgstr "Smazat před kurzorem nebo za ním"
+
+msgid "Move the caret"
+msgstr "Posunout kurzor"
+
+msgid "Move the caret by a word"
+msgstr "Posunout kurzor o slovo"
+
+msgid "To the start or the end of the line"
+msgstr "Na začátek nebo konec řádku"
+
+msgid "Extend the text selection"
+msgstr "Rozšířit výběr textu"
+
+msgid "Cut the selected text"
+msgstr "Vyjmout vybraný text"
+
+msgid "Copy the selected text"
+msgstr "Kopírovat vybraný text"
+
+msgid "Paste into the box"
+msgstr "Vložit do rámečku"
+
+msgid "Paste as Plain Text"
+msgstr "Vložit jako prostý text"
+
+msgid "Select all the box's text"
+msgstr "Vybrat všechen text rámečku"
+
+msgid "Put the box down"
+msgstr "Položit rámeček"
+
+msgid "Move the box 1 pixel"
+msgstr "Posunout rámeček o 1 pixel"
+
+msgid "Move the box's far corner 1 pixel"
+msgstr "Posunout protější roh rámečku o 1 pixel"
+
+#, c-format
+msgid "Color %d, %s"
+msgstr "Barva %d, %s"
+
+#, c-format
+msgid "Foreground color, %s"
+msgstr "Barva popředí, %s"
+
+#, c-format
+msgid "Background color, %s"
+msgstr "Barva pozadí, %s"
+
+msgid "Swap foreground and background (Ctrl+Shift+X)"
+msgstr "Prohodit popředí a pozadí (Ctrl+Shift+X)"
+
+msgid "Takes effect the next time Easel starts."
+msgstr "Projeví se při příštím spuštění Easelu."
+
+msgid "Use Default"
+msgstr "Použít výchozí"
+
+msgid "Canvas color"
+msgstr "Barva plátna"
+
+msgid "Reset the Palette?"
+msgstr "Obnovit paletu?"
+
+msgid "All 28 colors go back to the classic ones. This cannot be undone."
+msgstr "Všech 28 barev se vrátí ke klasickým. Nelze vrátit zpět."
+
+msgid "_Reset"
+msgstr "_Obnovit"
+
+msgid "Size and color"
+msgstr "Velikost a barva"
+
+msgid "Automatic size"
+msgstr "Automatická velikost"
+
+msgid "System"
+msgstr "Systém"
+
+msgid "Light"
+msgstr "Světlý"
+
+msgid "Dark"
+msgstr "Tmavý"
+
+msgid "Style"
+msgstr "Styl"
+
+msgid "Language"
+msgstr "Jazyk"
+
+msgid "Workspace"
+msgstr "Pracovní plocha"
+
+msgid "Selection"
+msgstr "Výběr"
+
+msgid "Panels"
+msgstr "Panely"
+
+msgid "Palette"
+msgstr "Paleta"
+
+msgid "Reset Palette…"
+msgstr "Obnovit paletu…"
+
+msgid "System default"
+msgstr "Výchozí systému"
+
+msgid "Workspace color"
+msgstr "Barva pracovní plochy"
+
+msgid "Workspace color, dark"
+msgstr "Barva pracovní plochy, tmavá"
+
+msgid "Tint strength"
+msgstr "Síla odstínu"
+
+msgid "Tool Box"
+msgstr "Panel nástrojů"
+
+msgid "Color Box"
+msgstr "Panel barev"
+
+msgid "Status Bar"
+msgstr "Stavový řádek"
+
+msgid "Frame time"
+msgstr "Čas snímku"
+
+msgid "Automatic"
+msgstr "Automaticky"
+
+msgid "Font"
+msgstr "Písmo"
+
+msgid "Circle, 7 pixels"
+msgstr "Kruh, 7 pixelů"
+
+msgid "Circle, 4 pixels"
+msgstr "Kruh, 4 pixely"
+
+msgid "Circle, 1 pixel"
+msgstr "Kruh, 1 pixel"
+
+msgid "Square, 8 pixels"
+msgstr "Čtverec, 8 pixelů"
+
+msgid "Square, 5 pixels"
+msgstr "Čtverec, 5 pixelů"
+
+msgid "Square, 2 pixels"
+msgstr "Čtverec, 2 pixely"
+
+msgid "Slash, 8 pixels"
+msgstr "Lomítko, 8 pixelů"
+
+msgid "Slash, 5 pixels"
+msgstr "Lomítko, 5 pixelů"
+
+msgid "Slash, 2 pixels"
+msgstr "Lomítko, 2 pixely"
+
+msgid "Backslash, 8 pixels"
+msgstr "Zpětné lomítko, 8 pixelů"
+
+msgid "Backslash, 5 pixels"
+msgstr "Zpětné lomítko, 5 pixelů"
+
+msgid "Backslash, 2 pixels"
+msgstr "Zpětné lomítko, 2 pixely"
+
+msgid "9 pixels"
+msgstr "9 pixelů"
+
+msgid "16 pixels"
+msgstr "16 pixelů"
+
+msgid "24 pixels"
+msgstr "24 pixelů"
+
+msgid "4 pixels"
+msgstr "4 pixely"
+
+msgid "6 pixels"
+msgstr "6 pixelů"
+
+msgid "8 pixels"
+msgstr "8 pixelů"
+
+msgid "10 pixels"
+msgstr "10 pixelů"
+
+msgid "Opaque"
+msgstr "Neprůhledný"
+
+msgid "Transparent"
+msgstr "Průhledný"
+
+msgid "1 pixel"
+msgstr "1 pixel"
+
+msgid "2 pixels"
+msgstr "2 pixely"
+
+msgid "3 pixels"
+msgstr "3 pixely"
+
+msgid "5 pixels"
+msgstr "5 pixelů"
+
+msgid "Outline"
+msgstr "Obrys"
+
+msgid "Outline and fill"
+msgstr "Obrys a výplň"
+
+msgid "Fill"
+msgstr "Výplň"
+
+msgid "History"
+msgstr "Historie"
+
+msgid "Saving"
+msgstr "Ukládání"
+
+msgid "Brush"
+msgstr "Štětec"
+
+msgid "Airbrush"
+msgstr "Sprej"
+
+msgid "Eraser size"
+msgstr "Velikost gumy"
+
+msgid "Eraser mode"
+msgstr "Režim gumy"
+
+msgid "Line and shape width"
+msgstr "Šířka čar a tvarů"
+
+msgid "Fill style"
+msgstr "Styl výplně"
+
+msgid "Magnifier level"
+msgstr "Úroveň lupy"
+
+msgid "Size"
+msgstr "Velikost"
+
+msgid "Undo memory"
+msgstr "Paměť pro vrácení"
+
+msgid "JPEG quality"
+msgstr "Kvalita JPEG"
+
+msgid "Appearance"
+msgstr "Vzhled"
+
+msgid "New Picture"
+msgstr "Nový obrázek"
+
+msgid "Drawing"
+msgstr "Kreslení"
+
+#, c-format
+msgid "Takes %d sheet"
+msgid_plural "Takes %d sheets"
+msgstr[0] "Zabere %d list"
+msgstr[1] "Zabere %d listy"
+msgstr[2] "Zabere %d listů"
+
+msgid "Pixels"
+msgstr "Pixely"
+
+msgid "Sharp"
+msgstr "Ostré"
+
+msgid "Each pixel a sharp square"
+msgstr "Každý pixel je ostrý čtverec"
+
+msgid "Smooth when shrunk"
+msgstr "Vyhladit při zmenšení"
+
+msgid "Sharp, but averaged where a printer's dot covers several pixels"
+msgstr "Ostré, ale zprůměrované tam, kde bod tiskárny pokrývá více pixelů"
+
+msgid "Smooth"
+msgstr "Hladké"
+
+msgid "Blended between pixels"
+msgstr "Prolnuté mezi pixely"
+
+msgid "Fit on one page"
+msgstr "Přizpůsobit na jednu stránku"
+
+#, c-format
+msgid "Too large: %d × %d; the most is 10000 × 10000"
+msgstr "Příliš velké: %d × %d; maximum je 10000 × 10000"
+
+#, c-format
+msgid "New size: %d × %d"
+msgstr "Nová velikost: %d × %d"
+
+msgid "Keep aspect ratio"
+msgstr "Zachovat poměr stran"
+
+msgid "Stretch and Skew"
+msgstr "Roztáhnout a zkosit"
+
+msgid "Stretch"
+msgstr "Roztáhnout"
+
+msgid "Percent"
+msgstr "Procenta"
+
+msgid "Skew"
+msgstr "Zkosit"
+
+msgid "Degrees"
+msgstr "Stupně"
+
+msgid "Horizontal"
+msgstr "Vodorovně"
+
+msgid "Vertical"
+msgstr "Svisle"
+
+msgid "Thumbnail"
+msgstr "Náhled"
+
+#, c-format
+msgid "Eraser, %d pixel"
+msgid_plural "Eraser, %d pixels"
+msgstr[0] "Guma, %d pixel"
+msgstr[1] "Guma, %d pixely"
+msgstr[2] "Guma, %d pixelů"
+
+#, c-format
+msgid "Spray, %d pixel"
+msgid_plural "Spray, %d pixels"
+msgstr[0] "Sprej, %d pixel"
+msgstr[1] "Sprej, %d pixely"
+msgstr[2] "Sprej, %d pixelů"
+
+#, c-format
+msgid "Circle, %d pixel"
+msgid_plural "Circle, %d pixels"
+msgstr[0] "Kruh, %d pixel"
+msgstr[1] "Kruh, %d pixely"
+msgstr[2] "Kruh, %d pixelů"
+
+#, c-format
+msgid "Square, %d pixel"
+msgid_plural "Square, %d pixels"
+msgstr[0] "Čtverec, %d pixel"
+msgstr[1] "Čtverec, %d pixely"
+msgstr[2] "Čtverec, %d pixelů"
+
+#, c-format
+msgid "Slash, %d pixel"
+msgid_plural "Slash, %d pixels"
+msgstr[0] "Lomítko, %d pixel"
+msgstr[1] "Lomítko, %d pixely"
+msgstr[2] "Lomítko, %d pixelů"
+
+#, c-format
+msgid "Backslash, %d pixel"
+msgid_plural "Backslash, %d pixels"
+msgstr[0] "Zpětné lomítko, %d pixel"
+msgstr[1] "Zpětné lomítko, %d pixely"
+msgstr[2] "Zpětné lomítko, %d pixelů"
+
+msgid "Opaque: erase to the background color"
+msgstr "Neprůhledný: mazat na barvu pozadí"
+
+msgid "Transparent: erase to transparency"
+msgstr "Průhledný: mazat do průhlednosti"
+
+msgid "Opaque: keep background color"
+msgstr "Neprůhledný: ponechat barvu pozadí"
+
+msgid "Transparent: moving or clearing leaves a transparent hole"
+msgstr "Průhledný: přesun nebo vymazání zanechá průhlednou díru"
+
+msgid "Opaque: fill the text box with the background color"
+msgstr "Neprůhledný: vyplnit rámeček barvou pozadí"
+
+msgid "Transparent: only the text"
+msgstr "Průhledný: jen text"
+
+msgid "Untitled"
+msgstr "Bez názvu"
+
+#, c-format
+msgid "• %s – Easel"
+msgstr "• %s – Easel"
+
+#, c-format
+msgid "%s – Easel"
+msgstr "%s – Easel"
+
+msgid "Close"
+msgstr "Zavřít"
+
+#, c-format
+msgid "Could Not Save “%s”"
+msgstr "Nelze uložit „%s“"
+
+#, c-format
+msgid "“%s” could not be saved: %s"
+msgstr "„%s“ nelze uložit: %s"
+
+#, c-format
+msgid "Saved %s"
+msgstr "Uloženo: %s"
+
+#, c-format
+msgid "Replace “%s”?"
+msgstr "Nahradit „%s“?"
+
+msgid "A file with this name already exists."
+msgstr "Soubor s tímto názvem již existuje."
+
+msgid "_Replace"
+msgstr "_Nahradit"
+
+msgid "Cannot Save This Kind of File"
+msgstr "Tento typ souboru nelze uložit"
+
+msgid "Pictures can be saved as PNG, JPEG, BMP, TIFF or WebP."
+msgstr "Obrázky lze uložit jako PNG, JPEG, BMP, TIFF nebo WebP."
+
+msgid "Copy To"
+msgstr "Kopírovat do"
+
+msgid "Untitled.png"
+msgstr "Bez názvu.png"
+
+msgid "Save Picture As"
+msgstr "Uložit obrázek jako"
+
+#, c-format
+msgid "“%s” has unsaved changes."
+msgstr "„%s“ obsahuje neuložené změny."
+
+msgid "Save Changes?"
+msgstr "Uložit změny?"
+
+msgid "_Discard"
+msgstr "_Zahodit"
+
+msgid "_Save"
+msgstr "_Uložit"
+
+#, c-format
+msgid "Opened %s"
+msgstr "Otevřeno: %s"
+
+msgid "Could Not Create a New Picture"
+msgstr "Nelze vytvořit nový obrázek"
+
+#, c-format
+msgid "Could Not Open “%s”"
+msgstr "Nelze otevřít „%s“"
+
+msgid "The file cannot be read."
+msgstr "Soubor nelze přečíst."
+
+msgid "This is not a picture the app can open."
+msgstr "Toto není obrázek, který aplikace umí otevřít."
+
+msgid "The picture is bigger than 10000 pixels in width or height."
+msgstr "Obrázek je širší nebo vyšší než 10000 pixelů."
+
+msgid "Open Picture"
+msgstr "Otevřít obrázek"
+
+msgid "Draw with the foreground color. The secondary button uses the background color."
+msgstr "Kreslí barvou popředí. Sekundární tlačítko používá barvu pozadí."
+
+msgid "Paint with the foreground color. The secondary button uses the background color."
+msgstr "Maluje barvou popředí. Sekundární tlačítko používá barvu pozadí."
+
+msgid "Spray with the foreground color. The secondary button uses the background color."
+msgstr "Stříká barvou popředí. Sekundární tlačítko používá barvu pozadí."
+
+msgid "Erase to transparency. The secondary button erases only the foreground color."
+msgstr "Maže do průhlednosti. Sekundární tlačítko maže jen barvu popředí."
+
+msgid "Erase to the background color. The secondary button changes only the foreground color."
+msgstr "Maže na barvu pozadí. Sekundární tlačítko mění jen barvu popředí."
+
+msgid "Changes the magnification."
+msgstr "Mění zvětšení."
+
+msgid "Draws a straight line with the selected line width."
+msgstr "Kreslí rovnou čáru zvolené šířky."
+
+msgid "Draws a rectangle with the selected fill style."
+msgstr "Kreslí obdélník zvoleným stylem výplně."
+
+msgid "Draws a rounded rectangle with the selected fill style."
+msgstr "Kreslí zaoblený obdélník zvoleným stylem výplně."
+
+msgid "Draws an ellipse with the selected fill style."
+msgstr "Kreslí elipsu zvoleným stylem výplně."
+
+msgid "Draws a curved line with the selected line width."
+msgstr "Kreslí křivku zvolené šířky."
+
+msgid "Draws a polygon with the selected fill style."
+msgstr "Kreslí mnohoúhelník zvoleným stylem výplně."
+
+msgid "Selects a rectangular part of the picture to move, copy, or edit."
+msgstr "Vybere obdélníkovou část obrázku k přesunu, kopírování nebo úpravám."
+
+msgid "Selects a free-form part of the picture to move, copy, or edit."
+msgstr "Vybere volnou část obrázku k přesunu, kopírování nebo úpravám."
+
+msgid "Fades the drawing color to transparent along a drag. A click or Enter applies it, Esc cancels it."
+msgstr "Prolne barvu do průhledné podél tažení. Kliknutí nebo Enter ji použije, Esc ji zruší."
+
+msgid "Picks up a color from the picture for drawing."
+msgstr "Nabere barvu z obrázku pro kreslení."
+
+msgid "Fills an area with the current drawing color."
+msgstr "Vyplní oblast aktuální barvou."
+
+msgid "Inserts text into the picture."
+msgstr "Vloží do obrázku text."
+
+msgid "Drag to pan. Ctrl+wheel zooms."
+msgstr "Tažením posunete. Ctrl+kolečko mění přiblížení."
+
+msgid "Zoom"
+msgstr "Přiblížení"
+
+msgid "Zoom Out (Ctrl+-)"
+msgstr "Oddálit (Ctrl+-)"
+
+msgid "Zoom In (Ctrl+=)"
+msgstr "Přiblížit (Ctrl+=)"
+
+#, c-format
+msgid "There is not enough memory for a picture of %d × %d pixel."
+msgid_plural "There is not enough memory for a picture of %d × %d pixels."
+msgstr[0] "Nedostatek paměti pro obrázek %d × %d pixel."
+msgstr[1] "Nedostatek paměti pro obrázek %d × %d pixely."
+msgstr[2] "Nedostatek paměti pro obrázek %d × %d pixelů."
+
+msgid "Could Not Resize the Picture"
+msgstr "Nelze změnit velikost obrázku"
+
+msgid "Could Not Invert the Colors"
+msgstr "Nelze invertovat barvy"
+
+msgid "Could Not Clear the Picture"
+msgstr "Nelze vymazat obrázek"
+
+msgid "Could Not Flip the Picture"
+msgstr "Nelze převrátit obrázek"
+
+msgid "Could Not Rotate the Picture"
+msgstr "Nelze otočit obrázek"
+
+msgid "There is not enough memory for this change."
+msgstr "Nedostatek paměti pro tuto změnu."
+
+msgid "Space to finish, Esc to cancel"
+msgstr "Space pro dokončení, Esc pro zrušení"
+
+msgid "Done"
+msgstr "Hotovo"
+
+msgid "Cancelled"
+msgstr "Zrušeno"
+
+#, c-format
+msgid "Foreground %s"
+msgstr "Popředí %s"
+
+#, c-format
+msgid "Background %s"
+msgstr "Pozadí %s"
+
+msgid "Text box open"
+msgstr "Textový rámeček otevřen"
+
+msgid "Text box closed"
+msgstr "Textový rámeček zavřen"
+
+#, c-format
+msgid "Selection %d by %d"
+msgstr "Výběr %d na %d"
+
+msgid "Selection put down"
+msgstr "Výběr položen"
+
+msgid "Selection removed"
+msgstr "Výběr odstraněn"
+
+msgid "Polygon closed"
+msgstr "Mnohoúhelník uzavřen"
+
+msgid "Pan"
+msgstr "Posun"
+
+msgid "Pencil"
+msgstr "Tužka"
+
+msgid "Eraser"
+msgstr "Guma"
+
+msgid "Magnifier"
+msgstr "Lupa"
+
+msgid "Pick Color"
+msgstr "Nabrat barvu"
+
+msgid "Line"
+msgstr "Čára"
+
+msgid "Rectangle"
+msgstr "Obdélník"
+
+msgid "Rounded Rectangle"
+msgstr "Zaoblený obdélník"
+
+msgid "Ellipse"
+msgstr "Elipsa"
+
+msgid "Curve"
+msgstr "Křivka"
+
+msgid "Polygon"
+msgstr "Mnohoúhelník"
+
+msgid "Gradient"
+msgstr "Přechod"
+
+msgid "Select"
+msgstr "Výběr"
+
+msgid "Free-Form Select"
+msgstr "Volný výběr"
+
+msgid "Could Not Open Help"
+msgstr "Nelze otevřít nápovědu"
+
+msgid "The help page could not be opened."
+msgstr "Stránku nápovědy nelze otevřít."
+
+msgid "OK"
+msgstr "OK"
+
+msgid "Could Not Print"
+msgstr "Nelze tisknout"
+
+msgid "The picture could not be printed."
+msgstr "Obrázek nelze vytisknout."
+
+msgid "Picture"
+msgstr "Obrázek"
+
+msgid "Could Not Save the Preferences"
+msgstr "Nelze uložit předvolby"
+
+msgid "The change applies until Easel closes, but settings.ini could not be written."
+msgstr "Změna platí do zavření Easelu, ale settings.ini nelze zapsat."
+
+msgid "Could Not Stretch or Skew the Picture"
+msgstr "Nelze roztáhnout nebo zkosit obrázek"
+
+msgid "Undone"
+msgstr "Vráceno"
+
+msgid "Redone"
+msgstr "Zopakováno"
+
+msgid "Could Not Fill"
+msgstr "Nelze vyplnit"
+
+msgid "There is not enough memory to fill this area."
+msgstr "Nedostatek paměti pro vyplnění této oblasti."
+
+msgid "Could Not Draw the Shape"
+msgstr "Nelze nakreslit tvar"
+
+msgid "There is not enough memory to draw this shape."
+msgstr "Nedostatek paměti pro nakreslení tohoto tvaru."
+
+msgid "Could Not Apply the Gradient"
+msgstr "Nelze použít přechod"
+
+msgid "There is not enough memory to apply this gradient."
+msgstr "Nedostatek paměti pro použití tohoto přechodu."
+
+msgid "Could Not Clear the Selection"
+msgstr "Nelze vymazat výběr"
+
+msgid "There is not enough memory to clear this selection."
+msgstr "Nedostatek paměti pro vymazání tohoto výběru."
+
+msgid "Could Not Make the Selection"
+msgstr "Nelze vytvořit výběr"
+
+msgid "There is not enough memory to make this selection."
+msgstr "Nedostatek paměti pro vytvoření tohoto výběru."
+
+msgid "Could Not Stretch the Selection"
+msgstr "Nelze roztáhnout výběr"
+
+msgid "There is not enough memory to stretch this selection."
+msgstr "Nedostatek paměti pro roztažení tohoto výběru."
+
+msgid "Could Not Flip the Selection"
+msgstr "Nelze převrátit výběr"
+
+msgid "Could Not Rotate the Selection"
+msgstr "Nelze otočit výběr"
+
+msgid "Could Not Invert the Selection"
+msgstr "Nelze invertovat výběr"
+
+msgid "Could Not Stretch or Skew the Selection"
+msgstr "Nelze roztáhnout nebo zkosit výběr"
+
+msgid "Could Not Move the Selection"
+msgstr "Nelze přesunout výběr"
+
+msgid "There is not enough memory to move this selection."
+msgstr "Nedostatek paměti pro přesun tohoto výběru."
+
+msgid "Could Not Add the Text"
+msgstr "Nelze přidat text"
+
+msgid "There is not enough memory to show this text."
+msgstr "Nedostatek paměti pro zobrazení tohoto textu."
+
+msgid "There is not enough memory to add this text."
+msgstr "Nedostatek paměti pro přidání tohoto textu."
+
+msgid "Could Not Copy the Selection"
+msgstr "Nelze zkopírovat výběr"
+
+msgid "There is not enough memory to copy this selection."
+msgstr "Nedostatek paměti pro kopírování tohoto výběru."
+
+#, c-format
+msgid "Could Not Paste “%s”"
+msgstr "Nelze vložit „%s“"
+
+msgid "Could Not Paste"
+msgstr "Nelze vložit"
+
+msgid "There is not enough memory to paste this picture."
+msgstr "Nedostatek paměti pro vložení tohoto obrázku."
+
+msgid "The clipboard's picture cannot be read."
+msgstr "Obrázek ve schránce nelze přečíst."
+
+#, c-format
+msgid "The picture is %d × %d pixel; the canvas is %d × %d."
+msgid_plural "The picture is %d × %d pixels; the canvas is %d × %d."
+msgstr[0] "Obrázek má %d × %d pixel; plátno má %d × %d."
+msgstr[1] "Obrázek má %d × %d pixely; plátno má %d × %d."
+msgstr[2] "Obrázek má %d × %d pixelů; plátno má %d × %d."
+
+msgid "Pasted Picture Is Larger Than the Canvas"
+msgstr "Vložený obrázek je větší než plátno"
+
+msgid "_Fit Picture to Canvas"
+msgstr "_Přizpůsobit obrázek plátnu"
+
+msgid "_Resize Canvas to Picture"
+msgstr "_Změnit velikost plátna podle obrázku"
+
+msgid "The clipboard's text cannot be read."
+msgstr "Text ve schránce nelze přečíst."
+
+msgid "There is not enough memory to paste this text."
+msgstr "Nedostatek paměti pro vložení tohoto textu."
+
+msgid "Could Not Copy the Text"
+msgstr "Nelze zkopírovat text"
+
+msgid "There is not enough memory to copy this text."
+msgstr "Nedostatek paměti pro kopírování tohoto textu."
+
+msgid "Paste From"
+msgstr "Vložit z"
+
+msgid "Open"
+msgstr "Otevřít"
+
+msgid "Main Menu"
+msgstr "Hlavní nabídka"
+
+msgid "Text box"
+msgstr "Textový rámeček"
+
+msgid "_Flip"
+msgstr "Pře_vrátit"
+
+msgid "Flip _Horizontal"
+msgstr "Převrátit _vodorovně"
+
+msgid "Flip _Vertical"
+msgstr "Převrátit _svisle"
+
+msgid "_Rotate"
+msgstr "_Otočit"
+
+msgid "Rotate _90°"
+msgstr "Otočit o _90°"
+
+msgid "Rotate 1_80°"
+msgstr "Otočit o 1_80°"
+
+msgid "Rotate _270°"
+msgstr "Otočit o _270°"
+
+msgid "Stretch and _Skew…"
+msgstr "Roztáhnout a _zkosit…"
+
+msgid "_Invert Colors"
+msgstr "_Invertovat barvy"
+
+msgid "_Clear Image"
+msgstr "Vy_mazat obrázek"
+
+msgid "Grid…"
+msgstr "Mřížka…"
+
+msgid "Show Thumbnail"
+msgstr "Zobrazit náhled"
+
+msgid "Cu_t"
+msgstr "_Vyjmout"
+
+msgid "_Copy"
+msgstr "_Kopírovat"
+
+msgid "_Paste"
+msgstr "V_ložit"
+
+msgid "_Clear Selection"
+msgstr "Vy_mazat výběr"
+
+msgid "Select _All"
+msgstr "Vybrat _vše"
+
+msgid "Copy _To…"
+msgstr "Kopírovat _do…"
+
+msgid "Paste as Plain _Text"
+msgstr "Vložit jako prostý _text"
+
+msgid "Paste _From…"
+msgstr "Vložit _z…"
+
+msgid "Zoom _In"
+msgstr "_Přiblížit"
+
+msgid "Zoom _Out"
+msgstr "_Oddálit"
+
+msgid "_Normal Size"
+msgstr "_Normální velikost"
+
+msgid "_New"
+msgstr "_Nový"
+
+msgid "_Open…"
+msgstr "_Otevřít…"
+
+msgid "Save _As…"
+msgstr "Uložit _jako…"
+
+msgid "_Print…"
+msgstr "_Tisk…"
+
+msgid "_Edit"
+msgstr "Ú_pravy"
+
+msgid "_Preferences"
+msgstr "Před_volby"
+
+msgid "_Keyboard Shortcuts"
+msgstr "_Klávesové zkratky"
+
+msgid "_Help"
+msgstr "Nápo_věda"
+
+msgid "_About Easel"
+msgstr "O _aplikaci Easel"
+
+msgid "_Quit"
+msgstr "_Ukončit"
+
+msgid "Pictures"
+msgstr "Obrázky"
+
+msgid "All Files"
+msgstr "Všechny soubory"
+
+msgid "Smear the selection 1 pixel"
+msgstr "Táhnout stopu výběru o 1 pixel"

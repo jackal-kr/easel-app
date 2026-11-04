@@ -1,8 +1,10 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 
+#include <ctype.h>
 #include <stdlib.h>
 #include <string.h>
 
+#include "catalog.h"
 #include "ini.h"
 #include "number.h"
 #include "settings.h"
@@ -11,6 +13,7 @@
 #define SECTION_HISTORY "history"
 #define SECTION_DRAWING "drawing"
 #define SECTION_VIEW "view"
+#define SECTION_INTERFACE "interface"
 #define SECTION_SAVE "save"
 #define SECTION_TEXT "text"
 
@@ -71,6 +74,9 @@ const char easel_settings_default_text[] =
   "\n"
   "[" SECTION_HISTORY "]\n"
   "memory=512\n"
+  "\n"
+  "[" SECTION_INTERFACE "]\n"
+  "language=auto\n"
   "\n"
   "[" SECTION_VIEW "]\n"
   "grid=off\n"
@@ -161,6 +167,7 @@ easel_settings_defaults (EaselSettings *s)
   s->text_font[0] = '\0';
   s->style = EASEL_STYLE_SYSTEM;
   s->tint = EASEL_TINT_DEFAULT;
+  strcpy (s->language, "auto");
   s->frame_time = false;
   s->brush = 1;
   s->airbrush = 1;
@@ -320,6 +327,18 @@ apply (EaselSpan section, EaselSpan key, EaselSpan value, void *data)
             s->line_width = (i = index_of (value, widths, 5)) >= 0 ? i + 1 : 1;
           else
             s->magnifier = (i = index_of (value, levels, 6)) >= 0 ? (value.n == 2 ? 16 : value.p[0] - '0') : 2;
+        }
+    }
+  else if (easel_span_is (section, SECTION_INTERFACE) && easel_span_is (key, "language"))
+    {
+      /* A code or auto, in any case; anything else, a region's code too, is auto (REQ-0023-04). */
+      strcpy (s->language, "auto");
+      if (value.n == 2)
+        {
+          char code[3] = { (char) tolower ((unsigned char) value.p[0]), (char) tolower ((unsigned char) value.p[1]), '\0' };
+
+          if (easel_language_known (code))
+            strcpy (s->language, code);
         }
     }
   else if (easel_span_is (section, SECTION_VIEW))

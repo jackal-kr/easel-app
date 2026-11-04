@@ -2,6 +2,7 @@
 
 #include "canvas.h"
 #include "palette-bar.h"
+#include "i18n.h"
 
 /* Dimensions of REQ-0003-01 and REQ-0003-18, in logical pixels. */
 #define SWATCH_SIZE 20
@@ -76,7 +77,7 @@ static void
 easel_swatch_set_color (EaselSwatch *self, uint32_t color)
 {
   g_autofree char *hex = easel_color_hex_name (color);
-  g_autofree char *name = g_strdup_printf ("Color %d, %s", self->number, hex);
+  g_autofree char *name = g_strdup_printf (_ ("Color %d, %s"), self->number, hex);
 
   gtk_accessible_update_property (GTK_ACCESSIBLE (self), GTK_ACCESSIBLE_PROPERTY_LABEL, name, -1);
   self->color = color;
@@ -330,7 +331,7 @@ void
 easel_palette_bar_set_colors (EaselPaletteBar *self, uint32_t foreground, uint32_t background)
 {
   g_autofree char *front = easel_color_hex_name (foreground), *back = easel_color_hex_name (background);
-  g_autofree char *front_name = g_strdup_printf ("Foreground color, %s", front), *back_name = g_strdup_printf ("Background color, %s", back);
+  g_autofree char *front_name = g_strdup_printf (_ ("Foreground color, %s"), front), *back_name = g_strdup_printf (_ ("Background color, %s"), back);
 
   self->indicator->foreground = foreground;
   self->indicator->background = background;
@@ -426,7 +427,7 @@ easel_palette_bar_init (EaselPaletteBar *self)
   self->swap = GTK_BUTTON (gtk_button_new_with_label ("⇄"));
   gtk_widget_add_css_class (GTK_WIDGET (self->swap), "flat");
   gtk_widget_set_valign (GTK_WIDGET (self->swap), GTK_ALIGN_CENTER);
-  gtk_widget_set_tooltip_text (GTK_WIDGET (self->swap), "Swap foreground and background (Ctrl+Shift+X)");
+  gtk_widget_set_tooltip_text (GTK_WIDGET (self->swap), _ ("Swap foreground and background (Ctrl+Shift+X)"));
   gtk_actionable_set_action_name (GTK_ACTIONABLE (self->swap), "win.swap-colors");
   gtk_box_append (GTK_BOX (row), GTK_WIDGET (self->swap));
 

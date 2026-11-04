@@ -4,6 +4,7 @@
 
 #include "config.h"
 #include "application.h"
+#include "i18n.h"
 #include "window.h"
 
 /* GApplication is unique per app id, so a second launch only activates the running instance (REQ-0001-07). */
@@ -15,6 +16,13 @@ on_activate (GApplication *app)
   if (window == NULL)
     window = GTK_WINDOW (easel_window_new (GTK_APPLICATION (app)));
   gtk_window_present (window);
+}
+
+/* GTK takes its direction from the system when it starts: the layout is never mirrored (REQ-0023-08). */
+static void
+on_startup (GApplication *app)
+{
+  gtk_widget_set_default_direction (GTK_TEXT_DIR_LTR);
 }
 
 /* The first file on the command line is the start-up picture; the others are ignored. If a window exists already, it is
@@ -49,8 +57,12 @@ static const GActionEntry app_actions[] = {
 GtkApplication *
 easel_application_new (void)
 {
-  AdwApplication *app = adw_application_new (APP_ID, G_APPLICATION_HANDLES_OPEN);
+  AdwApplication *app;
 
+  easel_i18n_init ();
+  app = adw_application_new (APP_ID, G_APPLICATION_HANDLES_OPEN);
+
+  g_signal_connect (app, "startup", G_CALLBACK (on_startup), NULL);
   g_signal_connect (app, "activate", G_CALLBACK (on_activate), NULL);
   g_signal_connect (app, "open", G_CALLBACK (on_open), NULL);
   gtk_application_set_accels_for_action (GTK_APPLICATION (app), "win.new", (const char *[]) { "<Control>n", NULL });

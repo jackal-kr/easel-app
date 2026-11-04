@@ -2,6 +2,7 @@
 
 #include "attributes-dialog.h"
 #include "image.h"
+#include "i18n.h"
 
 typedef struct
 {
@@ -100,24 +101,24 @@ easel_attributes_dialog_present (GtkWidget *parent, int width, int height, int d
   AttributesDialog *a = g_new0 (AttributesDialog, 1);
   GtkWidget *box = gtk_box_new (GTK_ORIENTATION_VERTICAL, 12);
   GtkWidget *list = gtk_list_box_new ();
-  GtkWidget *reset = gtk_button_new_with_label ("Default");
+  GtkWidget *reset = gtk_button_new_with_label (_ ("Default"));
 
   a->applied = applied;
   a->data = data;
   a->default_width = default_width;
   a->default_height = default_height;
-  a->dialog = ADW_ALERT_DIALOG (adw_alert_dialog_new ("Attributes",
-                                                        "New area is filled with the background color; a smaller size crops the picture."));
+  a->dialog = ADW_ALERT_DIALOG (adw_alert_dialog_new (_ ("Attributes"),
+                                                        _ ("New area is filled with the background color; a smaller size crops the picture.")));
 
   gtk_list_box_set_selection_mode (GTK_LIST_BOX (list), GTK_SELECTION_NONE);
   gtk_widget_add_css_class (list, "boxed-list");
-  a->width = add_row (list, "Width", width);
-  a->height = add_row (list, "Height", height);
+  a->width = add_row (list, _ ("Width"), width);
+  a->height = add_row (list, _ ("Height"), height);
   gtk_widget_set_halign (reset, GTK_ALIGN_START);
   gtk_box_append (GTK_BOX (box), list);
   gtk_box_append (GTK_BOX (box), reset);
   adw_alert_dialog_set_extra_child (a->dialog, box);
-  adw_alert_dialog_add_responses (a->dialog, "cancel", "_Cancel", "ok", "_OK", NULL);
+  adw_alert_dialog_add_responses (a->dialog, "cancel", _ ("_Cancel"), "ok", _ ("_OK"), NULL);
   adw_alert_dialog_set_response_appearance (a->dialog, "ok", ADW_RESPONSE_SUGGESTED);
   adw_alert_dialog_set_default_response (a->dialog, "ok");
   adw_alert_dialog_set_close_response (a->dialog, "cancel");

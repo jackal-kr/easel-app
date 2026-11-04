@@ -7,6 +7,7 @@
 
 #include "stretch-skew.h"
 #include "unit-row.h"
+#include "i18n.h"
 
 typedef struct
 {
@@ -56,8 +57,8 @@ refresh (StretchSkewDialog *d)
 
   result_of (d, &W, &H, &out_w, &out_h, &amount_h, &amount_v);
   too_large = easel_ss_too_large (out_w, out_h);
-  text = too_large ? g_strdup_printf ("Too large: %d × %d; the most is 10000 × 10000", out_w, out_h)
-                   : g_strdup_printf ("New size: %d × %d", out_w, out_h);
+  text = too_large ? g_strdup_printf (_ ("Too large: %d × %d; the most is 10000 × 10000"), out_w, out_h)
+                   : g_strdup_printf (_ ("New size: %d × %d"), out_w, out_h);
   gtk_label_set_text (d->size, text);
   adw_alert_dialog_set_response_enabled (d->dialog, "ok", !too_large);
 }
@@ -274,29 +275,29 @@ easel_stretch_skew_dialog_present (GtkWidget *parent, int w, int h, EaselStretch
   StretchSkewDialog *d = g_new0 (StretchSkewDialog, 1);
   GtkWidget *box = gtk_box_new (GTK_ORIENTATION_VERTICAL, 8);
   GtkWidget *stretch_list = gtk_list_box_new (), *skew_list = gtk_list_box_new ();
-  GtkWidget *keep = gtk_check_button_new_with_label ("Keep aspect ratio");
+  GtkWidget *keep = gtk_check_button_new_with_label (_ ("Keep aspect ratio"));
   GtkWidget *size = gtk_label_new (NULL);
 
   d->w = w;
   d->h = h;
   d->applied = applied;
   d->data = data;
-  d->dialog = ADW_ALERT_DIALOG (adw_alert_dialog_new ("Stretch and Skew", NULL));
+  d->dialog = ADW_ALERT_DIALOG (adw_alert_dialog_new (_ ("Stretch and Skew"), NULL));
   gtk_list_box_set_selection_mode (GTK_LIST_BOX (stretch_list), GTK_SELECTION_NONE);
   gtk_list_box_set_selection_mode (GTK_LIST_BOX (skew_list), GTK_SELECTION_NONE);
   gtk_widget_add_css_class (stretch_list, "boxed-list");
   gtk_widget_add_css_class (skew_list, "boxed-list");
 
-  d->stretch_percent = add_units (box, "Stretch", "Percent", "stretch-percent", "Pixels", "stretch-pixels");
-  d->width = add_row (stretch_list, "Width", 1, 500, 100, "%", d);
-  d->height = add_row (stretch_list, "Height", 1, 500, 100, "%", d);
+  d->stretch_percent = add_units (box, _ ("Stretch"), _ ("Percent"), "stretch-percent", _ ("Pixels"), "stretch-pixels");
+  d->width = add_row (stretch_list, _ ("Width"), 1, 500, 100, "%", d);
+  d->height = add_row (stretch_list, _ ("Height"), 1, 500, 100, "%", d);
   gtk_box_append (GTK_BOX (box), stretch_list);
   gtk_check_button_set_active (GTK_CHECK_BUTTON (keep), TRUE);
   d->keep = GTK_CHECK_BUTTON (keep);
   gtk_box_append (GTK_BOX (box), keep);
-  d->skew_degrees = add_units (box, "Skew", "Degrees", "skew-degrees", "Pixels", "skew-pixels");
-  d->horizontal = add_row (skew_list, "Horizontal", -89, 89, 0, "°", d);
-  d->vertical = add_row (skew_list, "Vertical", -89, 89, 0, "°", d);
+  d->skew_degrees = add_units (box, _ ("Skew"), _ ("Degrees"), "skew-degrees", _ ("Pixels"), "skew-pixels");
+  d->horizontal = add_row (skew_list, _ ("Horizontal"), -89, 89, 0, "°", d);
+  d->vertical = add_row (skew_list, _ ("Vertical"), -89, 89, 0, "°", d);
   gtk_box_append (GTK_BOX (box), skew_list);
   gtk_widget_set_name (size, "new-size");
   gtk_widget_set_halign (size, GTK_ALIGN_START);
@@ -304,7 +305,7 @@ easel_stretch_skew_dialog_present (GtkWidget *parent, int w, int h, EaselStretch
   gtk_box_append (GTK_BOX (box), size);
 
   adw_alert_dialog_set_extra_child (d->dialog, box);
-  adw_alert_dialog_add_responses (d->dialog, "cancel", "_Cancel", "ok", "_OK", NULL);
+  adw_alert_dialog_add_responses (d->dialog, "cancel", _ ("_Cancel"), "ok", _ ("_OK"), NULL);
   adw_alert_dialog_set_response_appearance (d->dialog, "ok", ADW_RESPONSE_SUGGESTED);
   adw_alert_dialog_set_default_response (d->dialog, "ok");
   adw_alert_dialog_set_close_response (d->dialog, "cancel");
