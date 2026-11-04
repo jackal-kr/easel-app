@@ -42,12 +42,27 @@ static const EaselShortcut shortcuts[] = {
   { "View", "Show Grid", "<Control>g", "win.grid" },
   { "View", "Close the thumbnail", "Escape", NULL },
   { "View", "Move the focus", "Tab <Shift>Tab", NULL },
+  { "View", "Move to the next or the previous panel", "F6 <Shift>F6", NULL },
 
   { "Tools", "The next larger size of the tool", "KP_Add", "win.preset-larger" },
   { "Tools", "The next smaller size of the tool", "KP_Subtract", "win.preset-smaller" },
+  { "Tools", "Move the focus in a panel", "Left Right Up Down", NULL },
+  { "Tools", "Choose the focused control", "space Return", NULL },
+  { "Tools", "Press or release at the marker", "space", NULL },
+  { "Tools", "Press with the secondary button at the marker", "<Shift>space", NULL },
+  { "Tools", "Press for a copy of a selection", "<Control>space", NULL },
+  { "Tools", "Press for a smear of a selection", "<Control><Shift>space", NULL },
+  { "Tools", "Move the marker 1 pixel", "Left Right Up Down", NULL },
+  { "Tools", "Move the marker 10 pixels", "<Shift>Left <Shift>Right <Shift>Up <Shift>Down", NULL },
+  { "Tools", "Move the marker alone, with a selection", "<Alt>Left <Alt>Right <Alt>Up <Alt>Down", NULL },
+  { "Tools", "Open the menu at the marker", "Menu <Shift>F10", NULL },
+  { "Tools", "Say the marker's place and color", "F7", NULL },
 
   { "Colors", "Swap foreground and background", "<Control><Shift>x", "win.swap-colors" },
   { "Colors", "Edit the focused swatch", "F2", NULL },
+  { "Colors", "Move among the swatches", "Left Right Up Down", NULL },
+  { "Colors", "Make the focused swatch the foreground color", "space Return", NULL },
+  { "Colors", "Make the focused swatch the background color", "<Shift>space <Shift>Return", NULL },
 
   { "Text", "Bold", "<Control>b", NULL },
   { "Text", "Italic", "<Control>i", NULL },
@@ -70,6 +85,8 @@ static const EaselShortcut shortcuts[] = {
   { "Text", "Paste as Plain Text", "<Control><Shift>v", "win.paste-plain" },
   { "Text", "Select all the box's text", "<Control>a", "win.select-all" },
   { "Text", "Put the box down", "Escape", NULL },
+  { "Text", "Move the box 1 pixel", "<Alt>Left <Alt>Right <Alt>Up <Alt>Down", NULL },
+  { "Text", "Move the box's far corner 1 pixel", "<Alt><Shift>Left <Alt><Shift>Right <Alt><Shift>Up <Alt><Shift>Down", NULL },
 };
 
 static const char *const acknowledgements[] = { "Microsoft Paint in Windows XP", "JS Paint by Isaiah Odhner" };

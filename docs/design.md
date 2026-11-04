@@ -47,7 +47,7 @@ One user-visible edit = exactly one undo step.
 ### Keyboard
 - Numpad +/- changes brush size (Ctrl+numpad +/- zooms); while a text box is open they type + and − into it (Text). Ctrl+G toggles the grid, which shows while a cell is at least 4 device pixels wide (the 1-pixel grid from 400 %, as in XP). Esc drops a pending curve, polygon or gradient, and puts a floating selection down (Selection).
 - Canvas takes keyboard focus; the view must not jump when focus changes.
-- Every pointer operation has a keyboard path (see accessibility feature).
+- Every pointer operation inside the picture has a keyboard path (see accessibility feature); a pointer outside the picture has none, and handles have commands instead.
 
 ### Feedback
 - Cursor shows the tool; status bar shows a one-line hint per tool and the pointer coordinates.

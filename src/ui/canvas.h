@@ -58,6 +58,29 @@ double easel_canvas_get_frame_ms (EaselCanvas *self);
 /* Test hooks: a drawing made slower by this many milliseconds of work; how many frames it has drawn. */
 void easel_canvas_set_draw_delay (EaselCanvas *self, int ms);
 guint easel_canvas_get_frames_drawn (EaselCanvas *self);
+/* The keyboard's marker around one picture pixel (REQ-0022-05). It is unset until placed, and after a reset. */
+void easel_canvas_marker_show (EaselCanvas *self, gboolean shown);
+gboolean easel_canvas_marker_shown (EaselCanvas *self);
+void easel_canvas_marker_get (EaselCanvas *self, int *x, int *y);
+void easel_canvas_marker_set (EaselCanvas *self, int x, int y);
+gboolean easel_canvas_marker_is_set (EaselCanvas *self);
+void easel_canvas_marker_reset (EaselCanvas *self);
+/* A press of the keyboard at the marker (REQ-0022-06, -07): TRUE if something now holds. Shift and Ctrl count for that press. */
+void easel_canvas_key_press (EaselCanvas *self, guint button, gboolean ctrl, gboolean shift);
+void easel_canvas_key_release (EaselCanvas *self);
+/* Moves the marker by (dx, dy) picture pixels, kept inside the picture; while a press is held that is a move of the mouse (REQ-0022-08). */
+void easel_canvas_key_move (EaselCanvas *self, int dx, int dy);
+gboolean easel_canvas_is_key_held (EaselCanvas *self);
+/* What the mouse does during a keyboard press (REQ-0022-10): TRUE if the event ends here. */
+gboolean easel_canvas_key_hold_event (EaselCanvas *self, GdkEventType type, guint button);
+/* The menu a secondary press at the marker opens, at the caret with a box open (REQ-0022-09). */
+void easel_canvas_key_menu (EaselCanvas *self);
+/* An open box moved by (dx, dy), or its far corner, as a drag of one edit (REQ-0022-12). */
+void easel_canvas_text_nudge (EaselCanvas *self, gboolean corner, int dx, int dy);
+/* The color a put-down would write at the marker (REQ-0022-13). */
+uint32_t easel_canvas_marker_color (EaselCanvas *self);
+/* Where the marker's square lies, in the canvas's logical pixels. */
+void easel_canvas_marker_bounds (EaselCanvas *self, double *x0, double *y0, double *x1, double *y1);
 /* A texture of the w x h picture pixels at (x0, y0), which must lie in the picture, as the put-down would write them: the picture, what is pending and an open box's
    letters, with no overlay (REQ-0021-07); NULL with no memory for it. */
 GdkTexture *easel_canvas_compose_view (EaselCanvas *self, int x0, int y0, int w, int h);

@@ -38,3 +38,17 @@ scrolledwindow.workspace > viewport,
   background-color: var(--popover-bg-color);
   color: var(--popover-fg-color);
 }
+
+/* A color square's and a swatch's keyboard stop: the theme's focus ring (REQ-0022-02, -03; JOD's M1). */
+.color-square:focus-visible {
+  outline: 2px solid var(--accent-color);
+  outline-offset: 1px;
+}
+
+/* Swatches touch each other: the ring lies inside the focused one, white around black so that it shows on any color. */
+.palette-swatch:focus-visible {
+  outline: 2px solid white;
+  outline-offset: -2px;
+  box-shadow: inset 0 0 0 3px black;
+}
+

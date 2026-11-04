@@ -41,6 +41,16 @@ struct _EaselWindow
   GtkOverlay *canvas_overlay;
   EaselFontCard *font_card;                     /* over the view while a text box is open (REQ-0017-14) */
   EaselThumbnailCard *thumbnail_card;           /* over the view while Show Thumbnail is checked and it can show (REQ-0021-06, -11) */
+  GString *announced;                           /* a test's log of what was announced, NULL if none */
+  uint32_t said_foreground, said_background;
+  int said_zoom;
+  gboolean said_selection, said_floating, said_box;
+  GtkWidget *header_bar, *toolbox;
+  GtkWidget *last_toolbox, *last_options, *last_palette;   /* the control each panel last had the focus on (REQ-0022-01) */
+  gboolean panel_focus_by_key;                  /* the focus came by Tab, F6 or an arrow: a panel takes its keys from an open box (REQ-0022-04) */
+  gboolean grabbing_by_key;
+  gboolean key_releasing, said_key_held;
+  GtkWidget *text_access;                       /* unseen, while a box is open: its name and text for a screen reader (REQ-0022-14) */
   guint card_idle;
   guint card_focus_idle;
   gint64 tab_time;                              /* when Tab or Shift+Tab was last pressed: keyboard navigation */
@@ -143,6 +153,8 @@ static gboolean dialog_is_open (EaselWindow *self);
 static void show_memory_error (EaselWindow *self, const char *heading, int width, int height);
 static gboolean view_actions_allowed (EaselWindow *self);
 static void scroll_view_as_scroller (EaselWindow *self, GtkEventControllerScroll *controller, double dx, double dy);
+
+static gboolean widget_within (GtkWidget *w, GtkWidget *panel);
 
 static void
 create_picture (EaselWindow *self, int area_width, int area_height)
@@ -345,6 +357,35 @@ card_focus_off (gpointer data)
 static void
 on_focus_widget_changed (EaselWindow *self)
 {
+  {
+    GtkWidget *focus = gtk_root_get_focus (GTK_ROOT (self));
+
+    if (widget_within (focus, self->toolbox))
+      self->last_toolbox = focus;
+    else if (widget_within (focus, GTK_WIDGET (self->tool_options)))
+      self->last_options = focus;
+    else if (widget_within (focus, GTK_WIDGET (self->palette_bar)))
+      self->last_palette = focus;
+    if (!self->grabbing_by_key)
+      self->panel_focus_by_key = FALSE;
+    /* The marker shows when the keyboard brings the focus to the canvas (REQ-0022-05), at the view's top left pixel the first time. */
+    if (focus == GTK_WIDGET (self->canvas) && self->grabbing_by_key && self->picture != NULL)
+      {
+        if (!easel_canvas_marker_is_set (self->canvas))
+          {
+            int zoom = easel_canvas_get_zoom (self->canvas);
+            double scale = easel_canvas_get_scale (self->canvas);
+
+            easel_canvas_marker_set (self->canvas,
+                                     MIN (easel_view_first_cell (gtk_adjustment_get_value (gtk_scrolled_window_get_hadjustment (self->scroller)), EASEL_VIEW_MARGIN, zoom, scale), self->picture->width - 1),
+                                     MIN (easel_view_first_cell (gtk_adjustment_get_value (gtk_scrolled_window_get_vadjustment (self->scroller)), EASEL_VIEW_MARGIN, zoom, scale), self->picture->height - 1));
+          }
+        easel_canvas_marker_show (self->canvas, TRUE);
+      }
+    /* A menu of the canvas holds the focus inside it: the marker stays through it. */
+    else if (!widget_within (focus, GTK_WIDGET (self->canvas)))
+      easel_canvas_marker_show (self->canvas, FALSE);
+  }
   if (focus_stuck_in_card (self) && self->card_focus_idle == 0)
     self->card_focus_idle = g_idle_add (card_focus_off, self);
 }
@@ -468,6 +509,12 @@ easel_window_save_to (EaselWindow *self, const char *path)
   }
   easel_history_mark_saved (self->history);
   update_title (self);
+  {
+    g_autofree char *name = g_path_get_basename (self->path);
+    g_autofree char *text = g_strdup_printf ("Saved %s", name);
+
+    easel_window_announce (self, text);
+  }
   return TRUE;
 }
 
@@ -948,8 +995,16 @@ replace_picture (EaselWindow *self, EaselImage *img, char *path)
   self->history = history;
   g_free (self->path);
   self->path = path;
+  if (path != NULL)
+    {
+      g_autofree char *name = g_path_get_basename (path);
+      g_autofree char *text = g_strdup_printf ("Opened %s", name);
+
+      easel_window_announce (self, text);
+    }
   easel_canvas_set_history (self->canvas, history);
   easel_canvas_set_image (self->canvas, img);
+  easel_canvas_marker_reset (self->canvas);
   easel_canvas_reset_view (self->canvas);
   easel_status_bar_set_size (self->status_bar, TRUE, img->width, img->height);
   sync_zoom_ui (self);
@@ -1280,6 +1335,8 @@ on_visible_dialog_changed (EaselWindow *self)
 }
 
 /* Colors are not edits: no undo step, no modified mark (REQ-0003-09). */
+static void announce_colors (EaselWindow *self);
+
 static void
 set_colors (EaselWindow *self, uint32_t foreground, uint32_t background)
 {
@@ -1287,6 +1344,7 @@ set_colors (EaselWindow *self, uint32_t foreground, uint32_t background)
   self->background = background;
   easel_canvas_set_colors (self->canvas, foreground, background);
   easel_palette_bar_set_colors (self->palette_bar, foreground, background);
+  announce_colors (self);
 }
 
 static void open_chooser (EaselWindow *self, int target, uint32_t color);
@@ -2031,6 +2089,13 @@ static void
 on_zoom_changed (EaselWindow *self, int pct)
 {
   sync_zoom_ui (self);
+  if (pct != self->said_zoom)
+    {
+      g_autofree char *text = g_strdup_printf ("%d %%", pct);
+
+      easel_window_announce (self, text);
+    }
+  self->said_zoom = pct;
 }
 
 /* The View menu's first item: Zoom Out, the zoom as N%, Zoom In. */
@@ -2229,7 +2294,18 @@ static void
 on_canvas_painted (EaselWindow *self)
 {
   gint64 now = g_get_monotonic_time ();
+  EaselTextBuffer *text = easel_canvas_text_buffer (self->canvas);
 
+  /* A frame follows every change of the box: its text for a screen reader goes with it. */
+  gtk_widget_set_visible (self->text_access, text != NULL);
+  if (text != NULL)
+    {
+      size_t len;
+      const char *utf8 = easel_text_buffer_text (text, &len);
+      g_autofree char *value = g_strndup (utf8, len);
+
+      gtk_accessible_update_property (GTK_ACCESSIBLE (self->text_access), GTK_ACCESSIBLE_PROPERTY_VALUE_TEXT, value, -1);
+    }
   if (!self->settings.frame_time || self->frame_time_timer != 0)
     return;
   if (easel_frame_time_due (now, self->frame_time_shown))
@@ -2257,6 +2333,510 @@ preferences_activated (GSimpleAction *action, GVariant *parameter, gpointer user
   /* Opening it changes nothing: what waits stays (REQ-0020-01). */
   if (view_actions_allowed (self) && !easel_canvas_is_panning (self->canvas) && card_field_focus (self) == NULL)
     easel_preferences_dialog_present (self);
+}
+
+/* ---- Panels and their keys (0022) ---- */
+
+static gboolean
+widget_within (GtkWidget *w, GtkWidget *panel)
+{
+  return w != NULL && (w == panel || gtk_widget_is_ancestor (w, panel));
+}
+
+static gboolean
+widget_can_take_focus (GtkWidget *w)
+{
+  return w != NULL && gtk_widget_get_mapped (w) && gtk_widget_get_sensitive (w) && gtk_widget_get_focusable (w);
+}
+
+/* The focusable controls under w, leaves first: a menu button's own toggle, not the menu button. */
+static void
+collect_focusable (GtkWidget *w, GPtrArray *out)
+{
+  guint before = out->len;
+
+  /* The title buttons take no focus (the desktop has their keys). */
+  if (!gtk_widget_get_mapped (w) || GTK_IS_WINDOW_CONTROLS (w))
+    return;
+  for (GtkWidget *c = gtk_widget_get_first_child (w); c != NULL; c = gtk_widget_get_next_sibling (c))
+    collect_focusable (c, out);
+  if (out->len == before && widget_can_take_focus (w))
+    g_ptr_array_add (out, w);
+}
+
+/* The first focus of a panel: its chosen toggle, else its first control. */
+static GtkWidget *
+panel_first (GtkWidget *panel)
+{
+  g_autoptr (GPtrArray) all = g_ptr_array_new ();
+
+  collect_focusable (panel, all);
+  for (guint i = 0; i < all->len; i++)
+    if (GTK_IS_TOGGLE_BUTTON (all->pdata[i]) && gtk_toggle_button_get_active (all->pdata[i]))
+      return all->pdata[i];
+  return all->len > 0 ? all->pdata[0] : NULL;
+}
+
+/* Where a panel's focus goes (REQ-0022-01): what it last had while that is still there. */
+static GtkWidget *
+panel_target (GtkWidget *panel, GtkWidget *last)
+{
+  return widget_can_take_focus (last) && widget_within (last, panel) ? last : panel_first (panel);
+}
+
+static GtkWidget *
+palette_swatch_target (EaselWindow *self)
+{
+  GtkWidget *last = self->last_palette;
+
+  return widget_can_take_focus (last) && EASEL_IS_SWATCH (last) ? last : GTK_WIDGET (easel_palette_bar_get_swatch (self->palette_bar, 1));
+}
+
+/* One stop each of Tab and Shift+Tab, in order (REQ-0022-01). */
+static GPtrArray *
+panel_stops (EaselWindow *self)
+{
+  GPtrArray *stops = g_ptr_array_new ();
+  GtkWidget *w;
+
+  collect_focusable (self->header_bar, stops);
+  if ((w = panel_target (self->toolbox, self->last_toolbox)) != NULL)
+    g_ptr_array_add (stops, w);
+  if ((w = panel_target (GTK_WIDGET (self->tool_options), self->last_options)) != NULL)
+    g_ptr_array_add (stops, w);
+  if (widget_can_take_focus (GTK_WIDGET (self->canvas)))
+    g_ptr_array_add (stops, self->canvas);
+  if (gtk_widget_get_mapped (GTK_WIDGET (self->palette_bar)))
+    {
+      g_ptr_array_add (stops, easel_palette_bar_get_square (self->palette_bar, TRUE));
+      g_ptr_array_add (stops, easel_palette_bar_get_square (self->palette_bar, FALSE));
+      g_ptr_array_add (stops, easel_palette_bar_get_swap (self->palette_bar));
+      g_ptr_array_add (stops, palette_swatch_target (self));
+    }
+  return stops;
+}
+
+/* One stop each of F6 and Shift+F6. */
+static GPtrArray *
+panel_groups (EaselWindow *self)
+{
+  GPtrArray *groups = g_ptr_array_new ();
+  GtkWidget *w;
+
+  if ((w = panel_first (self->header_bar)) != NULL)
+    g_ptr_array_add (groups, w);
+  if ((w = panel_target (self->toolbox, self->last_toolbox)) != NULL)
+    g_ptr_array_add (groups, w);
+  if ((w = panel_target (GTK_WIDGET (self->tool_options), self->last_options)) != NULL)
+    g_ptr_array_add (groups, w);
+  if (widget_can_take_focus (GTK_WIDGET (self->canvas)))
+    g_ptr_array_add (groups, self->canvas);
+  if (gtk_widget_get_mapped (GTK_WIDGET (self->palette_bar)))
+    g_ptr_array_add (groups, widget_can_take_focus (self->last_palette) ? self->last_palette : palette_swatch_target (self));
+  return groups;
+}
+
+static void
+grab_by_key (EaselWindow *self, GtkWidget *w)
+{
+  self->grabbing_by_key = TRUE;
+  gtk_widget_grab_focus (w);
+  self->grabbing_by_key = FALSE;
+  self->panel_focus_by_key = TRUE;
+  gtk_window_set_focus_visible (GTK_WINDOW (self), TRUE);
+}
+
+/* The panel that holds w. */
+static GtkWidget *
+panel_of (EaselWindow *self, GtkWidget *w)
+{
+  GtkWidget *panels[] = { self->header_bar, self->toolbox, GTK_WIDGET (self->tool_options), GTK_WIDGET (self->canvas), GTK_WIDGET (self->palette_bar) };
+
+  for (guint i = 0; i < G_N_ELEMENTS (panels); i++)
+    if (widget_within (w, panels[i]))
+      return panels[i];
+  return NULL;
+}
+
+/* The next stop from the focus, forward or back; with the focus nowhere, the first or the last. */
+static void
+walk_stops (EaselWindow *self, GPtrArray *stops, gboolean by_panel, gboolean back)
+{
+  GtkWidget *focus = gtk_root_get_focus (GTK_ROOT (self));
+  GtkWidget *panel = panel_of (self, focus);
+  int at = -1, n = (int) stops->len;
+
+  for (int i = 0; i < n && at < 0; i++)
+    if (stops->pdata[i] == focus || (by_panel && panel != NULL && panel_of (self, stops->pdata[i]) == panel))
+      at = i;
+  if (n == 0)
+    return;
+  /* A focus between stops (in a panel, on another control of it) counts as its panel's stop. */
+  if (at < 0 && panel != NULL)
+    for (int i = 0; i < n && at < 0; i++)
+      if (panel_of (self, stops->pdata[i]) == panel)
+        at = i;
+  grab_by_key (self, stops->pdata[at < 0 ? (back ? n - 1 : 0) : (at + (back ? n - 1 : 1)) % n]);
+}
+
+/* The nearest control of panel in that direction, by their bounds; none at the ends (REQ-0022-02, -03). */
+static GtkWidget *
+panel_neighbor (EaselWindow *self, GtkWidget *panel, GtkWidget *focus, int dx, int dy)
+{
+  g_autoptr (GPtrArray) all = g_ptr_array_new ();
+  graphene_rect_t from;
+  GtkWidget *best = NULL;
+  double best_distance = G_MAXDOUBLE;
+
+  if (!gtk_widget_compute_bounds (focus, panel, &from))
+    return NULL;
+  collect_focusable (panel, all);
+  for (guint i = 0; i < all->len; i++)
+    {
+      GtkWidget *w = all->pdata[i];
+      graphene_rect_t r;
+      double along, overlap;
+
+      /* In the palette the arrows are the swatches' (the squares and the swap button are stops of their own). */
+      if (w == focus || (panel == GTK_WIDGET (self->palette_bar) && !EASEL_IS_SWATCH (w)) || !gtk_widget_compute_bounds (w, panel, &r))
+        continue;
+      if (dx != 0)
+        {
+          along = dx > 0 ? r.origin.x - (from.origin.x + from.size.width) : from.origin.x - (r.origin.x + r.size.width);
+          overlap = MIN (r.origin.y + r.size.height, from.origin.y + from.size.height) - MAX (r.origin.y, from.origin.y);
+        }
+      else
+        {
+          along = dy > 0 ? r.origin.y - (from.origin.y + from.size.height) : from.origin.y - (r.origin.y + r.size.height);
+          overlap = MIN (r.origin.x + r.size.width, from.origin.x + from.size.width) - MAX (r.origin.x, from.origin.x);
+        }
+      if (along >= -0.5 && overlap > 0 && along < best_distance)
+        {
+          best = w;
+          best_distance = along;
+        }
+    }
+  return best;
+}
+
+/* The keys of the panels: TRUE if taken (REQ-0022-01 to -04). */
+static gboolean
+panel_key (EaselWindow *self, guint keyval, GdkModifierType state, gboolean repeat, gboolean *handled)
+{
+  GtkWidget *focus = gtk_root_get_focus (GTK_ROOT (self));
+  gboolean shift = (state & GDK_SHIFT_MASK) != 0;
+  gboolean plain = (state & (GDK_CONTROL_MASK | GDK_ALT_MASK)) == 0;
+  gboolean held = easel_canvas_is_stroking (self->canvas) || easel_canvas_is_resizing (self->canvas) || easel_canvas_is_panning (self->canvas)
+                  || easel_canvas_is_waiting_for_release (self->canvas);
+  gboolean box = easel_canvas_text_buffer (self->canvas) != NULL;
+  GtkWidget *panel = panel_of (self, focus);
+  int dx = 0, dy = 0;
+
+  if (!plain || dialog_is_open (self))
+    return FALSE;
+  if (keyval == GDK_KEY_Tab || keyval == GDK_KEY_ISO_Left_Tab || keyval == GDK_KEY_KP_Tab || keyval == GDK_KEY_F6)
+    {
+      *handled = TRUE;
+      if (!held)
+        {
+          g_autoptr (GPtrArray) stops = keyval == GDK_KEY_F6 ? panel_groups (self) : panel_stops (self);
+
+          walk_stops (self, stops, keyval == GDK_KEY_F6, shift);
+        }
+      return TRUE;
+    }
+  /* A click on a control with a box open leaves the keys with the box (REQ-0017-06). */
+  if (panel == NULL || panel == self->header_bar || panel == GTK_WIDGET (self->canvas) || (box && !self->panel_focus_by_key))
+    return FALSE;
+  switch (keyval)
+    {
+    case GDK_KEY_Left: case GDK_KEY_KP_Left: dx = -1; break;
+    case GDK_KEY_Right: case GDK_KEY_KP_Right: dx = 1; break;
+    case GDK_KEY_Up: case GDK_KEY_KP_Up: dy = -1; break;
+    case GDK_KEY_Down: case GDK_KEY_KP_Down: dy = 1; break;
+    default: break;
+    }
+  if (dx != 0 || dy != 0)
+    {
+      GtkWidget *next = panel_neighbor (self, panel, focus, dx, dy);
+
+      *handled = TRUE;
+      if (next != NULL)
+        grab_by_key (self, next);
+      return TRUE;
+    }
+  if (keyval == GDK_KEY_space || keyval == GDK_KEY_KP_Space || keyval == GDK_KEY_Return || keyval == GDK_KEY_KP_Enter)
+    {
+      gboolean enter = keyval == GDK_KEY_Return || keyval == GDK_KEY_KP_Enter;
+      int w, h;
+
+      /* Enter acts on what waits for it (REQ-0011-12, REQ-0013-11). */
+      if (enter && (easel_canvas_is_pending (self->canvas) || easel_canvas_get_selection_size (self->canvas, &w, &h)))
+        return FALSE;
+      /* A held key chooses once: a repeat would swap the colors back and forth. */
+      if (repeat)
+        {
+          *handled = TRUE;
+          return TRUE;
+        }
+      if (EASEL_IS_SWATCH (focus))
+        easel_palette_bar_press (self->palette_bar, easel_swatch_get_number (EASEL_SWATCH (focus)), shift ? GDK_BUTTON_SECONDARY : GDK_BUTTON_PRIMARY, 1);
+      else if (focus == easel_palette_bar_get_square (self->palette_bar, TRUE) || focus == easel_palette_bar_get_square (self->palette_bar, FALSE))
+        easel_palette_bar_press_indicator (self->palette_bar, focus == easel_palette_bar_get_square (self->palette_bar, TRUE));
+      else if (GTK_IS_BUTTON (focus))
+        g_signal_emit_by_name (focus, "clicked");
+      else
+        return FALSE;
+      *handled = TRUE;
+      return TRUE;
+    }
+  return FALSE;
+}
+
+/* ---- The keyboard pointer (0022) ---- */
+
+/* A keyboard press's hint and its announcements, as it starts and ends (REQ-0022-11, -15). */
+static void
+sync_key_hold (EaselWindow *self)
+{
+  gboolean held = easel_canvas_is_key_held (self->canvas);
+
+  if (held == self->said_key_held)
+    return;
+  self->said_key_held = held;
+  easel_status_bar_set_hint (self->status_bar, held ? "Space to finish, Esc to cancel"
+                                                    : tool_hint (self->tool, easel_tool_options_get_transparent (self->tool_options)));
+  easel_window_announce (self, held ? "Drawing" : self->key_releasing ? "Done" : "Cancelled");
+}
+
+/* The view scrolls by the least to show the marker's square; a square wider than the view shows its start (REQ-0022-06, -08). */
+static void
+marker_into_view (EaselWindow *self)
+{
+  GtkAdjustment *h = gtk_scrolled_window_get_hadjustment (self->scroller), *v = gtk_scrolled_window_get_vadjustment (self->scroller);
+  double x0, y0, x1, y1;
+
+  easel_canvas_marker_bounds (self->canvas, &x0, &y0, &x1, &y1);
+  if (gtk_adjustment_get_value (h) < x1 + EASEL_VIEW_MARGIN - gtk_adjustment_get_page_size (h))
+    gtk_adjustment_set_value (h, x1 + EASEL_VIEW_MARGIN - gtk_adjustment_get_page_size (h));
+  if (gtk_adjustment_get_value (h) > x0 + EASEL_VIEW_MARGIN)
+    gtk_adjustment_set_value (h, x0 + EASEL_VIEW_MARGIN);
+  if (gtk_adjustment_get_value (v) < y1 + EASEL_VIEW_MARGIN - gtk_adjustment_get_page_size (v))
+    gtk_adjustment_set_value (v, y1 + EASEL_VIEW_MARGIN - gtk_adjustment_get_page_size (v));
+  if (gtk_adjustment_get_value (v) > y0 + EASEL_VIEW_MARGIN)
+    gtk_adjustment_set_value (v, y0 + EASEL_VIEW_MARGIN);
+}
+
+/* The keys of the keyboard pointer, with the focus on the canvas: TRUE if taken (REQ-0022-06, -08). */
+static gboolean
+pointer_key (EaselWindow *self, guint keyval, GdkModifierType state, gboolean repeat)
+{
+  gboolean shift = (state & GDK_SHIFT_MASK) != 0, ctrl = (state & GDK_CONTROL_MASK) != 0, alt = (state & GDK_ALT_MASK) != 0;
+  gboolean held, mouse_held, box;
+  int dx = 0, dy = 0, w, h, step;
+
+  if (gtk_root_get_focus (GTK_ROOT (self)) != GTK_WIDGET (self->canvas) || dialog_is_open (self) || self->picture == NULL)
+    return FALSE;
+  /* F7 says the marker's place and color (REQ-0022-13). */
+  if (keyval == GDK_KEY_F7)
+    {
+      if (!repeat)
+        {
+          easel_canvas_marker_show (self->canvas, TRUE);
+          int x, y;
+          uint32_t c = easel_canvas_marker_color (self->canvas);
+          g_autofree char *text = NULL;
+
+          easel_canvas_marker_get (self->canvas, &x, &y);
+          text = g_strdup_printf ("%d, %d: #%06X%02X", x, y, (unsigned) (c & 0xFFFFFF), (unsigned) (c >> 24));
+          easel_window_announce (self, text);
+        }
+      return TRUE;
+    }
+  held = easel_canvas_is_key_held (self->canvas);
+  /* Esc cancels a keyboard press with any tool: the keyboard has no other button (REQ-0022-10). */
+  if (keyval == GDK_KEY_Escape && held)
+    {
+      easel_canvas_key_hold_event (self->canvas, GDK_BUTTON_PRESS, GDK_BUTTON_PRIMARY);
+      sync_key_hold (self);
+      return TRUE;
+    }
+  mouse_held = !held && (easel_canvas_is_stroking (self->canvas) || easel_canvas_is_resizing (self->canvas) || easel_canvas_is_panning (self->canvas));
+  if (keyval == GDK_KEY_Menu || (keyval == GDK_KEY_F10 && shift && !ctrl && !alt))
+    {
+      if (!held && !mouse_held)
+        {
+          easel_canvas_marker_show (self->canvas, TRUE);
+          marker_into_view (self);
+          easel_canvas_key_menu (self->canvas);
+        }
+      return TRUE;
+    }
+  box = easel_canvas_text_buffer (self->canvas) != NULL;
+  /* Alt with an arrow moves an open box, Alt+Shift its far corner (REQ-0022-12); else a box takes its keys (REQ-0017-06). */
+  if (box && !held && !(alt && !ctrl && (keyval == GDK_KEY_Left || keyval == GDK_KEY_Right || keyval == GDK_KEY_Up || keyval == GDK_KEY_Down)))
+    return FALSE;
+  if (box && !held)
+    {
+      easel_canvas_text_nudge (self->canvas, shift, keyval == GDK_KEY_Left ? -1 : keyval == GDK_KEY_Right ? 1 : 0, keyval == GDK_KEY_Up ? -1 : keyval == GDK_KEY_Down ? 1 : 0);
+      return TRUE;
+    }
+  if ((keyval == GDK_KEY_space || keyval == GDK_KEY_KP_Space) && !alt)
+    {
+      if (repeat || mouse_held)
+        return TRUE;
+      easel_canvas_marker_show (self->canvas, TRUE);
+      if (held)
+        {
+          /* Any Space releases what is held, with the Shift really held counting (REQ-0022-06). */
+          easel_canvas_set_shift (self->canvas, shift);
+          easel_canvas_set_ctrl (self->canvas, ctrl);
+          self->key_releasing = TRUE;
+          easel_canvas_key_release (self->canvas);
+          sync_key_hold (self);
+          self->key_releasing = FALSE;
+          return TRUE;
+        }
+      marker_into_view (self);
+      easel_canvas_key_press (self->canvas, shift && !ctrl ? GDK_BUTTON_SECONDARY : GDK_BUTTON_PRIMARY, ctrl && !shift, ctrl && shift);
+      sync_key_hold (self);
+      return TRUE;
+    }
+  switch (keyval)
+    {
+    case GDK_KEY_Left: case GDK_KEY_KP_Left: dx = -1; break;
+    case GDK_KEY_Right: case GDK_KEY_KP_Right: dx = 1; break;
+    case GDK_KEY_Up: case GDK_KEY_KP_Up: dy = -1; break;
+    case GDK_KEY_Down: case GDK_KEY_KP_Down: dy = 1; break;
+    default: return FALSE;
+    }
+  if (ctrl || mouse_held)
+    return mouse_held;
+  step = shift ? 10 : 1;
+  easel_canvas_marker_show (self->canvas, TRUE);
+  if (held)
+    easel_canvas_set_shift (self->canvas, shift);
+  /* With a selection and nothing held, an arrow moves it and the marker goes along; Alt moves the marker alone (REQ-0022-08). */
+  if (!held && !alt && easel_canvas_get_selection_size (self->canvas, &w, &h))
+    easel_canvas_move_selection (self->canvas, dx * step, dy * step);
+  else if (alt && !easel_canvas_get_selection_size (self->canvas, &w, &h))
+    return FALSE;
+  easel_canvas_key_move (self->canvas, dx * step, dy * step);
+  marker_into_view (self);
+  return TRUE;
+}
+
+/* ---- Announcements (0022) ---- */
+
+/* Nothing while the app is starting: what it starts with is not news. */
+void
+easel_window_announce (EaselWindow *self, const char *text)
+{
+  if (self->picture == NULL)
+    return;
+  /* GTK's test backend, which reads names for the tests, crashes on an announcement (GTK 4.24). */
+  if (g_strcmp0 (g_getenv ("GTK_A11Y"), "test") != 0)
+    gtk_accessible_announce (GTK_ACCESSIBLE (self), text, GTK_ACCESSIBLE_ANNOUNCEMENT_PRIORITY_MEDIUM);
+  if (self->announced != NULL)
+    g_string_append_printf (self->announced, "%s%s", self->announced->len > 0 ? "|" : "", text);
+}
+
+void
+easel_window_log_announcements (EaselWindow *self, gboolean on)
+{
+  if (self->announced != NULL)
+    g_string_free (self->announced, TRUE);
+  self->announced = on ? g_string_new (NULL) : NULL;
+}
+
+char *
+easel_window_take_announcements (EaselWindow *self)
+{
+  char *said = g_strdup (self->announced->str);
+
+  g_string_truncate (self->announced, 0);
+  return said;
+}
+
+static void
+announce_color (EaselWindow *self, const char *which, uint32_t c)
+{
+  g_autofree char *text = (c >> 24) == 0xFF ? g_strdup_printf ("%s #%06X", which, (unsigned) (c & 0xFFFFFF))
+                                            : g_strdup_printf ("%s #%06X%02X", which, (unsigned) (c & 0xFFFFFF), (unsigned) (c >> 24));
+
+  easel_window_announce (self, text);
+}
+
+/* The colors, unless a pick is going on: that says its color at the release (REQ-0022-15). */
+static void
+announce_colors (EaselWindow *self)
+{
+  if (self->tool == EASEL_TOOL_PICK && easel_canvas_is_stroking (self->canvas))
+    return;
+  if (self->foreground != self->said_foreground)
+    announce_color (self, "Foreground", self->foreground);
+  if (self->background != self->said_background)
+    announce_color (self, "Background", self->background);
+  self->said_foreground = self->foreground;
+  self->said_background = self->background;
+}
+
+static void
+announce_selection (EaselWindow *self)
+{
+  int x, y, w = 0, h = 0;
+  gboolean floating = FALSE, box = easel_canvas_text_buffer (self->canvas) != NULL;
+  gboolean exists = !box && !easel_canvas_is_stroking (self->canvas) && easel_canvas_get_selection (self->canvas, &x, &y, &w, &h, &floating);
+
+  if (box != self->said_box)
+    easel_window_announce (self, box ? "Text box open" : "Text box closed");
+  self->said_box = box;
+  if (easel_canvas_is_stroking (self->canvas))
+    return;
+  if (exists && !self->said_selection)
+    {
+      g_autofree char *text = g_strdup_printf ("Selection %d by %d", w, h);
+
+      easel_window_announce (self, text);
+    }
+  else if (!exists && self->said_selection)
+    easel_window_announce (self, self->said_floating ? "Selection put down" : "Selection removed");
+  self->said_selection = exists;
+  self->said_floating = exists && floating;
+}
+
+static void
+on_polygon_closed (EaselWindow *self)
+{
+  easel_window_announce (self, "Polygon closed");
+}
+
+static const char *
+tool_title (EaselTool tool)
+{
+  static const char *const titles[] = {
+    [EASEL_TOOL_PAN] = "Pan", [EASEL_TOOL_PENCIL] = "Pencil", [EASEL_TOOL_BRUSH] = "Brush", [EASEL_TOOL_AIRBRUSH] = "Airbrush", [EASEL_TOOL_ERASER] = "Eraser",
+    [EASEL_TOOL_MAGNIFIER] = "Magnifier", [EASEL_TOOL_PICK] = "Pick Color", [EASEL_TOOL_FILL] = "Fill", [EASEL_TOOL_LINE] = "Line", [EASEL_TOOL_RECTANGLE] = "Rectangle",
+    [EASEL_TOOL_ROUNDED_RECTANGLE] = "Rounded Rectangle", [EASEL_TOOL_ELLIPSE] = "Ellipse", [EASEL_TOOL_CURVE] = "Curve", [EASEL_TOOL_POLYGON] = "Polygon",
+    [EASEL_TOOL_GRADIENT] = "Gradient", [EASEL_TOOL_SELECT] = "Select", [EASEL_TOOL_FREE_SELECT] = "Free-Form Select", [EASEL_TOOL_TEXT] = "Text",
+  };
+
+  return titles[tool];
+}
+
+/* A button with no words of its own is named by its tooltip (REQ-0022-14). */
+static void
+name_by_tooltip (GtkWidget *w)
+{
+  if (GTK_IS_BUTTON (w) || GTK_IS_MENU_BUTTON (w))
+    {
+      const char *tip = gtk_widget_get_tooltip_text (w);
+
+      if (tip != NULL)
+        gtk_accessible_update_property (GTK_ACCESSIBLE (w), GTK_ACCESSIBLE_PROPERTY_LABEL, tip, -1);
+    }
+  for (GtkWidget *c = gtk_widget_get_first_child (w); c != NULL; c = gtk_widget_get_next_sibling (c))
+    name_by_tooltip (c);
 }
 
 /* ---- Keyboard Shortcuts, Help, About Easel (0021) ---- */
@@ -2826,7 +3406,10 @@ step_history (EaselWindow *self, gboolean undo)
   /* An open text box: Undo and Redo act on its edits, not on the picture's steps (REQ-0017-08); the box's change syncs the
      actions through selection-changed. */
   if (easel_canvas_text_step (self->canvas, undo))
-    return;
+    {
+      easel_window_announce (self, undo ? "Undone" : "Redone");
+      return;
+    }
   old_w = self->picture->width;
   old_h = self->picture->height;
   if (!(undo ? easel_history_undo (self->history, self->picture) : easel_history_redo (self->history, self->picture)))
@@ -2838,6 +3421,7 @@ step_history (EaselWindow *self, gboolean undo)
         show_resize_error (self, w, h);
       return;
     }
+  easel_window_announce (self, undo ? "Undone" : "Redone");
   easel_canvas_deselect (self->canvas);           /* Undo or Redo removes a marked selection (REQ-0013-12) */
   if (self->picture->width != old_w || self->picture->height != old_h)
     picture_size_changed (self);
@@ -2984,7 +3568,7 @@ key_is_shortcuts (EaselWindow *self, guint keyval, guint keycode, GdkModifierTyp
 static gboolean
 on_key_pressed (EaselWindow *self, guint keyval, guint keycode, GdkModifierType state, GtkEventControllerKey *controller)
 {
-  gboolean repeat;
+  gboolean repeat, panel_handled = FALSE;
 
   keyval = shortcut_keyval (self, keyval, keycode, state);
   repeat = keyval == self->key_down;
@@ -3004,6 +3588,10 @@ on_key_pressed (EaselWindow *self, guint keyval, guint keycode, GdkModifierType 
   if (gtk_root_get_focus (GTK_ROOT (self)) != NULL
       && gtk_widget_is_ancestor (gtk_root_get_focus (GTK_ROOT (self)), GTK_WIDGET (self->font_card)))
     return GDK_EVENT_PROPAGATE;                 /* the card's fields and its family list take their own keys (REQ-0017-14) */
+  if (panel_key (self, keyval, state, repeat, &panel_handled) && panel_handled)
+    return GDK_EVENT_STOP;
+  if (pointer_key (self, keyval, state, repeat))
+    return GDK_EVENT_STOP;
   /* Ctrl+P by the place of its key on a layout that is not Latin, ahead of an open box; its repeat does nothing (REQ-0026-01). */
   if ((keyval == GDK_KEY_p || keyval == GDK_KEY_P) && (state & (GDK_CONTROL_MASK | GDK_SHIFT_MASK | GDK_ALT_MASK)) == GDK_CONTROL_MASK)
     {
@@ -3148,6 +3736,7 @@ on_color_picked (EaselWindow *self, guint button, guint color)
 static void
 on_pick_ended (EaselWindow *self, gboolean cancelled)
 {
+  announce_colors (self);
   self->pick_running = FALSE;
   if (cancelled)
     set_colors (self, self->pick_old_foreground, self->pick_old_background);
@@ -3338,6 +3927,7 @@ on_selection_changed (EaselWindow *self)
   GAction *clear = g_action_map_lookup_action (G_ACTION_MAP (self), "clear-selection");
 
   easel_status_bar_set_selection (self->status_bar, exists, w, h);
+  announce_selection (self);
   sync_history_ui (self);                          /* a text box opened, edited or closed (REQ-0017-08) */
   update_card (self);
   if (clear != NULL)
@@ -3378,6 +3968,7 @@ clear_selection_activated (GSimpleAction *action, GVariant *parameter, gpointer 
 static void
 on_stroking_changed (EaselWindow *self, gboolean stroking)
 {
+  sync_key_hold (self);
   easel_tool_options_set_busy (self->tool_options, stroking);
   update_clipboard_actions (self);
 }
@@ -4008,6 +4599,8 @@ change_tool_state (GSimpleAction *action, GVariant *value, gpointer user_data)
     return;                                     /* a text box that could not be put down: Text stays the tool (REQ-0017-18) */
   if (tool == EASEL_TOOL_PICK && self->tool != EASEL_TOOL_PICK)
     self->pick_return_tool = self->tool;
+  if (tool != self->tool)
+    easel_window_announce (self, tool_title (tool));
   self->tool = tool;
   easel_canvas_set_tool (self->canvas, tool);
   easel_status_bar_set_hint (self->status_bar, tool_hint (tool, easel_tool_options_get_transparent (self->tool_options)));
@@ -4148,6 +4741,12 @@ easel_window_get_modified (EaselWindow *self)
 }
 
 GtkWidget *
+easel_window_get_text_access (EaselWindow *self)
+{
+  return self->text_access;
+}
+
+GtkWidget *
 easel_window_get_thumbnail_card (EaselWindow *self)
 {
   return GTK_WIDGET (self->thumbnail_card);
@@ -4244,6 +4843,8 @@ easel_window_finalize (GObject *object)
   g_free (self->path);
   easel_page_setup_clear (&self->page_setup);
   g_free (self->print_export);
+  if (self->announced != NULL)
+    g_string_free (self->announced, TRUE);
   g_clear_object (&self->print_settings);
   G_OBJECT_CLASS (easel_window_parent_class)->finalize (object);
 }
@@ -4310,6 +4911,9 @@ easel_window_class_init (EaselWindowClass *klass)
   gtk_widget_class_bind_template_child (widget_class, EaselWindow, canvas_overlay);
   gtk_widget_class_bind_template_child (widget_class, EaselWindow, font_card);
   gtk_widget_class_bind_template_child (widget_class, EaselWindow, thumbnail_card);
+  gtk_widget_class_bind_template_child (widget_class, EaselWindow, text_access);
+  gtk_widget_class_bind_template_child (widget_class, EaselWindow, header_bar);
+  gtk_widget_class_bind_template_child (widget_class, EaselWindow, toolbox);
   gtk_widget_class_bind_template_child (widget_class, EaselWindow, canvas);
   gtk_widget_class_bind_template_child (widget_class, EaselWindow, palette_bar);
   gtk_widget_class_bind_template_child (widget_class, EaselWindow, status_bar);
@@ -4413,6 +5017,10 @@ easel_window_init (EaselWindow *self)
   g_signal_connect_object (self->canvas, "resize-requested", G_CALLBACK (on_resize_requested), self, G_CONNECT_SWAPPED);
   g_signal_connect_swapped (self, "notify::visible-dialog", G_CALLBACK (on_visible_dialog_changed), self);
   self->help_launch = launch_in_browser;
+  gtk_widget_set_focusable (GTK_WIDGET (self->canvas), TRUE);
+  /* The view must not jump when the focus reaches the canvas (docs/design.md). */
+  gtk_viewport_set_scroll_to_focus (GTK_VIEWPORT (gtk_widget_get_parent (GTK_WIDGET (self->canvas))), FALSE);
+  name_by_tooltip (GTK_WIDGET (self));
   self->print_run = run_print;
   self->print_copy_limit = G_MAXSIZE;
   easel_page_setup_init (&self->page_setup);
@@ -4435,6 +5043,7 @@ easel_window_init (EaselWindow *self)
   g_signal_connect_object (self->canvas, "shape-failed", G_CALLBACK (on_shape_failed), self, G_CONNECT_SWAPPED);
   g_signal_connect_object (self->canvas, "gradient-failed", G_CALLBACK (on_gradient_failed), self, G_CONNECT_SWAPPED);
   g_signal_connect_object (self->canvas, "selection-changed", G_CALLBACK (on_selection_changed), self, G_CONNECT_SWAPPED);
+  g_signal_connect_object (self->canvas, "polygon-closed", G_CALLBACK (on_polygon_closed), self, G_CONNECT_SWAPPED);
   g_signal_connect_object (self->canvas, "context-menu", G_CALLBACK (on_context_menu), self, G_CONNECT_SWAPPED);
   g_signal_connect_object (self->canvas, "selection-failed", G_CALLBACK (on_selection_failed), self, G_CONNECT_SWAPPED);
   g_signal_connect_object (self->canvas, "text-failed", G_CALLBACK (on_text_failed), self, G_CONNECT_SWAPPED);

@@ -61,6 +61,10 @@ struct _EaselCanvas
   int tint;                                /* the strength of the selection's tint in percent (REQ-0020-03) */
   double frame_ms;                         /* the CPU time of the last frame's build (REQ-0021-12) */
   guint frames_drawn, painted_idle;
+  gboolean marker_on, marker_placed;
+  gboolean key_pressing;   /* a keyboard press is being entered, or moved: it takes no handle (REQ-0022-07) */
+  guint key_button;        /* the button a keyboard press holds */
+  int marker_x, marker_y;
   int draw_delay_ms;                       /* test hook, see easel_canvas_set_draw_delay () */
   gboolean no_sel_handles;                 /* test hook, see easel_canvas_set_selection_handles_shown () */
   gboolean line_unmerged;                  /* test hook, see easel_canvas_set_line_merge () */
@@ -240,6 +244,7 @@ enum
   SIGNAL_SHAPE_FAILED,
   SIGNAL_GRADIENT_FAILED,
   SIGNAL_SELECTION_CHANGED,
+  SIGNAL_POLYGON_CLOSED,
   SIGNAL_CONTEXT_MENU,
   SIGNAL_CANVAS_MENU,
   SIGNAL_PAINTED,
@@ -362,6 +367,14 @@ easel_canvas_set_image (EaselCanvas *self, EaselImage *img)
 {
   EaselRect ignored;
 
+  if (img != NULL)
+    {
+      g_autofree char *name = g_strdup_printf ("Picture, %d by %d pixels", img->width, img->height);
+
+      gtk_accessible_update_property (GTK_ACCESSIBLE (self), GTK_ACCESSIBLE_PROPERTY_LABEL, name, -1);
+      self->marker_x = MIN (self->marker_x, img->width - 1);
+      self->marker_y = MIN (self->marker_y, img->height - 1);
+    }
   free_tiles (self);
   self->img = img;
   self->resizing = EASEL_HANDLE_NONE;
@@ -434,6 +447,8 @@ easel_canvas_get_handle_rect (EaselCanvas *self, EaselHandle handle, graphene_re
 EaselHandle
 easel_canvas_handle_at (EaselCanvas *self, double x, double y)
 {
+  if (self->key_pressing)
+    return EASEL_HANDLE_NONE;                   /* a keyboard press acts on the pixel only (REQ-0022-07) */
   /* The corner first: where hit areas overlap it wins. */
   static const EaselHandle order[] = { EASEL_HANDLE_CORNER, EASEL_HANDLE_RIGHT, EASEL_HANDLE_BOTTOM };
 
@@ -486,6 +501,8 @@ easel_canvas_get_guides_hidden (EaselCanvas *self)
 static gboolean
 marker_hit (EaselCanvas *self, double x, double y)
 {
+  if (self->key_pressing)
+    return FALSE;
   for (int end = 0; end <= 1; end++)
     {
       graphene_rect_t r;
@@ -506,6 +523,16 @@ marker_at (EaselCanvas *self, double x, double y)
   int best = -1;
   double best_d = 0;
 
+  /* A keyboard press takes a gradient's marker on that marker's own pixel, and no other (REQ-0022-07). */
+  if (self->key_pressing)
+    {
+      if (!self->pending || !self->pend_gradient)
+        return -1;
+      for (int end = 1; end >= 0; end--)
+        if (self->pend_pts[2 * end] == self->marker_x && self->pend_pts[2 * end + 1] == self->marker_y)
+          return end;
+      return -1;
+    }
   for (int end = 1; end >= 0; end--)
     {
       graphene_rect_t r;
@@ -1471,6 +1498,8 @@ text_open_from_drag (EaselCanvas *self, gboolean click)
 static int
 text_hit (EaselCanvas *self, double x, double y)
 {
+  if (self->key_pressing)
+    return 0;
   double l = logical_per_pixel (self), bx, by, bw, bh;
 
   if (!self->text_open || self->img == NULL)
@@ -3581,6 +3610,8 @@ easel_canvas_get_selection_handle_rect (EaselCanvas *self, EaselSelHandle handle
 int
 easel_canvas_selection_handle_at (EaselCanvas *self, double x, double y)
 {
+  if (self->key_pressing)
+    return -1;                                  /* a keyboard press acts on the pixel only (REQ-0022-07) */
   static const EaselSelHandle order[] = { EASEL_SEL_HANDLE_TL, EASEL_SEL_HANDLE_TR, EASEL_SEL_HANDLE_BL, EASEL_SEL_HANDLE_BR,
                                           EASEL_SEL_HANDLE_T, EASEL_SEL_HANDLE_L, EASEL_SEL_HANDLE_R, EASEL_SEL_HANDLE_B };
   graphene_rect_t r;
@@ -4363,18 +4394,14 @@ easel_canvas_append_checkerboard (GtkSnapshot *snapshot, const graphene_rect_t *
   easel_snapshot_append_checkerboard (snapshot, bounds, CHECKER_SIZE);
 }
 
-GdkTexture *
-easel_canvas_compose_view (EaselCanvas *self, int x0, int y0, int w, int h)
+/* The w x h picture pixels at (x0, y0) as the put-down would write them, to px (REQ-0021-07, REQ-0022-13). */
+static void
+compose_pixels (EaselCanvas *self, int x0, int y0, int w, int h, uint32_t *px)
 {
-  size_t bytes = (size_t) w * (size_t) h * sizeof (uint32_t);
-  g_autofree uint32_t *px = g_try_malloc (bytes);
-  g_autoptr (GBytes) data = NULL;
   EaselFigure f;
   uint32_t draw, other;
   int bx, by, bw, bh;
 
-  if (px == NULL)
-    return NULL;
   if (self->sel_state == 2)
     easel_selection_lay (&self->sel_float, TRUE, self->img, x0, y0, w, h, px, (size_t) w);
   else if (self->pending && self->pend_gradient)
@@ -4412,8 +4439,30 @@ easel_canvas_compose_view (EaselCanvas *self, int x0, int y0, int w, int h)
       free (runs);
       easel_figure_release (&f);
     }
+}
+
+GdkTexture *
+easel_canvas_compose_view (EaselCanvas *self, int x0, int y0, int w, int h)
+{
+  size_t bytes = (size_t) w * (size_t) h * sizeof (uint32_t);
+  g_autofree uint32_t *px = g_try_malloc (bytes);
+  g_autoptr (GBytes) data = NULL;
+
+  if (px == NULL)
+    return NULL;
+  compose_pixels (self, x0, y0, w, h, px);
   data = g_bytes_new_take (g_steal_pointer (&px), bytes);
   return gdk_memory_texture_new (w, h, PICTURE_FORMAT, data, (gsize) w * sizeof (uint32_t));
+}
+
+uint32_t
+easel_canvas_marker_color (EaselCanvas *self)
+{
+  uint32_t c = 0;
+
+  if (self->img != NULL)
+    compose_pixels (self, self->marker_x, self->marker_y, 1, 1, &c);
+  return c;
 }
 
 static gboolean
@@ -4428,6 +4477,257 @@ emit_painted (gpointer data)
 
 static void
 canvas_snapshot_frame (EaselCanvas *self, GtkSnapshot *snapshot);
+
+/* ---- The keyboard's marker (0022) ---- */
+
+static void mouse_takes_marker (EaselCanvas *self, double x, double y);
+void easel_canvas_marker_bounds (EaselCanvas *self, double *x0, double *y0, double *x1, double *y1);
+
+/* While the marker shows, the hover of the position and the Magnifier's box is its (REQ-0022-11). */
+static void
+marker_hover (EaselCanvas *self)
+{
+  double x0, y0, x1, y1;
+  gboolean pressing = self->key_pressing;
+
+  if (!self->marker_on || self->img == NULL)
+    return;
+  easel_canvas_marker_bounds (self, &x0, &y0, &x1, &y1);
+  self->key_pressing = TRUE;
+  easel_canvas_pointer_at (self, (x0 + x1) / 2, (y0 + y1) / 2);
+  self->key_pressing = pressing;
+}
+
+void
+easel_canvas_marker_show (EaselCanvas *self, gboolean shown)
+{
+  if (shown == self->marker_on)
+    return;
+  self->marker_on = shown;
+  marker_hover (self);
+  gtk_widget_queue_draw (GTK_WIDGET (self));
+}
+
+gboolean
+easel_canvas_marker_shown (EaselCanvas *self)
+{
+  return self->marker_on;
+}
+
+void
+easel_canvas_marker_get (EaselCanvas *self, int *x, int *y)
+{
+  *x = self->marker_x;
+  *y = self->marker_y;
+}
+
+void
+easel_canvas_marker_set (EaselCanvas *self, int x, int y)
+{
+  self->marker_x = x;
+  self->marker_y = y;
+  self->marker_placed = TRUE;
+  marker_hover (self);
+  gtk_widget_queue_draw (GTK_WIDGET (self));
+}
+
+gboolean
+easel_canvas_marker_is_set (EaselCanvas *self)
+{
+  return self->marker_placed;
+}
+
+void
+easel_canvas_marker_reset (EaselCanvas *self)
+{
+  self->marker_placed = FALSE;
+  self->marker_x = 0;
+  self->marker_y = 0;
+}
+
+void
+easel_canvas_marker_bounds (EaselCanvas *self, double *x0, double *y0, double *x1, double *y1)
+{
+  double scale = easel_canvas_get_scale (self);
+
+  *x0 = easel_view_edge (self->marker_x, self->zoom) / scale;
+  *y0 = easel_view_edge (self->marker_y, self->zoom) / scale;
+  *x1 = MAX (easel_view_edge (self->marker_x, self->zoom) + 1, easel_view_edge (self->marker_x + 1, self->zoom)) / scale;
+  *y1 = MAX (easel_view_edge (self->marker_y, self->zoom) + 1, easel_view_edge (self->marker_y + 1, self->zoom)) / scale;
+}
+
+gboolean
+easel_canvas_is_key_held (EaselCanvas *self)
+{
+  /* A cancel, a lost focus, Save or Quit has ended it: nothing is held, and the guard against the release goes too (REQ-0022-10). */
+  if (self->key_button != 0 && !easel_canvas_is_stroking (self))
+    {
+      guint button = self->key_button;
+
+      self->key_button = 0;
+      if (easel_canvas_is_waiting_for_release (self))
+        easel_canvas_release (self, button);
+    }
+  return self->key_button != 0;
+}
+
+void
+easel_canvas_key_press (EaselCanvas *self, guint button, gboolean ctrl, gboolean shift)
+{
+  double x0, y0, x1, y1;
+
+  /* In Pan the arrows already move the view: a primary press there is nothing. */
+  if (self->img == NULL || easel_canvas_is_key_held (self) || (self->tool == EASEL_TOOL_PAN && button == GDK_BUTTON_PRIMARY))
+    return;
+  easel_canvas_marker_bounds (self, &x0, &y0, &x1, &y1);
+  self->key_pressing = TRUE;
+  self->click_count = 0;
+  easel_canvas_set_ctrl (self, ctrl);
+  easel_canvas_set_shift (self, shift);
+  easel_canvas_press (self, button, (x0 + x1) / 2, (y0 + y1) / 2);
+  easel_canvas_set_shift (self, FALSE);
+  self->key_pressing = FALSE;
+  self->key_button = button;
+  /* Fill and the Magnifier act at the press and a press that opened a menu holds nothing (REQ-0022-07). */
+  if (self->tool == EASEL_TOOL_FILL || self->tool == EASEL_TOOL_MAGNIFIER)
+    {
+      easel_canvas_release (self, button);
+      self->key_button = 0;
+    }
+  else
+    easel_canvas_is_key_held (self);
+}
+
+void
+easel_canvas_key_release (EaselCanvas *self)
+{
+  guint button = self->key_button;
+
+  if (button == 0)
+    return;
+  self->key_pressing = TRUE;
+  easel_canvas_release (self, button);
+  self->key_pressing = FALSE;
+  self->key_button = 0;
+}
+
+void
+easel_canvas_key_move (EaselCanvas *self, int dx, int dy)
+{
+  double x0, y0, x1, y1;
+
+  if (self->img == NULL)
+    return;
+  easel_canvas_marker_set (self, CLAMP (self->marker_x + dx, 0, self->img->width - 1), CLAMP (self->marker_y + dy, 0, self->img->height - 1));
+  if (!easel_canvas_is_key_held (self))
+    return;
+  easel_canvas_marker_bounds (self, &x0, &y0, &x1, &y1);
+  self->key_pressing = TRUE;
+  easel_canvas_motion (self, (x0 + x1) / 2, (y0 + y1) / 2);
+  self->key_pressing = FALSE;
+}
+
+gboolean
+easel_canvas_key_hold_event (EaselCanvas *self, GdkEventType type, guint button)
+{
+  guint other;
+
+  if (!easel_canvas_is_key_held (self))
+    return FALSE;
+  if (type != GDK_BUTTON_PRESS || (button != GDK_BUTTON_PRIMARY && button != GDK_BUTTON_SECONDARY))
+    return TRUE;
+  other = self->key_button == GDK_BUTTON_PRIMARY ? GDK_BUTTON_SECONDARY : GDK_BUTTON_PRIMARY;
+  {
+    double x0, y0, x1, y1;
+
+    easel_canvas_marker_bounds (self, &x0, &y0, &x1, &y1);
+    self->key_pressing = TRUE;
+    easel_canvas_press (self, other, (x0 + x1) / 2, (y0 + y1) / 2);
+    easel_canvas_release (self, other);
+    self->key_pressing = FALSE;
+  }
+  easel_canvas_is_key_held (self);
+  return TRUE;
+}
+
+void
+easel_canvas_key_menu (EaselCanvas *self)
+{
+  double x0, y0, x1, y1, x, y;
+
+  if (self->img == NULL || easel_canvas_is_key_held (self) || easel_canvas_is_stroking (self))
+    return;
+  if (self->text_open && self->text_layout != NULL)
+    {
+      PangoRectangle strong;
+      double l = logical_per_pixel (self);
+
+      pango_layout_get_cursor_pos (self->text_layout, (int) easel_text_buffer_caret (self->text_buf), &strong, NULL);
+      g_signal_emit (self, signals[SIGNAL_CONTEXT_MENU], 0, (self->tb_x + (double) strong.x / PANGO_SCALE) * l,
+                     (self->tb_y + (double) strong.y / PANGO_SCALE) * l);
+      return;
+    }
+  easel_canvas_marker_bounds (self, &x0, &y0, &x1, &y1);
+  x = (x0 + x1) / 2;
+  y = (y0 + y1) / 2;
+  if (self->tool == EASEL_TOOL_PAN || easel_tool_selects (self->tool))
+    g_signal_emit (self, signals[on_selection (self, x, y) ? SIGNAL_CONTEXT_MENU : SIGNAL_CANVAS_MENU], 0, x, y);
+}
+
+void
+easel_canvas_text_nudge (EaselCanvas *self, gboolean corner, int dx, int dy)
+{
+  double l = logical_per_pixel (self);
+
+  if (!self->text_open)
+    return;
+  text_drag_begin (self, corner ? (int) EASEL_SEL_HANDLE_BR : -1, 0, 0);
+  text_drag_to (self, dx * l, dy * l);
+  text_drag_end (self, FALSE);
+  g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);
+}
+
+static void
+append_ring (GtkSnapshot *snapshot, const GdkRGBA *color, int x0, int y0, int x1, int y1, double scale)
+{
+  const struct { int x, y, w, h; } sides[] = { { x0, y0, x1 - x0, 1 }, { x0, y1 - 1, x1 - x0, 1 }, { x0, y0 + 1, 1, y1 - y0 - 2 }, { x1 - 1, y0 + 1, 1, y1 - y0 - 2 } };
+
+  for (guint i = 0; i < G_N_ELEMENTS (sides); i++)
+    gtk_snapshot_append_color (snapshot, color, &GRAPHENE_RECT_INIT ((float) (sides[i].x / scale), (float) (sides[i].y / scale),
+                                                                     (float) (sides[i].w / scale), (float) (sides[i].h / scale)));
+}
+
+/* Black just outside the pixel's drawn square, white just outside the black, one device pixel each; below 100 %, around the device pixel that shows it. */
+static void
+append_keyboard_marker (EaselCanvas *self, GtkSnapshot *snapshot)
+{
+  static const GdkRGBA black = { 0, 0, 0, 1 }, white = { 1, 1, 1, 1 };
+  double scale = easel_canvas_get_scale (self);
+  int x0, y0, x1, y1;
+
+  if (!self->marker_on || self->img == NULL)
+    return;
+  x0 = easel_view_edge (self->marker_x, self->zoom);
+  y0 = easel_view_edge (self->marker_y, self->zoom);
+  x1 = MAX (x0 + 1, easel_view_edge (self->marker_x + 1, self->zoom));
+  y1 = MAX (y0 + 1, easel_view_edge (self->marker_y + 1, self->zoom));
+  append_ring (snapshot, &black, x0 - 1, y0 - 1, x1 + 1, y1 + 1, scale);
+  append_ring (snapshot, &white, x0 - 2, y0 - 2, x1 + 2, y1 + 2, scale);
+  /* The footprint's outline, which a mouse has as its cursor (REQ-0022-11). */
+  if (self->tool == EASEL_TOOL_BRUSH || self->tool == EASEL_TOOL_ERASER)
+    {
+      EaselCursorShape shape = easel_cursor_shape (self->footprint, self->zoom, 1);
+      uint32_t *argb = g_new (uint32_t, (gsize) shape.width * shape.height);
+      g_autoptr (GBytes) bytes = NULL;
+      g_autoptr (GdkTexture) texture = NULL;
+      double cx = (x0 + x1) / 2.0 / scale, cy = (y0 + y1) / 2.0 / scale;
+
+      easel_cursor_render (self->footprint, self->zoom, 1, argb);
+      bytes = g_bytes_new_take (argb, (gsize) shape.width * shape.height * sizeof *argb);
+      texture = gdk_memory_texture_new (shape.width, shape.height, GDK_MEMORY_B8G8R8A8_PREMULTIPLIED, bytes, (gsize) shape.width * sizeof *argb);
+      gtk_snapshot_append_texture (snapshot, texture, &GRAPHENE_RECT_INIT ((float) (cx - shape.hot_x), (float) (cy - shape.hot_y), (float) shape.width, (float) shape.height));
+    }
+}
 
 /* The frame, and the CPU it took: this thread's, so that nothing of the GPU or the compositor counts (REQ-0021-12). */
 static void
@@ -4516,6 +4816,7 @@ canvas_snapshot_frame (EaselCanvas *self, GtkSnapshot *snapshot)
   append_selection_handles (self, snapshot);
   append_text_caret (self, snapshot, l);
   append_magnifier_box (self, snapshot);
+  append_keyboard_marker (self, snapshot);
 }
 
 static GdkCursor *
@@ -4910,6 +5211,8 @@ put_down_pending (EaselCanvas *self)
   /* No "stroke-finished" here: "pending-changed", emitted just after the apply, makes the window sync the history, the title
      and Undo and Redo, which is all "stroke-finished" does there. */
   set_pending (self, FALSE);
+  if (r == EASEL_FIGURE_DONE && f.closed && !gradient)
+    g_signal_emit (self, signals[SIGNAL_POLYGON_CLOSED], 0);
   if (r == EASEL_FIGURE_DONE)
     easel_canvas_update (self);
   else if (r == EASEL_FIGURE_NO_MEMORY)
@@ -5316,7 +5619,14 @@ easel_canvas_press_timed (EaselCanvas *self, guint button, double x, double y, g
     return;
   if (self->action_button != 0)
     return;
-  count_click (self, button, x, y, time_ms);
+  /* A press on the canvas takes the keyboard there: the arrows then move a selection, not the toolbox's focus (REQ-0022-02). A field of the font card keeps its own rule below. */
+  if (gtk_widget_get_root (GTK_WIDGET (self)) != NULL && !GTK_IS_TEXT (gtk_root_get_focus (gtk_widget_get_root (GTK_WIDGET (self)))))
+    gtk_widget_grab_focus (GTK_WIDGET (self));
+  if (self->img != NULL && !self->key_pressing)
+    mouse_takes_marker (self, x, y);
+  /* A keyboard press is never part of a double click (REQ-0022-07). */
+  if (!self->key_pressing)
+    count_click (self, button, x, y, time_ms);
   if (self->dbl_closed && self->click_count >= 3 && self->tool == EASEL_TOOL_POLYGON && !self->pending)
     return;                                 /* the third click of a multi-click that closed a polygon starts nothing (REQ-0011-07) */
 
@@ -6104,6 +6414,18 @@ easel_canvas_grid_is_drawn (EaselCanvas *self)
   return self->grid_on && easel_grid_visible (self->grid_cell, self->zoom);
 }
 
+/* The mouse hides the marker, and it takes the pixel under the mouse (REQ-0022-05). */
+static void
+mouse_takes_marker (EaselCanvas *self, double x, double y)
+{
+  int px, py;
+
+  easel_view_to_pixel (x, y, self->zoom, easel_canvas_get_scale (self), &px, &py);
+  easel_canvas_marker_show (self, FALSE);
+  if (px >= 0 && py >= 0 && px < self->img->width && py < self->img->height)
+    easel_canvas_marker_set (self, px, py);
+}
+
 void
 easel_canvas_pointer_at (EaselCanvas *self, double x, double y)
 {
@@ -6113,6 +6435,8 @@ easel_canvas_pointer_at (EaselCanvas *self, double x, double y)
 
   if (self->img == NULL)
     return;
+  if (!self->key_pressing)
+    mouse_takes_marker (self, x, y);
   hover = easel_canvas_handle_at (self, x, y);
   if (hover != self->hover || marker_hit (self, x, y) != self->hover_marker || on_selection (self, x, y) != self->hover_sel
       || easel_canvas_selection_handle_at (self, x, y) != self->hover_sel_handle || text_hit (self, x, y) % 3 != self->hover_text)
@@ -6249,6 +6573,8 @@ on_event (GtkEventControllerLegacy *controller, GdkEvent *event, EaselCanvas *se
     }
   if (type != GDK_BUTTON_PRESS && type != GDK_BUTTON_RELEASE && type != GDK_MOTION_NOTIFY)
     return GDK_EVENT_PROPAGATE;
+  if (easel_canvas_key_hold_event (self, type, type == GDK_MOTION_NOTIFY ? 0 : gdk_button_event_get_button (event)))
+    return GDK_EVENT_STOP;
 
   /* Event coordinates are relative to the surface; the canvas needs its own. */
   if (gdk_event_get_position (event, &x, &y))
@@ -6460,6 +6786,7 @@ easel_canvas_class_init (EaselCanvasClass *klass)
   GtkWidgetClass *widget_class = GTK_WIDGET_CLASS (klass);
 
   object_class->dispose = easel_canvas_dispose;
+  gtk_widget_class_set_accessible_role (widget_class, GTK_ACCESSIBLE_ROLE_IMG);
   widget_class->measure = easel_canvas_measure;
   widget_class->snapshot = easel_canvas_snapshot;
   widget_class->size_allocate = easel_canvas_size_allocate;
@@ -6484,6 +6811,7 @@ easel_canvas_class_init (EaselCanvasClass *klass)
                                               G_TYPE_NONE, 0);
   signals[SIGNAL_GRADIENT_FAILED] = g_signal_new ("gradient-failed", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST, 0, NULL, NULL,
                                                  NULL, G_TYPE_NONE, 0);
+  signals[SIGNAL_POLYGON_CLOSED] = g_signal_new ("polygon-closed", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST, 0, NULL, NULL, NULL, G_TYPE_NONE, 0);
   signals[SIGNAL_SELECTION_CHANGED] = g_signal_new ("selection-changed", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST, 0, NULL,
                                                    NULL, NULL, G_TYPE_NONE, 0);
   signals[SIGNAL_SELECTION_FAILED] = g_signal_new ("selection-failed", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST, 0, NULL, NULL,

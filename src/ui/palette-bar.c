@@ -40,6 +40,15 @@ append_color_square (GtkWidget *widget, GtkSnapshot *snapshot, const graphene_re
                               widths, lines);
 }
 
+/* A color as a name says it: #RRGGBB, with its alpha when not opaque (REQ-0022-14). */
+static char *
+easel_color_hex_name (uint32_t c)
+{
+  if ((c >> 24) == 0xFF)
+    return g_strdup_printf ("#%06X", (unsigned) (c & 0xFFFFFF));
+  return g_strdup_printf ("#%06X%02X", (unsigned) (c & 0xFFFFFF), (unsigned) (c >> 24));
+}
+
 /* ---- Swatch ---- */
 
 struct _EaselSwatch
@@ -51,6 +60,12 @@ struct _EaselSwatch
 
 G_DEFINE_FINAL_TYPE (EaselSwatch, easel_swatch, GTK_TYPE_WIDGET)
 
+int
+easel_swatch_get_number (EaselSwatch *self)
+{
+  return self->number;
+}
+
 uint32_t
 easel_swatch_get_color (EaselSwatch *self)
 {
@@ -60,6 +75,10 @@ easel_swatch_get_color (EaselSwatch *self)
 static void
 easel_swatch_set_color (EaselSwatch *self, uint32_t color)
 {
+  g_autofree char *hex = easel_color_hex_name (color);
+  g_autofree char *name = g_strdup_printf ("Color %d, %s", self->number, hex);
+
+  gtk_accessible_update_property (GTK_ACCESSIBLE (self), GTK_ACCESSIBLE_PROPERTY_LABEL, name, -1);
   self->color = color;
   gtk_widget_queue_draw (GTK_WIDGET (self));
 }
@@ -98,6 +117,7 @@ easel_swatch_class_init (EaselSwatchClass *klass)
 
   widget_class->measure = easel_swatch_measure;
   widget_class->snapshot = easel_swatch_snapshot;
+  gtk_widget_class_set_accessible_role (widget_class, GTK_ACCESSIBLE_ROLE_BUTTON);
 
   /* F2 on the focused swatch edits it (REQ-0003-11). */
   gtk_widget_class_install_action (widget_class, "swatch.edit", NULL, swatch_edit_activated);
@@ -108,6 +128,7 @@ static void
 easel_swatch_init (EaselSwatch *self)
 {
   gtk_widget_set_focusable (GTK_WIDGET (self), TRUE);
+  gtk_widget_add_css_class (GTK_WIDGET (self), "palette-swatch");
 }
 
 /* ---- Indicator ---- */
@@ -117,6 +138,7 @@ struct _EaselColorIndicator
   GtkWidget parent_instance;
   uint32_t foreground;
   uint32_t background;
+  GtkWidget *front_square, *back_square;     /* unseen, over each square: a keyboard stop and a name */
 };
 
 G_DEFINE_FINAL_TYPE (EaselColorIndicator, easel_color_indicator, GTK_TYPE_WIDGET)
@@ -149,6 +171,47 @@ easel_color_indicator_snapshot (GtkWidget *widget, GtkSnapshot *snapshot)
   easel_color_indicator_get_square (self, TRUE, &front);
   append_color_square (widget, snapshot, &back, self->background);
   append_color_square (widget, snapshot, &front, self->foreground);
+  gtk_widget_snapshot_child (widget, self->back_square, snapshot);
+  gtk_widget_snapshot_child (widget, self->front_square, snapshot);
+}
+
+static void
+allocate_square (GtkWidget *square, const graphene_rect_t *r)
+{
+  gtk_widget_size_allocate (square, &(GtkAllocation) { (int) r->origin.x, (int) r->origin.y, (int) r->size.width, (int) r->size.height }, -1);
+}
+
+static void
+easel_color_indicator_size_allocate (GtkWidget *widget, int width, int height, int baseline)
+{
+  EaselColorIndicator *self = EASEL_COLOR_INDICATOR (widget);
+  graphene_rect_t r;
+
+  easel_color_indicator_get_square (self, TRUE, &r);
+  allocate_square (self->front_square, &r);
+  easel_color_indicator_get_square (self, FALSE, &r);
+  allocate_square (self->back_square, &r);
+}
+
+static void
+easel_color_indicator_dispose (GObject *object)
+{
+  EaselColorIndicator *self = EASEL_COLOR_INDICATOR (object);
+
+  g_clear_pointer (&self->front_square, gtk_widget_unparent);
+  g_clear_pointer (&self->back_square, gtk_widget_unparent);
+  G_OBJECT_CLASS (easel_color_indicator_parent_class)->dispose (object);
+}
+
+static GtkWidget *
+new_square (GtkWidget *parent, const char *css_name)
+{
+  GtkWidget *square = g_object_new (GTK_TYPE_BOX, "accessible-role", GTK_ACCESSIBLE_ROLE_BUTTON, "focusable", TRUE, "can-target", FALSE, NULL);
+
+  gtk_widget_add_css_class (square, "color-square");
+  gtk_widget_set_name (square, css_name);
+  gtk_widget_set_parent (square, parent);
+  return square;
 }
 
 static void
@@ -158,11 +221,15 @@ easel_color_indicator_class_init (EaselColorIndicatorClass *klass)
 
   widget_class->measure = easel_color_indicator_measure;
   widget_class->snapshot = easel_color_indicator_snapshot;
+  widget_class->size_allocate = easel_color_indicator_size_allocate;
+  G_OBJECT_CLASS (klass)->dispose = easel_color_indicator_dispose;
 }
 
 static void
 easel_color_indicator_init (EaselColorIndicator *self)
 {
+  self->front_square = new_square (GTK_WIDGET (self), "foreground-square");
+  self->back_square = new_square (GTK_WIDGET (self), "background-square");
 }
 
 /* Which square a point hits: the front square is on top where they overlap. 1 front, 0 back, -1 neither. */
@@ -262,8 +329,13 @@ easel_palette_bar_set_palette (EaselPaletteBar *self, const EaselPalette *palett
 void
 easel_palette_bar_set_colors (EaselPaletteBar *self, uint32_t foreground, uint32_t background)
 {
+  g_autofree char *front = easel_color_hex_name (foreground), *back = easel_color_hex_name (background);
+  g_autofree char *front_name = g_strdup_printf ("Foreground color, %s", front), *back_name = g_strdup_printf ("Background color, %s", back);
+
   self->indicator->foreground = foreground;
   self->indicator->background = background;
+  gtk_accessible_update_property (GTK_ACCESSIBLE (self->indicator->front_square), GTK_ACCESSIBLE_PROPERTY_LABEL, front_name, -1);
+  gtk_accessible_update_property (GTK_ACCESSIBLE (self->indicator->back_square), GTK_ACCESSIBLE_PROPERTY_LABEL, back_name, -1);
   gtk_widget_queue_draw (GTK_WIDGET (self->indicator));
 }
 
@@ -277,6 +349,18 @@ uint32_t
 easel_palette_bar_get_background (EaselPaletteBar *self)
 {
   return self->indicator->background;
+}
+
+GtkWidget *
+easel_palette_bar_get_swap (EaselPaletteBar *self)
+{
+  return GTK_WIDGET (self->swap);
+}
+
+GtkWidget *
+easel_palette_bar_get_square (EaselPaletteBar *self, gboolean front)
+{
+  return front ? self->indicator->front_square : self->indicator->back_square;
 }
 
 EaselSwatch *

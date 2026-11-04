@@ -29,5 +29,12 @@ Known gaps from Phase 1 specs, to take up after the core XP scope is delivered. 
 - `run_print` handles GTK answering ERROR at the run with no `done`, and then keeps its references on the operation and the window. Whether GTK can answer so is unknown.
 - The Picture tab under Flatpak: checked at packaging, with Sharp and Fit on one page as the fallback.
 
+## From 0022 (Accessibility)
+- Orca has not been run (JOD, 2026-11-04: not a priority): names and states are read only by GTK's test backend, announcements only from a test log. Whether Orca reads an open text box is unknown. To check with a real screen reader before release.
+- The keyboard's mutants in `tests/mutants.txt` run at the phase gate, not per spec.
+- Cases the code handles and no test of their own observes: "Opened NAME"; a gradient's marker taken on its own pixel by a keyboard press; the status bar's fields' names, which are their labels.
+- A key before the marker was ever placed, when a mouse press outside the picture gave the canvas the focus: it starts at pixel (0, 0), not at the view's corner.
+- A selection move refused by memory: the marker still moves.
+
 ## From the mutation list
 - REQ-0017-14, the popover's scroll guard: survives on GTK 4.24, accepted (JOD, 2026-11-02). Re-decide at packaging-release, when the minimum GTK is chosen.

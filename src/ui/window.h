@@ -37,6 +37,13 @@ EaselCanvas *easel_window_get_canvas (EaselWindow *self);
 /* The font card over the view (tests). */
 EaselFontCard *easel_window_get_font_card (EaselWindow *self);
 GtkWidget *easel_window_get_thumbnail_card (EaselWindow *self);
+/* What a screen reader reads for an open text box (REQ-0022-14). */
+GtkWidget *easel_window_get_text_access (EaselWindow *self);
+/* A sentence for a screen reader (REQ-0022-15). */
+void easel_window_announce (EaselWindow *self, const char *text);
+/* A test: keeps what is announced, to be taken as "a|b". */
+void easel_window_log_announcements (EaselWindow *self, gboolean on);
+char *easel_window_take_announcements (EaselWindow *self);
 const EaselPageSetup *easel_window_get_page_setup (EaselWindow *self);
 
 /* Stands in for the desktop's print dialog (a test); then easel_window_print_confirmed or _cancelled answer for it. */

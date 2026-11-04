@@ -2373,13 +2373,11 @@ test: ui-0011
 file: src/ui/canvas.c
 test: ui-0011
 --- find
-  set_pending (self, FALSE);
   if (r == EASEL_FIGURE_DONE)
     easel_canvas_update (self);
   else if (r == EASEL_FIGURE_NO_MEMORY)
     g_signal_emit (self, signals[gradient ? SIGNAL_GRADIENT_FAILED : SIGNAL_SHAPE_FAILED], 0);
 --- replace
-  set_pending (self, FALSE);
   if (r == EASEL_FIGURE_DONE)
     easel_canvas_update (self);
   else if (r == EASEL_FIGURE_NO_MEMORY)
@@ -7748,10 +7746,10 @@ file: src/ui/window.c
 test: ui-0017
 --- find
   if (easel_canvas_text_step (self->canvas, undo))
-    return;
+    {
 --- replace
   if (0)
-    return;
+    {
 
 === REQ-0017-08 Undo with no box edit left keeps the box open
 file: src/ui/canvas.c
@@ -11562,4 +11560,39 @@ test: core-print-layout
 | ((uint32_t) floor (sum[0] / area + 0.5) << 16)
 --- replace
 | ((uint32_t) floor (sum[0] / area) << 16)
+
+=== REQ-0022-07 a keyboard press takes a picture handle
+file: src/ui/canvas.c
+test: ui-0022
+--- find
+    return EASEL_HANDLE_NONE;                   /* a keyboard press acts on the pixel only (REQ-0022-07) */
+--- replace
+    (void) 0;
+
+=== REQ-0022-07 a keyboard press counts as a click of a double click
+file: src/ui/canvas.c
+test: ui-0022
+--- find
+  if (!self->key_pressing)
+    count_click (self, button, x, y, time_ms);
+--- replace
+  count_click (self, button, x, y, time_ms);
+
+=== REQ-0022-10 a mouse move during a keyboard press is the mouse's
+file: src/ui/canvas.c
+test: ui-0022
+--- find
+  if (type != GDK_BUTTON_PRESS || (button != GDK_BUTTON_PRIMARY && button != GDK_BUTTON_SECONDARY))
+    return TRUE;
+--- replace
+  if (type != GDK_BUTTON_PRESS || (button != GDK_BUTTON_PRIMARY && button != GDK_BUTTON_SECONDARY))
+    return FALSE;
+
+=== REQ-0022-10 Esc leaves a keyboard stroke going
+file: src/ui/window.c
+test: ui-0022
+--- find
+  if (keyval == GDK_KEY_Escape && held)
+--- replace
+  if (FALSE)
 

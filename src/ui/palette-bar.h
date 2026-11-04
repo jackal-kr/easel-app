@@ -18,6 +18,7 @@ G_DECLARE_FINAL_TYPE (EaselColorIndicator, easel_color_indicator, EASEL, COLOR_I
 G_DECLARE_FINAL_TYPE (EaselPaletteBar, easel_palette_bar, EASEL, PALETTE_BAR, GtkBox)
 
 uint32_t easel_swatch_get_color (EaselSwatch *self);
+int easel_swatch_get_number (EaselSwatch *self);
 
 void easel_palette_bar_set_palette (EaselPaletteBar *self, const EaselPalette *palette);
 void easel_palette_bar_set_colors (EaselPaletteBar *self, uint32_t foreground, uint32_t background);
@@ -26,6 +27,9 @@ uint32_t easel_palette_bar_get_background (EaselPaletteBar *self);
 
 /* n is the swatch number, 1..28 (REQ-0003-01). */
 EaselSwatch *easel_palette_bar_get_swatch (EaselPaletteBar *self, int n);
+/* The unseen widget of a color square: its keyboard stop and its name (REQ-0022-03, -14). */
+GtkWidget *easel_palette_bar_get_square (EaselPaletteBar *self, gboolean front);
+GtkWidget *easel_palette_bar_get_swap (EaselPaletteBar *self);
 EaselColorIndicator *easel_palette_bar_get_indicator (EaselPaletteBar *self);
 GtkButton *easel_palette_bar_get_swap_button (EaselPaletteBar *self);
 

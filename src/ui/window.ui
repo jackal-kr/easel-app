@@ -6,7 +6,7 @@
     <property name="content">
       <object class="AdwToolbarView">
         <child type="top">
-          <object class="AdwHeaderBar">
+          <object class="AdwHeaderBar" id="header_bar">
             <child type="start">
               <object class="GtkButton">
                 <property name="icon-name">document-open-symbolic</property>
@@ -88,7 +88,7 @@
                   <object class="GtkBox" id="tools_column">
                     <property name="orientation">vertical</property>
                     <child>
-                  <object class="GtkGrid">
+                  <object class="GtkGrid" id="toolbox">
                     <property name="row-spacing">6</property>
                     <property name="column-spacing">6</property>
                     <property name="margin-start">6</property>
@@ -387,6 +387,18 @@
                     </property>
                   </object>
                 </property>
+                <child type="overlay">
+                  <object class="GtkBox" id="text_access">
+                    <property name="accessible-role">text-box</property>
+                    <property name="visible">false</property>
+                    <property name="can-target">false</property>
+                    <property name="halign">start</property>
+                    <property name="valign">start</property>
+                    <accessibility>
+                      <property name="label" translatable="yes">Text box</property>
+                    </accessibility>
+                  </object>
+                </child>
                 <child type="overlay">
                   <object class="EaselThumbnailCard" id="thumbnail_card">
                     <property name="visible">false</property>

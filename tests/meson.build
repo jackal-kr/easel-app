@@ -40,6 +40,15 @@ foreach feature : ['0001', '0002', '0003', '0004', '0005', '0006', '0007', '0008
        is_parallel: false)
 endforeach
 # What 0025 asks of the picture's squares, under the renderer of a real session as well (under another where it has none).
+# 0022 reads names and states: GTK makes no accessible context under GTK_A11Y=none.
+ui_a11y_env = environment()
+ui_a11y_env.set('GSK_RENDERER', 'cairo')
+ui_a11y_env.set('GTK_A11Y', 'test')
+ui_a11y_env.set('EASEL_TEST_DATA', meson.current_source_dir() / 'data')
+ui_a11y_env.set('EASEL_HELP_PAGE', help_page)
+ui_a11y_env.set('GDK_DEBUG', 'no-portals')
+test('ui-0022', test_window, args: ['-p', '/0022'], env: ui_a11y_env, suite: 'ui', timeout: 180, is_parallel: false)
+
 ui_vulkan_env = environment()
 ui_vulkan_env.set('GSK_RENDERER', 'vulkan')
 ui_vulkan_env.set('GTK_A11Y', 'none')
@@ -51,6 +60,7 @@ test('ui-0025-vulkan', test_window, args: ['-p', '/0025/as1_squares_at_whole_zoo
 test('ui-0025-scale2', test_window, args: ['-p', '/0025-scale2'], env: ui_env, suite: 'ui', timeout: 180, is_parallel: false)
 test('ui-0019-scale2', test_window, args: ['-p', '/0019-scale2'], env: ui_env, suite: 'ui', timeout: 180, is_parallel: false)
 test('ui-0021-scale2', test_window, args: ['-p', '/0021-scale2'], env: ui_env, suite: 'ui', timeout: 180, is_parallel: false)
+test('ui-0022-scale2', test_window, args: ['-p', '/0022-scale2'], env: ui_a11y_env, suite: 'ui', timeout: 180, is_parallel: false)
 # The cases that take more than about 15 s each (registered under /long/): run by the gate and /sdd-check, not by tools/mutate.sh,
 # which names the suites it runs (a mutant that only these can kill is listed in tests/mutants.txt with test: ui-0014-long).
 test('ui-0014-long', test_window, args: ['-p', '/long/0014'], env: ui_env, suite: ['ui', 'long'], timeout: 400, is_parallel: false)

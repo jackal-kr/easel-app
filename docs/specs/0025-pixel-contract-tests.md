@@ -33,7 +33,7 @@ device pixel is one dot of the screen. P7.2 is stated from 100 % up, where a pic
 - REQ-0025-04 (P7.4) The same input shall give the same pixels: a figure's pixels depend only on its integer coordinates, tool, width,
   fill style and colors, not on the zoom, the scroll position, the window size or the screen scale; and a letter shall have the same
   pixels wherever it falls in a line.
-- REQ-0025-05 (P7.5) An overlay (the grid, the tint, the outline, the handles, the caret, the Gradient's guide line, the Magnifier's
+- REQ-0025-05 (Pointer note, Accessibility, 2026-11-03: the keyboard marker is such an overlay, REQ-0022-05.) (P7.5) An overlay (the grid, the tint, the outline, the handles, the caret, the Gradient's guide line, the Magnifier's
   box) shall not change a picture pixel, the list of undo steps, the modified mark or the file saved; the tint and the grid let the
   pixels show through, and the outline, the handles and the caret cover pixels only with thin lines and small marks (the outline at
   most 2 logical pixels thick, REQ-0014-17; a handle 5 × 5, REQ-0015-01; the caret at most 2 wide, REQ-0017-05).
