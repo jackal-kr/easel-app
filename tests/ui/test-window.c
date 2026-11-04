@@ -27903,6 +27903,96 @@ run_for_ms_0021 (int ms)
 
 /* ---- 0021: the extras of the primary menu ---- */
 
+static void collect_widgets_of_type (GtkWidget *w, GType type, GPtrArray *out);
+
+/* The title of the header bar: its label outside any button. */
+static GtkWidget *
+header_title (GtkWidget *w)
+{
+  if (GTK_IS_LABEL (w) && gtk_widget_get_ancestor (w, GTK_TYPE_BUTTON) == NULL && gtk_widget_get_ancestor (w, GTK_TYPE_MENU_BUTTON) == NULL)
+    return w;
+  for (GtkWidget *c = gtk_widget_get_first_child (w); c != NULL; c = gtk_widget_get_next_sibling (c))
+    {
+      GtkWidget *found = header_title (c);
+
+      if (found != NULL)
+        return found;
+    }
+  return NULL;
+}
+
+/* Whether the app takes a double click at the middle of w, within the bar. */
+static gboolean
+double_click_taken_at (EaselWindow *win, GtkWidget *bar, GtkWidget *w)
+{
+  graphene_rect_t r = bounds_in (w, bar);
+
+  return easel_window_double_click_ignored (win, bar, r.origin.x + r.size.width / 2, r.origin.y + r.size.height / 2);
+}
+
+/* AS-14 (REQ-0021-15): where a double click stops, and where it is left to the control or the desktop. */
+static void
+as14_double_click_on_bars (void)
+{
+  EaselWindow *win = window_with ("[new-picture]\nwidth=60\nheight=40\n");
+  GtkWidget *undo = find_by_tooltip (GTK_WIDGET (win), "Undo"), *open = find_by_tooltip (GTK_WIDGET (win), "Open");
+  GtkWidget *header = gtk_widget_get_ancestor (undo, ADW_TYPE_HEADER_BAR), *title = header_title (header);
+  GtkWidget *palette = gtk_widget_get_ancestor (find_by_tooltip (GTK_WIDGET (win), "Swap foreground and background (Ctrl+Shift+X)"), EASEL_TYPE_PALETTE_BAR);
+  GtkWidget *swap = find_by_tooltip (GTK_WIDGET (win), "Swap foreground and background (Ctrl+Shift+X)");
+  GtkWidget *status = NULL;
+  graphene_rect_t redo_r, title_r, swatches;
+  g_autoptr (GPtrArray) bars = g_ptr_array_new ();
+
+  g_assert_nonnull (title);
+  g_assert_cmpstr (gtk_label_get_text (GTK_LABEL (title)), ==, gtk_window_get_title (GTK_WINDOW (win)));
+  /* Disabled Undo, then the empty space of the header bar, between Redo and the title. */
+  g_assert_false (action_enabled (win, "undo"));
+  g_assert_true (double_click_taken_at (win, header, undo));
+  redo_r = bounds_in (find_by_tooltip (GTK_WIDGET (win), "Redo"), header);
+  title_r = bounds_in (title, header);
+  g_assert_cmpfloat (redo_r.origin.x + redo_r.size.width + 4, <, title_r.origin.x);
+  g_assert_true (easel_window_double_click_ignored (win, header, (redo_r.origin.x + redo_r.size.width + title_r.origin.x) / 2, redo_r.origin.y + redo_r.size.height / 2));
+  /* The title and the working controls of the header bar. */
+  g_assert_false (double_click_taken_at (win, header, title));
+  g_assert_false (double_click_taken_at (win, header, open));
+  collect_widgets_of_type (header, GTK_TYPE_MENU_BUTTON, bars);
+  g_assert_cmpuint (bars->len, >=, 3);
+  for (guint i = 0; i < bars->len; i++)
+    g_assert_false (double_click_taken_at (win, header, bars->pdata[i]));
+  /* Undo, once it works, is the control's. */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "tool", g_variant_new_string ("pencil"));
+  easel_canvas_press (easel_window_get_canvas (win), 1, 3.5, 3.5);
+  easel_canvas_release (easel_window_get_canvas (win), 1);
+  wait_for_layout (win);
+  g_assert_true (action_enabled (win, "undo"));
+  g_assert_false (double_click_taken_at (win, header, undo));
+  /* The palette bar: its controls, and the space to the right of the swatches. */
+  g_assert_false (double_click_taken_at (win, palette, swap));
+  {
+    g_autoptr (GPtrArray) grids = g_ptr_array_new ();
+
+    collect_widgets_of_type (palette, GTK_TYPE_GRID, grids);
+    g_assert_cmpuint (grids->len, ==, 1);
+    swatches = bounds_in (grids->pdata[0], palette);
+    g_assert_false (double_click_taken_at (win, palette, gtk_widget_get_first_child (grids->pdata[0])));
+    g_assert_false (double_click_taken_at (win, palette, gtk_widget_get_prev_sibling (swap)));
+    g_assert_cmpfloat (swatches.origin.x + swatches.size.width + 20, <, gtk_widget_get_width (palette));
+    g_assert_true (easel_window_double_click_ignored (win, palette, swatches.origin.x + swatches.size.width + 20, swatches.origin.y + swatches.size.height / 2));
+  }
+  /* The status bar's hint. */
+  {
+    g_autoptr (GPtrArray) statuses = g_ptr_array_new (), labels = g_ptr_array_new ();
+
+    collect_widgets_of_type (GTK_WIDGET (win), EASEL_TYPE_STATUS_BAR, statuses);
+    g_assert_cmpuint (statuses->len, ==, 1);
+    status = statuses->pdata[0];
+    collect_widgets_of_type (status, GTK_TYPE_LABEL, labels);
+    g_assert_cmpuint (labels->len, >, 0);
+    g_assert_true (double_click_taken_at (win, status, labels->pdata[0]));
+  }
+  close_windows ();
+}
+
 /* What each way of opening does: the dialog on top, or nothing. */
 static AdwDialog *
 visible_dialog (EaselWindow *win)
@@ -32256,6 +32346,7 @@ main (int argc, char **argv)
   g_test_add_func ("/0021/as12_frame_time", as12_frame_time);
   g_test_add_func ("/0021/as13_pan_menu", as13_pan_menu);
   g_test_add_func ("/0021/as13_pan_menu_paste", as13_pan_menu_paste);
+  g_test_add_func ("/0021/as14_double_click_on_bars", as14_double_click_on_bars);
   g_test_add_func ("/0020/as4_tint_strength", as4_tint_strength);
   g_test_add_func ("/0020/as1_preferences_opens", as1_preferences_opens);
   g_test_add_func ("/0020/as1_quit_closes_it", as1_quit_closes_it);

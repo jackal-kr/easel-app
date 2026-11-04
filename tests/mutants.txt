@@ -11747,3 +11747,38 @@ test: ui-0014
   if (!easel_selection_smear (&self->sel_float, self->sel_x + dx, self->sel_y + dy, self->sel_lift_max))
 --- replace
   if (!easel_selection_smear (&self->sel_float, self->sel_x + dx, self->sel_y + dy, self->sel_lift_max) && (self->sel_x += dx, TRUE))
+
+=== REQ-0021-15 a double click on a disabled button is left to the desktop
+file: src/ui/window.c
+test: ui-0021
+--- find
+  /* The title keeps what the desktop gives it. */
+  return !(bar == self->header_bar && GTK_IS_LABEL (picked));
+--- replace
+  return FALSE;
+
+=== REQ-0021-15 a double click on the title is stopped
+file: src/ui/window.c
+test: ui-0021
+--- find
+  return !(bar == self->header_bar && GTK_IS_LABEL (picked));
+--- replace
+  return TRUE;
+
+=== REQ-0021-15 a double click on a swatch is stopped
+file: src/ui/window.c
+test: ui-0021
+--- find
+      || EASEL_IS_SWATCH (picked) || EASEL_IS_COLOR_INDICATOR (picked))
+--- replace
+      )
+
+=== REQ-0021-15 a double click on a working button is stopped
+file: src/ui/window.c
+test: ui-0021
+--- find
+  if (gtk_widget_get_ancestor (picked, GTK_TYPE_BUTTON) != NULL || gtk_widget_get_ancestor (picked, GTK_TYPE_MENU_BUTTON) != NULL
+      || EASEL_IS_SWATCH
+--- replace
+  if (FALSE
+      || EASEL_IS_SWATCH

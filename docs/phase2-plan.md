@@ -41,5 +41,8 @@ Known gaps from Phase 1 specs, to take up after the core XP scope is delivered. 
 - No test of their own: the Language row in Russian; a test translation in the ui (core only); the announcements in the walk for English; the alerts raised by their real failures (built from their strings).
 - The layout test runs only the long language, which takes de and ru: a wording long only in another language needs a one-off run over all of them. `easel.pot` going stale fails no test.
 
+## From JOD's use, 2026-11-04
+- Ctrl+Shift with an arrow (REQ-0013-10) leaves the hole of a plain move, a blank strip beside the selection at its first move. JOD wants it fixed, in phase 2: the 10-pixel key should not show that gap. The likely form is a moved copy, as Ctrl with a drag does (the original stays, no trail, still 10 pixels), which would leave the keyboard no plain 10-pixel move; settle it in a spec then.
+
 ## From the mutation list
 - REQ-0017-14, the popover's scroll guard: survives on GTK 4.24, accepted (JOD, 2026-11-02). Re-decide at packaging-release, when the minimum GTK is chosen.

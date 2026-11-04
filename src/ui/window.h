@@ -155,4 +155,7 @@ EaselResizeResult easel_window_resize_picture (EaselWindow *self, int width, int
 /* The dialog of Open and Paste From, not yet shown (tests read its filters). */
 GtkFileDialog *easel_window_picture_dialog (EaselWindow *self, const char *title);
 
+/* A double click at (x, y) in bar, the header, palette or status bar, is the app's to stop: not on a working control or the title (REQ-0021-15). */
+gboolean easel_window_double_click_ignored (EaselWindow *self, GtkWidget *bar, double x, double y);
+
 G_END_DECLS

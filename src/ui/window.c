@@ -2731,6 +2731,29 @@ pointer_key (EaselWindow *self, guint keyval, GdkModifierType state, gboolean re
   return TRUE;
 }
 
+gboolean
+easel_window_double_click_ignored (EaselWindow *self, GtkWidget *bar, double x, double y)
+{
+  /* The pick passes over a disabled button, down to what holds it. */
+  GtkWidget *picked = gtk_widget_pick (bar, x, y, GTK_PICK_DEFAULT);
+
+  if (picked == NULL)
+    return TRUE;
+  if (gtk_widget_get_ancestor (picked, GTK_TYPE_BUTTON) != NULL || gtk_widget_get_ancestor (picked, GTK_TYPE_MENU_BUTTON) != NULL
+      || EASEL_IS_SWATCH (picked) || EASEL_IS_COLOR_INDICATOR (picked))
+    return FALSE;
+  /* The title keeps what the desktop gives it. */
+  return !(bar == self->header_bar && GTK_IS_LABEL (picked));
+}
+
+/* Before the bar's window handle sees it (REQ-0021-15). */
+static void
+on_bar_pressed (GtkGestureClick *gesture, int n_press, double x, double y, EaselWindow *self)
+{
+  if (n_press == 2 && easel_window_double_click_ignored (self, gtk_event_controller_get_widget (GTK_EVENT_CONTROLLER (gesture)), x, y))
+    gtk_gesture_set_state (GTK_GESTURE (gesture), GTK_EVENT_SEQUENCE_CLAIMED);
+}
+
 /* ---- Announcements (0022) ---- */
 
 /* Nothing while the app is starting: what it starts with is not news. */
@@ -4950,6 +4973,18 @@ easel_window_init (EaselWindow *self)
   g_autofree char *settings_path = easel_settings_file_path ();
 
   gtk_widget_init_template (GTK_WIDGET (self));
+  {
+    GtkWidget *bars[] = { self->header_bar, GTK_WIDGET (self->palette_bar), GTK_WIDGET (self->status_bar) };
+
+    for (gsize i = 0; i < G_N_ELEMENTS (bars); i++)
+      {
+        GtkGesture *click = gtk_gesture_click_new ();
+
+        gtk_event_controller_set_propagation_phase (GTK_EVENT_CONTROLLER (click), GTK_PHASE_CAPTURE);
+        g_signal_connect (click, "pressed", G_CALLBACK (on_bar_pressed), self);
+        gtk_widget_add_controller (bars[i], GTK_EVENT_CONTROLLER (click));
+      }
+  }
 
   self->clipboard_timeout_ms = 5000;
   self->rich_limit = G_MAXSIZE;
