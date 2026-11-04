@@ -80,7 +80,7 @@ How it meets P7: a keyboard press acts on whole picture pixels and by the tool's
 **A text box and the panels.** Keys go to the box unless the focus came to a panel by Tab or F6 (`panel_focus_by_key`): a click on a swatch with a box open must leave typing as it is (REQ-0017-06).
 
 **Readers of what this extends.**
-- REQ-0013-10's arrows: `on_key_pressed`, 0013's AS-5 test.
+- The arrows of REQ-0013-10: `on_key_pressed`, 0013's AS-5 test.
 - `update_cursor` and the hover: mouse only; the marker's overlay draws the footprint at its place.
 - `easel_canvas_handle_at`, `easel_canvas_selection_handle_at`, `text_hit`, `marker_hit`: return nothing during a keyboard press.
 - `easel_canvas_buttons_released` (REQ-0007-18): skipped during a keyboard hold.
