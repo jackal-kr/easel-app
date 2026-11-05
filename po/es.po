@@ -1,0 +1,1205 @@
+# Spanish translation of Easel. A draft.
+# SPDX-License-Identifier: GPL-3.0-or-later
+msgid ""
+msgstr ""
+"Project-Id-Version: easel\n"
+"Language: es\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"X-Easel-Reviewed: no\n"
+
+msgid "Default"
+msgstr "Predeterminado"
+
+msgid "Attributes"
+msgstr "Atributos"
+
+msgid "New area is filled with the background color; a smaller size crops the picture."
+msgstr "El área nueva se rellena con el color de fondo; un tamaño menor recorta la imagen."
+
+msgid "Width"
+msgstr "Anchura"
+
+msgid "Height"
+msgstr "Altura"
+
+msgid "_Cancel"
+msgstr "_Cancelar"
+
+msgid "_OK"
+msgstr "_Aceptar"
+
+#, c-format
+msgid "Picture, %d by %d pixel"
+msgid_plural "Picture, %d by %d pixels"
+msgstr[0] "Imagen, %d por %d píxel"
+msgstr[1] "Imagen, %d por %d píxeles"
+
+msgid "Bold (Ctrl+B)"
+msgstr "Negrita (Ctrl+B)"
+
+msgid "Italic (Ctrl+I)"
+msgstr "Cursiva (Ctrl+I)"
+
+msgid "Underline (Ctrl+U)"
+msgstr "Subrayado (Ctrl+U)"
+
+msgid "Strikethrough (Ctrl+Shift+5)"
+msgstr "Tachado (Ctrl+Shift+5)"
+
+msgid "Font family (Ctrl+Shift+F)"
+msgstr "Familia tipográfica (Ctrl+Shift+F)"
+
+msgid "Font family"
+msgstr "Familia tipográfica"
+
+msgid "Font size (Ctrl+] larger, Ctrl+[ smaller)"
+msgstr "Tamaño de letra (Ctrl+] mayor, Ctrl+[ menor)"
+
+msgid "Grid"
+msgstr "Cuadrícula"
+
+msgid "Cell size in picture pixels (1 to 1000)"
+msgstr "Celda en píxeles (1–1000)"
+
+msgid "Axonometric"
+msgstr "Axonométrica"
+
+msgid "_Apply"
+msgstr "A_plicar"
+
+msgid "File"
+msgstr "Archivo"
+
+msgid "New"
+msgstr "Nuevo"
+
+msgid "Open…"
+msgstr "Abrir…"
+
+msgid "Save"
+msgstr "Guardar"
+
+msgid "Save As…"
+msgstr "Guardar como…"
+
+msgid "Print…"
+msgstr "Imprimir…"
+
+msgid "Preferences"
+msgstr "Preferencias"
+
+msgid "Keyboard Shortcuts"
+msgstr "Atajos de teclado"
+
+msgid "Help"
+msgstr "Ayuda"
+
+msgid "Close the window"
+msgstr "Cerrar la ventana"
+
+msgid "Quit"
+msgstr "Salir"
+
+msgid "Edit"
+msgstr "Editar"
+
+msgid "Undo"
+msgstr "Deshacer"
+
+msgid "Redo"
+msgstr "Rehacer"
+
+msgid "Cut"
+msgstr "Cortar"
+
+msgid "Copy"
+msgstr "Copiar"
+
+msgid "Paste"
+msgstr "Pegar"
+
+msgid "Select All"
+msgstr "Seleccionar todo"
+
+msgid "Clear the selection"
+msgstr "Vaciar la selección"
+
+msgid "Move the selection 1 pixel"
+msgstr "Mover la selección 1 píxel"
+
+msgid "Move the selection 10 pixels"
+msgstr "Mover la selección 10 píxeles"
+
+msgid "Put down a selection or a waiting shape"
+msgstr "Dejar una selección o una forma en espera"
+
+msgid "Put down a selection, drop a waiting shape, cancel a drag"
+msgstr "Dejar una selección, descartar una forma en espera, cancelar un arrastre"
+
+msgid "Image"
+msgstr "Imagen"
+
+msgid "Rotate 90°"
+msgstr "Girar 90°"
+
+msgid "Rotate 270°"
+msgstr "Girar 270°"
+
+msgid "Stretch and Skew…"
+msgstr "Estirar e inclinar…"
+
+msgid "Invert Colors"
+msgstr "Invertir colores"
+
+msgid "Attributes…"
+msgstr "Atributos…"
+
+msgid "Clear Image"
+msgstr "Vaciar la imagen"
+
+msgid "View"
+msgstr "Ver"
+
+msgid "Zoom In"
+msgstr "Acercar"
+
+msgid "Zoom Out"
+msgstr "Alejar"
+
+msgid "Normal Size"
+msgstr "Tamaño normal"
+
+msgid "Large Size"
+msgstr "Tamaño grande"
+
+msgid "Fit to Window"
+msgstr "Ajustar a la ventana"
+
+msgid "Show Grid"
+msgstr "Mostrar cuadrícula"
+
+msgid "Close the thumbnail"
+msgstr "Cerrar la miniatura"
+
+msgid "Move the focus"
+msgstr "Mover el foco"
+
+msgid "Move to the next or the previous panel"
+msgstr "Ir al panel siguiente o anterior"
+
+msgid "Tools"
+msgstr "Herramientas"
+
+msgid "The next larger size of the tool"
+msgstr "Tamaño mayor siguiente de la herramienta"
+
+msgid "The next smaller size of the tool"
+msgstr "Tamaño menor siguiente de la herramienta"
+
+msgid "Move the focus in a panel"
+msgstr "Mover el foco en un panel"
+
+msgid "Choose the focused control"
+msgstr "Elegir el control con el foco"
+
+msgid "Press or release at the marker"
+msgstr "Pulsar o soltar en el marcador"
+
+msgid "Press with the secondary button at the marker"
+msgstr "Pulsar con el botón secundario en el marcador"
+
+msgid "Press for a copy of a selection"
+msgstr "Pulsar para una copia de la selección"
+
+msgid "Press for a smear of a selection"
+msgstr "Pulsar para un rastro de la selección"
+
+msgid "Move the marker 1 pixel"
+msgstr "Mover el marcador 1 píxel"
+
+msgid "Move the marker 10 pixels"
+msgstr "Mover el marcador 10 píxeles"
+
+msgid "Move the marker alone, with a selection"
+msgstr "Mover solo el marcador, con una selección"
+
+msgid "Open the menu at the marker"
+msgstr "Abrir el menú en el marcador"
+
+msgid "Say the marker's place and color"
+msgstr "Decir el lugar y el color del marcador"
+
+msgid "Colors"
+msgstr "Colores"
+
+msgid "Swap foreground and background"
+msgstr "Intercambiar primer plano y fondo"
+
+msgid "Edit the focused swatch"
+msgstr "Editar la muestra con el foco"
+
+msgid "Move among the swatches"
+msgstr "Moverse entre las muestras"
+
+msgid "Make the focused swatch the foreground color"
+msgstr "Hacer de la muestra con el foco el color de primer plano"
+
+msgid "Make the focused swatch the background color"
+msgstr "Hacer de la muestra con el foco el color de fondo"
+
+msgid "Text"
+msgstr "Texto"
+
+msgid "Bold"
+msgstr "Negrita"
+
+msgid "Italic"
+msgstr "Cursiva"
+
+msgid "Underline"
+msgstr "Subrayado"
+
+msgid "Strikethrough"
+msgstr "Tachado"
+
+msgid "Font size 1 point larger or smaller"
+msgstr "Tamaño de letra 1 punto mayor o menor"
+
+msgid "Open the font family list"
+msgstr "Abrir la lista de familias tipográficas"
+
+msgid "Move the highlight in the family list"
+msgstr "Mover el resaltado en la lista de familias"
+
+msgid "Choose the highlighted family"
+msgstr "Elegir la familia resaltada"
+
+msgid "Close the family list"
+msgstr "Cerrar la lista de familias"
+
+msgid "New line"
+msgstr "Línea nueva"
+
+msgid "Delete before or after the caret"
+msgstr "Borrar antes o después del cursor"
+
+msgid "Move the caret"
+msgstr "Mover el cursor"
+
+msgid "Move the caret by a word"
+msgstr "Mover el cursor una palabra"
+
+msgid "To the start or the end of the line"
+msgstr "Al principio o al final de la línea"
+
+msgid "Extend the text selection"
+msgstr "Ampliar la selección de texto"
+
+msgid "Cut the selected text"
+msgstr "Cortar el texto seleccionado"
+
+msgid "Copy the selected text"
+msgstr "Copiar el texto seleccionado"
+
+msgid "Paste into the box"
+msgstr "Pegar en el cuadro"
+
+msgid "Paste as Plain Text"
+msgstr "Pegar como texto sin formato"
+
+msgid "Select all the box's text"
+msgstr "Seleccionar todo el texto del cuadro"
+
+msgid "Put the box down"
+msgstr "Dejar el cuadro"
+
+msgid "Move the box 1 pixel"
+msgstr "Mover el cuadro 1 píxel"
+
+msgid "Move the box's far corner 1 pixel"
+msgstr "Mover la esquina opuesta del cuadro 1 píxel"
+
+#, c-format
+msgid "Color %d, %s"
+msgstr "Color %d, %s"
+
+#, c-format
+msgid "Foreground color, %s"
+msgstr "Color de primer plano, %s"
+
+#, c-format
+msgid "Background color, %s"
+msgstr "Color de fondo, %s"
+
+msgid "Swap foreground and background (Ctrl+Shift+X)"
+msgstr "Intercambiar primer plano y fondo (Ctrl+Shift+X)"
+
+msgid "Takes effect the next time Easel starts."
+msgstr "Surte efecto la próxima vez que se inicie Easel."
+
+msgid "Use Default"
+msgstr "Usar predeterminado"
+
+msgid "Canvas color"
+msgstr "Color del lienzo"
+
+msgid "Size and color"
+msgstr "Tamaño y color"
+
+msgid "Automatic size"
+msgstr "Tamaño automático"
+
+msgid "System"
+msgstr "Sistema"
+
+msgid "Light"
+msgstr "Claro"
+
+msgid "Dark"
+msgstr "Oscuro"
+
+msgid "Style"
+msgstr "Estilo"
+
+msgid "Language"
+msgstr "Idioma"
+
+msgid "Workspace"
+msgstr "Área de trabajo"
+
+msgid "Selection"
+msgstr "Selección"
+
+msgid "Panels"
+msgstr "Paneles"
+
+msgid "Palette"
+msgstr "Paleta"
+
+msgid "Reset Palette"
+msgstr "Restablecer la paleta"
+
+msgid "System default"
+msgstr "Según el sistema"
+
+msgid "Workspace color"
+msgstr "Color del área de trabajo"
+
+msgid "Workspace color, dark"
+msgstr "Color del área de trabajo, oscuro"
+
+msgid "Tint strength"
+msgstr "Intensidad del tinte"
+
+msgid "Tool Box"
+msgstr "Caja de herramientas"
+
+msgid "Color Box"
+msgstr "Caja de colores"
+
+msgid "Status Bar"
+msgstr "Barra de estado"
+
+msgid "Frame time"
+msgstr "Tiempo de fotograma"
+
+msgid "Automatic"
+msgstr "Automático"
+
+msgid "Font"
+msgstr "Tipo de letra"
+
+msgid "Circle, 7 pixels"
+msgstr "Círculo, 7 píxeles"
+
+msgid "Circle, 4 pixels"
+msgstr "Círculo, 4 píxeles"
+
+msgid "Circle, 1 pixel"
+msgstr "Círculo, 1 píxel"
+
+msgid "Square, 8 pixels"
+msgstr "Cuadrado, 8 píxeles"
+
+msgid "Square, 5 pixels"
+msgstr "Cuadrado, 5 píxeles"
+
+msgid "Square, 2 pixels"
+msgstr "Cuadrado, 2 píxeles"
+
+msgid "Slash, 8 pixels"
+msgstr "Barra, 8 píxeles"
+
+msgid "Slash, 5 pixels"
+msgstr "Barra, 5 píxeles"
+
+msgid "Slash, 2 pixels"
+msgstr "Barra, 2 píxeles"
+
+msgid "Backslash, 8 pixels"
+msgstr "Barra inversa, 8 píxeles"
+
+msgid "Backslash, 5 pixels"
+msgstr "Barra inversa, 5 píxeles"
+
+msgid "Backslash, 2 pixels"
+msgstr "Barra inversa, 2 píxeles"
+
+msgid "9 pixels"
+msgstr "9 píxeles"
+
+msgid "16 pixels"
+msgstr "16 píxeles"
+
+msgid "24 pixels"
+msgstr "24 píxeles"
+
+msgid "4 pixels"
+msgstr "4 píxeles"
+
+msgid "6 pixels"
+msgstr "6 píxeles"
+
+msgid "8 pixels"
+msgstr "8 píxeles"
+
+msgid "10 pixels"
+msgstr "10 píxeles"
+
+msgid "Opaque"
+msgstr "Opaco"
+
+msgid "Transparent"
+msgstr "Transparente"
+
+msgid "1 pixel"
+msgstr "1 píxel"
+
+msgid "2 pixels"
+msgstr "2 píxeles"
+
+msgid "3 pixels"
+msgstr "3 píxeles"
+
+msgid "5 pixels"
+msgstr "5 píxeles"
+
+msgid "Outline"
+msgstr "Contorno"
+
+msgid "Outline and fill"
+msgstr "Contorno y relleno"
+
+msgid "Fill"
+msgstr "Relleno"
+
+msgid "History"
+msgstr "Historial"
+
+msgid "Saving"
+msgstr "Guardado"
+
+msgid "Brush"
+msgstr "Pincel"
+
+msgid "Airbrush"
+msgstr "Aerógrafo"
+
+msgid "Eraser size"
+msgstr "Tamaño del borrador"
+
+msgid "Eraser mode"
+msgstr "Modo del borrador"
+
+msgid "Line and shape width"
+msgstr "Grosor de líneas y formas"
+
+msgid "Fill style"
+msgstr "Estilo de relleno"
+
+msgid "Magnifier level"
+msgstr "Nivel de la lupa"
+
+msgid "Size"
+msgstr "Tamaño"
+
+msgid "Undo memory"
+msgstr "Memoria para deshacer"
+
+msgid "JPEG quality"
+msgstr "Calidad JPEG"
+
+msgid "Appearance"
+msgstr "Apariencia"
+
+msgid "New Picture"
+msgstr "Imagen nueva"
+
+msgid "Drawing"
+msgstr "Dibujo"
+
+#, c-format
+msgid "Takes %d sheet"
+msgid_plural "Takes %d sheets"
+msgstr[0] "Ocupa %d hoja"
+msgstr[1] "Ocupa %d hojas"
+
+msgid "Pixels"
+msgstr "Píxeles"
+
+msgid "Sharp"
+msgstr "Nítidos"
+
+msgid "Each pixel a sharp square"
+msgstr "Cada píxel es un cuadrado nítido"
+
+msgid "Smooth when shrunk"
+msgstr "Suavizar al reducir"
+
+msgid "Sharp, but averaged where a printer's dot covers several pixels"
+msgstr "Nítidos, pero promediados donde un punto de la impresora cubre varios píxeles"
+
+msgid "Smooth"
+msgstr "Suaves"
+
+msgid "Blended between pixels"
+msgstr "Mezclados entre píxeles"
+
+msgid "Fit on one page"
+msgstr "Ajustar a una página"
+
+#, c-format
+msgid "Too large: %d × %d; the most is 10000 × 10000"
+msgstr "Demasiado grande: %d × %d; el máximo es 10000 × 10000"
+
+#, c-format
+msgid "New size: %d × %d"
+msgstr "Tamaño nuevo: %d × %d"
+
+msgid "Keep aspect ratio"
+msgstr "Mantener la proporción"
+
+msgid "Stretch and Skew"
+msgstr "Estirar e inclinar"
+
+msgid "Stretch"
+msgstr "Estirar"
+
+msgid "Percent"
+msgstr "Porcentaje"
+
+msgid "Skew"
+msgstr "Inclinar"
+
+msgid "Degrees"
+msgstr "Grados"
+
+msgid "Horizontal"
+msgstr "Horizontal"
+
+msgid "Vertical"
+msgstr "Vertical"
+
+msgid "Thumbnail"
+msgstr "Miniatura"
+
+#, c-format
+msgid "Eraser, %d pixel"
+msgid_plural "Eraser, %d pixels"
+msgstr[0] "Borrador, %d píxel"
+msgstr[1] "Borrador, %d píxeles"
+
+#, c-format
+msgid "Spray, %d pixel"
+msgid_plural "Spray, %d pixels"
+msgstr[0] "Rociado, %d píxel"
+msgstr[1] "Rociado, %d píxeles"
+
+#, c-format
+msgid "Circle, %d pixel"
+msgid_plural "Circle, %d pixels"
+msgstr[0] "Círculo, %d píxel"
+msgstr[1] "Círculo, %d píxeles"
+
+#, c-format
+msgid "Square, %d pixel"
+msgid_plural "Square, %d pixels"
+msgstr[0] "Cuadrado, %d píxel"
+msgstr[1] "Cuadrado, %d píxeles"
+
+#, c-format
+msgid "Slash, %d pixel"
+msgid_plural "Slash, %d pixels"
+msgstr[0] "Barra, %d píxel"
+msgstr[1] "Barra, %d píxeles"
+
+#, c-format
+msgid "Backslash, %d pixel"
+msgid_plural "Backslash, %d pixels"
+msgstr[0] "Barra inversa, %d píxel"
+msgstr[1] "Barra inversa, %d píxeles"
+
+msgid "Opaque: erase to the background color"
+msgstr "Opaco: borrar hasta el color de fondo"
+
+msgid "Transparent: erase to transparency"
+msgstr "Transparente: borrar hasta la transparencia"
+
+msgid "Opaque: keep background color"
+msgstr "Opaco: mantener el color de fondo"
+
+msgid "Transparent: moving or clearing leaves a transparent hole"
+msgstr "Transparente: mover o vaciar deja un hueco transparente"
+
+msgid "Opaque: fill the text box with the background color"
+msgstr "Opaco: rellenar el cuadro con el color de fondo"
+
+msgid "Transparent: only the text"
+msgstr "Transparente: solo el texto"
+
+msgid "Untitled"
+msgstr "Sin título"
+
+#, c-format
+msgid "• %s – Easel"
+msgstr "• %s – Easel"
+
+#, c-format
+msgid "%s – Easel"
+msgstr "%s – Easel"
+
+msgid "Close"
+msgstr "Cerrar"
+
+#, c-format
+msgid "Could Not Save “%s”"
+msgstr "No se pudo guardar «%s»"
+
+#, c-format
+msgid "“%s” could not be saved: %s"
+msgstr "«%s» no se pudo guardar: %s"
+
+#, c-format
+msgid "Saved %s"
+msgstr "Guardado: %s"
+
+#, c-format
+msgid "Replace “%s”?"
+msgstr "¿Reemplazar «%s»?"
+
+msgid "A file with this name already exists."
+msgstr "Ya existe un archivo con este nombre."
+
+msgid "_Replace"
+msgstr "_Reemplazar"
+
+msgid "Cannot Save This Kind of File"
+msgstr "No se puede guardar este tipo de archivo"
+
+msgid "Pictures can be saved as PNG, JPEG, BMP, TIFF or WebP."
+msgstr "Las imágenes se pueden guardar como PNG, JPEG, BMP, TIFF o WebP."
+
+msgid "Copy To"
+msgstr "Copiar a"
+
+msgid "Untitled.png"
+msgstr "Sin título.png"
+
+msgid "Save Picture As"
+msgstr "Guardar imagen como"
+
+#, c-format
+msgid "“%s” has unsaved changes."
+msgstr "«%s» tiene cambios sin guardar."
+
+msgid "Save Changes?"
+msgstr "¿Guardar los cambios?"
+
+msgid "_Discard"
+msgstr "_Descartar"
+
+msgid "_Save"
+msgstr "_Guardar"
+
+#, c-format
+msgid "Opened %s"
+msgstr "Abierto: %s"
+
+msgid "Could Not Create a New Picture"
+msgstr "No se pudo crear una imagen nueva"
+
+#, c-format
+msgid "Could Not Open “%s”"
+msgstr "No se pudo abrir «%s»"
+
+msgid "The file cannot be read."
+msgstr "No se puede leer el archivo."
+
+msgid "This is not a picture the app can open."
+msgstr "Esta no es una imagen que la aplicación pueda abrir."
+
+msgid "The picture is bigger than 10000 pixels in width or height."
+msgstr "La imagen supera los 10000 píxeles de anchura o altura."
+
+msgid "Open Picture"
+msgstr "Abrir imagen"
+
+msgid "Draw with the foreground color. The secondary button uses the background color."
+msgstr "Dibuja con el color de primer plano. El botón secundario usa el color de fondo."
+
+msgid "Paint with the foreground color. The secondary button uses the background color."
+msgstr "Pinta con el color de primer plano. El botón secundario usa el color de fondo."
+
+msgid "Spray with the foreground color. The secondary button uses the background color."
+msgstr "Rocía con el color de primer plano. El botón secundario usa el color de fondo."
+
+msgid "Erase to transparency. The secondary button erases only the foreground color."
+msgstr "Borra hasta la transparencia. El botón secundario borra solo el color de primer plano."
+
+msgid "Erase to the background color. The secondary button changes only the foreground color."
+msgstr "Borra hasta el color de fondo. El botón secundario cambia solo el color de primer plano."
+
+msgid "Changes the magnification."
+msgstr "Cambia el aumento."
+
+msgid "Draws a straight line with the selected line width."
+msgstr "Dibuja una línea recta del grosor elegido."
+
+msgid "Draws a rectangle with the selected fill style."
+msgstr "Dibuja un rectángulo con el estilo de relleno elegido."
+
+msgid "Draws a rounded rectangle with the selected fill style."
+msgstr "Dibuja un rectángulo redondeado con el estilo de relleno elegido."
+
+msgid "Draws an ellipse with the selected fill style."
+msgstr "Dibuja una elipse con el estilo de relleno elegido."
+
+msgid "Draws a curved line with the selected line width."
+msgstr "Dibuja una línea curva del grosor elegido."
+
+msgid "Draws a polygon with the selected fill style."
+msgstr "Dibuja un polígono con el estilo de relleno elegido."
+
+msgid "Selects a rectangular part of the picture to move, copy, or edit."
+msgstr "Selecciona una parte rectangular de la imagen para mover, copiar o editar."
+
+msgid "Selects a free-form part of the picture to move, copy, or edit."
+msgstr "Selecciona una parte libre de la imagen para mover, copiar o editar."
+
+msgid "Fades the drawing color to transparent along a drag. A click or Enter applies it, Esc cancels it."
+msgstr "Funde el color a transparente a lo largo de un arrastre. Un clic o Enter lo aplica, Esc lo cancela."
+
+msgid "Picks up a color from the picture for drawing."
+msgstr "Toma un color de la imagen para dibujar."
+
+msgid "Fills an area with the current drawing color."
+msgstr "Rellena un área con el color actual."
+
+msgid "Inserts text into the picture."
+msgstr "Inserta texto en la imagen."
+
+msgid "Drag to pan. Ctrl+wheel zooms."
+msgstr "Arrastre para desplazar. Ctrl+rueda cambia el zoom."
+
+msgid "Zoom"
+msgstr "Zoom"
+
+msgid "Zoom Out (Ctrl+-)"
+msgstr "Alejar (Ctrl+-)"
+
+msgid "Zoom In (Ctrl+=)"
+msgstr "Acercar (Ctrl+=)"
+
+#, c-format
+msgid "There is not enough memory for a picture of %d × %d pixel."
+msgid_plural "There is not enough memory for a picture of %d × %d pixels."
+msgstr[0] "No hay memoria suficiente para una imagen de %d × %d píxel."
+msgstr[1] "No hay memoria suficiente para una imagen de %d × %d píxeles."
+
+msgid "Could Not Resize the Picture"
+msgstr "No se pudo redimensionar la imagen"
+
+msgid "Could Not Invert the Colors"
+msgstr "No se pudieron invertir los colores"
+
+msgid "Could Not Clear the Picture"
+msgstr "No se pudo vaciar la imagen"
+
+msgid "Could Not Flip the Picture"
+msgstr "No se pudo voltear la imagen"
+
+msgid "Could Not Rotate the Picture"
+msgstr "No se pudo girar la imagen"
+
+msgid "There is not enough memory for this change."
+msgstr "No hay memoria suficiente para este cambio."
+
+msgid "Space to finish, Esc to cancel"
+msgstr "Space para terminar, Esc para cancelar"
+
+msgid "Done"
+msgstr "Hecho"
+
+msgid "Cancelled"
+msgstr "Cancelado"
+
+#, c-format
+msgid "Foreground %s"
+msgstr "Primer plano %s"
+
+#, c-format
+msgid "Background %s"
+msgstr "Fondo %s"
+
+msgid "Text box open"
+msgstr "Cuadro de texto abierto"
+
+msgid "Text box closed"
+msgstr "Cuadro de texto cerrado"
+
+#, c-format
+msgid "Selection %d by %d"
+msgstr "Selección de %d por %d"
+
+msgid "Selection put down"
+msgstr "Selección dejada"
+
+msgid "Selection removed"
+msgstr "Selección quitada"
+
+msgid "Polygon closed"
+msgstr "Polígono cerrado"
+
+msgid "Pan"
+msgstr "Desplazar"
+
+msgid "Pencil"
+msgstr "Lápiz"
+
+msgid "Eraser"
+msgstr "Borrador"
+
+msgid "Magnifier"
+msgstr "Lupa"
+
+msgid "Pick Color"
+msgstr "Tomar color"
+
+msgid "Line"
+msgstr "Línea"
+
+msgid "Rectangle"
+msgstr "Rectángulo"
+
+msgid "Rounded Rectangle"
+msgstr "Rectángulo redondeado"
+
+msgid "Ellipse"
+msgstr "Elipse"
+
+msgid "Curve"
+msgstr "Curva"
+
+msgid "Polygon"
+msgstr "Polígono"
+
+msgid "Gradient"
+msgstr "Degradado"
+
+msgid "Select"
+msgstr "Seleccionar"
+
+msgid "Free-Form Select"
+msgstr "Selección libre"
+
+msgid "Could Not Open Help"
+msgstr "No se pudo abrir la ayuda"
+
+msgid "The help page could not be opened."
+msgstr "No se pudo abrir la página de ayuda."
+
+msgid "OK"
+msgstr "Aceptar"
+
+msgid "Could Not Print"
+msgstr "No se pudo imprimir"
+
+msgid "The picture could not be printed."
+msgstr "No se pudo imprimir la imagen."
+
+msgid "Picture"
+msgstr "Imagen"
+
+msgid "Could Not Save the Preferences"
+msgstr "No se pudieron guardar las preferencias"
+
+msgid "The changes apply until Easel closes where they can, but settings.ini could not be written."
+msgstr "Los cambios se aplican donde es posible hasta que Easel se cierre, pero no se pudo escribir settings.ini."
+
+msgid "Could Not Stretch or Skew the Picture"
+msgstr "No se pudo estirar o inclinar la imagen"
+
+msgid "Undone"
+msgstr "Deshecho"
+
+msgid "Redone"
+msgstr "Rehecho"
+
+msgid "Could Not Fill"
+msgstr "No se pudo rellenar"
+
+msgid "There is not enough memory to fill this area."
+msgstr "No hay memoria suficiente para rellenar esta área."
+
+msgid "Could Not Draw the Shape"
+msgstr "No se pudo dibujar la forma"
+
+msgid "There is not enough memory to draw this shape."
+msgstr "No hay memoria suficiente para dibujar esta forma."
+
+msgid "Could Not Apply the Gradient"
+msgstr "No se pudo aplicar el degradado"
+
+msgid "There is not enough memory to apply this gradient."
+msgstr "No hay memoria suficiente para aplicar este degradado."
+
+msgid "Could Not Clear the Selection"
+msgstr "No se pudo vaciar la selección"
+
+msgid "There is not enough memory to clear this selection."
+msgstr "No hay memoria suficiente para vaciar esta selección."
+
+msgid "Could Not Make the Selection"
+msgstr "No se pudo crear la selección"
+
+msgid "There is not enough memory to make this selection."
+msgstr "No hay memoria suficiente para crear esta selección."
+
+msgid "Could Not Stretch the Selection"
+msgstr "No se pudo estirar la selección"
+
+msgid "There is not enough memory to stretch this selection."
+msgstr "No hay memoria suficiente para estirar esta selección."
+
+msgid "Could Not Flip the Selection"
+msgstr "No se pudo voltear la selección"
+
+msgid "Could Not Rotate the Selection"
+msgstr "No se pudo girar la selección"
+
+msgid "Could Not Invert the Selection"
+msgstr "No se pudo invertir la selección"
+
+msgid "Could Not Stretch or Skew the Selection"
+msgstr "No se pudo estirar o inclinar la selección"
+
+msgid "Could Not Move the Selection"
+msgstr "No se pudo mover la selección"
+
+msgid "There is not enough memory to move this selection."
+msgstr "No hay memoria suficiente para mover esta selección."
+
+msgid "Could Not Add the Text"
+msgstr "No se pudo añadir el texto"
+
+msgid "There is not enough memory to show this text."
+msgstr "No hay memoria suficiente para mostrar este texto."
+
+msgid "There is not enough memory to add this text."
+msgstr "No hay memoria suficiente para añadir este texto."
+
+msgid "Could Not Copy the Selection"
+msgstr "No se pudo copiar la selección"
+
+msgid "There is not enough memory to copy this selection."
+msgstr "No hay memoria suficiente para copiar esta selección."
+
+#, c-format
+msgid "Could Not Paste “%s”"
+msgstr "No se pudo pegar «%s»"
+
+msgid "Could Not Paste"
+msgstr "No se pudo pegar"
+
+msgid "There is not enough memory to paste this picture."
+msgstr "No hay memoria suficiente para pegar esta imagen."
+
+msgid "The clipboard's picture cannot be read."
+msgstr "No se puede leer la imagen del portapapeles."
+
+#, c-format
+msgid "The picture is %d × %d pixel; the canvas is %d × %d."
+msgid_plural "The picture is %d × %d pixels; the canvas is %d × %d."
+msgstr[0] "La imagen mide %d × %d píxel; el lienzo mide %d × %d."
+msgstr[1] "La imagen mide %d × %d píxeles; el lienzo mide %d × %d."
+
+msgid "Pasted Picture Is Larger Than the Canvas"
+msgstr "La imagen pegada es mayor que el lienzo"
+
+msgid "_Fit Picture to Canvas"
+msgstr "_Ajustar la imagen al lienzo"
+
+msgid "_Resize Canvas to Picture"
+msgstr "_Redimensionar el lienzo a la imagen"
+
+msgid "The clipboard's text cannot be read."
+msgstr "No se puede leer el texto del portapapeles."
+
+msgid "There is not enough memory to paste this text."
+msgstr "No hay memoria suficiente para pegar este texto."
+
+msgid "Could Not Copy the Text"
+msgstr "No se pudo copiar el texto"
+
+msgid "There is not enough memory to copy this text."
+msgstr "No hay memoria suficiente para copiar este texto."
+
+msgid "Paste From"
+msgstr "Pegar desde"
+
+msgid "Open"
+msgstr "Abrir"
+
+msgid "Main Menu"
+msgstr "Menú principal"
+
+msgid "Text box"
+msgstr "Cuadro de texto"
+
+msgid "_Flip"
+msgstr "_Voltear"
+
+msgid "Flip _Horizontal"
+msgstr "Voltear _horizontalmente"
+
+msgid "Flip _Vertical"
+msgstr "Voltear _verticalmente"
+
+msgid "_Rotate"
+msgstr "_Girar"
+
+msgid "Rotate _90°"
+msgstr "Girar _90°"
+
+msgid "Rotate 1_80°"
+msgstr "Girar 1_80°"
+
+msgid "Rotate _270°"
+msgstr "Girar _270°"
+
+msgid "Stretch and _Skew…"
+msgstr "Estirar e _inclinar…"
+
+msgid "_Invert Colors"
+msgstr "_Invertir colores"
+
+msgid "_Clear Image"
+msgstr "_Vaciar la imagen"
+
+msgid "Grid…"
+msgstr "Cuadrícula…"
+
+msgid "Show Thumbnail"
+msgstr "Mostrar miniatura"
+
+msgid "Cu_t"
+msgstr "Cor_tar"
+
+msgid "_Copy"
+msgstr "_Copiar"
+
+msgid "_Paste"
+msgstr "_Pegar"
+
+msgid "_Clear Selection"
+msgstr "_Vaciar la selección"
+
+msgid "Select _All"
+msgstr "Seleccionar _todo"
+
+msgid "Copy _To…"
+msgstr "Copiar _a…"
+
+msgid "Paste as Plain _Text"
+msgstr "Pegar como _texto sin formato"
+
+msgid "Paste _From…"
+msgstr "Pegar _desde…"
+
+msgid "Zoom _In"
+msgstr "A_cercar"
+
+msgid "Zoom _Out"
+msgstr "A_lejar"
+
+msgid "_Normal Size"
+msgstr "Tamaño _normal"
+
+msgid "_New"
+msgstr "_Nuevo"
+
+msgid "_Open…"
+msgstr "_Abrir…"
+
+msgid "Save _As…"
+msgstr "Guardar _como…"
+
+msgid "_Print…"
+msgstr "_Imprimir…"
+
+msgid "_Edit"
+msgstr "_Editar"
+
+msgid "_Preferences"
+msgstr "_Preferencias"
+
+msgid "_Keyboard Shortcuts"
+msgstr "Atajos de _teclado"
+
+msgid "_Help"
+msgstr "Ay_uda"
+
+msgid "_About Easel"
+msgstr "_Acerca de Easel"
+
+msgid "_Quit"
+msgstr "_Salir"
+
+msgid "Pictures"
+msgstr "Imágenes"
+
+msgid "All Files"
+msgstr "Todos los archivos"
+
+msgid "Smear the selection 1 pixel"
+msgstr "Dejar un rastro de la selección de 1 píxel"
+
+msgid "Interface"
+msgstr "Interfaz"
+
+msgid "Language Changes at Next Start"
+msgstr "El idioma cambia en el próximo inicio"
+
+msgid "Your changes are kept. The new language shows the next time Easel starts."
+msgstr "Sus cambios se conservan. El nuevo idioma se verá la próxima vez que Easel se inicie."
+
+msgid "By extension"
+msgstr "Por extensión"
+
+msgid "Easel"
+msgstr "Easel"
+
+msgid "Draw and touch up pictures"
+msgstr "Dibuja y retoca imágenes"
+
+msgid "paint;draw;picture;image;pixel;"
+msgstr "paint;draw;picture;image;pixel;pintar;dibujar;imagen;"
+
+msgid "Easel is a simple drawing program for quick pictures and touch-ups, in the style of Paint in Windows XP."
+msgstr "Easel es un programa de dibujo sencillo para imágenes rápidas y retoques, al estilo de Paint de Windows XP."
+
+msgid "It has the classic tools, exact pixels, undo, selections you can move and stretch, text boxes and printing."
+msgstr "Tiene las herramientas clásicas, píxeles exactos, deshacer, selecciones que se mueven y se estiran, cuadros de texto e impresión."

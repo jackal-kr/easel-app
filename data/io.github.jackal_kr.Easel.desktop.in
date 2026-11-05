@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Easel
+Comment=Draw and touch up pictures
+Icon=io.github.jackal_kr.Easel
+Exec=easel %f
+Terminal=false
+Categories=Graphics;RasterGraphics;GTK;
+Keywords=paint;draw;picture;image;pixel;
+MimeType=image/png;image/jpeg;image/bmp;image/tiff;image/webp;image/gif;
+StartupNotify=true

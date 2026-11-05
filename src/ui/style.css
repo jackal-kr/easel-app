@@ -1,0 +1,54 @@
+/* The preset buttons are compact so that every tool's options fit the width of the tool grid (REQ-0008-07). */
+button.flat.compact {
+  padding: 2px 3px;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* The Magnifier's levels are as wide as the tool buttons above them, their labels at the normal size (REQ-0008-07). */
+button.flat.level {
+  padding-left: 2px;
+  padding-right: 2px;
+  min-width: 0;
+}
+
+/* A soft shadow about 6 pixels wide around the picture, in the margin, never over it (REQ-0009-02). */
+.easel-picture {
+  box-shadow: 0 0 6px rgba(0, 0, 0, 0.35);
+}
+
+/* The workspace around the picture: a light grey in the light theme and a dark one in the dark theme, following a
+   change of theme at once (REQ-0009-03, REQ-0009-06). Valid `[view] workspace-color` and `workspace-color-dark` replace
+   them through a style provider of higher priority (window.c). */
+scrolledwindow.workspace > viewport,
+.thumbnail-area {
+  background-color: #E7E7E7;
+}
+
+@media (prefers-color-scheme: dark) {
+  scrolledwindow.workspace > viewport,
+  .thumbnail-area {
+    background-color: #2C2C2C;
+  }
+}
+
+/* The font card over the picture (REQ-0017-14): opaque in both themes, as a popover is. The card style's own background is
+   translucent in the dark theme, so the picture under it showed through and its controls faded (JOD's M1, 2026-10-26). */
+.font-card {
+  background-color: var(--popover-bg-color);
+  color: var(--popover-fg-color);
+}
+
+/* A color square's and a swatch's keyboard stop: the theme's focus ring (REQ-0022-02, -03; JOD's M1). */
+.color-square:focus-visible {
+  outline: 2px solid var(--accent-color);
+  outline-offset: 1px;
+}
+
+/* Swatches touch each other: the ring lies inside the focused one, white around black so that it shows on any color. */
+.palette-swatch:focus-visible {
+  outline: 2px solid white;
+  outline-offset: -2px;
+  box-shadow: inset 0 0 0 3px black;
+}
+

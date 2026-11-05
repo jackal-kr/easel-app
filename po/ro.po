@@ -1,0 +1,1215 @@
+# Romanian translation of Easel. A draft.
+# SPDX-License-Identifier: GPL-3.0-or-later
+msgid ""
+msgstr ""
+"Project-Id-Version: easel\n"
+"Language: ro\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=3; plural=(n==1 ? 0 : n==0 || (n%100>0 && n%100<20) ? 1 : 2);\n"
+"X-Easel-Reviewed: no\n"
+
+msgid "Default"
+msgstr "Implicit"
+
+msgid "Attributes"
+msgstr "Atribute"
+
+msgid "New area is filled with the background color; a smaller size crops the picture."
+msgstr "Zona nouă se umple cu culoarea de fundal; o dimensiune mai mică decupează imaginea."
+
+msgid "Width"
+msgstr "Lățime"
+
+msgid "Height"
+msgstr "Înălțime"
+
+msgid "_Cancel"
+msgstr "A_nulează"
+
+msgid "_OK"
+msgstr "_OK"
+
+#, c-format
+msgid "Picture, %d by %d pixel"
+msgid_plural "Picture, %d by %d pixels"
+msgstr[0] "Imagine, %d pe %d pixel"
+msgstr[1] "Imagine, %d pe %d pixeli"
+msgstr[2] "Imagine, %d pe %d de pixeli"
+
+msgid "Bold (Ctrl+B)"
+msgstr "Aldin (Ctrl+B)"
+
+msgid "Italic (Ctrl+I)"
+msgstr "Cursiv (Ctrl+I)"
+
+msgid "Underline (Ctrl+U)"
+msgstr "Subliniat (Ctrl+U)"
+
+msgid "Strikethrough (Ctrl+Shift+5)"
+msgstr "Tăiat (Ctrl+Shift+5)"
+
+msgid "Font family (Ctrl+Shift+F)"
+msgstr "Familie de fonturi (Ctrl+Shift+F)"
+
+msgid "Font family"
+msgstr "Familie de fonturi"
+
+msgid "Font size (Ctrl+] larger, Ctrl+[ smaller)"
+msgstr "Dimensiune font (Ctrl+] mai mare, Ctrl+[ mai mic)"
+
+msgid "Grid"
+msgstr "Grilă"
+
+msgid "Cell size in picture pixels (1 to 1000)"
+msgstr "Celulă în pixeli (1–1000)"
+
+msgid "Axonometric"
+msgstr "Axonometrică"
+
+msgid "_Apply"
+msgstr "_Aplică"
+
+msgid "File"
+msgstr "Fișier"
+
+msgid "New"
+msgstr "Nou"
+
+msgid "Open…"
+msgstr "Deschide…"
+
+msgid "Save"
+msgstr "Salvează"
+
+msgid "Save As…"
+msgstr "Salvează ca…"
+
+msgid "Print…"
+msgstr "Tipărește…"
+
+msgid "Preferences"
+msgstr "Preferințe"
+
+msgid "Keyboard Shortcuts"
+msgstr "Scurtături de la tastatură"
+
+msgid "Help"
+msgstr "Ajutor"
+
+msgid "Close the window"
+msgstr "Închide fereastra"
+
+msgid "Quit"
+msgstr "Ieșire"
+
+msgid "Edit"
+msgstr "Editare"
+
+msgid "Undo"
+msgstr "Anulează"
+
+msgid "Redo"
+msgstr "Refă"
+
+msgid "Cut"
+msgstr "Taie"
+
+msgid "Copy"
+msgstr "Copiază"
+
+msgid "Paste"
+msgstr "Lipește"
+
+msgid "Select All"
+msgstr "Selectează tot"
+
+msgid "Clear the selection"
+msgstr "Golește selecția"
+
+msgid "Move the selection 1 pixel"
+msgstr "Mută selecția cu 1 pixel"
+
+msgid "Move the selection 10 pixels"
+msgstr "Mută selecția cu 10 pixeli"
+
+msgid "Put down a selection or a waiting shape"
+msgstr "Așază o selecție sau o formă în așteptare"
+
+msgid "Put down a selection, drop a waiting shape, cancel a drag"
+msgstr "Așază o selecție, renunță la o formă în așteptare, anulează o tragere"
+
+msgid "Image"
+msgstr "Imagine"
+
+msgid "Rotate 90°"
+msgstr "Rotește cu 90°"
+
+msgid "Rotate 270°"
+msgstr "Rotește cu 270°"
+
+msgid "Stretch and Skew…"
+msgstr "Întinde și înclină…"
+
+msgid "Invert Colors"
+msgstr "Inversează culorile"
+
+msgid "Attributes…"
+msgstr "Atribute…"
+
+msgid "Clear Image"
+msgstr "Golește imaginea"
+
+msgid "View"
+msgstr "Vizualizare"
+
+msgid "Zoom In"
+msgstr "Mărește"
+
+msgid "Zoom Out"
+msgstr "Micșorează"
+
+msgid "Normal Size"
+msgstr "Dimensiune normală"
+
+msgid "Large Size"
+msgstr "Dimensiune mare"
+
+msgid "Fit to Window"
+msgstr "Potrivește la fereastră"
+
+msgid "Show Grid"
+msgstr "Arată grila"
+
+msgid "Close the thumbnail"
+msgstr "Închide miniatura"
+
+msgid "Move the focus"
+msgstr "Mută focalizarea"
+
+msgid "Move to the next or the previous panel"
+msgstr "Treci la panoul următor sau anterior"
+
+msgid "Tools"
+msgstr "Unelte"
+
+msgid "The next larger size of the tool"
+msgstr "Următoarea dimensiune mai mare a uneltei"
+
+msgid "The next smaller size of the tool"
+msgstr "Următoarea dimensiune mai mică a uneltei"
+
+msgid "Move the focus in a panel"
+msgstr "Mută focalizarea într-un panou"
+
+msgid "Choose the focused control"
+msgstr "Alege controlul focalizat"
+
+msgid "Press or release at the marker"
+msgstr "Apasă sau eliberează la marcaj"
+
+msgid "Press with the secondary button at the marker"
+msgstr "Apasă cu butonul secundar la marcaj"
+
+msgid "Press for a copy of a selection"
+msgstr "Apasă pentru o copie a selecției"
+
+msgid "Press for a smear of a selection"
+msgstr "Apasă pentru o urmă a selecției"
+
+msgid "Move the marker 1 pixel"
+msgstr "Mută marcajul cu 1 pixel"
+
+msgid "Move the marker 10 pixels"
+msgstr "Mută marcajul cu 10 pixeli"
+
+msgid "Move the marker alone, with a selection"
+msgstr "Mută doar marcajul, cu o selecție"
+
+msgid "Open the menu at the marker"
+msgstr "Deschide meniul la marcaj"
+
+msgid "Say the marker's place and color"
+msgstr "Spune locul și culoarea marcajului"
+
+msgid "Colors"
+msgstr "Culori"
+
+msgid "Swap foreground and background"
+msgstr "Schimbă între ele prim-planul și fundalul"
+
+msgid "Edit the focused swatch"
+msgstr "Editează mostra focalizată"
+
+msgid "Move among the swatches"
+msgstr "Deplasare între mostre"
+
+msgid "Make the focused swatch the foreground color"
+msgstr "Fă din mostra focalizată culoarea de prim-plan"
+
+msgid "Make the focused swatch the background color"
+msgstr "Fă din mostra focalizată culoarea de fundal"
+
+msgid "Text"
+msgstr "Text"
+
+msgid "Bold"
+msgstr "Aldin"
+
+msgid "Italic"
+msgstr "Cursiv"
+
+msgid "Underline"
+msgstr "Subliniat"
+
+msgid "Strikethrough"
+msgstr "Tăiat"
+
+msgid "Font size 1 point larger or smaller"
+msgstr "Dimensiune font cu 1 punct mai mare sau mai mică"
+
+msgid "Open the font family list"
+msgstr "Deschide lista familiilor de fonturi"
+
+msgid "Move the highlight in the family list"
+msgstr "Mută evidențierea în lista familiilor"
+
+msgid "Choose the highlighted family"
+msgstr "Alege familia evidențiată"
+
+msgid "Close the family list"
+msgstr "Închide lista familiilor"
+
+msgid "New line"
+msgstr "Linie nouă"
+
+msgid "Delete before or after the caret"
+msgstr "Șterge înainte sau după cursor"
+
+msgid "Move the caret"
+msgstr "Mută cursorul"
+
+msgid "Move the caret by a word"
+msgstr "Mută cursorul cu un cuvânt"
+
+msgid "To the start or the end of the line"
+msgstr "La începutul sau sfârșitul liniei"
+
+msgid "Extend the text selection"
+msgstr "Extinde selecția de text"
+
+msgid "Cut the selected text"
+msgstr "Taie textul selectat"
+
+msgid "Copy the selected text"
+msgstr "Copiază textul selectat"
+
+msgid "Paste into the box"
+msgstr "Lipește în casetă"
+
+msgid "Paste as Plain Text"
+msgstr "Lipește ca text simplu"
+
+msgid "Select all the box's text"
+msgstr "Selectează tot textul casetei"
+
+msgid "Put the box down"
+msgstr "Așază caseta"
+
+msgid "Move the box 1 pixel"
+msgstr "Mută caseta cu 1 pixel"
+
+msgid "Move the box's far corner 1 pixel"
+msgstr "Mută colțul opus al casetei cu 1 pixel"
+
+#, c-format
+msgid "Color %d, %s"
+msgstr "Culoarea %d, %s"
+
+#, c-format
+msgid "Foreground color, %s"
+msgstr "Culoare de prim-plan, %s"
+
+#, c-format
+msgid "Background color, %s"
+msgstr "Culoare de fundal, %s"
+
+msgid "Swap foreground and background (Ctrl+Shift+X)"
+msgstr "Schimbă între ele prim-planul și fundalul (Ctrl+Shift+X)"
+
+msgid "Takes effect the next time Easel starts."
+msgstr "Are efect la următoarea pornire a Easel."
+
+msgid "Use Default"
+msgstr "Folosește implicit"
+
+msgid "Canvas color"
+msgstr "Culoarea pânzei"
+
+msgid "Size and color"
+msgstr "Dimensiune și culoare"
+
+msgid "Automatic size"
+msgstr "Dimensiune automată"
+
+msgid "System"
+msgstr "Sistem"
+
+msgid "Light"
+msgstr "Luminos"
+
+msgid "Dark"
+msgstr "Întunecat"
+
+msgid "Style"
+msgstr "Stil"
+
+msgid "Language"
+msgstr "Limbă"
+
+msgid "Workspace"
+msgstr "Spațiu de lucru"
+
+msgid "Selection"
+msgstr "Selecție"
+
+msgid "Panels"
+msgstr "Panouri"
+
+msgid "Palette"
+msgstr "Paletă"
+
+msgid "Reset Palette"
+msgstr "Resetează paleta"
+
+msgid "System default"
+msgstr "Implicit de sistem"
+
+msgid "Workspace color"
+msgstr "Culoarea spațiului de lucru"
+
+msgid "Workspace color, dark"
+msgstr "Culoarea spațiului de lucru, întunecat"
+
+msgid "Tint strength"
+msgstr "Intensitatea nuanței"
+
+msgid "Tool Box"
+msgstr "Caseta de unelte"
+
+msgid "Color Box"
+msgstr "Caseta de culori"
+
+msgid "Status Bar"
+msgstr "Bara de stare"
+
+msgid "Frame time"
+msgstr "Timp pe cadru"
+
+msgid "Automatic"
+msgstr "Automat"
+
+msgid "Font"
+msgstr "Font"
+
+msgid "Circle, 7 pixels"
+msgstr "Cerc, 7 pixeli"
+
+msgid "Circle, 4 pixels"
+msgstr "Cerc, 4 pixeli"
+
+msgid "Circle, 1 pixel"
+msgstr "Cerc, 1 pixel"
+
+msgid "Square, 8 pixels"
+msgstr "Pătrat, 8 pixeli"
+
+msgid "Square, 5 pixels"
+msgstr "Pătrat, 5 pixeli"
+
+msgid "Square, 2 pixels"
+msgstr "Pătrat, 2 pixeli"
+
+msgid "Slash, 8 pixels"
+msgstr "Bară, 8 pixeli"
+
+msgid "Slash, 5 pixels"
+msgstr "Bară, 5 pixeli"
+
+msgid "Slash, 2 pixels"
+msgstr "Bară, 2 pixeli"
+
+msgid "Backslash, 8 pixels"
+msgstr "Bară inversă, 8 pixeli"
+
+msgid "Backslash, 5 pixels"
+msgstr "Bară inversă, 5 pixeli"
+
+msgid "Backslash, 2 pixels"
+msgstr "Bară inversă, 2 pixeli"
+
+msgid "9 pixels"
+msgstr "9 pixeli"
+
+msgid "16 pixels"
+msgstr "16 pixeli"
+
+msgid "24 pixels"
+msgstr "24 de pixeli"
+
+msgid "4 pixels"
+msgstr "4 pixeli"
+
+msgid "6 pixels"
+msgstr "6 pixeli"
+
+msgid "8 pixels"
+msgstr "8 pixeli"
+
+msgid "10 pixels"
+msgstr "10 pixeli"
+
+msgid "Opaque"
+msgstr "Opac"
+
+msgid "Transparent"
+msgstr "Transparent"
+
+msgid "1 pixel"
+msgstr "1 pixel"
+
+msgid "2 pixels"
+msgstr "2 pixeli"
+
+msgid "3 pixels"
+msgstr "3 pixeli"
+
+msgid "5 pixels"
+msgstr "5 pixeli"
+
+msgid "Outline"
+msgstr "Contur"
+
+msgid "Outline and fill"
+msgstr "Contur și umplere"
+
+msgid "Fill"
+msgstr "Umplere"
+
+msgid "History"
+msgstr "Istoric"
+
+msgid "Saving"
+msgstr "Salvare"
+
+msgid "Brush"
+msgstr "Pensulă"
+
+msgid "Airbrush"
+msgstr "Aerograf"
+
+msgid "Eraser size"
+msgstr "Dimensiunea radierei"
+
+msgid "Eraser mode"
+msgstr "Modul radierei"
+
+msgid "Line and shape width"
+msgstr "Grosimea liniilor și formelor"
+
+msgid "Fill style"
+msgstr "Stil de umplere"
+
+msgid "Magnifier level"
+msgstr "Nivelul lupei"
+
+msgid "Size"
+msgstr "Dimensiune"
+
+msgid "Undo memory"
+msgstr "Memorie pentru anulare"
+
+msgid "JPEG quality"
+msgstr "Calitate JPEG"
+
+msgid "Appearance"
+msgstr "Aspect"
+
+msgid "New Picture"
+msgstr "Imagine nouă"
+
+msgid "Drawing"
+msgstr "Desen"
+
+#, c-format
+msgid "Takes %d sheet"
+msgid_plural "Takes %d sheets"
+msgstr[0] "Ocupă %d foaie"
+msgstr[1] "Ocupă %d foi"
+msgstr[2] "Ocupă %d de foi"
+
+msgid "Pixels"
+msgstr "Pixeli"
+
+msgid "Sharp"
+msgstr "Clari"
+
+msgid "Each pixel a sharp square"
+msgstr "Fiecare pixel este un pătrat clar"
+
+msgid "Smooth when shrunk"
+msgstr "Netezește la micșorare"
+
+msgid "Sharp, but averaged where a printer's dot covers several pixels"
+msgstr "Clari, dar mediați unde un punct al imprimantei acoperă mai mulți pixeli"
+
+msgid "Smooth"
+msgstr "Netezi"
+
+msgid "Blended between pixels"
+msgstr "Amestecați între pixeli"
+
+msgid "Fit on one page"
+msgstr "Potrivește pe o pagină"
+
+#, c-format
+msgid "Too large: %d × %d; the most is 10000 × 10000"
+msgstr "Prea mare: %d × %d; maximul este 10000 × 10000"
+
+#, c-format
+msgid "New size: %d × %d"
+msgstr "Dimensiune nouă: %d × %d"
+
+msgid "Keep aspect ratio"
+msgstr "Păstrează proporțiile"
+
+msgid "Stretch and Skew"
+msgstr "Întinde și înclină"
+
+msgid "Stretch"
+msgstr "Întinde"
+
+msgid "Percent"
+msgstr "Procent"
+
+msgid "Skew"
+msgstr "Înclină"
+
+msgid "Degrees"
+msgstr "Grade"
+
+msgid "Horizontal"
+msgstr "Orizontal"
+
+msgid "Vertical"
+msgstr "Vertical"
+
+msgid "Thumbnail"
+msgstr "Miniatură"
+
+#, c-format
+msgid "Eraser, %d pixel"
+msgid_plural "Eraser, %d pixels"
+msgstr[0] "Radieră, %d pixel"
+msgstr[1] "Radieră, %d pixeli"
+msgstr[2] "Radieră, %d de pixeli"
+
+#, c-format
+msgid "Spray, %d pixel"
+msgid_plural "Spray, %d pixels"
+msgstr[0] "Spray, %d pixel"
+msgstr[1] "Spray, %d pixeli"
+msgstr[2] "Spray, %d de pixeli"
+
+#, c-format
+msgid "Circle, %d pixel"
+msgid_plural "Circle, %d pixels"
+msgstr[0] "Cerc, %d pixel"
+msgstr[1] "Cerc, %d pixeli"
+msgstr[2] "Cerc, %d de pixeli"
+
+#, c-format
+msgid "Square, %d pixel"
+msgid_plural "Square, %d pixels"
+msgstr[0] "Pătrat, %d pixel"
+msgstr[1] "Pătrat, %d pixeli"
+msgstr[2] "Pătrat, %d de pixeli"
+
+#, c-format
+msgid "Slash, %d pixel"
+msgid_plural "Slash, %d pixels"
+msgstr[0] "Bară, %d pixel"
+msgstr[1] "Bară, %d pixeli"
+msgstr[2] "Bară, %d de pixeli"
+
+#, c-format
+msgid "Backslash, %d pixel"
+msgid_plural "Backslash, %d pixels"
+msgstr[0] "Bară inversă, %d pixel"
+msgstr[1] "Bară inversă, %d pixeli"
+msgstr[2] "Bară inversă, %d de pixeli"
+
+msgid "Opaque: erase to the background color"
+msgstr "Opac: șterge până la culoarea de fundal"
+
+msgid "Transparent: erase to transparency"
+msgstr "Transparent: șterge până la transparență"
+
+msgid "Opaque: keep background color"
+msgstr "Opac: păstrează culoarea de fundal"
+
+msgid "Transparent: moving or clearing leaves a transparent hole"
+msgstr "Transparent: mutarea sau golirea lasă o gaură transparentă"
+
+msgid "Opaque: fill the text box with the background color"
+msgstr "Opac: umple caseta cu culoarea de fundal"
+
+msgid "Transparent: only the text"
+msgstr "Transparent: doar textul"
+
+msgid "Untitled"
+msgstr "Fără titlu"
+
+#, c-format
+msgid "• %s – Easel"
+msgstr "• %s – Easel"
+
+#, c-format
+msgid "%s – Easel"
+msgstr "%s – Easel"
+
+msgid "Close"
+msgstr "Închide"
+
+#, c-format
+msgid "Could Not Save “%s”"
+msgstr "Nu s-a putut salva „%s”"
+
+#, c-format
+msgid "“%s” could not be saved: %s"
+msgstr "„%s” nu a putut fi salvat: %s"
+
+#, c-format
+msgid "Saved %s"
+msgstr "Salvat: %s"
+
+#, c-format
+msgid "Replace “%s”?"
+msgstr "Înlocuiești „%s”?"
+
+msgid "A file with this name already exists."
+msgstr "Există deja un fișier cu acest nume."
+
+msgid "_Replace"
+msgstr "Înl_ocuiește"
+
+msgid "Cannot Save This Kind of File"
+msgstr "Acest tip de fișier nu poate fi salvat"
+
+msgid "Pictures can be saved as PNG, JPEG, BMP, TIFF or WebP."
+msgstr "Imaginile pot fi salvate ca PNG, JPEG, BMP, TIFF sau WebP."
+
+msgid "Copy To"
+msgstr "Copiază în"
+
+msgid "Untitled.png"
+msgstr "Fără titlu.png"
+
+msgid "Save Picture As"
+msgstr "Salvează imaginea ca"
+
+#, c-format
+msgid "“%s” has unsaved changes."
+msgstr "„%s” are modificări nesalvate."
+
+msgid "Save Changes?"
+msgstr "Salvezi modificările?"
+
+msgid "_Discard"
+msgstr "_Renunță"
+
+msgid "_Save"
+msgstr "_Salvează"
+
+#, c-format
+msgid "Opened %s"
+msgstr "Deschis: %s"
+
+msgid "Could Not Create a New Picture"
+msgstr "Nu s-a putut crea o imagine nouă"
+
+#, c-format
+msgid "Could Not Open “%s”"
+msgstr "Nu s-a putut deschide „%s”"
+
+msgid "The file cannot be read."
+msgstr "Fișierul nu poate fi citit."
+
+msgid "This is not a picture the app can open."
+msgstr "Aceasta nu este o imagine pe care aplicația o poate deschide."
+
+msgid "The picture is bigger than 10000 pixels in width or height."
+msgstr "Imaginea depășește 10000 de pixeli în lățime sau înălțime."
+
+msgid "Open Picture"
+msgstr "Deschide imaginea"
+
+msgid "Draw with the foreground color. The secondary button uses the background color."
+msgstr "Desenează cu culoarea de prim-plan. Butonul secundar folosește culoarea de fundal."
+
+msgid "Paint with the foreground color. The secondary button uses the background color."
+msgstr "Pictează cu culoarea de prim-plan. Butonul secundar folosește culoarea de fundal."
+
+msgid "Spray with the foreground color. The secondary button uses the background color."
+msgstr "Pulverizează culoarea de prim-plan. Butonul secundar folosește culoarea de fundal."
+
+msgid "Erase to transparency. The secondary button erases only the foreground color."
+msgstr "Șterge până la transparență. Butonul secundar șterge doar culoarea de prim-plan."
+
+msgid "Erase to the background color. The secondary button changes only the foreground color."
+msgstr "Șterge până la culoarea de fundal. Butonul secundar schimbă doar culoarea de prim-plan."
+
+msgid "Changes the magnification."
+msgstr "Schimbă mărirea."
+
+msgid "Draws a straight line with the selected line width."
+msgstr "Desenează o linie dreaptă de grosimea aleasă."
+
+msgid "Draws a rectangle with the selected fill style."
+msgstr "Desenează un dreptunghi cu stilul de umplere ales."
+
+msgid "Draws a rounded rectangle with the selected fill style."
+msgstr "Desenează un dreptunghi rotunjit cu stilul de umplere ales."
+
+msgid "Draws an ellipse with the selected fill style."
+msgstr "Desenează o elipsă cu stilul de umplere ales."
+
+msgid "Draws a curved line with the selected line width."
+msgstr "Desenează o linie curbă de grosimea aleasă."
+
+msgid "Draws a polygon with the selected fill style."
+msgstr "Desenează un poligon cu stilul de umplere ales."
+
+msgid "Selects a rectangular part of the picture to move, copy, or edit."
+msgstr "Selectează o parte dreptunghiulară a imaginii pentru mutare, copiere sau editare."
+
+msgid "Selects a free-form part of the picture to move, copy, or edit."
+msgstr "Selectează o parte liberă a imaginii pentru mutare, copiere sau editare."
+
+msgid "Fades the drawing color to transparent along a drag. A click or Enter applies it, Esc cancels it."
+msgstr "Estompează culoarea spre transparent de-a lungul unei trageri. Un clic sau Enter o aplică, Esc o anulează."
+
+msgid "Picks up a color from the picture for drawing."
+msgstr "Preia o culoare din imagine pentru desen."
+
+msgid "Fills an area with the current drawing color."
+msgstr "Umple o zonă cu culoarea curentă."
+
+msgid "Inserts text into the picture."
+msgstr "Inserează text în imagine."
+
+msgid "Drag to pan. Ctrl+wheel zooms."
+msgstr "Trage pentru a deplasa. Ctrl+rotiță schimbă zoomul."
+
+msgid "Zoom"
+msgstr "Zoom"
+
+msgid "Zoom Out (Ctrl+-)"
+msgstr "Micșorează (Ctrl+-)"
+
+msgid "Zoom In (Ctrl+=)"
+msgstr "Mărește (Ctrl+=)"
+
+#, c-format
+msgid "There is not enough memory for a picture of %d × %d pixel."
+msgid_plural "There is not enough memory for a picture of %d × %d pixels."
+msgstr[0] "Memorie insuficientă pentru o imagine de %d × %d pixel."
+msgstr[1] "Memorie insuficientă pentru o imagine de %d × %d pixeli."
+msgstr[2] "Memorie insuficientă pentru o imagine de %d × %d de pixeli."
+
+msgid "Could Not Resize the Picture"
+msgstr "Nu s-a putut redimensiona imaginea"
+
+msgid "Could Not Invert the Colors"
+msgstr "Nu s-au putut inversa culorile"
+
+msgid "Could Not Clear the Picture"
+msgstr "Nu s-a putut goli imaginea"
+
+msgid "Could Not Flip the Picture"
+msgstr "Nu s-a putut răsturna imaginea"
+
+msgid "Could Not Rotate the Picture"
+msgstr "Nu s-a putut roti imaginea"
+
+msgid "There is not enough memory for this change."
+msgstr "Memorie insuficientă pentru această modificare."
+
+msgid "Space to finish, Esc to cancel"
+msgstr "Space pentru a termina, Esc pentru a anula"
+
+msgid "Done"
+msgstr "Gata"
+
+msgid "Cancelled"
+msgstr "Anulat"
+
+#, c-format
+msgid "Foreground %s"
+msgstr "Prim-plan %s"
+
+#, c-format
+msgid "Background %s"
+msgstr "Fundal %s"
+
+msgid "Text box open"
+msgstr "Casetă de text deschisă"
+
+msgid "Text box closed"
+msgstr "Casetă de text închisă"
+
+#, c-format
+msgid "Selection %d by %d"
+msgstr "Selecție %d pe %d"
+
+msgid "Selection put down"
+msgstr "Selecție așezată"
+
+msgid "Selection removed"
+msgstr "Selecție eliminată"
+
+msgid "Polygon closed"
+msgstr "Poligon închis"
+
+msgid "Pan"
+msgstr "Deplasare"
+
+msgid "Pencil"
+msgstr "Creion"
+
+msgid "Eraser"
+msgstr "Radieră"
+
+msgid "Magnifier"
+msgstr "Lupă"
+
+msgid "Pick Color"
+msgstr "Preia culoarea"
+
+msgid "Line"
+msgstr "Linie"
+
+msgid "Rectangle"
+msgstr "Dreptunghi"
+
+msgid "Rounded Rectangle"
+msgstr "Dreptunghi rotunjit"
+
+msgid "Ellipse"
+msgstr "Elipsă"
+
+msgid "Curve"
+msgstr "Curbă"
+
+msgid "Polygon"
+msgstr "Poligon"
+
+msgid "Gradient"
+msgstr "Degradé"
+
+msgid "Select"
+msgstr "Selectare"
+
+msgid "Free-Form Select"
+msgstr "Selectare liberă"
+
+msgid "Could Not Open Help"
+msgstr "Nu s-a putut deschide ajutorul"
+
+msgid "The help page could not be opened."
+msgstr "Pagina de ajutor nu a putut fi deschisă."
+
+msgid "OK"
+msgstr "OK"
+
+msgid "Could Not Print"
+msgstr "Nu s-a putut tipări"
+
+msgid "The picture could not be printed."
+msgstr "Imaginea nu a putut fi tipărită."
+
+msgid "Picture"
+msgstr "Imagine"
+
+msgid "Could Not Save the Preferences"
+msgstr "Nu s-au putut salva preferințele"
+
+msgid "The changes apply until Easel closes where they can, but settings.ini could not be written."
+msgstr "Modificările sunt valabile unde este posibil până la închiderea Easel, dar settings.ini nu a putut fi scris."
+
+msgid "Could Not Stretch or Skew the Picture"
+msgstr "Nu s-a putut întinde sau înclina imaginea"
+
+msgid "Undone"
+msgstr "Anulat"
+
+msgid "Redone"
+msgstr "Refăcut"
+
+msgid "Could Not Fill"
+msgstr "Nu s-a putut umple"
+
+msgid "There is not enough memory to fill this area."
+msgstr "Memorie insuficientă pentru a umple această zonă."
+
+msgid "Could Not Draw the Shape"
+msgstr "Nu s-a putut desena forma"
+
+msgid "There is not enough memory to draw this shape."
+msgstr "Memorie insuficientă pentru a desena această formă."
+
+msgid "Could Not Apply the Gradient"
+msgstr "Nu s-a putut aplica degradeul"
+
+msgid "There is not enough memory to apply this gradient."
+msgstr "Memorie insuficientă pentru a aplica acest degradeu."
+
+msgid "Could Not Clear the Selection"
+msgstr "Nu s-a putut goli selecția"
+
+msgid "There is not enough memory to clear this selection."
+msgstr "Memorie insuficientă pentru a goli această selecție."
+
+msgid "Could Not Make the Selection"
+msgstr "Nu s-a putut crea selecția"
+
+msgid "There is not enough memory to make this selection."
+msgstr "Memorie insuficientă pentru a crea această selecție."
+
+msgid "Could Not Stretch the Selection"
+msgstr "Nu s-a putut întinde selecția"
+
+msgid "There is not enough memory to stretch this selection."
+msgstr "Memorie insuficientă pentru a întinde această selecție."
+
+msgid "Could Not Flip the Selection"
+msgstr "Nu s-a putut răsturna selecția"
+
+msgid "Could Not Rotate the Selection"
+msgstr "Nu s-a putut roti selecția"
+
+msgid "Could Not Invert the Selection"
+msgstr "Nu s-a putut inversa selecția"
+
+msgid "Could Not Stretch or Skew the Selection"
+msgstr "Nu s-a putut întinde sau înclina selecția"
+
+msgid "Could Not Move the Selection"
+msgstr "Nu s-a putut muta selecția"
+
+msgid "There is not enough memory to move this selection."
+msgstr "Memorie insuficientă pentru a muta această selecție."
+
+msgid "Could Not Add the Text"
+msgstr "Nu s-a putut adăuga textul"
+
+msgid "There is not enough memory to show this text."
+msgstr "Memorie insuficientă pentru a afișa acest text."
+
+msgid "There is not enough memory to add this text."
+msgstr "Memorie insuficientă pentru a adăuga acest text."
+
+msgid "Could Not Copy the Selection"
+msgstr "Nu s-a putut copia selecția"
+
+msgid "There is not enough memory to copy this selection."
+msgstr "Memorie insuficientă pentru a copia această selecție."
+
+#, c-format
+msgid "Could Not Paste “%s”"
+msgstr "Nu s-a putut lipi „%s”"
+
+msgid "Could Not Paste"
+msgstr "Nu s-a putut lipi"
+
+msgid "There is not enough memory to paste this picture."
+msgstr "Memorie insuficientă pentru a lipi această imagine."
+
+msgid "The clipboard's picture cannot be read."
+msgstr "Imaginea din clipboard nu poate fi citită."
+
+#, c-format
+msgid "The picture is %d × %d pixel; the canvas is %d × %d."
+msgid_plural "The picture is %d × %d pixels; the canvas is %d × %d."
+msgstr[0] "Imaginea are %d × %d pixel; pânza are %d × %d."
+msgstr[1] "Imaginea are %d × %d pixeli; pânza are %d × %d."
+msgstr[2] "Imaginea are %d × %d de pixeli; pânza are %d × %d."
+
+msgid "Pasted Picture Is Larger Than the Canvas"
+msgstr "Imaginea lipită este mai mare decât pânza"
+
+msgid "_Fit Picture to Canvas"
+msgstr "_Potrivește imaginea la pânză"
+
+msgid "_Resize Canvas to Picture"
+msgstr "_Redimensionează pânza la imagine"
+
+msgid "The clipboard's text cannot be read."
+msgstr "Textul din clipboard nu poate fi citit."
+
+msgid "There is not enough memory to paste this text."
+msgstr "Memorie insuficientă pentru a lipi acest text."
+
+msgid "Could Not Copy the Text"
+msgstr "Nu s-a putut copia textul"
+
+msgid "There is not enough memory to copy this text."
+msgstr "Memorie insuficientă pentru a copia acest text."
+
+msgid "Paste From"
+msgstr "Lipește din"
+
+msgid "Open"
+msgstr "Deschide"
+
+msgid "Main Menu"
+msgstr "Meniu principal"
+
+msgid "Text box"
+msgstr "Casetă de text"
+
+msgid "_Flip"
+msgstr "Răs_toarnă"
+
+msgid "Flip _Horizontal"
+msgstr "Răstoarnă _orizontal"
+
+msgid "Flip _Vertical"
+msgstr "Răstoarnă _vertical"
+
+msgid "_Rotate"
+msgstr "_Rotește"
+
+msgid "Rotate _90°"
+msgstr "Rotește cu _90°"
+
+msgid "Rotate 1_80°"
+msgstr "Rotește cu 1_80°"
+
+msgid "Rotate _270°"
+msgstr "Rotește cu _270°"
+
+msgid "Stretch and _Skew…"
+msgstr "Întinde și în_clină…"
+
+msgid "_Invert Colors"
+msgstr "_Inversează culorile"
+
+msgid "_Clear Image"
+msgstr "_Golește imaginea"
+
+msgid "Grid…"
+msgstr "Grilă…"
+
+msgid "Show Thumbnail"
+msgstr "Arată miniatura"
+
+msgid "Cu_t"
+msgstr "_Taie"
+
+msgid "_Copy"
+msgstr "_Copiază"
+
+msgid "_Paste"
+msgstr "_Lipește"
+
+msgid "_Clear Selection"
+msgstr "_Golește selecția"
+
+msgid "Select _All"
+msgstr "Selectează _tot"
+
+msgid "Copy _To…"
+msgstr "Copiază î_n…"
+
+msgid "Paste as Plain _Text"
+msgstr "Lipește ca _text simplu"
+
+msgid "Paste _From…"
+msgstr "Lipește _din…"
+
+msgid "Zoom _In"
+msgstr "_Mărește"
+
+msgid "Zoom _Out"
+msgstr "Mi_cșorează"
+
+msgid "_Normal Size"
+msgstr "Dimensiune _normală"
+
+msgid "_New"
+msgstr "_Nou"
+
+msgid "_Open…"
+msgstr "_Deschide…"
+
+msgid "Save _As…"
+msgstr "Salvează _ca…"
+
+msgid "_Print…"
+msgstr "_Tipărește…"
+
+msgid "_Edit"
+msgstr "_Editare"
+
+msgid "_Preferences"
+msgstr "_Preferințe"
+
+msgid "_Keyboard Shortcuts"
+msgstr "Scurtături de la _tastatură"
+
+msgid "_Help"
+msgstr "A_jutor"
+
+msgid "_About Easel"
+msgstr "_Despre Easel"
+
+msgid "_Quit"
+msgstr "_Ieșire"
+
+msgid "Pictures"
+msgstr "Imagini"
+
+msgid "All Files"
+msgstr "Toate fișierele"
+
+msgid "Smear the selection 1 pixel"
+msgstr "Lasă o urmă a selecției cu 1 pixel"
+
+msgid "Interface"
+msgstr "Interfață"
+
+msgid "Language Changes at Next Start"
+msgstr "Limba se schimbă la următoarea pornire"
+
+msgid "Your changes are kept. The new language shows the next time Easel starts."
+msgstr "Modificările sunt păstrate. Noua limbă apare la următoarea pornire a Easel."
+
+msgid "By extension"
+msgstr "După extensie"
+
+msgid "Easel"
+msgstr "Easel"
+
+msgid "Draw and touch up pictures"
+msgstr "Desenează și retușează imagini"
+
+msgid "paint;draw;picture;image;pixel;"
+msgstr "paint;draw;picture;image;pixel;pictură;desen;imagine;"
+
+msgid "Easel is a simple drawing program for quick pictures and touch-ups, in the style of Paint in Windows XP."
+msgstr "Easel este un program simplu de desen pentru imagini rapide și retușuri, în stilul Paint din Windows XP."
+
+msgid "It has the classic tools, exact pixels, undo, selections you can move and stretch, text boxes and printing."
+msgstr "Are uneltele clasice, pixeli exacți, anulare, selecții care se mută și se întind, casete de text și tipărire."

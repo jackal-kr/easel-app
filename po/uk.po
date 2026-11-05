@@ -1,0 +1,1215 @@
+# Ukrainian translation of Easel. A draft.
+# SPDX-License-Identifier: GPL-3.0-or-later
+msgid ""
+msgstr ""
+"Project-Id-Version: easel\n"
+"Language: uk\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
+"X-Easel-Reviewed: no\n"
+
+msgid "Default"
+msgstr "Типово"
+
+msgid "Attributes"
+msgstr "Атрибути"
+
+msgid "New area is filled with the background color; a smaller size crops the picture."
+msgstr "Нова ділянка заливається кольором тла; менший розмір обрізає малюнок."
+
+msgid "Width"
+msgstr "Ширина"
+
+msgid "Height"
+msgstr "Висота"
+
+msgid "_Cancel"
+msgstr "_Скасувати"
+
+msgid "_OK"
+msgstr "_Гаразд"
+
+#, c-format
+msgid "Picture, %d by %d pixel"
+msgid_plural "Picture, %d by %d pixels"
+msgstr[0] "Малюнок, %d на %d піксель"
+msgstr[1] "Малюнок, %d на %d пікселі"
+msgstr[2] "Малюнок, %d на %d пікселів"
+
+msgid "Bold (Ctrl+B)"
+msgstr "Жирний (Ctrl+B)"
+
+msgid "Italic (Ctrl+I)"
+msgstr "Курсив (Ctrl+I)"
+
+msgid "Underline (Ctrl+U)"
+msgstr "Підкреслений (Ctrl+U)"
+
+msgid "Strikethrough (Ctrl+Shift+5)"
+msgstr "Закреслений (Ctrl+Shift+5)"
+
+msgid "Font family (Ctrl+Shift+F)"
+msgstr "Гарнітура (Ctrl+Shift+F)"
+
+msgid "Font family"
+msgstr "Гарнітура"
+
+msgid "Font size (Ctrl+] larger, Ctrl+[ smaller)"
+msgstr "Розмір шрифту (Ctrl+] більше, Ctrl+[ менше)"
+
+msgid "Grid"
+msgstr "Сітка"
+
+msgid "Cell size in picture pixels (1 to 1000)"
+msgstr "Комірка в пікселях (1–1000)"
+
+msgid "Axonometric"
+msgstr "Аксонометрична"
+
+msgid "_Apply"
+msgstr "_Застосувати"
+
+msgid "File"
+msgstr "Файл"
+
+msgid "New"
+msgstr "Створити"
+
+msgid "Open…"
+msgstr "Відкрити…"
+
+msgid "Save"
+msgstr "Зберегти"
+
+msgid "Save As…"
+msgstr "Зберегти як…"
+
+msgid "Print…"
+msgstr "Друк…"
+
+msgid "Preferences"
+msgstr "Параметри"
+
+msgid "Keyboard Shortcuts"
+msgstr "Клавіатурні скорочення"
+
+msgid "Help"
+msgstr "Довідка"
+
+msgid "Close the window"
+msgstr "Закрити вікно"
+
+msgid "Quit"
+msgstr "Вийти"
+
+msgid "Edit"
+msgstr "Зміни"
+
+msgid "Undo"
+msgstr "Скасувати"
+
+msgid "Redo"
+msgstr "Повторити"
+
+msgid "Cut"
+msgstr "Вирізати"
+
+msgid "Copy"
+msgstr "Копіювати"
+
+msgid "Paste"
+msgstr "Вставити"
+
+msgid "Select All"
+msgstr "Виділити все"
+
+msgid "Clear the selection"
+msgstr "Очистити виділення"
+
+msgid "Move the selection 1 pixel"
+msgstr "Зсунути виділення на 1 піксель"
+
+msgid "Move the selection 10 pixels"
+msgstr "Зсунути виділення на 10 пікселів"
+
+msgid "Put down a selection or a waiting shape"
+msgstr "Покласти виділення або фігуру, що чекає"
+
+msgid "Put down a selection, drop a waiting shape, cancel a drag"
+msgstr "Покласти виділення, скинути фігуру, що чекає, скасувати перетягування"
+
+msgid "Image"
+msgstr "Зображення"
+
+msgid "Rotate 90°"
+msgstr "Повернути на 90°"
+
+msgid "Rotate 270°"
+msgstr "Повернути на 270°"
+
+msgid "Stretch and Skew…"
+msgstr "Розтягти й нахилити…"
+
+msgid "Invert Colors"
+msgstr "Обернути кольори"
+
+msgid "Attributes…"
+msgstr "Атрибути…"
+
+msgid "Clear Image"
+msgstr "Очистити зображення"
+
+msgid "View"
+msgstr "Вигляд"
+
+msgid "Zoom In"
+msgstr "Збільшити"
+
+msgid "Zoom Out"
+msgstr "Зменшити"
+
+msgid "Normal Size"
+msgstr "Звичайний розмір"
+
+msgid "Large Size"
+msgstr "Великий розмір"
+
+msgid "Fit to Window"
+msgstr "За розміром вікна"
+
+msgid "Show Grid"
+msgstr "Показати сітку"
+
+msgid "Close the thumbnail"
+msgstr "Закрити мініатюру"
+
+msgid "Move the focus"
+msgstr "Перемістити фокус"
+
+msgid "Move to the next or the previous panel"
+msgstr "Перейти до наступної або попередньої панелі"
+
+msgid "Tools"
+msgstr "Інструменти"
+
+msgid "The next larger size of the tool"
+msgstr "Наступний більший розмір інструмента"
+
+msgid "The next smaller size of the tool"
+msgstr "Наступний менший розмір інструмента"
+
+msgid "Move the focus in a panel"
+msgstr "Перемістити фокус у панелі"
+
+msgid "Choose the focused control"
+msgstr "Вибрати елемент у фокусі"
+
+msgid "Press or release at the marker"
+msgstr "Натиснути або відпустити біля маркера"
+
+msgid "Press with the secondary button at the marker"
+msgstr "Натиснути додатковою кнопкою біля маркера"
+
+msgid "Press for a copy of a selection"
+msgstr "Натиснути для копії виділення"
+
+msgid "Press for a smear of a selection"
+msgstr "Натиснути для шлейфу виділення"
+
+msgid "Move the marker 1 pixel"
+msgstr "Зсунути маркер на 1 піксель"
+
+msgid "Move the marker 10 pixels"
+msgstr "Зсунути маркер на 10 пікселів"
+
+msgid "Move the marker alone, with a selection"
+msgstr "Зсунути лише маркер за наявності виділення"
+
+msgid "Open the menu at the marker"
+msgstr "Відкрити меню біля маркера"
+
+msgid "Say the marker's place and color"
+msgstr "Назвати місце й колір маркера"
+
+msgid "Colors"
+msgstr "Кольори"
+
+msgid "Swap foreground and background"
+msgstr "Поміняти основний колір і колір тла"
+
+msgid "Edit the focused swatch"
+msgstr "Змінити зразок у фокусі"
+
+msgid "Move among the swatches"
+msgstr "Переходити між зразками"
+
+msgid "Make the focused swatch the foreground color"
+msgstr "Зробити зразок у фокусі основним кольором"
+
+msgid "Make the focused swatch the background color"
+msgstr "Зробити зразок у фокусі кольором тла"
+
+msgid "Text"
+msgstr "Текст"
+
+msgid "Bold"
+msgstr "Жирний"
+
+msgid "Italic"
+msgstr "Курсив"
+
+msgid "Underline"
+msgstr "Підкреслений"
+
+msgid "Strikethrough"
+msgstr "Закреслений"
+
+msgid "Font size 1 point larger or smaller"
+msgstr "Розмір шрифту на 1 пункт більший або менший"
+
+msgid "Open the font family list"
+msgstr "Відкрити список гарнітур"
+
+msgid "Move the highlight in the family list"
+msgstr "Перемістити підсвітку в списку гарнітур"
+
+msgid "Choose the highlighted family"
+msgstr "Вибрати підсвічену гарнітуру"
+
+msgid "Close the family list"
+msgstr "Закрити список гарнітур"
+
+msgid "New line"
+msgstr "Новий рядок"
+
+msgid "Delete before or after the caret"
+msgstr "Видалити перед або після курсора"
+
+msgid "Move the caret"
+msgstr "Зсунути курсор"
+
+msgid "Move the caret by a word"
+msgstr "Зсунути курсор на слово"
+
+msgid "To the start or the end of the line"
+msgstr "До початку або кінця рядка"
+
+msgid "Extend the text selection"
+msgstr "Розширити виділення тексту"
+
+msgid "Cut the selected text"
+msgstr "Вирізати виділений текст"
+
+msgid "Copy the selected text"
+msgstr "Копіювати виділений текст"
+
+msgid "Paste into the box"
+msgstr "Вставити в рамку"
+
+msgid "Paste as Plain Text"
+msgstr "Вставити як простий текст"
+
+msgid "Select all the box's text"
+msgstr "Виділити весь текст рамки"
+
+msgid "Put the box down"
+msgstr "Покласти рамку"
+
+msgid "Move the box 1 pixel"
+msgstr "Зсунути рамку на 1 піксель"
+
+msgid "Move the box's far corner 1 pixel"
+msgstr "Зсунути дальній кут рамки на 1 піксель"
+
+#, c-format
+msgid "Color %d, %s"
+msgstr "Колір %d, %s"
+
+#, c-format
+msgid "Foreground color, %s"
+msgstr "Основний колір, %s"
+
+#, c-format
+msgid "Background color, %s"
+msgstr "Колір тла, %s"
+
+msgid "Swap foreground and background (Ctrl+Shift+X)"
+msgstr "Поміняти основний колір і колір тла (Ctrl+Shift+X)"
+
+msgid "Takes effect the next time Easel starts."
+msgstr "Набуде чинності під час наступного запуску Easel."
+
+msgid "Use Default"
+msgstr "Типово"
+
+msgid "Canvas color"
+msgstr "Колір полотна"
+
+msgid "Size and color"
+msgstr "Розмір і колір"
+
+msgid "Automatic size"
+msgstr "Автоматичний розмір"
+
+msgid "System"
+msgstr "Системний"
+
+msgid "Light"
+msgstr "Світлий"
+
+msgid "Dark"
+msgstr "Темний"
+
+msgid "Style"
+msgstr "Стиль"
+
+msgid "Language"
+msgstr "Мова"
+
+msgid "Workspace"
+msgstr "Робоча область"
+
+msgid "Selection"
+msgstr "Виділення"
+
+msgid "Panels"
+msgstr "Панелі"
+
+msgid "Palette"
+msgstr "Палітра"
+
+msgid "Reset Palette"
+msgstr "Скинути палітру"
+
+msgid "System default"
+msgstr "Як у системі"
+
+msgid "Workspace color"
+msgstr "Колір робочої області"
+
+msgid "Workspace color, dark"
+msgstr "Колір робочої області, темний"
+
+msgid "Tint strength"
+msgstr "Насиченість підсвітки"
+
+msgid "Tool Box"
+msgstr "Панель інструментів"
+
+msgid "Color Box"
+msgstr "Панель кольорів"
+
+msgid "Status Bar"
+msgstr "Рядок стану"
+
+msgid "Frame time"
+msgstr "Час кадру"
+
+msgid "Automatic"
+msgstr "Автоматично"
+
+msgid "Font"
+msgstr "Шрифт"
+
+msgid "Circle, 7 pixels"
+msgstr "Коло, 7 пікселів"
+
+msgid "Circle, 4 pixels"
+msgstr "Коло, 4 пікселі"
+
+msgid "Circle, 1 pixel"
+msgstr "Коло, 1 піксель"
+
+msgid "Square, 8 pixels"
+msgstr "Квадрат, 8 пікселів"
+
+msgid "Square, 5 pixels"
+msgstr "Квадрат, 5 пікселів"
+
+msgid "Square, 2 pixels"
+msgstr "Квадрат, 2 пікселі"
+
+msgid "Slash, 8 pixels"
+msgstr "Коса, 8 пікселів"
+
+msgid "Slash, 5 pixels"
+msgstr "Коса, 5 пікселів"
+
+msgid "Slash, 2 pixels"
+msgstr "Коса, 2 пікселі"
+
+msgid "Backslash, 8 pixels"
+msgstr "Зворотна коса, 8 пікселів"
+
+msgid "Backslash, 5 pixels"
+msgstr "Зворотна коса, 5 пікселів"
+
+msgid "Backslash, 2 pixels"
+msgstr "Зворотна коса, 2 пікселі"
+
+msgid "9 pixels"
+msgstr "9 пікселів"
+
+msgid "16 pixels"
+msgstr "16 пікселів"
+
+msgid "24 pixels"
+msgstr "24 пікселі"
+
+msgid "4 pixels"
+msgstr "4 пікселі"
+
+msgid "6 pixels"
+msgstr "6 пікселів"
+
+msgid "8 pixels"
+msgstr "8 пікселів"
+
+msgid "10 pixels"
+msgstr "10 пікселів"
+
+msgid "Opaque"
+msgstr "Непрозорий"
+
+msgid "Transparent"
+msgstr "Прозорий"
+
+msgid "1 pixel"
+msgstr "1 піксель"
+
+msgid "2 pixels"
+msgstr "2 пікселі"
+
+msgid "3 pixels"
+msgstr "3 пікселі"
+
+msgid "5 pixels"
+msgstr "5 пікселів"
+
+msgid "Outline"
+msgstr "Контур"
+
+msgid "Outline and fill"
+msgstr "Контур і заливка"
+
+msgid "Fill"
+msgstr "Заливка"
+
+msgid "History"
+msgstr "Історія"
+
+msgid "Saving"
+msgstr "Збереження"
+
+msgid "Brush"
+msgstr "Пензель"
+
+msgid "Airbrush"
+msgstr "Розпилювач"
+
+msgid "Eraser size"
+msgstr "Розмір гумки"
+
+msgid "Eraser mode"
+msgstr "Режим гумки"
+
+msgid "Line and shape width"
+msgstr "Товщина ліній і фігур"
+
+msgid "Fill style"
+msgstr "Стиль заливки"
+
+msgid "Magnifier level"
+msgstr "Рівень лупи"
+
+msgid "Size"
+msgstr "Розмір"
+
+msgid "Undo memory"
+msgstr "Пам'ять для скасування"
+
+msgid "JPEG quality"
+msgstr "Якість JPEG"
+
+msgid "Appearance"
+msgstr "Вигляд"
+
+msgid "New Picture"
+msgstr "Новий малюнок"
+
+msgid "Drawing"
+msgstr "Малювання"
+
+#, c-format
+msgid "Takes %d sheet"
+msgid_plural "Takes %d sheets"
+msgstr[0] "Займає %d аркуш"
+msgstr[1] "Займає %d аркуші"
+msgstr[2] "Займає %d аркушів"
+
+msgid "Pixels"
+msgstr "Пікселі"
+
+msgid "Sharp"
+msgstr "Чіткі"
+
+msgid "Each pixel a sharp square"
+msgstr "Кожен піксель — чіткий квадрат"
+
+msgid "Smooth when shrunk"
+msgstr "Згладжувати при зменшенні"
+
+msgid "Sharp, but averaged where a printer's dot covers several pixels"
+msgstr "Чіткі, але усереднюються, коли точка принтера покриває кілька пікселів"
+
+msgid "Smooth"
+msgstr "Згладжені"
+
+msgid "Blended between pixels"
+msgstr "З переходом між пікселями"
+
+msgid "Fit on one page"
+msgstr "Умістити на одну сторінку"
+
+#, c-format
+msgid "Too large: %d × %d; the most is 10000 × 10000"
+msgstr "Завеликий: %d × %d; межа 10000 × 10000"
+
+#, c-format
+msgid "New size: %d × %d"
+msgstr "Новий розмір: %d × %d"
+
+msgid "Keep aspect ratio"
+msgstr "Зберігати пропорції"
+
+msgid "Stretch and Skew"
+msgstr "Розтягти й нахилити"
+
+msgid "Stretch"
+msgstr "Розтягти"
+
+msgid "Percent"
+msgstr "Відсотки"
+
+msgid "Skew"
+msgstr "Нахилити"
+
+msgid "Degrees"
+msgstr "Градуси"
+
+msgid "Horizontal"
+msgstr "По горизонталі"
+
+msgid "Vertical"
+msgstr "По вертикалі"
+
+msgid "Thumbnail"
+msgstr "Мініатюра"
+
+#, c-format
+msgid "Eraser, %d pixel"
+msgid_plural "Eraser, %d pixels"
+msgstr[0] "Гумка, %d піксель"
+msgstr[1] "Гумка, %d пікселі"
+msgstr[2] "Гумка, %d пікселів"
+
+#, c-format
+msgid "Spray, %d pixel"
+msgid_plural "Spray, %d pixels"
+msgstr[0] "Розпилення, %d піксель"
+msgstr[1] "Розпилення, %d пікселі"
+msgstr[2] "Розпилення, %d пікселів"
+
+#, c-format
+msgid "Circle, %d pixel"
+msgid_plural "Circle, %d pixels"
+msgstr[0] "Коло, %d піксель"
+msgstr[1] "Коло, %d пікселі"
+msgstr[2] "Коло, %d пікселів"
+
+#, c-format
+msgid "Square, %d pixel"
+msgid_plural "Square, %d pixels"
+msgstr[0] "Квадрат, %d піксель"
+msgstr[1] "Квадрат, %d пікселі"
+msgstr[2] "Квадрат, %d пікселів"
+
+#, c-format
+msgid "Slash, %d pixel"
+msgid_plural "Slash, %d pixels"
+msgstr[0] "Коса, %d піксель"
+msgstr[1] "Коса, %d пікселі"
+msgstr[2] "Коса, %d пікселів"
+
+#, c-format
+msgid "Backslash, %d pixel"
+msgid_plural "Backslash, %d pixels"
+msgstr[0] "Зворотна коса, %d піксель"
+msgstr[1] "Зворотна коса, %d пікселі"
+msgstr[2] "Зворотна коса, %d пікселів"
+
+msgid "Opaque: erase to the background color"
+msgstr "Непрозорий: стирати до кольору тла"
+
+msgid "Transparent: erase to transparency"
+msgstr "Прозорий: стирати до прозорості"
+
+msgid "Opaque: keep background color"
+msgstr "Непрозорий: лишати колір тла"
+
+msgid "Transparent: moving or clearing leaves a transparent hole"
+msgstr "Прозорий: переміщення або очищення лишає прозору діру"
+
+msgid "Opaque: fill the text box with the background color"
+msgstr "Непрозорий: заливати рамку кольором тла"
+
+msgid "Transparent: only the text"
+msgstr "Прозорий: лише текст"
+
+msgid "Untitled"
+msgstr "Без назви"
+
+#, c-format
+msgid "• %s – Easel"
+msgstr "• %s – Easel"
+
+#, c-format
+msgid "%s – Easel"
+msgstr "%s – Easel"
+
+msgid "Close"
+msgstr "Закрити"
+
+#, c-format
+msgid "Could Not Save “%s”"
+msgstr "Не вдалося зберегти «%s»"
+
+#, c-format
+msgid "“%s” could not be saved: %s"
+msgstr "Не вдалося зберегти «%s»: %s"
+
+#, c-format
+msgid "Saved %s"
+msgstr "Збережено: %s"
+
+#, c-format
+msgid "Replace “%s”?"
+msgstr "Замінити «%s»?"
+
+msgid "A file with this name already exists."
+msgstr "Файл із такою назвою вже існує."
+
+msgid "_Replace"
+msgstr "_Замінити"
+
+msgid "Cannot Save This Kind of File"
+msgstr "Не можна зберегти файл такого типу"
+
+msgid "Pictures can be saved as PNG, JPEG, BMP, TIFF or WebP."
+msgstr "Малюнки можна зберігати у PNG, JPEG, BMP, TIFF або WebP."
+
+msgid "Copy To"
+msgstr "Копіювати до"
+
+msgid "Untitled.png"
+msgstr "Без назви.png"
+
+msgid "Save Picture As"
+msgstr "Зберегти малюнок як"
+
+#, c-format
+msgid "“%s” has unsaved changes."
+msgstr "«%s» має незбережені зміни."
+
+msgid "Save Changes?"
+msgstr "Зберегти зміни?"
+
+msgid "_Discard"
+msgstr "_Не зберігати"
+
+msgid "_Save"
+msgstr "_Зберегти"
+
+#, c-format
+msgid "Opened %s"
+msgstr "Відкрито: %s"
+
+msgid "Could Not Create a New Picture"
+msgstr "Не вдалося створити новий малюнок"
+
+#, c-format
+msgid "Could Not Open “%s”"
+msgstr "Не вдалося відкрити «%s»"
+
+msgid "The file cannot be read."
+msgstr "Не вдається прочитати файл."
+
+msgid "This is not a picture the app can open."
+msgstr "Це не малюнок, який застосунок може відкрити."
+
+msgid "The picture is bigger than 10000 pixels in width or height."
+msgstr "Малюнок більший за 10000 пікселів завширшки або заввишки."
+
+msgid "Open Picture"
+msgstr "Відкрити малюнок"
+
+msgid "Draw with the foreground color. The secondary button uses the background color."
+msgstr "Малює основним кольором. Додаткова кнопка малює кольором тла."
+
+msgid "Paint with the foreground color. The secondary button uses the background color."
+msgstr "Фарбує основним кольором. Додаткова кнопка фарбує кольором тла."
+
+msgid "Spray with the foreground color. The secondary button uses the background color."
+msgstr "Розпилює основний колір. Додаткова кнопка розпилює колір тла."
+
+msgid "Erase to transparency. The secondary button erases only the foreground color."
+msgstr "Стирає до прозорості. Додаткова кнопка стирає лише основний колір."
+
+msgid "Erase to the background color. The secondary button changes only the foreground color."
+msgstr "Стирає до кольору тла. Додаткова кнопка змінює лише основний колір."
+
+msgid "Changes the magnification."
+msgstr "Змінює збільшення."
+
+msgid "Draws a straight line with the selected line width."
+msgstr "Малює пряму лінію вибраної товщини."
+
+msgid "Draws a rectangle with the selected fill style."
+msgstr "Малює прямокутник вибраним стилем заливки."
+
+msgid "Draws a rounded rectangle with the selected fill style."
+msgstr "Малює заокруглений прямокутник вибраним стилем заливки."
+
+msgid "Draws an ellipse with the selected fill style."
+msgstr "Малює еліпс вибраним стилем заливки."
+
+msgid "Draws a curved line with the selected line width."
+msgstr "Малює криву лінію вибраної товщини."
+
+msgid "Draws a polygon with the selected fill style."
+msgstr "Малює багатокутник вибраним стилем заливки."
+
+msgid "Selects a rectangular part of the picture to move, copy, or edit."
+msgstr "Виділяє прямокутну частину малюнка, щоб перемістити, скопіювати чи змінити її."
+
+msgid "Selects a free-form part of the picture to move, copy, or edit."
+msgstr "Виділяє довільну частину малюнка, щоб перемістити, скопіювати чи змінити її."
+
+msgid "Fades the drawing color to transparent along a drag. A click or Enter applies it, Esc cancels it."
+msgstr "Плавно переводить колір у прозорий уздовж перетягування. Клацання або Enter застосовує, Esc скасовує."
+
+msgid "Picks up a color from the picture for drawing."
+msgstr "Бере колір із малюнка для малювання."
+
+msgid "Fills an area with the current drawing color."
+msgstr "Заливає ділянку поточним кольором."
+
+msgid "Inserts text into the picture."
+msgstr "Вставляє текст у малюнок."
+
+msgid "Drag to pan. Ctrl+wheel zooms."
+msgstr "Перетягуйте для зсуву. Ctrl+коліщатко змінює масштаб."
+
+msgid "Zoom"
+msgstr "Масштаб"
+
+msgid "Zoom Out (Ctrl+-)"
+msgstr "Зменшити (Ctrl+-)"
+
+msgid "Zoom In (Ctrl+=)"
+msgstr "Збільшити (Ctrl+=)"
+
+#, c-format
+msgid "There is not enough memory for a picture of %d × %d pixel."
+msgid_plural "There is not enough memory for a picture of %d × %d pixels."
+msgstr[0] "Бракує пам'яті для малюнка %d × %d піксель."
+msgstr[1] "Бракує пам'яті для малюнка %d × %d пікселі."
+msgstr[2] "Бракує пам'яті для малюнка %d × %d пікселів."
+
+msgid "Could Not Resize the Picture"
+msgstr "Не вдалося змінити розмір малюнка"
+
+msgid "Could Not Invert the Colors"
+msgstr "Не вдалося обернути кольори"
+
+msgid "Could Not Clear the Picture"
+msgstr "Не вдалося очистити малюнок"
+
+msgid "Could Not Flip the Picture"
+msgstr "Не вдалося віддзеркалити малюнок"
+
+msgid "Could Not Rotate the Picture"
+msgstr "Не вдалося повернути малюнок"
+
+msgid "There is not enough memory for this change."
+msgstr "Бракує пам'яті для цієї зміни."
+
+msgid "Space to finish, Esc to cancel"
+msgstr "Space — завершити, Esc — скасувати"
+
+msgid "Done"
+msgstr "Готово"
+
+msgid "Cancelled"
+msgstr "Скасовано"
+
+#, c-format
+msgid "Foreground %s"
+msgstr "Основний колір %s"
+
+#, c-format
+msgid "Background %s"
+msgstr "Колір тла %s"
+
+msgid "Text box open"
+msgstr "Рамку тексту відкрито"
+
+msgid "Text box closed"
+msgstr "Рамку тексту закрито"
+
+#, c-format
+msgid "Selection %d by %d"
+msgstr "Виділення %d на %d"
+
+msgid "Selection put down"
+msgstr "Виділення покладено"
+
+msgid "Selection removed"
+msgstr "Виділення знято"
+
+msgid "Polygon closed"
+msgstr "Багатокутник замкнено"
+
+msgid "Pan"
+msgstr "Зсув"
+
+msgid "Pencil"
+msgstr "Олівець"
+
+msgid "Eraser"
+msgstr "Гумка"
+
+msgid "Magnifier"
+msgstr "Лупа"
+
+msgid "Pick Color"
+msgstr "Вибір кольору"
+
+msgid "Line"
+msgstr "Лінія"
+
+msgid "Rectangle"
+msgstr "Прямокутник"
+
+msgid "Rounded Rectangle"
+msgstr "Заокруглений прямокутник"
+
+msgid "Ellipse"
+msgstr "Еліпс"
+
+msgid "Curve"
+msgstr "Крива"
+
+msgid "Polygon"
+msgstr "Багатокутник"
+
+msgid "Gradient"
+msgstr "Градієнт"
+
+msgid "Select"
+msgstr "Виділення"
+
+msgid "Free-Form Select"
+msgstr "Довільне виділення"
+
+msgid "Could Not Open Help"
+msgstr "Не вдалося відкрити довідку"
+
+msgid "The help page could not be opened."
+msgstr "Не вдалося відкрити сторінку довідки."
+
+msgid "OK"
+msgstr "Гаразд"
+
+msgid "Could Not Print"
+msgstr "Не вдалося надрукувати"
+
+msgid "The picture could not be printed."
+msgstr "Не вдалося надрукувати малюнок."
+
+msgid "Picture"
+msgstr "Малюнок"
+
+msgid "Could Not Save the Preferences"
+msgstr "Не вдалося зберегти параметри"
+
+msgid "The changes apply until Easel closes where they can, but settings.ini could not be written."
+msgstr "Зміни діють там, де це можливо, до закриття Easel, але не вдалося записати settings.ini."
+
+msgid "Could Not Stretch or Skew the Picture"
+msgstr "Не вдалося розтягти або нахилити малюнок"
+
+msgid "Undone"
+msgstr "Скасовано"
+
+msgid "Redone"
+msgstr "Повторено"
+
+msgid "Could Not Fill"
+msgstr "Не вдалося залити"
+
+msgid "There is not enough memory to fill this area."
+msgstr "Бракує пам'яті для заливки цієї ділянки."
+
+msgid "Could Not Draw the Shape"
+msgstr "Не вдалося намалювати фігуру"
+
+msgid "There is not enough memory to draw this shape."
+msgstr "Бракує пам'яті, щоб намалювати цю фігуру."
+
+msgid "Could Not Apply the Gradient"
+msgstr "Не вдалося застосувати градієнт"
+
+msgid "There is not enough memory to apply this gradient."
+msgstr "Бракує пам'яті, щоб застосувати цей градієнт."
+
+msgid "Could Not Clear the Selection"
+msgstr "Не вдалося очистити виділення"
+
+msgid "There is not enough memory to clear this selection."
+msgstr "Бракує пам'яті, щоб очистити це виділення."
+
+msgid "Could Not Make the Selection"
+msgstr "Не вдалося створити виділення"
+
+msgid "There is not enough memory to make this selection."
+msgstr "Бракує пам'яті, щоб створити це виділення."
+
+msgid "Could Not Stretch the Selection"
+msgstr "Не вдалося розтягти виділення"
+
+msgid "There is not enough memory to stretch this selection."
+msgstr "Бракує пам'яті, щоб розтягти це виділення."
+
+msgid "Could Not Flip the Selection"
+msgstr "Не вдалося віддзеркалити виділення"
+
+msgid "Could Not Rotate the Selection"
+msgstr "Не вдалося повернути виділення"
+
+msgid "Could Not Invert the Selection"
+msgstr "Не вдалося обернути кольори виділення"
+
+msgid "Could Not Stretch or Skew the Selection"
+msgstr "Не вдалося розтягти або нахилити виділення"
+
+msgid "Could Not Move the Selection"
+msgstr "Не вдалося перемістити виділення"
+
+msgid "There is not enough memory to move this selection."
+msgstr "Бракує пам'яті, щоб перемістити це виділення."
+
+msgid "Could Not Add the Text"
+msgstr "Не вдалося додати текст"
+
+msgid "There is not enough memory to show this text."
+msgstr "Бракує пам'яті, щоб показати цей текст."
+
+msgid "There is not enough memory to add this text."
+msgstr "Бракує пам'яті, щоб додати цей текст."
+
+msgid "Could Not Copy the Selection"
+msgstr "Не вдалося скопіювати виділення"
+
+msgid "There is not enough memory to copy this selection."
+msgstr "Бракує пам'яті, щоб скопіювати це виділення."
+
+#, c-format
+msgid "Could Not Paste “%s”"
+msgstr "Не вдалося вставити «%s»"
+
+msgid "Could Not Paste"
+msgstr "Не вдалося вставити"
+
+msgid "There is not enough memory to paste this picture."
+msgstr "Бракує пам'яті, щоб вставити цей малюнок."
+
+msgid "The clipboard's picture cannot be read."
+msgstr "Не вдається прочитати малюнок із буфера обміну."
+
+#, c-format
+msgid "The picture is %d × %d pixel; the canvas is %d × %d."
+msgid_plural "The picture is %d × %d pixels; the canvas is %d × %d."
+msgstr[0] "Малюнок %d × %d піксель; полотно %d × %d."
+msgstr[1] "Малюнок %d × %d пікселі; полотно %d × %d."
+msgstr[2] "Малюнок %d × %d пікселів; полотно %d × %d."
+
+msgid "Pasted Picture Is Larger Than the Canvas"
+msgstr "Вставлений малюнок більший за полотно"
+
+msgid "_Fit Picture to Canvas"
+msgstr "_Умістити малюнок на полотні"
+
+msgid "_Resize Canvas to Picture"
+msgstr "_Припасувати полотно до малюнка"
+
+msgid "The clipboard's text cannot be read."
+msgstr "Не вдається прочитати текст із буфера обміну."
+
+msgid "There is not enough memory to paste this text."
+msgstr "Бракує пам'яті, щоб вставити цей текст."
+
+msgid "Could Not Copy the Text"
+msgstr "Не вдалося скопіювати текст"
+
+msgid "There is not enough memory to copy this text."
+msgstr "Бракує пам'яті, щоб скопіювати цей текст."
+
+msgid "Paste From"
+msgstr "Вставити з"
+
+msgid "Open"
+msgstr "Відкрити"
+
+msgid "Main Menu"
+msgstr "Головне меню"
+
+msgid "Text box"
+msgstr "Рамка тексту"
+
+msgid "_Flip"
+msgstr "_Віддзеркалити"
+
+msgid "Flip _Horizontal"
+msgstr "Віддзеркалити по _горизонталі"
+
+msgid "Flip _Vertical"
+msgstr "Віддзеркалити по _вертикалі"
+
+msgid "_Rotate"
+msgstr "Пов_ернути"
+
+msgid "Rotate _90°"
+msgstr "Повернути на _90°"
+
+msgid "Rotate 1_80°"
+msgstr "Повернути на 1_80°"
+
+msgid "Rotate _270°"
+msgstr "Повернути на _270°"
+
+msgid "Stretch and _Skew…"
+msgstr "Розтягти й _нахилити…"
+
+msgid "_Invert Colors"
+msgstr "_Обернути кольори"
+
+msgid "_Clear Image"
+msgstr "_Очистити зображення"
+
+msgid "Grid…"
+msgstr "Сітка…"
+
+msgid "Show Thumbnail"
+msgstr "Показати мініатюру"
+
+msgid "Cu_t"
+msgstr "Вир_ізати"
+
+msgid "_Copy"
+msgstr "_Копіювати"
+
+msgid "_Paste"
+msgstr "Вст_авити"
+
+msgid "_Clear Selection"
+msgstr "О_чистити виділення"
+
+msgid "Select _All"
+msgstr "Виділити _все"
+
+msgid "Copy _To…"
+msgstr "Копіювати _до…"
+
+msgid "Paste as Plain _Text"
+msgstr "Вставити як простий _текст"
+
+msgid "Paste _From…"
+msgstr "Вставити _з…"
+
+msgid "Zoom _In"
+msgstr "З_більшити"
+
+msgid "Zoom _Out"
+msgstr "З_меншити"
+
+msgid "_Normal Size"
+msgstr "З_вичайний розмір"
+
+msgid "_New"
+msgstr "Ст_ворити"
+
+msgid "_Open…"
+msgstr "_Відкрити…"
+
+msgid "Save _As…"
+msgstr "Зберегти _як…"
+
+msgid "_Print…"
+msgstr "_Друк…"
+
+msgid "_Edit"
+msgstr "З_міни"
+
+msgid "_Preferences"
+msgstr "Пара_метри"
+
+msgid "_Keyboard Shortcuts"
+msgstr "_Клавіатурні скорочення"
+
+msgid "_Help"
+msgstr "Дов_ідка"
+
+msgid "_About Easel"
+msgstr "Про _Easel"
+
+msgid "_Quit"
+msgstr "Ви_йти"
+
+msgid "Pictures"
+msgstr "Малюнки"
+
+msgid "All Files"
+msgstr "Усі файли"
+
+msgid "Smear the selection 1 pixel"
+msgstr "Шлейф виділення на 1 піксель"
+
+msgid "Interface"
+msgstr "Інтерфейс"
+
+msgid "Language Changes at Next Start"
+msgstr "Мова зміниться під час наступного запуску"
+
+msgid "Your changes are kept. The new language shows the next time Easel starts."
+msgstr "Ваші зміни збережено. Нова мова з'явиться під час наступного запуску Easel."
+
+msgid "By extension"
+msgstr "За розширенням"
+
+msgid "Easel"
+msgstr "Easel"
+
+msgid "Draw and touch up pictures"
+msgstr "Малюйте й виправляйте зображення"
+
+msgid "paint;draw;picture;image;pixel;"
+msgstr "paint;draw;picture;image;pixel;малювання;малюнок;зображення;"
+
+msgid "Easel is a simple drawing program for quick pictures and touch-ups, in the style of Paint in Windows XP."
+msgstr "Easel — проста програма для швидких малюнків і виправлень у стилі Paint з Windows XP."
+
+msgid "It has the classic tools, exact pixels, undo, selections you can move and stretch, text boxes and printing."
+msgstr "У ній є класичні інструменти, точні пікселі, скасування, виділення, які можна рухати й розтягувати, текстові рамки та друк."

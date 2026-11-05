@@ -1,0 +1,12 @@
+{
+  "recommendations": [
+    "anthropic.claude-code",
+    "llvm-vs-code-extensions.vscode-clangd",
+    "mesonbuild.mesonbuild",
+    "editorconfig.editorconfig",
+    "yzhang.markdown-all-in-one"
+  ],
+  "unwantedRecommendations": [
+    "ms-vscode.cmake-tools"
+  ]
+}

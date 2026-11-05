@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(meson setup:*)",
+      "Bash(meson compile:*)",
+      "Bash(meson test:*)",
+      "Bash(ninja:*)",
+      "Bash(git status:*)",
+      "Bash(tools/spec.sh:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)"
+    ],
+    "ask": [
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(git reset:*)",
+      "Bash(rm:*)"
+    ]
+  }
+}

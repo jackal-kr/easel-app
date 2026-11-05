@@ -1,0 +1,752 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk" version="4.16"/>
+  <requires lib="Adw" version="1.8"/>
+  <template class="EaselWindow" parent="AdwApplicationWindow">
+    <property name="content">
+      <object class="AdwToolbarView">
+        <child type="top">
+          <object class="AdwHeaderBar" id="header_bar">
+            <child type="start">
+              <object class="GtkButton">
+                <property name="icon-name">document-open-symbolic</property>
+                <property name="tooltip-text" translatable="yes">Open</property>
+                <property name="action-name">win.open</property>
+              </object>
+            </child>
+            <child type="start">
+              <object class="GtkButton">
+                <property name="icon-name">document-save-symbolic</property>
+                <property name="tooltip-text" translatable="yes">Save</property>
+                <property name="action-name">win.save</property>
+              </object>
+            </child>
+            <child type="start">
+              <object class="GtkButton">
+                <property name="icon-name">edit-undo-symbolic</property>
+                <property name="tooltip-text" translatable="yes">Undo</property>
+                <property name="action-name">win.undo</property>
+              </object>
+            </child>
+            <child type="start">
+              <object class="GtkButton">
+                <property name="icon-name">edit-redo-symbolic</property>
+                <property name="tooltip-text" translatable="yes">Redo</property>
+                <property name="action-name">win.redo</property>
+              </object>
+            </child>
+            <child type="end">
+              <object class="GtkMenuButton" id="main_menu_button">
+                <property name="icon-name">open-menu-symbolic</property>
+                <property name="tooltip-text" translatable="yes">Main Menu</property>
+                <property name="primary">true</property>
+                <property name="menu-model">primary_menu</property>
+              </object>
+            </child>
+            <child type="end">
+              <object class="GtkMenuButton" id="view_button">
+                <property name="always-show-arrow">true</property>
+                <property name="menu-model">view_menu</property>
+                <property name="child">
+                  <object class="AdwButtonContent">
+                    <property name="icon-name">view-reveal-symbolic</property>
+                    <property name="label" translatable="yes">View</property>
+                  </object>
+                </property>
+              </object>
+            </child>
+            <child type="end">
+              <object class="GtkMenuButton" id="image_button">
+                <property name="always-show-arrow">true</property>
+                <property name="menu-model">image_menu</property>
+                <property name="child">
+                  <object class="AdwButtonContent">
+                    <property name="icon-name">image-x-generic-symbolic</property>
+                    <property name="label" translatable="yes">Image</property>
+                  </object>
+                </property>
+              </object>
+            </child>
+          </object>
+        </child>
+        <child type="bottom">
+          <object class="GtkBox">
+            <property name="orientation">vertical</property>
+            <child>
+              <object class="EaselPaletteBar" id="palette_bar"/>
+            </child>
+            <child>
+              <object class="EaselStatusBar" id="status_bar"/>
+            </child>
+          </object>
+        </child>
+        <property name="content">
+          <object class="GtkBox">
+            <child>
+              <object class="GtkBox" id="toolbox_panel">
+                <child>
+                  <object class="GtkBox" id="tools_column">
+                    <property name="orientation">vertical</property>
+                    <child>
+                  <object class="GtkGrid" id="toolbox">
+                    <property name="row-spacing">6</property>
+                    <property name="column-spacing">6</property>
+                    <property name="margin-start">6</property>
+                    <property name="margin-end">6</property>
+                    <property name="margin-top">6</property>
+                    <property name="margin-bottom">6</property>
+                    <child>
+                      <object class="GtkToggleButton">
+                        <property name="icon-name">easel-tool-pan-symbolic</property>
+                        <property name="tooltip-text" translatable="yes">Pan</property>
+                        <property name="action-name">win.tool</property>
+                        <property name="action-target">'pan'</property>
+                        <layout>
+                          <property name="column">0</property>
+                          <property name="row">0</property>
+                        </layout>
+                        <style>
+                          <class name="flat"/>
+                        </style>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkToggleButton">
+                        <property name="icon-name">easel-tool-magnifier-symbolic</property>
+                        <property name="tooltip-text" translatable="yes">Magnifier</property>
+                        <property name="action-name">win.tool</property>
+                        <property name="action-target">'magnifier'</property>
+                        <layout>
+                          <property name="column">1</property>
+                          <property name="row">0</property>
+                        </layout>
+                        <style>
+                          <class name="flat"/>
+                        </style>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkToggleButton">
+                        <property name="icon-name">easel-tool-select-symbolic</property>
+                        <property name="tooltip-text" translatable="yes">Select</property>
+                        <property name="action-name">win.tool</property>
+                        <property name="action-target">'select'</property>
+                        <layout>
+                          <property name="column">0</property>
+                          <property name="row">1</property>
+                        </layout>
+                        <style>
+                          <class name="flat"/>
+                        </style>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkToggleButton">
+                        <property name="icon-name">easel-tool-free-select-symbolic</property>
+                        <property name="tooltip-text" translatable="yes">Free-Form Select</property>
+                        <property name="action-name">win.tool</property>
+                        <property name="action-target">'free-select'</property>
+                        <layout>
+                          <property name="column">1</property>
+                          <property name="row">1</property>
+                        </layout>
+                        <style>
+                          <class name="flat"/>
+                        </style>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkToggleButton">
+                        <property name="icon-name">easel-tool-eraser-symbolic</property>
+                        <property name="tooltip-text" translatable="yes">Eraser</property>
+                        <property name="action-name">win.tool</property>
+                        <property name="action-target">'eraser'</property>
+                        <layout>
+                          <property name="column">0</property>
+                          <property name="row">2</property>
+                        </layout>
+                        <style>
+                          <class name="flat"/>
+                        </style>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkToggleButton">
+                        <property name="icon-name">easel-tool-pick-symbolic</property>
+                        <property name="tooltip-text" translatable="yes">Pick Color</property>
+                        <property name="action-name">win.tool</property>
+                        <property name="action-target">'pick'</property>
+                        <layout>
+                          <property name="column">1</property>
+                          <property name="row">2</property>
+                        </layout>
+                        <style>
+                          <class name="flat"/>
+                        </style>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkToggleButton">
+                        <property name="icon-name">easel-tool-fill-symbolic</property>
+                        <property name="tooltip-text" translatable="yes">Fill</property>
+                        <property name="action-name">win.tool</property>
+                        <property name="action-target">'fill'</property>
+                        <layout>
+                          <property name="column">0</property>
+                          <property name="row">3</property>
+                        </layout>
+                        <style>
+                          <class name="flat"/>
+                        </style>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkToggleButton">
+                        <property name="icon-name">easel-tool-gradient-symbolic</property>
+                        <property name="tooltip-text" translatable="yes">Gradient</property>
+                        <property name="action-name">win.tool</property>
+                        <property name="action-target">'gradient'</property>
+                        <layout>
+                          <property name="column">1</property>
+                          <property name="row">3</property>
+                        </layout>
+                        <style>
+                          <class name="flat"/>
+                        </style>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkToggleButton">
+                        <property name="icon-name">easel-tool-pencil-symbolic</property>
+                        <property name="tooltip-text" translatable="yes">Pencil</property>
+                        <property name="action-name">win.tool</property>
+                        <property name="action-target">'pencil'</property>
+                        <layout>
+                          <property name="column">0</property>
+                          <property name="row">4</property>
+                        </layout>
+                        <style>
+                          <class name="flat"/>
+                        </style>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkToggleButton">
+                        <property name="icon-name">easel-tool-brush-symbolic</property>
+                        <property name="tooltip-text" translatable="yes">Brush</property>
+                        <property name="action-name">win.tool</property>
+                        <property name="action-target">'brush'</property>
+                        <layout>
+                          <property name="column">1</property>
+                          <property name="row">4</property>
+                        </layout>
+                        <style>
+                          <class name="flat"/>
+                        </style>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkToggleButton">
+                        <property name="icon-name">easel-tool-airbrush-symbolic</property>
+                        <property name="tooltip-text" translatable="yes">Airbrush</property>
+                        <property name="action-name">win.tool</property>
+                        <property name="action-target">'airbrush'</property>
+                        <layout>
+                          <property name="column">0</property>
+                          <property name="row">5</property>
+                        </layout>
+                        <style>
+                          <class name="flat"/>
+                        </style>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkToggleButton">
+                        <property name="icon-name">easel-tool-text-symbolic</property>
+                        <property name="tooltip-text" translatable="yes">Text</property>
+                        <property name="action-name">win.tool</property>
+                        <property name="action-target">'text'</property>
+                        <layout>
+                          <property name="column">1</property>
+                          <property name="row">5</property>
+                        </layout>
+                        <style>
+                          <class name="flat"/>
+                        </style>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkToggleButton">
+                        <property name="icon-name">easel-tool-line-symbolic</property>
+                        <property name="tooltip-text" translatable="yes">Line</property>
+                        <property name="action-name">win.tool</property>
+                        <property name="action-target">'line'</property>
+                        <layout>
+                          <property name="column">0</property>
+                          <property name="row">6</property>
+                        </layout>
+                        <style>
+                          <class name="flat"/>
+                        </style>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkToggleButton">
+                        <property name="icon-name">easel-tool-curve-symbolic</property>
+                        <property name="tooltip-text" translatable="yes">Curve</property>
+                        <property name="action-name">win.tool</property>
+                        <property name="action-target">'curve'</property>
+                        <layout>
+                          <property name="column">1</property>
+                          <property name="row">6</property>
+                        </layout>
+                        <style>
+                          <class name="flat"/>
+                        </style>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkToggleButton">
+                        <property name="icon-name">easel-tool-rectangle-symbolic</property>
+                        <property name="tooltip-text" translatable="yes">Rectangle</property>
+                        <property name="action-name">win.tool</property>
+                        <property name="action-target">'rectangle'</property>
+                        <layout>
+                          <property name="column">0</property>
+                          <property name="row">7</property>
+                        </layout>
+                        <style>
+                          <class name="flat"/>
+                        </style>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkToggleButton">
+                        <property name="icon-name">easel-tool-rounded-rectangle-symbolic</property>
+                        <property name="tooltip-text" translatable="yes">Rounded Rectangle</property>
+                        <property name="action-name">win.tool</property>
+                        <property name="action-target">'rounded-rectangle'</property>
+                        <layout>
+                          <property name="column">1</property>
+                          <property name="row">7</property>
+                        </layout>
+                        <style>
+                          <class name="flat"/>
+                        </style>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkToggleButton">
+                        <property name="icon-name">easel-tool-ellipse-symbolic</property>
+                        <property name="tooltip-text" translatable="yes">Ellipse</property>
+                        <property name="action-name">win.tool</property>
+                        <property name="action-target">'ellipse'</property>
+                        <layout>
+                          <property name="column">0</property>
+                          <property name="row">8</property>
+                        </layout>
+                        <style>
+                          <class name="flat"/>
+                        </style>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkToggleButton">
+                        <property name="icon-name">easel-tool-polygon-symbolic</property>
+                        <property name="tooltip-text" translatable="yes">Polygon</property>
+                        <property name="action-name">win.tool</property>
+                        <property name="action-target">'polygon'</property>
+                        <layout>
+                          <property name="column">1</property>
+                          <property name="row">8</property>
+                        </layout>
+                        <style>
+                          <class name="flat"/>
+                        </style>
+                      </object>
+                    </child>
+                  </object>
+                    </child>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkSeparator"/>
+                </child>
+              </object>
+            </child>
+            <child>
+              <object class="GtkOverlay" id="canvas_overlay">
+                <property name="hexpand">true</property>
+                <property name="vexpand">true</property>
+                <property name="child">
+                  <object class="GtkScrolledWindow" id="scroller">
+                    <property name="hexpand">true</property>
+                    <property name="vexpand">true</property>
+                    <property name="child">
+                      <object class="EaselCanvas" id="canvas"/>
+                    </property>
+                  </object>
+                </property>
+                <child type="overlay">
+                  <object class="GtkBox" id="text_access">
+                    <property name="accessible-role">text-box</property>
+                    <property name="visible">false</property>
+                    <property name="can-target">false</property>
+                    <property name="halign">start</property>
+                    <property name="valign">start</property>
+                    <accessibility>
+                      <property name="label" translatable="yes">Text box</property>
+                    </accessibility>
+                  </object>
+                </child>
+                <child type="overlay">
+                  <object class="EaselThumbnailCard" id="thumbnail_card">
+                    <property name="visible">false</property>
+                    <property name="halign">end</property>
+                    <property name="valign">start</property>
+                    <property name="margin-end">12</property>
+                    <property name="margin-top">12</property>
+                  </object>
+                </child>
+                <child type="overlay">
+                  <object class="EaselFontCard" id="font_card">
+                    <property name="visible">false</property>
+                    <property name="halign">start</property>
+                    <property name="valign">start</property>
+                  </object>
+                </child>
+              </object>
+            </child>
+          </object>
+        </property>
+      </object>
+    </property>
+  </template>
+  <menu id="image_menu">
+    <section>
+      <submenu>
+        <attribute name="label" translatable="yes">_Flip</attribute>
+        <section>
+          <item>
+            <attribute name="label" translatable="yes">Flip _Horizontal</attribute>
+            <attribute name="action">win.flip-horizontal</attribute>
+          </item>
+          <item>
+            <attribute name="label" translatable="yes">Flip _Vertical</attribute>
+            <attribute name="action">win.flip-vertical</attribute>
+          </item>
+        </section>
+      </submenu>
+      <submenu>
+        <attribute name="label" translatable="yes">_Rotate</attribute>
+        <section>
+          <item>
+            <attribute name="label" translatable="yes">Rotate _90°</attribute>
+            <attribute name="action">win.rotate-90</attribute>
+          </item>
+          <item>
+            <attribute name="label" translatable="yes">Rotate 1_80°</attribute>
+            <attribute name="action">win.rotate-180</attribute>
+          </item>
+          <item>
+            <attribute name="label" translatable="yes">Rotate _270°</attribute>
+            <attribute name="action">win.rotate-270</attribute>
+          </item>
+        </section>
+      </submenu>
+      <item>
+        <attribute name="label" translatable="yes">Stretch and _Skew…</attribute>
+        <attribute name="action">win.stretch-skew</attribute>
+        <attribute name="accel">&lt;Control&gt;t</attribute>
+      </item>
+    </section>
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">_Invert Colors</attribute>
+        <attribute name="action">win.invert</attribute>
+        <attribute name="accel">&lt;Control&gt;i</attribute>
+      </item>
+    </section>
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">Attributes…</attribute>
+        <attribute name="action">win.attributes</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">_Clear Image</attribute>
+        <attribute name="action">win.clear-image</attribute>
+      </item>
+    </section>
+  </menu>
+  <menu id="view_menu">
+    <section>
+      <item>
+        <attribute name="custom">zoom</attribute>
+      </item>
+    </section>
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">Normal Size</attribute>
+        <attribute name="action">win.zoom-normal</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">Large Size</attribute>
+        <attribute name="action">win.zoom-large</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">Fit to Window</attribute>
+        <attribute name="action">win.zoom-fit</attribute>
+      </item>
+    </section>
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">Show Grid</attribute>
+        <attribute name="action">win.grid</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">Grid…</attribute>
+        <attribute name="action">win.grid-dialog</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">Show Thumbnail</attribute>
+        <attribute name="action">win.thumbnail</attribute>
+      </item>
+    </section>
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">Tool Box</attribute>
+        <attribute name="action">win.show-toolbox</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">Color Box</attribute>
+        <attribute name="action">win.show-colorbox</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">Status Bar</attribute>
+        <attribute name="action">win.show-statusbar</attribute>
+      </item>
+    </section>
+  </menu>
+  <menu id="selection_menu">
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">Cu_t</attribute>
+        <attribute name="action">win.cut</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">_Copy</attribute>
+        <attribute name="action">win.copy</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">_Paste</attribute>
+        <attribute name="action">win.paste</attribute>
+      </item>
+    </section>
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">_Clear Selection</attribute>
+        <attribute name="action">win.clear-selection</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">Select _All</attribute>
+        <attribute name="action">win.select-all</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">Copy _To…</attribute>
+        <attribute name="action">win.copy-to</attribute>
+      </item>
+    </section>
+    <section>
+      <submenu>
+        <attribute name="label" translatable="yes">_Flip</attribute>
+        <section>
+          <item>
+            <attribute name="label" translatable="yes">Flip _Horizontal</attribute>
+            <attribute name="action">win.flip-horizontal</attribute>
+          </item>
+          <item>
+            <attribute name="label" translatable="yes">Flip _Vertical</attribute>
+            <attribute name="action">win.flip-vertical</attribute>
+          </item>
+        </section>
+      </submenu>
+      <submenu>
+        <attribute name="label" translatable="yes">_Rotate</attribute>
+        <section>
+          <item>
+            <attribute name="label" translatable="yes">Rotate _90°</attribute>
+            <attribute name="action">win.rotate-90</attribute>
+          </item>
+          <item>
+            <attribute name="label" translatable="yes">Rotate 1_80°</attribute>
+            <attribute name="action">win.rotate-180</attribute>
+          </item>
+          <item>
+            <attribute name="label" translatable="yes">Rotate _270°</attribute>
+            <attribute name="action">win.rotate-270</attribute>
+          </item>
+        </section>
+      </submenu>
+      <item>
+        <attribute name="label" translatable="yes">Stretch and _Skew…</attribute>
+        <attribute name="action">win.stretch-skew</attribute>
+        <attribute name="accel">&lt;Control&gt;t</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">_Invert Colors</attribute>
+        <attribute name="action">win.invert</attribute>
+        <attribute name="accel">&lt;Control&gt;i</attribute>
+      </item>
+    </section>
+  </menu>
+  <menu id="text_menu">
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">Cu_t</attribute>
+        <attribute name="action">win.cut</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">_Copy</attribute>
+        <attribute name="action">win.copy</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">_Paste</attribute>
+        <attribute name="action">win.paste</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">Paste as Plain _Text</attribute>
+        <attribute name="action">win.paste-plain</attribute>
+      </item>
+    </section>
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">Select _All</attribute>
+        <attribute name="action">win.select-all</attribute>
+      </item>
+    </section>
+  </menu>
+  <menu id="canvas_menu">
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">_Paste</attribute>
+        <attribute name="action">win.paste</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">Paste _From…</attribute>
+        <attribute name="action">win.paste-from</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">Select _All</attribute>
+        <attribute name="action">win.select-all</attribute>
+      </item>
+    </section>
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">Zoom _In</attribute>
+        <attribute name="action">win.zoom-in</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">Zoom _Out</attribute>
+        <attribute name="action">win.zoom-out</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">_Normal Size</attribute>
+        <attribute name="action">win.zoom-normal</attribute>
+      </item>
+    </section>
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">_Clear Image</attribute>
+        <attribute name="action">win.clear-image</attribute>
+      </item>
+    </section>
+  </menu>
+  <menu id="primary_menu">
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">_New</attribute>
+        <attribute name="action">win.new</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">_Open…</attribute>
+        <attribute name="action">win.open</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">_Save</attribute>
+        <attribute name="action">win.save</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">Save _As…</attribute>
+        <attribute name="action">win.save-as</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">_Print…</attribute>
+        <attribute name="action">win.print</attribute>
+      </item>
+    </section>
+    <section>
+      <submenu>
+        <attribute name="label" translatable="yes">_Edit</attribute>
+        <section>
+          <item>
+            <attribute name="label" translatable="yes">Cu_t</attribute>
+            <attribute name="action">win.cut</attribute>
+          </item>
+          <item>
+            <attribute name="label" translatable="yes">_Copy</attribute>
+            <attribute name="action">win.copy</attribute>
+          </item>
+          <item>
+            <attribute name="label" translatable="yes">_Paste</attribute>
+            <attribute name="action">win.paste</attribute>
+          </item>
+        </section>
+        <section>
+          <item>
+            <attribute name="label" translatable="yes">Select _All</attribute>
+            <attribute name="action">win.select-all</attribute>
+          </item>
+          <item>
+            <attribute name="label" translatable="yes">_Clear Selection</attribute>
+            <attribute name="action">win.clear-selection</attribute>
+            <attribute name="accel">Delete</attribute>
+          </item>
+        </section>
+      </submenu>
+      <item>
+        <attribute name="label" translatable="yes">Copy _To…</attribute>
+        <attribute name="action">win.copy-to</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">Paste _From…</attribute>
+        <attribute name="action">win.paste-from</attribute>
+      </item>
+    </section>
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">_Preferences</attribute>
+        <attribute name="action">win.preferences</attribute>
+      </item>
+    </section>
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">_Keyboard Shortcuts</attribute>
+        <attribute name="action">win.shortcuts</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">_Help</attribute>
+        <attribute name="action">win.help</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">_About Easel</attribute>
+        <attribute name="action">win.about</attribute>
+      </item>
+    </section>
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">_Quit</attribute>
+        <attribute name="action">app.quit</attribute>
+      </item>
+    </section>
+  </menu>
+</interface>

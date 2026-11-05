@@ -1,0 +1,18 @@
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"X-Easel-Reviewed: no\n"
+
+#, c-format
+msgid "Saved %s"
+msgstr "x %s"
+
+msgid "Open"
+msgstr "y"
+
+#, c-format
+msgid "Takes %d sheet"
+msgid_plural "Takes %d sheets"
+msgstr[0] "a %d"
+msgstr[1] "b %d"

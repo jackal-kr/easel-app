@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gresources>
+  <gresource prefix="/io/github/jackal_kr/Easel">
+    <file preprocess="xml-stripblanks">window.ui</file>
+    <file>style.css</file>
+    <file preprocess="xml-stripblanks">icons/scalable/actions/easel-tool-pan-symbolic.svg</file>
+    <file preprocess="xml-stripblanks">icons/scalable/actions/easel-tool-pencil-symbolic.svg</file>
+    <file preprocess="xml-stripblanks">icons/scalable/actions/easel-tool-brush-symbolic.svg</file>
+    <file preprocess="xml-stripblanks">icons/scalable/actions/easel-tool-airbrush-symbolic.svg</file>
+    <file preprocess="xml-stripblanks">icons/scalable/actions/easel-tool-eraser-symbolic.svg</file>
+    <file preprocess="xml-stripblanks">icons/scalable/actions/easel-tool-magnifier-symbolic.svg</file>
+    <file preprocess="xml-stripblanks">icons/scalable/actions/easel-tool-pick-symbolic.svg</file>
+    <file preprocess="xml-stripblanks">icons/scalable/actions/easel-tool-fill-symbolic.svg</file>
+    <file preprocess="xml-stripblanks">icons/scalable/actions/easel-tool-line-symbolic.svg</file>
+    <file preprocess="xml-stripblanks">icons/scalable/actions/easel-tool-text-symbolic.svg</file>
+    <file preprocess="xml-stripblanks">icons/scalable/actions/easel-tool-rectangle-symbolic.svg</file>
+    <file preprocess="xml-stripblanks">icons/scalable/actions/easel-tool-rounded-rectangle-symbolic.svg</file>
+    <file preprocess="xml-stripblanks">icons/scalable/actions/easel-tool-ellipse-symbolic.svg</file>
+    <file preprocess="xml-stripblanks">icons/scalable/actions/easel-tool-curve-symbolic.svg</file>
+    <file preprocess="xml-stripblanks">icons/scalable/actions/easel-tool-polygon-symbolic.svg</file>
+    <file preprocess="xml-stripblanks">icons/scalable/actions/easel-tool-gradient-symbolic.svg</file>
+    <file preprocess="xml-stripblanks">icons/scalable/actions/easel-tool-select-symbolic.svg</file>
+    <file preprocess="xml-stripblanks">icons/scalable/actions/easel-tool-free-select-symbolic.svg</file>
+    <file preprocess="xml-stripblanks">cursors/pencil.svg</file>
+    <file preprocess="xml-stripblanks">cursors/airbrush.svg</file>
+    <file preprocess="xml-stripblanks">cursors/magnifier.svg</file>
+    <file preprocess="xml-stripblanks">cursors/pick.svg</file>
+    <file preprocess="xml-stripblanks">cursors/fill.svg</file>
+  </gresource>
+</gresources>
