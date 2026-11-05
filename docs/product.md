@@ -19,7 +19,7 @@ line, curve, rectangle, polygon, ellipse, rounded rectangle. Tool options, 28-co
 fore/background colors, zoom + grid, selections (move, smear, stamp, transparent), clipboard,
 text boxes, Image-menu transforms (flip, rotate, stretch, skew, invert, attributes, clear), unlimited-ish undo,
 open/save png, jpeg, bmp, tiff, webp (gif open only), print, Preferences, shortcuts window, thumbnail, i18n, accessibility,
-Flatpak / deb / AppImage packaging.
+Flatpak and deb packaging first, AppImage in a later release (JOD, 2026-11-05).
 Additions beyond classic XP Paint: `docs/reference/new-behaviors.md`.
 XP-faithful by default; a later optional phase adds a few selected modern extras, and smoothing (antialiasing) is an option, off by default.
 

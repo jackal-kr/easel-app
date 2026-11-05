@@ -32,5 +32,10 @@ EaselFormatResult easel_format_fix_name (const char *path, char **fixed, EaselFo
    existing file in the format it has (REQ-0005-13). */
 EaselFormat easel_format_of_name (const char *path);
 
+/* The name a format chosen in the save dialog gives (REQ-0024-12): no extension gets the format's first one; an extension of another
+   format that can be saved is replaced; one of this format's stays; any other last part stays and the extension is added. On true
+   *named is the name (free with free ()); false: no memory. */
+bool easel_format_name_for (const char *path, EaselFormat format, char **named);
+
 /* JPEG and BMP cannot keep transparency: they are saved flattened on white (REQ-0005-11). */
 bool easel_format_is_flat (EaselFormat format);

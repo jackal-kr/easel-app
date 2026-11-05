@@ -1,0 +1,9 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: easel
+Source: https://github.com/jackal-kr/easel-app
+
+Files: *
+Copyright: 2026 JOD
+License: GPL-3.0-or-later
+ On Debian systems, the full text of the license is in
+ /usr/share/common-licenses/GPL-3.

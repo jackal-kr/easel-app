@@ -33539,6 +33539,192 @@ journey_4_at_scale_2 (void)
     journey_4_pixel_art ();
 }
 
+/* ---- 0024 Packaging and release ---- */
+
+/* AS-1 (REQ-0024-01): the name of the release, in About Easel. */
+static void
+as1_version (void)
+{
+  EaselWindow *win = window_with ("[new-picture]\nwidth=60\nheight=40\n");
+  AdwDialog *d;
+
+  g_action_group_activate_action (G_ACTION_GROUP (win), "about", NULL);
+  wait_for_layout (win);
+  d = visible_dialog (win);
+  g_assert_true (ADW_IS_ABOUT_DIALOG (d));
+  g_assert_cmpstr (adw_about_dialog_get_version (ADW_ABOUT_DIALOG (d)), ==, "0.1.0-alpha.1");
+  adw_dialog_force_close (d);
+  wait_for_no_dialog (win);
+  close_windows ();
+}
+
+/* The file chooser open over win, as the test session gives it (no portal). */
+static GtkFileChooser *
+open_file_chooser (EaselWindow *win)
+{
+  GtkWindow *chooser = NULL;
+
+  for (int i = 0; i < 40 && chooser == NULL; i++)
+    {
+      wait_for_layout (win);
+      chooser = other_toplevel (win);
+    }
+  g_assert_nonnull (chooser);
+  g_assert_true (GTK_IS_FILE_CHOOSER (chooser));
+  return GTK_FILE_CHOOSER (chooser);
+}
+
+/* AS-11 (REQ-0024-12): the six, in that order, the first chosen, in Save As and Copy To. */
+G_GNUC_BEGIN_IGNORE_DEPRECATIONS
+static void
+assert_file_type_list (EaselWindow *win)
+{
+  static const char *const labels[] = { "By extension", "BMP (*.bmp)", "JPEG (*.jpg, *.jpeg)", "PNG (*.png)", "TIFF (*.tif, *.tiff)", "WebP (*.webp)" };
+  GtkFileChooser *chooser = open_file_chooser (win);
+  g_autoptr (GListModel) filters = gtk_file_chooser_get_filters (chooser);
+  GtkFileFilter *now = gtk_file_chooser_get_filter (chooser);
+
+  g_assert_cmpuint (g_list_model_get_n_items (filters), ==, G_N_ELEMENTS (labels));
+  for (guint i = 0; i < G_N_ELEMENTS (labels); i++)
+    {
+      g_autoptr (GtkFileFilter) f = g_list_model_get_item (filters, i);
+
+      g_assert_cmpstr (gtk_file_filter_get_name (f), ==, labels[i]);
+    }
+  g_assert_nonnull (now);
+  g_assert_cmpstr (gtk_file_filter_get_name (now), ==, "By extension");
+  gtk_window_close (GTK_WINDOW (chooser));
+  wait_for_layout (win);
+}
+G_GNUC_END_IGNORE_DEPRECATIONS
+
+static void
+as11_file_type_list (void)
+{
+  EaselWindow *win = window_with ("[new-picture]\nwidth=60\nheight=40\n");
+
+  g_action_group_activate_action (G_ACTION_GROUP (win), "save-as", NULL);
+  assert_file_type_list (win);
+  use_select (win);
+  shape_press_move (win, 1, 1, 1, 5, 4);
+  shape_release (win, 1);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "copy-to", NULL);
+  assert_file_type_list (win);
+  close_windows ();
+}
+
+/* The format a file holds, by its content. */
+static const char *
+format_in_file (const char *path)
+{
+  GdkPixbufFormat *format = gdk_pixbuf_get_file_info (path, NULL, NULL);
+  static char name[16];
+
+  g_assert_nonnull (format);
+  {
+    g_autofree char *n = gdk_pixbuf_format_get_name (format);
+
+    g_strlcpy (name, n, sizeof name);
+  }
+  return name;
+}
+
+/* AS-11 (REQ-0024-12): a chosen format decides, and the name follows it; By extension is REQ-0005-10. */
+static void
+as11_format_decides (void)
+{
+  static const struct { const char *typed; EaselFormat chosen; const char *written, *format; } cases[] = {
+    { "a.bmp", EASEL_FORMAT_UNKNOWN, "a.bmp", "bmp" },
+    { "b", EASEL_FORMAT_UNKNOWN, "b.png", "png" },
+    { "Untitled.png", EASEL_FORMAT_JPEG, "Untitled.jpg", "jpeg" },
+    { "c", EASEL_FORMAT_BMP, "c.bmp", "bmp" },
+    { "d.jpeg", EASEL_FORMAT_JPEG, "d.jpeg", "jpeg" },
+    { "e.xyz", EASEL_FORMAT_TIFF, "e.xyz.tif", "tiff" },
+    { "f.bmp", EASEL_FORMAT_PNG, "f.png", "png" },
+  };
+  g_autofree char *dir = g_dir_make_tmp ("easel-ui-XXXXXX", NULL);
+  g_autofree char *taken = g_build_filename (dir, "g.png", NULL);
+  g_autofree char *typed = g_build_filename (dir, "g.bmp", NULL);
+  g_autofree char *unknown = g_build_filename (dir, "h.xyz", NULL);
+  EaselWindow *win = window_with ("[new-picture]\nwidth=60\nheight=40\n");
+
+  for (guint i = 0; i < G_N_ELEMENTS (cases); i++)
+    {
+      g_autofree char *in = g_build_filename (dir, cases[i].typed, NULL);
+      g_autofree char *out = g_build_filename (dir, cases[i].written, NULL);
+
+      easel_window_save_chosen_as (win, in, cases[i].chosen);
+      wait_for_layout (win);
+      g_assert_true (g_file_test (out, G_FILE_TEST_EXISTS));
+      g_assert_cmpstr (format_in_file (out), ==, cases[i].format);
+    }
+  /* A name that was changed to one that exists: the question, and Cancel writes nothing. */
+  g_assert_true (g_file_set_contents (taken, "mine", -1, NULL));
+  easel_window_save_chosen_as (win, typed, EASEL_FORMAT_PNG);
+  wait_for_dialogs (win, 1);
+  g_assert_cmpstr (adw_alert_dialog_get_heading (open_alert (win)), ==, "Replace “g.png”?");
+  respond (win, "cancel");
+  {
+    g_autofree char *now = NULL;
+
+    g_assert_true (g_file_get_contents (taken, &now, NULL, NULL));
+    g_assert_cmpstr (now, ==, "mine");
+  }
+  /* By extension, a name it cannot save: REQ-0005-10's error. */
+  easel_window_save_chosen_as (win, unknown, EASEL_FORMAT_UNKNOWN);
+  assert_alert (win, "Cannot Save This Kind of File", "Pictures can be saved as PNG, JPEG, BMP, TIFF or WebP.");
+  g_assert_false (g_file_test (unknown, G_FILE_TEST_EXISTS));
+  close_windows ();
+}
+
+/* AS-9 (REQ-0024-10): in the sandbox only the name the dialog returned can be written, so a changed one goes back to the dialog. */
+G_GNUC_BEGIN_IGNORE_DEPRECATIONS
+static void
+as9_dialog_opens_again (void)
+{
+  g_autofree char *dir = g_dir_make_tmp ("easel-ui-XXXXXX", NULL);
+  g_autofree char *typed = g_build_filename (dir, "a", NULL);
+  g_autofree char *changed = g_build_filename (dir, "a.png", NULL);
+  g_autofree char *jpeg_typed = g_build_filename (dir, "Untitled.png", NULL);
+  g_autofree char *jpeg = g_build_filename (dir, "Untitled.jpg", NULL);
+  EaselWindow *win = window_with ("[new-picture]\nwidth=60\nheight=40\n");
+  GtkFileChooser *chooser;
+  char *name;
+
+  g_setenv ("EASEL_TEST_SANDBOX", "1", TRUE);
+  easel_window_save_chosen_as (win, typed, EASEL_FORMAT_UNKNOWN);
+  chooser = open_file_chooser (win);
+  name = gtk_file_chooser_get_current_name (chooser);
+  g_assert_cmpstr (name, ==, "a.png");
+  g_free (name);
+  g_assert_false (g_file_test (changed, G_FILE_TEST_EXISTS));
+  g_assert_false (g_file_test (typed, G_FILE_TEST_EXISTS));
+  gtk_window_close (GTK_WINDOW (chooser));
+  wait_for_layout (win);
+  /* A name that stays is written. */
+  easel_window_save_chosen_as (win, changed, EASEL_FORMAT_UNKNOWN);
+  wait_for_layout (win);
+  g_assert_null (other_toplevel (win));
+  g_assert_true (g_file_test (changed, G_FILE_TEST_EXISTS));
+  /* The same with a chosen format, which stays chosen. */
+  easel_window_save_chosen_as (win, jpeg_typed, EASEL_FORMAT_JPEG);
+  chooser = open_file_chooser (win);
+  name = gtk_file_chooser_get_current_name (chooser);
+  g_assert_cmpstr (name, ==, "Untitled.jpg");
+  g_free (name);
+  {
+    GtkFileFilter *now = gtk_file_chooser_get_filter (chooser);
+
+    g_assert_cmpstr (gtk_file_filter_get_name (now), ==, "JPEG (*.jpg, *.jpeg)");
+  }
+  g_assert_false (g_file_test (jpeg, G_FILE_TEST_EXISTS));
+  gtk_window_close (GTK_WINDOW (chooser));
+  wait_for_layout (win);
+  g_unsetenv ("EASEL_TEST_SANDBOX");
+  close_windows ();
+}
+G_GNUC_END_IGNORE_DEPRECATIONS
+
 /* The letter a mnemonic marks. */
 static gunichar
 mnemonic_of (const char *label)
@@ -34183,6 +34369,10 @@ main (int argc, char **argv)
   g_test_add_func ("/0028-uk/journey_15_another_language", journey_15_another_language);
   g_test_add_func ("/0028-scale2/journey_1_at_scale_2", journey_1_at_scale_2);
   g_test_add_func ("/0028-scale2/journey_4_at_scale_2", journey_4_at_scale_2);
+  g_test_add_func ("/0024/as1_version", as1_version);
+  g_test_add_func ("/0024/as11_file_type_list", as11_file_type_list);
+  g_test_add_func ("/0024/as11_format_decides", as11_format_decides);
+  g_test_add_func ("/0024/as9_dialog_opens_again", as9_dialog_opens_again);
   g_test_add_func ("/0023-start/as8_start_in_language", as8_start_in_language);
   g_test_add_func ("/0023-rtl/as7_not_mirrored", as7_not_mirrored);
   g_test_add_func ("/0023-long/as11_main_window", as11_main_window);

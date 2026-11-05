@@ -28,7 +28,7 @@ Vertical slices first (a thin end-to-end feature), breadth later.
 | 0021 | window-extras | Shortcuts window, a Help page (F1), thumbnail, frame time, Pan's right-click menu, About with acknowledgements (XP Paint, JS Paint) | Implemented 2026-11-03. Adds the View menu's Show Thumbnail item (not in 0004); Frame Time has no View item, only a Preferences setting (Preferences); Print split off (JOD, 2026-11-03) |
 | 0022 | accessibility | Names/roles, keyboard-only drawing and palette | Implemented 2026-11-04. stretching a selection from the keyboard (0015 has the mouse only) |
 | 0023 | i18n | UI languages: cs, de, en, es, fr, hu, it, pl, pt (pt_BR), ro, ru, uk (uk_UA); English the default and fallback | Implemented 2026-11-04. Mark the 0001 strings (title, quit and save prompts, errors) translatable; deferred from the 0001 check. The language picker goes in Preferences; no right-to-left language |
-| 0024 | packaging-release | Flatpak, deb, AppImage, metadata | Choose the minimum GTK, then re-decide the accepted mutant of REQ-0017-14 (JOD, 2026-11-02: GTK 4.24 cannot kill it) |
+| 0024 | packaging-release | Flatpak, deb, metadata, a first alpha as a GitHub pre-release; AppImage in a later release | JOD, 2026-11-05. The constitution's minimum stays, with the guard and accepted mutant of REQ-0017-14, until JOD decides otherwise |
 | 0025 | pixel-contract-tests | The six points of P7 (ADR-0003) as requirements, one test per gap, and fixes for what the tests find wrong (fractional-zoom edges, the grid and the pointer on them): the picture as squares, the same drag at two zooms, overlays leaving the picture unchanged, shown equals put-down | Accepted 2026-10-28; runs in this order (JOD): /sdd-check 0018, the 0017 text and tint task, then this feature (its text-box cases fail until the 0017 fix lands); the number moves when it is placed in the order |
 | 0026 | print | Print the picture, with a Picture tab in the print dialog | Implemented 2026-11-03. Split from Window Extras (JOD, 2026-11-03); no Page Setup item, the print dialog has it |
 | 0027 | preferences-buttons | OK, Cancel and Apply in Preferences over a live preview; page Appearance split, with a new page Interface | Implemented 2026-11-04. JOD, 2026-11-04: a mistake in Preferences was hard to take back |
@@ -52,7 +52,7 @@ Vertical slices first (a thin end-to-end feature), breadth later.
   and holds the picture's size in memory; the same for a selection dragged at that zoom, about 165 to 173 ms a move and 470 MB, and for the put-down of the whole 8000 x 8000 picture, about 380 ms and 1.8 GB, accepted with 0013). It needs its own spec and Plan.
 
 ## Last clean full mutation run
-2026-11-02, the commit of 0025's T017: 1140 mutants, 1 accepted, 1 long-only killed by hand. GTK 4.24.1, Pango 1.58.0, Cairo 1.18.4, GNOME Shell 51.0.
+2026-11-04, `2e6954e` (the phase 1 gate): 1258 mutants, 1247 killed, 8 survived and accepted (0028's T004, one line each), 2 accepted, 1 long-only killed by hand, 735 s with 8 workers. GTK 4.24.1, Pango 1.58.0, Cairo 1.18.4, GNOME Shell 51.0: none changed since 2026-11-02.
 
 ## Known flakes
 - `/0006/as6_airbrush_sprays` and `/0006/as6_airbrush_follows_the_pointer` (found in 0006, failed again in 0007 and 0008). Cause
@@ -81,4 +81,4 @@ Vertical slices first (a thin end-to-end feature), breadth later.
 | M2 Shapes and selection | 0010-0019 | XP feature parity for editing |
 | M3 Polish | 0020-0023, 0026, 0027 | Preferences, accessibility, languages |
 | M3 Gate | 0028 | Journeys across the features, the full mutation run |
-| M4 Release | 0024 | Flatpak, deb, AppImage |
+| M4 Release | 0024 | Flatpak, deb, first alpha |

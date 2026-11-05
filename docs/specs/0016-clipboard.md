@@ -96,7 +96,7 @@ selection marked with Select, and a pasted one (REQ-0016-06), has every pixel of
   copied files only, the first file of the list is read (JOD, 2026-10-22).
 
 ### Copy To
-- REQ-0016-09 When the user chooses Copy To…, the app shall show the system save dialog titled "Copy To", suggesting `Untitled.png`
+- REQ-0016-09 (Pointer note, Packaging and release: the dialog also has a file type list; a chosen format decides what is written, and By extension is this rule, REQ-0024-12.) When the user chooses Copy To…, the app shall show the system save dialog titled "Copy To", suggesting `Untitled.png`
   in the folder of the picture's file or, if it has none, the Pictures folder, and write the copy of the selection (REQ-0016-03's
   picture) to the chosen file as Save As writes the picture (REQ-0005-12): the format from the extension (REQ-0005-10; `.gif` or an
   unknown extension is that requirement's error), `.png` added to a name without one and the replace question (REQ-0001-28,

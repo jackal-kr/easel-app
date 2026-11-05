@@ -1,6 +1,13 @@
 {
   "version": "2.0.0",
   "tasks": [
+    { "label": "Build", "type": "shell", "command": "test -d build || meson setup build; ninja -C build", "group": { "kind": "build", "isDefault": true }, "problemMatcher": ["$gcc"] },
+    { "label": "Test", "type": "shell", "command": "tools/isolated.sh meson test -C build --print-errorlogs", "group": { "kind": "test", "isDefault": true }, "problemMatcher": [] },
+    { "label": "Package: build Flatpak", "type": "shell", "command": "tools/package.sh flatpak", "problemMatcher": [] },
+    { "label": "Package: build deb", "type": "shell", "command": "tools/package.sh deb", "problemMatcher": [] },
+    { "label": "Package: build all", "type": "shell", "command": "tools/package.sh all", "problemMatcher": [] },
+    { "label": "Package: install Flatpak", "type": "shell", "command": "tools/package.sh install-flatpak", "problemMatcher": [] },
+    { "label": "Package: install deb", "type": "shell", "command": "tools/package.sh install-deb", "problemMatcher": [] },
     { "label": "Spec: status", "type": "shell", "command": "tools/spec.sh status", "problemMatcher": [] },
     { "label": "Spec: lint", "type": "shell", "command": "tools/spec.sh lint", "problemMatcher": [] },
     {

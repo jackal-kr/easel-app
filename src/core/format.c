@@ -52,6 +52,32 @@ easel_format_of_name (const char *path)
   return format_of_extension (dot + 1);
 }
 
+bool
+easel_format_name_for (const char *path, EaselFormat format, char **named)
+{
+  static const char *const first[] = { [EASEL_FORMAT_PNG] = ".png", [EASEL_FORMAT_JPEG] = ".jpg", [EASEL_FORMAT_BMP] = ".bmp",
+                                       [EASEL_FORMAT_TIFF] = ".tif", [EASEL_FORMAT_WEBP] = ".webp" };
+  const char *slash = strrchr (path, '/');
+  const char *name = slash ? slash + 1 : path;
+  const char *dot = strrchr (name, '.');
+  EaselFormat had = easel_format_of_name (path);
+  const char *ext = first[format];
+  size_t keep = strlen (path);
+  char *result;
+
+  if (had == format)
+    ext = "";
+  else if (had != EASEL_FORMAT_UNKNOWN || (dot != NULL && dot != name && dot[1] == '\0'))
+    keep = (size_t) (dot - path);
+  result = malloc (keep + strlen (ext) + 1);
+  if (result == NULL)
+    return false;
+  memcpy (result, path, keep);
+  strcpy (result + keep, ext);
+  *named = result;
+  return true;
+}
+
 EaselFormatResult
 easel_format_fix_name (const char *path, char **fixed, EaselFormat *format)
 {

@@ -515,9 +515,13 @@ test: ui-0005
 file: src/ui/window.c
 test: ui-0005 ui-0001
 --- find
-  if (strcmp (req->path, chosen) != 0 && g_file_test (req->path, G_FILE_TEST_EXISTS))
+      if (g_file_test (req->path, G_FILE_TEST_EXISTS))
+        {
+          ask_replace (req);
 --- replace
-  if (0)
+      if (0)
+        {
+          ask_replace (req);
 
 === REQ-0005-14 the JPEG quality of the settings does not reach Save
 file: src/ui/window.c
@@ -6618,16 +6622,16 @@ test: ui-0016
 file: src/ui/window.c
 test: ui-0016
 --- find
-  gtk_file_dialog_set_title (dialog, _ ("Copy To"));
+  open_save_chooser (self, NULL, _ ("Copy To"), start, EASEL_FORMAT_UNKNOWN);
 --- replace
-  gtk_file_dialog_set_title (dialog, _ ("Save Picture As"));
+  open_save_chooser (self, NULL, _ ("Save Picture As"), start, EASEL_FORMAT_UNKNOWN);
 
 === REQ-0016-09 Copy To does not ask before replacing a name it completed
 file: src/ui/window.c
 test: ui-0016
 --- find
   req->copy = copy;
-  save_chosen (req, path);
+  save_chosen (req, path, format);
 --- replace
   req->copy = copy;
   req->path = g_strdup (path);
@@ -11939,3 +11943,43 @@ test: ui-0027
          && strcmp (easel_i18n_choose (p->draft.language), easel_i18n_language ()) != 0;
 --- replace
          ;
+
+=== REQ-0024-12 a chosen format is ignored
+file: src/ui/window.c
+test: ui-0024
+--- find
+  if (chosen_format != EASEL_FORMAT_UNKNOWN)
+    {
+      if (!easel_format_name_for
+--- replace
+  if (FALSE)
+    {
+      if (!easel_format_name_for
+
+=== REQ-0024-12 a format's extension is added to the one it replaces
+file: src/core/format.c
+test: core-format
+--- find
+  else if (had != EASEL_FORMAT_UNKNOWN || (dot != NULL && dot != name && dot[1] == '\0'))
+--- replace
+  else if (dot != NULL && dot != name && dot[1] == '\0')
+
+=== REQ-0024-12 a name already in the format has its extension added again
+file: src/core/format.c
+test: core-format
+--- find
+  if (had == format)
+    ext = "";
+  else if (had
+--- replace
+  if (0)
+    ext = "";
+  else if (had
+
+=== REQ-0024-10 in the sandbox a changed name is written all the same
+file: src/ui/window.c
+test: ui-0024
+--- find
+      if (in_sandbox ())
+--- replace
+      if (FALSE)

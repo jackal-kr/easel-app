@@ -4,6 +4,7 @@
 #include <adwaita.h>
 
 #include "clipboard.h"
+#include "format.h"
 
 #include "canvas.h"
 #include "font-card.h"
@@ -135,6 +136,9 @@ void easel_window_open_file (EaselWindow *self, GFile *file);
 void easel_window_paste_from_file (EaselWindow *self, GFile *file);
 /* The name chosen for Copy To… (0016): the selection's copy is written as Save As writes a picture; also the tests' way to choose one. */
 void easel_window_copy_to_chosen (EaselWindow *self, const char *path);
+/* The same with a format chosen in the dialog's file type list (REQ-0024-12); EASEL_FORMAT_UNKNOWN is By extension. */
+void easel_window_copy_to_chosen_as (EaselWindow *self, const char *path, EaselFormat format);
+void easel_window_save_chosen_as (EaselWindow *self, const char *path, EaselFormat format);
 
 /* A picture is being opened: from the request until it is shown or the error is. */
 gboolean easel_window_is_loading (EaselWindow *self);

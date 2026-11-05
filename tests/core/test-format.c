@@ -106,6 +106,39 @@ as10_flat_formats (void)
   CHECK (!easel_format_is_flat (EASEL_FORMAT_WEBP));
 }
 
+/* AS-11 (REQ-0024-12): a chosen format decides, and the name follows it. */
+static void
+name_for (const char *path, EaselFormat format, const char *want)
+{
+  char *named = NULL;
+
+  CHECK (easel_format_name_for (path, format, &named));
+  CHECK (strcmp (named, want) == 0);
+  free (named);
+}
+
+static void
+as11_name_for (void)
+{
+  name_for ("/d/a", EASEL_FORMAT_BMP, "/d/a.bmp");
+  name_for ("/d/a", EASEL_FORMAT_JPEG, "/d/a.jpg");
+  name_for ("/d/a", EASEL_FORMAT_TIFF, "/d/a.tif");
+  name_for ("/d/a", EASEL_FORMAT_WEBP, "/d/a.webp");
+  name_for ("/d/a", EASEL_FORMAT_PNG, "/d/a.png");
+  name_for ("/d/Untitled.png", EASEL_FORMAT_JPEG, "/d/Untitled.jpg");
+  name_for ("/d/a.BMP", EASEL_FORMAT_PNG, "/d/a.png");
+  name_for ("/d/a.jpeg", EASEL_FORMAT_JPEG, "/d/a.jpeg");
+  name_for ("/d/a.JPG", EASEL_FORMAT_JPEG, "/d/a.JPG");
+  name_for ("/d/a.tiff", EASEL_FORMAT_TIFF, "/d/a.tiff");
+  name_for ("/d/a.tif", EASEL_FORMAT_PNG, "/d/a.png");
+  name_for ("/d/a.xyz", EASEL_FORMAT_TIFF, "/d/a.xyz.tif");
+  name_for ("/d/a.gif", EASEL_FORMAT_PNG, "/d/a.gif.png");
+  name_for ("/d/a.", EASEL_FORMAT_BMP, "/d/a.bmp");
+  name_for ("/d/.png", EASEL_FORMAT_BMP, "/d/.png.bmp");
+  name_for ("/d.png/a", EASEL_FORMAT_BMP, "/d.png/a.bmp");
+  name_for ("a.png", EASEL_FORMAT_WEBP, "a.webp");
+}
+
 int
 main (void)
 {
@@ -113,5 +146,6 @@ main (void)
   RUN (as9_format_by_name);
   RUN (as10_flat_formats);
   RUN (as12_format_of_name);
+  RUN (as11_name_for);
   return 0;
 }

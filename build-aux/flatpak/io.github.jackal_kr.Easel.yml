@@ -1,0 +1,30 @@
+app-id: io.github.jackal_kr.Easel
+runtime: org.gnome.Platform
+runtime-version: '51'
+sdk: org.gnome.Sdk
+command: easel
+# Translations stay in the app: a bundle does not carry a separate locale extension (REQ-0024-09).
+separate-locales: false
+finish-args:
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --device=dri
+cleanup:
+  - /include
+  - /lib/pkgconfig
+modules:
+  - name: easel
+    buildsystem: meson
+    config-opts:
+      - --buildtype=release
+    sources:
+      - type: dir
+        path: ../..
+        skip:
+          - build
+          - build-flatpak
+          - build-deb
+          - .flatpak-builder
+          - dist
+          - .scratch

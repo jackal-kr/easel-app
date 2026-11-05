@@ -593,70 +593,90 @@ ask_replace (SaveRequest *req)
                            (GAsyncReadyCallback) on_replace_response, req);
 }
 
-/* The name the user typed or chose, with the rules of REQ-0005-10 and REQ-0001-42; ends the request. */
+static void open_save_chooser (EaselWindow *self, SaveRequest *req, const char *title, const char *path, EaselFormat format);
+
+/* Only the name the dialog returned can be written in the sandbox: the portal grants that file and no other (REQ-0024-10). */
+static gboolean
+in_sandbox (void)
+{
+  return g_getenv ("EASEL_TEST_SANDBOX") != NULL || g_file_test ("/.flatpak-info", G_FILE_TEST_EXISTS);
+}
+
+/* The name the user typed or chose, with the rules of REQ-0024-12, REQ-0005-10 and REQ-0001-42; ends the request, unless the dialog
+   has to open again. EASEL_FORMAT_UNKNOWN is By extension. */
 static void
-save_chosen (SaveRequest *req, const char *chosen)
+save_chosen (SaveRequest *req, const char *chosen, EaselFormat chosen_format)
 {
   char *fixed = NULL;
   EaselFormat format;
 
-  switch (easel_format_fix_name (chosen, &fixed, &format))
+  if (chosen_format != EASEL_FORMAT_UNKNOWN)
     {
-    case EASEL_FORMAT_UNKNOWN_EXTENSION:
-      show_save_error (req->self, _ ("Cannot Save This Kind of File"), _ ("Pictures can be saved as PNG, JPEG, BMP, TIFF or WebP."));
-      save_request_finish (req, FALSE);
-      return;
-    case EASEL_FORMAT_NO_MEMORY:
-      g_critical ("Out of memory choosing a file name");
-      save_request_finish (req, FALSE);
-      return;
-    case EASEL_FORMAT_OK:
-      break;
+      if (!easel_format_name_for (chosen, chosen_format, &fixed))
+        {
+          g_critical ("Out of memory choosing a file name");
+          save_request_finish (req, FALSE);
+          return;
+        }
     }
+  else
+    switch (easel_format_fix_name (chosen, &fixed, &format))
+      {
+      case EASEL_FORMAT_UNKNOWN_EXTENSION:
+        show_save_error (req->self, _ ("Cannot Save This Kind of File"), _ ("Pictures can be saved as PNG, JPEG, BMP, TIFF or WebP."));
+        save_request_finish (req, FALSE);
+        return;
+      case EASEL_FORMAT_NO_MEMORY:
+        g_critical ("Out of memory choosing a file name");
+        save_request_finish (req, FALSE);
+        return;
+      case EASEL_FORMAT_OK:
+        break;
+      }
 
+  g_free (req->path);
   req->path = g_strdup (fixed);
   free (fixed);
-  /* The system's dialog confirmed the name as typed; once .png is added, an existing file needs its own question
-     (REQ-0001-42). */
-  if (strcmp (req->path, chosen) != 0 && g_file_test (req->path, G_FILE_TEST_EXISTS))
+  if (strcmp (req->path, chosen) != 0)
     {
-      ask_replace (req);
-      return;
+      if (in_sandbox ())
+        {
+          g_autofree char *again = g_strdup (req->path);
+
+          open_save_chooser (req->self, req, req->copy != NULL ? _ ("Copy To") : _ ("Save Picture As"), again, chosen_format);
+          return;
+        }
+      /* The system's dialog confirmed the name as typed; once it has changed, an existing file needs its own question
+         (REQ-0001-42). */
+      if (g_file_test (req->path, G_FILE_TEST_EXISTS))
+        {
+          ask_replace (req);
+          return;
+        }
     }
   save_request_finish (req, write_request (req));
 }
 
-static void
-on_save_dialog_done (GtkFileDialog *dialog, GAsyncResult *result, SaveRequest *req)
+void
+easel_window_save_chosen_as (EaselWindow *self, const char *path, EaselFormat format)
 {
-  g_autoptr (GFile) file = gtk_file_dialog_save_finish (dialog, result, NULL);
-  g_autofree char *chosen = file ? g_file_get_path (file) : NULL;
+  SaveRequest *req = g_new0 (SaveRequest, 1);
 
-  req->self->save_dialog_open = FALSE;
-
-  /* Cancelled: nothing is saved and nothing changes (REQ-0001-32). */
-  if (chosen == NULL)
-    {
-      save_request_finish (req, FALSE);
-      return;
-    }
-  save_chosen (req, chosen);
+  req->self = g_object_ref (self);
+  save_chosen (req, path, format);
 }
 
 void
 easel_window_save_chosen (EaselWindow *self, const char *path)
 {
-  SaveRequest *req = g_new0 (SaveRequest, 1);
-
-  req->self = g_object_ref (self);
-  save_chosen (req, path);
+  easel_window_save_chosen_as (self, path, EASEL_FORMAT_UNKNOWN);
 }
 
 static void show_copy_error (EaselWindow *self);
 
 /* Copy To… with a name chosen (REQ-0016-09): the copy is made now, so the selection may change while a replace question waits. */
 void
-easel_window_copy_to_chosen (EaselWindow *self, const char *path)
+easel_window_copy_to_chosen_as (EaselWindow *self, const char *path, EaselFormat format)
 {
   SaveRequest *req;
   EaselImage *copy = self->picture != NULL ? easel_canvas_copy_selection (self->canvas) : NULL;
@@ -673,20 +693,104 @@ easel_window_copy_to_chosen (EaselWindow *self, const char *path)
   req = g_new0 (SaveRequest, 1);
   req->self = g_object_ref (self);
   req->copy = copy;
-  save_chosen (req, path);
+  save_chosen (req, path, format);
+}
+
+void
+easel_window_copy_to_chosen (EaselWindow *self, const char *path)
+{
+  easel_window_copy_to_chosen_as (self, path, EASEL_FORMAT_UNKNOWN);
+}
+
+/* The save dialog, with its file type list (REQ-0024-12). GtkFileDialog does not say which entry was chosen (a probe, 2026-11-05), and
+   this one does; it is deprecated, so all of it is here. */
+G_GNUC_BEGIN_IGNORE_DEPRECATIONS
+
+typedef struct
+{
+  EaselWindow *self;
+  SaveRequest *req;                              /* NULL for Copy To's first answer: the copy is made then */
+} SaveChooser;
+
+static gboolean
+release_native (gpointer native)
+{
+  g_object_unref (native);
+  return G_SOURCE_REMOVE;
 }
 
 static void
-on_copy_to_dialog_done (GtkFileDialog *dialog, GAsyncResult *result, EaselWindow *self)
+on_save_chooser_response (GtkNativeDialog *native, int response, SaveChooser *c)
 {
-  g_autoptr (GFile) file = gtk_file_dialog_save_finish (dialog, result, NULL);
+  EaselWindow *self = c->self;
+  SaveRequest *req = c->req;
+  g_autoptr (GFile) file = response == GTK_RESPONSE_ACCEPT ? gtk_file_chooser_get_file (GTK_FILE_CHOOSER (native)) : NULL;
   g_autofree char *chosen = file ? g_file_get_path (file) : NULL;
+  GtkFileFilter *filter = gtk_file_chooser_get_filter (GTK_FILE_CHOOSER (native));
+  /* A dialog that reports no choice is By extension. */
+  EaselFormat format = filter != NULL ? (EaselFormat) GPOINTER_TO_INT (g_object_get_data (G_OBJECT (filter), "easel-format")) : EASEL_FORMAT_UNKNOWN;
 
   self->save_dialog_open = FALSE;
-  if (chosen != NULL)               /* Cancelled: nothing is written and nothing changes */
-    easel_window_copy_to_chosen (self, chosen);
+  g_free (c);
+  g_idle_add_full (G_PRIORITY_DEFAULT_IDLE, release_native, native, NULL);     /* not from inside its own response */
+  /* Cancelled: nothing is saved and nothing changes (REQ-0001-32). */
+  if (chosen == NULL)
+    {
+      if (req != NULL)
+        save_request_finish (req, FALSE);
+    }
+  else if (req != NULL)
+    save_chosen (req, chosen, format);
+  else
+    easel_window_copy_to_chosen_as (self, chosen, format);
   g_object_unref (self);
 }
+
+/* Opens the dialog on path, with format chosen in its list; the answer goes on with req. */
+static void
+open_save_chooser (EaselWindow *self, SaveRequest *req, const char *title, const char *path, EaselFormat format)
+{
+  static const struct { const char *label; EaselFormat format; const char *suffix[2]; } kinds[] = {
+    { N_ ("By extension"), EASEL_FORMAT_UNKNOWN, { NULL, NULL } },
+    { "BMP (*.bmp)", EASEL_FORMAT_BMP, { "bmp", NULL } },
+    { "JPEG (*.jpg, *.jpeg)", EASEL_FORMAT_JPEG, { "jpg", "jpeg" } },
+    { "PNG (*.png)", EASEL_FORMAT_PNG, { "png", NULL } },
+    { "TIFF (*.tif, *.tiff)", EASEL_FORMAT_TIFF, { "tif", "tiff" } },
+    { "WebP (*.webp)", EASEL_FORMAT_WEBP, { "webp", NULL } },
+  };
+  static const char *const every[] = { "bmp", "jpg", "jpeg", "png", "tif", "tiff", "webp" };
+  GtkFileChooserNative *native = gtk_file_chooser_native_new (title, GTK_WINDOW (self), GTK_FILE_CHOOSER_ACTION_SAVE, NULL, NULL);
+  g_autofree char *folder_path = g_path_get_dirname (path);
+  g_autofree char *name = g_path_get_basename (path);
+  g_autoptr (GFile) folder = g_file_new_for_path (folder_path);
+  SaveChooser *c = g_new0 (SaveChooser, 1);
+
+  for (gsize i = 0; i < G_N_ELEMENTS (kinds); i++)
+    {
+      g_autoptr (GtkFileFilter) filter = gtk_file_filter_new ();
+
+      gtk_file_filter_set_name (filter, kinds[i].format == EASEL_FORMAT_UNKNOWN ? _ (kinds[i].label) : kinds[i].label);
+      for (gsize k = 0; k < 2 && kinds[i].suffix[k] != NULL; k++)
+        gtk_file_filter_add_suffix (filter, kinds[i].suffix[k]);
+      if (kinds[i].format == EASEL_FORMAT_UNKNOWN)
+        for (gsize k = 0; k < G_N_ELEMENTS (every); k++)
+          gtk_file_filter_add_suffix (filter, every[k]);
+      g_object_set_data (G_OBJECT (filter), "easel-format", GINT_TO_POINTER (kinds[i].format));
+      gtk_file_chooser_add_filter (GTK_FILE_CHOOSER (native), filter);
+      if (kinds[i].format == format)
+        gtk_file_chooser_set_filter (GTK_FILE_CHOOSER (native), filter);
+    }
+  gtk_native_dialog_set_modal (GTK_NATIVE_DIALOG (native), TRUE);
+  gtk_file_chooser_set_current_folder (GTK_FILE_CHOOSER (native), folder, NULL);
+  gtk_file_chooser_set_current_name (GTK_FILE_CHOOSER (native), name);
+  c->self = g_object_ref (self);
+  c->req = req;
+  self->save_dialog_open = TRUE;                 /* a quit request behaves as for Save As (REQ-0001-43) */
+  g_signal_connect (native, "response", G_CALLBACK (on_save_chooser_response), c);
+  gtk_native_dialog_show (GTK_NATIVE_DIALOG (native));
+}
+
+G_GNUC_END_IGNORE_DEPRECATIONS
 
 /* Copy To… (REQ-0016-09): a save dialog titled "Copy To", suggesting Untitled.png in the folder of the picture's file or the Pictures
    folder. */
@@ -694,14 +798,13 @@ static void
 copy_to_activated (GSimpleAction *action, GVariant *parameter, gpointer user_data)
 {
   EaselWindow *self = user_data;
-  g_autoptr (GtkFileDialog) dialog = NULL;
   g_autoptr (GFile) folder = NULL;
   const char *pictures = g_get_user_special_dir (G_USER_DIRECTORY_PICTURES);
+  g_autofree char *start = NULL, *in = NULL;
 
   if (self->picture == NULL || dialog_is_open (self) || easel_canvas_is_stroking (self->canvas)
       || easel_canvas_is_resizing (self->canvas) || !g_action_group_get_action_enabled (G_ACTION_GROUP (self), "copy-to"))
     return;
-  dialog = gtk_file_dialog_new ();
   if (self->path != NULL)
     {
       g_autoptr (GFile) current = g_file_new_for_path (self->path);
@@ -713,11 +816,9 @@ copy_to_activated (GSimpleAction *action, GVariant *parameter, gpointer user_dat
       g_clear_object (&folder);
       folder = g_file_new_for_path (pictures && g_file_test (pictures, G_FILE_TEST_IS_DIR) ? pictures : g_get_home_dir ());
     }
-  gtk_file_dialog_set_title (dialog, _ ("Copy To"));
-  gtk_file_dialog_set_initial_folder (dialog, folder);
-  gtk_file_dialog_set_initial_name (dialog, _ ("Untitled.png"));
-  self->save_dialog_open = TRUE;                 /* a quit request behaves as for Save As (REQ-0001-43) */
-  gtk_file_dialog_save (dialog, GTK_WINDOW (self), NULL, (GAsyncReadyCallback) on_copy_to_dialog_done, g_object_ref (self));
+  in = g_file_get_path (folder);
+  start = g_build_filename (in, _ ("Untitled.png"), NULL);
+  open_save_chooser (self, NULL, _ ("Copy To"), start, EASEL_FORMAT_UNKNOWN);
 }
 
 /* The name the dialog suggests for a file that cannot be saved in place: its name without the extension, plus .png
@@ -738,8 +839,7 @@ png_name_for (const char *path)
 static void
 save (EaselWindow *self, SaveDone done, gboolean as_new)
 {
-  g_autoptr (GtkFileDialog) dialog = NULL;
-  g_autoptr (GFile) suggestion = NULL;
+  g_autofree char *start = NULL;
   const char *pictures = g_get_user_special_dir (G_USER_DIRECTORY_PICTURES);
   SaveRequest *req;
 
@@ -769,27 +869,12 @@ save (EaselWindow *self, SaveDone done, gboolean as_new)
   req->self = g_object_ref (self);
   req->done = done;
 
-  dialog = gtk_file_dialog_new ();
+  /* The file's own name, or its name as a .png when it cannot be written as it is; else Untitled.png in the Pictures folder. */
   if (self->path != NULL)
-    {
-      /* The file's own name, or its name as a .png when it cannot be written as it is. */
-      g_autofree char *suggested = easel_format_of_name (self->path) != EASEL_FORMAT_UNKNOWN ? g_strdup (self->path)
-                                                                                              : png_name_for (self->path);
-
-      suggestion = g_file_new_for_path (suggested);
-      gtk_file_dialog_set_title (dialog, _ ("Save Picture As"));
-      gtk_file_dialog_set_initial_file (dialog, suggestion);
-    }
+    start = easel_format_of_name (self->path) != EASEL_FORMAT_UNKNOWN ? g_strdup (self->path) : png_name_for (self->path);
   else
-    {
-      suggestion = g_file_new_for_path (pictures ? pictures : g_get_home_dir ());
-      gtk_file_dialog_set_initial_folder (dialog, suggestion);
-      gtk_file_dialog_set_initial_name (dialog, _ ("Untitled.png"));
-      if (as_new)
-        gtk_file_dialog_set_title (dialog, _ ("Save Picture As"));
-    }
-  self->save_dialog_open = TRUE;
-  gtk_file_dialog_save (dialog, GTK_WINDOW (self), NULL, (GAsyncReadyCallback) on_save_dialog_done, req);
+    start = g_build_filename (pictures ? pictures : g_get_home_dir (), _ ("Untitled.png"), NULL);
+  open_save_chooser (self, req, _ ("Save Picture As"), start, EASEL_FORMAT_UNKNOWN);
 }
 
 static void

@@ -1185,3 +1185,21 @@ msgstr "La lingua cambia al prossimo avvio"
 
 msgid "Your changes are kept. The new language shows the next time Easel starts."
 msgstr "Le modifiche sono mantenute. La nuova lingua si vedrà al prossimo avvio di Easel."
+
+msgid "By extension"
+msgstr "Per estensione"
+
+msgid "Easel"
+msgstr "Easel"
+
+msgid "Draw and touch up pictures"
+msgstr "Disegna e ritocca immagini"
+
+msgid "paint;draw;picture;image;pixel;"
+msgstr "paint;draw;picture;image;pixel;dipingere;disegnare;immagine;"
+
+msgid "Easel is a simple drawing program for quick pictures and touch-ups, in the style of Paint in Windows XP."
+msgstr "Easel è un semplice programma di disegno per immagini rapide e ritocchi, nello stile di Paint in Windows XP."
+
+msgid "It has the classic tools, exact pixels, undo, selections you can move and stretch, text boxes and printing."
+msgstr "Ha gli strumenti classici, pixel esatti, annulla, selezioni da spostare e allungare, riquadri di testo e stampa."

@@ -9,3 +9,10 @@
 .claude/settings.local.json
 .vscode/settings.json
 __pycache__/
+/obj-*/
+/debian/easel/
+/debian/.debhelper/
+/debian/debhelper-build-stamp
+/debian/files
+/debian/*.substvars
+/debian/*.debhelper.log

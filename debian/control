@@ -1,0 +1,18 @@
+Source: easel
+Section: graphics
+Priority: optional
+Maintainer: JOD <oleksiy.degtyar@gmail.com>
+Build-Depends: debhelper-compat (= 13), meson (>= 1.0), ninja-build, gettext, libgtk-4-dev, libadwaita-1-dev (>= 1.8), libgdk-pixbuf-2.0-dev, desktop-file-utils, appstream
+Standards-Version: 4.7.0
+Homepage: https://github.com/jackal-kr/easel-app
+Rules-Requires-Root: no
+
+Package: easel
+Architecture: amd64
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: draw and touch up pictures
+ Easel is a simple drawing program for quick pictures and touch-ups, in the
+ style of Paint in Windows XP. It has the classic tools, exact pixels, undo,
+ selections you can move and stretch, text boxes and printing.
+ .
+ This is an early alpha.

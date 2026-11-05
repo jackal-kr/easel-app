@@ -60,6 +60,14 @@ ui_vulkan_env.set('GDK_DEBUG', 'no-portals')
 test('ui-0025-vulkan', test_window, args: ['-p', '/0025/as1_squares_at_whole_zooms', '-p', '/0025/as1c_edges_at_fractional_zoom', '-p', '/0025/as1d_grid_on_cell_edges', '-p', '/0025/as2c_pointer_hits_the_drawn_pixel'],
      env: ui_vulkan_env, suite: 'ui', timeout: 180, is_parallel: false)
 test('ui-0027', test_window, args: ['-p', '/0027'], env: ui_env, suite: 'ui', timeout: 300, is_parallel: false)
+test('ui-0024', test_window, args: ['-p', '/0024'], env: ui_env, suite: 'ui', timeout: 180, is_parallel: false)
+# AS-7 (0024): the desktop's own validators, and AS-8: an install finds its files.
+test('desktop-entry', find_program('desktop-file-validate'), args: [desktop_file], suite: 'core')
+test('metainfo', find_program('appstreamcli'), args: ['validate', '--no-net', metainfo_file], suite: 'core')
+# AS-9 (0024): the Flatpak asks for exactly what REQ-0024-10 says.
+test('flatpak-permissions', find_program('python3'), args: [meson.current_source_dir() / 'flatpak-permissions.py', meson.project_source_root() / 'build-aux/flatpak/io.github.jackal_kr.Easel.yml'], suite: 'core')
+# AS-8 (0024): an install finds its catalogs and Help pages, with no path of the build.
+test('install-run', find_program('sh'), args: [meson.current_source_dir() / 'install-run.sh', meson.project_source_root(), meson.project_build_root()], suite: 'core', is_parallel: false, timeout: 120)
 # 0028: the journeys. Journey 15 in its own process, in Ukrainian under the C locale, from the settings file.
 test('ui-0028', test_window, args: ['-p', '/0028'], env: ui_env, suite: 'ui', timeout: 300, is_parallel: false)
 journey_uk_env = environment()

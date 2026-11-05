@@ -1195,3 +1195,21 @@ msgstr "Язык сменится при следующем запуске"
 
 msgid "Your changes are kept. The new language shows the next time Easel starts."
 msgstr "Ваши изменения сохранены. Новый язык появится при следующем запуске Easel."
+
+msgid "By extension"
+msgstr "По расширению"
+
+msgid "Easel"
+msgstr "Easel"
+
+msgid "Draw and touch up pictures"
+msgstr "Рисуйте и правьте изображения"
+
+msgid "paint;draw;picture;image;pixel;"
+msgstr "paint;draw;picture;image;pixel;рисование;рисунок;изображение;"
+
+msgid "Easel is a simple drawing program for quick pictures and touch-ups, in the style of Paint in Windows XP."
+msgstr "Easel — простая программа для быстрых рисунков и правки изображений в стиле Paint из Windows XP."
+
+msgid "It has the classic tools, exact pixels, undo, selections you can move and stretch, text boxes and printing."
+msgstr "В ней есть классические инструменты, точные пиксели, отмена, выделения, которые можно двигать и растягивать, текстовые рамки и печать."

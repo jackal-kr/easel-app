@@ -64,12 +64,15 @@ From feature 0002 (`src/core/history`):
 - Indexes are `y * width + x`: a feature that changes the picture's size must clear the history or record the size.
 
 ### Settings
-- The file is `~/.config/easel/settings.ini`.
+- The file is `~/.config/easel/settings.ini`; under Flatpak, `~/.var/app/io.github.jackal_kr.Easel/config/easel/settings.ini`.
 - The core parses its text and resolves defaults; io finds, reads and creates the file.
 - Preferences will edit the same file.
 
 ### Packaging layout
-Defined by the packaging and release feature.
+- `data/` holds the desktop entry and the software-center metadata (`.in`, translated through `po/` at the build), the icons and the screenshot.
+- `build-aux/flatpak/` holds the Flatpak manifest, on the GNOME 51 runtime, its locales not split off. `debian/` holds the deb's packaging.
+- `tools/package.sh flatpak|deb|all|install-flatpak|install-deb` builds and installs them; the files go in `dist/`, which git ignores. VS Code has the same as tasks.
+- Under Flatpak a file can be written only by the name the save dialog returned (REQ-0024-10). Test a format inside an installed Flatpak, not under `flatpak-builder --run`, where glycin's sandbox helper is not reachable and every load fails.
 
 ## Testing
 - **Every scenario (AS-n) is verified** by an automated test or a numbered manual check named in the spec.

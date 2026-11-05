@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="wood" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#b5835a"/>
+      <stop offset="1" stop-color="#865e3c"/>
+    </linearGradient>
+    <linearGradient id="board" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#deddda"/>
+    </linearGradient>
+    <linearGradient id="palette" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#e5a50a"/>
+      <stop offset="1" stop-color="#c88800"/>
+    </linearGradient>
+  </defs>
+  <!-- The legs of the easel, behind the canvas. -->
+  <path d="M64 6 L24 120" stroke="url(#wood)" stroke-width="8" stroke-linecap="round" fill="none"/>
+  <path d="M64 6 L104 120" stroke="url(#wood)" stroke-width="8" stroke-linecap="round" fill="none"/>
+  <path d="M64 6 L64 118" stroke="#63452c" stroke-width="7" stroke-linecap="round" fill="none"/>
+  <!-- The canvas, with a picture on it. -->
+  <rect x="20" y="16" width="88" height="66" rx="3" fill="#9a9996"/>
+  <rect x="20" y="14" width="88" height="66" rx="3" fill="url(#board)"/>
+  <rect x="26" y="20" width="76" height="54" fill="#99c1f1"/>
+  <circle cx="84" cy="33" r="7" fill="#f8e45c"/>
+  <path d="M26 74 L26 60 L46 42 L62 58 L72 48 L102 74 Z" fill="#33d17a"/>
+  <!-- The ledge. -->
+  <rect x="14" y="80" width="100" height="8" rx="3" fill="#63452c"/>
+  <!-- The palette, on the ledge. -->
+  <path d="M36 112 C24 112 16 104 18 95 C20 86 32 82 46 83 C60 84 68 90 67 97 C66 101 60 100 57 102 C54 104 57 108 53 110 C48 113 42 112 36 112 Z" fill="#a66d00"/>
+  <path d="M36 109 C24 109 16 101 18 92 C20 83 32 79 46 80 C60 81 68 87 67 94 C66 98 60 97 57 99 C54 101 57 105 53 107 C48 110 42 109 36 109 Z" fill="url(#palette)"/>
+  <circle cx="30" cy="92" r="4.5" fill="#e01b24"/>
+  <circle cx="42" cy="87" r="4.5" fill="#3584e4"/>
+  <circle cx="55" cy="90" r="4.5" fill="#2ec27e"/>
+  <circle cx="33" cy="102" r="4.5" fill="#ffffff"/>
+</svg>

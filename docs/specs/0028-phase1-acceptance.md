@@ -84,8 +84,18 @@ Constitution: no app code, so P1 to P7 are untouched unless a journey finds a bu
   Result: software renderer in the isolated session: `ui-0028` 25.85 s and `ui-0028-uk` 0.39 s, 26.2 s of the 120 s budget. Vulkan: 15 of 15, 26.6 s. Scale 2: journeys 1 and 4 pass, `ui-0028-scale2` 2.81 s.
 - [x] T003 What the journeys find (REQ-0028-04; AS-3) - done when each is fixed in its feature, or there is none
   Result: the journeys found no bug in the app, so no feature's spec changed. One change here, after acceptance (JOD, 2026-11-04, shown): REQ-0028-16 old, "draw filled 500 × 500 rectangles in turn until Undo, pressed to its end, no longer reaches the move"; new, four times mark a 1000 × 700 rectangle, Invert Colors, Enter.
-- [ ] T004 The full mutation run, its versions in the INDEX - done when its summary line is here and each survivor has its line
-- [ ] T005 `docs/walkthrough-phase1.md` - done when each step has its action and result, in a throwaway settings folder
+- [x] T004 The full mutation run, its versions in the INDEX - done when its summary line is here and each survivor has its line
+  Result: at `2e6954e`, 8 workers: `1258 mutants: 1247 killed, 0 killed by crash (test gap), 0 inconclusive (no snapshot or skipped), 8 survived, 0 errors, 2 accepted, 1 long-only (not run) in 735 s`. The long-only one, REQ-0014-16, killed by hand: `as14_long_trace`. GTK 4.24.1, Pango 1.58.0, Cairo 1.18.4, GNOME Shell 51.0, the same as at the last full run. Survivors, each accepted, none showing a bug a user can see:
+  - REQ-0023-06, Romanian's few stopping before 19: AS-5's numbers have no 19, and the rule as written is right.
+  - REQ-0023-02, an empty translation showing as nothing: `translations` refuses an empty message before it ships.
+  - REQ-0023-06, a file with fewer forms than the rule: `translations` refuses it before it ships, and no test feeds the reader one.
+  - REQ-0023-05, a cut file read past its end: only a catalog damaged after install reaches it, and no test feeds the reader one.
+  - REQ-0013-10, the arrows moving a selection while a button is held: the canvas's own keys stop them first, so this guard, with the focus off the canvas, is not reached by a test.
+  - REQ-0013-10, the arrows taken without a selection, with the focus off the canvas: the code is right, and since 0022 no test presses an arrow there with no selection.
+  - REQ-0022-07, a keyboard press counting as a click of a double click: the code is right, and no test presses Space twice quickly on a polygon.
+  - REQ-0014-11, Shift with an arrow lifting with a hole: equivalent, as the copy it leaves at the place it came from covers that hole exactly.
+- [x] T005 `docs/walkthrough-phase1.md` - done when each step has its action and result, in a throwaway settings folder
+  Result: fifteen steps, in a throwaway settings folder with a command that builds it; its setup was run once, and the three pictures it makes open.
 - [ ] T006 Manual: the walkthrough (JOD) - done when JOD has walked it
 
 ## Check
