@@ -33,6 +33,7 @@ Vertical slices first (a thin end-to-end feature), breadth later.
 | 0026 | print | Print the picture, with a Picture tab in the print dialog | Implemented 2026-11-03. Split from Window Extras (JOD, 2026-11-03); no Page Setup item, the print dialog has it |
 | 0027 | preferences-buttons | OK, Cancel and Apply in Preferences over a live preview; page Appearance split, with a new page Interface | Implemented 2026-11-04. JOD, 2026-11-04: a mistake in Preferences was hard to take back |
 | 0028 | phase1-acceptance | Fifteen journeys across the features, each one automated case and one manual step, ending in the saved file read back | Implemented 2026-11-06. The phase gate's acceptance spec (outline approved by JOD, 2026-11-02); cairo in the normal suite, Vulkan once at the gate, journeys 1 and 4 at scale 2, no mutants of their own, 2 minutes |
+| 0029 | tool-cursors | Pencil, Airbrush, Fill, Pick Color and Magnifier cursors in the desktop theme's look and size; heavier toolbox icons for the outline tools, Fill and Gradient | Phase 2, item A of `docs/phase2-plan.md`. Decided by JOD, 2026-11-06, from contact sheets: all five cursors, the theme's look, the desktop cursor size; the cursors shown on a sheet before code |
 
 ### Phase 2: Modern extras (optional, starts only after the core XP scope is delivered)
 | Feature | One line |
