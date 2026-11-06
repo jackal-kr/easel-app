@@ -1,6 +1,6 @@
 # 0028 Phase 1 acceptance
 
-Status: accepted
+Status: implemented
 Reviewed: spec-reviewer, 2026-11-04
 Depends on: every feature of Phase 1 built so far (0001 to 0023, 0025 to 0027)
 
@@ -29,7 +29,7 @@ Each journey below shall run as written and shall give the result written. Color
 - REQ-0028-15 Journey 11, Don't lose work. On an existing file, edited, close: Cancel at the prompt stays; a Save into a folder that cannot be written stays, with its error, the picture and the old file as they were. In a second run on a writable file a Save closes with the new file; in a third, Discard closes with the file byte for byte as it was. It ends with the file read back in each (0002, 0005).
 - REQ-0028-16 Journey 12, Big picture. With `[history] memory=16` set before the start and an 8000 × 8000 picture made by Attributes: at 1600 % mark a 40 × 20 rectangle, move it, Enter; at 100 % (JOD, 2026-11-04: a hand cannot do this much at 1600 %), four times at different places, mark a 1000 × 700 rectangle, Invert Colors, Enter; Undo, pressed to its end, no longer reaches the move (a filled rectangle's step counts only its spans, so it would take thousands to pass the budget, and a put-down selection counts each pixel, by REQ-0002-16). The move's step went first; undo stops at the oldest step kept, on the picture from before that step, with Undo off; the title stays modified if the saved state was dropped; the picture saves and reads back (0002, 0004, 0005, 0008, 0013, 0025).
 - REQ-0028-17 Journey 13, Preferences. With swatch 1 edited beforehand and a settings file holding a comment: set the new-picture size to 300 × 200 and a canvas color, change Workspace color, press Reset Palette, Apply; change Tint strength, Cancel; restart. The kept values show and are used, New has the kept size and color, the classic colors show, the cancelled tint does not, and the comment stays. New's picture is drawn on, saved and read back (0003, 0009, 0020, 0027).
-- REQ-0028-18 Journey 14, Keyboard only. Started with a file as argument, with no pointer used: Tab to the toolbox, arrows and Space to choose the Pencil, on to a swatch and choose it, F6 to the canvas, draw by Space, arrows, Space; choose Select, mark by Space, arrows, Space; once released, arrows move it and Shift with an arrow smears it; Enter puts it down; Ctrl+S saves (0005, 0013, 0014, 0022).
+- REQ-0028-18 Journey 14, Keyboard only. Started with a file as argument, with no pointer used: F6 to the toolbox, arrows and Space to choose the Pencil, on to a swatch and choose it, F6 to the canvas, draw by Space, arrows, Space; choose Select, mark by Space, arrows, Space; once released, arrows move it and Shift with an arrow smears it; Enter puts it down; Ctrl+S saves (0005, 0013, 0014, 0022).
 - REQ-0028-19 Journey 15, Another language. Journey 1 with the same input and picture size, from a settings file holding `language=uk`, under `LC_ALL=C`, with the translated suggested file name: a menu item reads in Ukrainian and the file equals journey 1's, pixel for pixel (0023).
 
 ## Scenarios
@@ -96,7 +96,18 @@ Constitution: no app code, so P1 to P7 are untouched unless a journey finds a bu
   - REQ-0014-11, Shift with an arrow lifting with a hole: equivalent, as the copy it leaves at the place it came from covers that hole exactly.
 - [x] T005 `docs/walkthrough-phase1.md` - done when each step has its action and result, in a throwaway settings folder
   Result: fifteen steps, in a throwaway settings folder with a command that builds it; its setup was run once, and the three pictures it makes open.
-- [ ] T006 Manual: the walkthrough (JOD) - done when JOD has walked it
+- [x] T006 Manual: the walkthrough (JOD) - done when JOD has walked it
+  Result: walked by JOD, 2026-11-06: every step as expected, no comments.
 
 ## Check
-(written by /sdd-check as its last step, about ten lines)
+- Date and commit: 2026-11-06, `eb4df93` (0024's packaging on top of the gate's `2e6954e`; its save path changed `src/ui/window.c`, so everything below was run again here).
+- Tests: `meson test` 112 of 112 through `tools/isolated.sh`; `ui-0028` 25.70 s and `ui-0028-uk` 0.37 s, 26.1 s of the 120 s budget. Scale 2: the four scale 2 runs and `ui-0028-scale2` (journeys 1 and 4) pass, 2.78 s. Vulkan, the command in `docs/engineering.md`: `/0028` 14 of 14 and `/0028-uk` 1 of 1, about 29 s.
+- Mutants, the full list: `1262 mutants: 1251 killed, 0 killed by crash (test gap), 0 inconclusive (no snapshot or skipped), 8 survived, 0 errors, 2 accepted, 1 long-only (not run) in 841 s`. The long-only one, REQ-0014-16, killed by hand by `as14_long_trace` in a separate worktree. GTK 4.24.1, Pango 1.58.0, Cairo 1.18.4, GNOME Shell 51.0: none changed since the gate. No mutant names a journey (REQ-0028-03).
+- Survivors: the same eight as T004's, each accepted there with its reason, none a bug a user can see (REQ-0023-06 twice, REQ-0023-02, REQ-0023-05, REQ-0013-10 twice, REQ-0022-07, REQ-0014-11).
+- Warnings: 0.
+- Scenarios: AS-1, AS-4 to AS-18 have their cases, `/0028/journey_1` to `journey_14` and `/0028-uk/journey_15`, each proven by T001's breaks (a pixel changed at every save failed 12 of 14; an Undo step skipped and the quit prompt gone failed 7, 9, 10 and 11). AS-2 by the times above; AS-3 by T003 (no app bug found). Results T001 to T005 are in each task; none a characterization.
+- F1, fixed (spec wording, JOD, 2026-11-06): REQ-0028-18 old "Tab to the toolbox", new "F6 to the toolbox", as the case and walkthrough step 14 do (F6 is 0022's panel key).
+- F2, fixed (walkthrough, JOD, 2026-11-06): step 8 zoomed to 800 % and 100 %; REQ-0028-12 names a fractional zoom and 800 %. Step 8 now reads "View, Fit to Window; then View, Zoom, 800 %".
+- F3, noted: AS-17's "no pointer event" holds by construction (the case calls only key helpers), not by an assertion; Ctrl+S in journey 14 is the action and a check of its accelerator, the real key is walkthrough step 14's.
+- F4: T006 walked by JOD, 2026-11-06, no comments. Open: the fractional desktop scale and the phone photo (Out of scope) have no written steps yet.
+- Verdict: clean after F1 and F2. `Status: implemented` (JOD, 2026-11-06). Next: JOD tests the app in daily use over the coming weeks, before a first beta.
