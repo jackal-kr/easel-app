@@ -2,6 +2,40 @@
 
 Known gaps from Phase 1 specs, to take up after the core XP scope is delivered. The features of Phase 2 are in `docs/specs/INDEX.md`.
 
+Revision 2026-11-05: JOD's Phase 2 additions A to D (cursors, brush options, gradient types, Black and white), below, docs only, no spec yet.
+
+## JOD's Phase 2 additions (2026-11-05)
+| Item | One line | Size |
+|---|---|---|
+| A. Tool cursors in one style | Every tool's cursor, and the toolbox icons out of style, drawn by one set of rules | S to M |
+| B. Brush options that read at a glance | The twelve tips shown so their shape and size can be read | S |
+| C. Gradient types | The Gradient tool gains Linear, Radial and Reflected | M |
+| D. Black and white | The picture turned to pure black and white | (below) |
+
+Order suggestion: A and B first, C after the graphics path audit, D with file input and output.
+
+### A. Tool cursors in one style
+- The cursors of Airbrush, Pencil, Fill and Pick Color are out of style next to the rest (JOD, 2026-11-05). A screencast does not show the pointer, so they are judged from the app's own images.
+- First task of the spec: draw every cursor of every tool and state (Magnifier in and out, Pan open and closed, any busy or blocked one) onto one contact sheet from the code's own cursor images, at scale 1 and 2, on light and dark backgrounds, with the hotspot marked. JOD names the odd ones from that sheet.
+- Then one set of rules: size, stroke weight, a light halo, the hotspot at the exact pixel the tool acts on, one source, scale-2 variants; and a test that every tool's cursor comes from the set, with its hotspot inside the image.
+- The size-matched cursors of Eraser and Brush stay. Toolbox icons out of style go in the same spec.
+- P7: the spec states how the hotspot maps to the picture pixel; the cursor draws nothing.
+
+### B. Brush options that read at a glance
+- The twelve tip glyphs are barely understood (JOD, 2026-11-05). The twelve tips stay.
+- Either each tip shown at its real size on a neutral swatch, grouped by shape with the sizes in a row, with a tooltip naming shape and size in pixels and the chosen tip also in the status bar; or two controls, shape and size. JOD sees a text layout first.
+- The options of Airbrush, Eraser and the line width are checked against the same reading rule.
+- The effect on Preferences' Brush row (REQ-0020-05) is stated.
+
+### C. Gradient types
+- The Gradient tool (the drawing color faded to transparent along a drag; a click or Enter applies it, Esc cancels) gains three types as an option row: Linear; Radial, from the press point, the drag's length the radius; Reflected, mirrored on both sides of the press point. Default Linear, remembered for the run.
+- Open product question for JOD, in the spec: keep "to transparent", or run from the foreground to the background color, perhaps as a second row "To transparent / To background".
+- The preview equals the put-down (P7.3); exact colors with a defined rounding rule; integer or checked-table arithmetic, so the same input gives the same pixels on every machine. The spec states a drag of zero length, a drag past the picture, a fill inside a selection only, and a radial edge beyond the radius.
+- The math lives in `src/core`, so `--core` covers it.
+
+### D. Black and white
+- Decided as Phase 2 on 2026-11-04; its notes and open question are in the section "Black and white" below.
+
 ## From 0025 (pixel contract tests)
 - The tint, the outline, the box's frame and the picture's far-edge resize handles may lie up to 2 device pixels off the drawn cell edges at a fractional zoom (accepted, JOD, 2026-11-02). `/0025-open/overlay_sides_at_fractional_zoom` is the known-red record.
 - A fractional desktop scale (125 %, 150 %) keeps the renderer's scaling and has no test: only scale 1 and scale 2 have been tried.
@@ -54,3 +88,16 @@ Known gaps from Phase 1 specs, to take up after the core XP scope is delivered. 
 
 ## From the mutation list
 - REQ-0017-14, the popover's scroll guard: survives on GTK 4.24, accepted (JOD, 2026-11-02). Re-decide at packaging-release, when the minimum GTK is chosen.
+
+## Other improvements
+ - New functionlaity: Remove background of a picture.
+ - Improvement: Drawing a curve line to be improved, see below the step-by-step instructions
+	1. Select the Curve Tool: Go to the Home tab and click on the Curve icon (which looks like a wavy line) in the Shapes section.
+	2. Draw a Straight Base Line: Click on your canvas, drag the mouse to draw a straight line, and then release the mouse button.
+	3. Create the First Bend: Click anywhere on the straight line you just drew, hold down the left mouse button, and drag the pointer (upwards or downwards) to bend the line into a curve, then release the mouse button.
+	4. Create a Second Bend (Optional): Click on a different part of the line and drag it again to add a second curve (Note: each line allows a maximum of two bends).
+	5. Finalize the Curve: Click anywhere outside the shape to lock and finish your curve.	
+- Improvement: Make toolbox icons / selection icons more consistent, readable, and user-friedly (ask for screenshots)
+- Improvement: Mouse cursors consitancy - focus on Magnifier, Pick Color, Fill, modes... make them more consistent and nicer looking (ask for screenshots)
+- Improvement: Gradient tool should have three options: Linear, Radial, Reflected (provide screenshots)
+

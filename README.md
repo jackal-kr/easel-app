@@ -1,5 +1,3 @@
-Replace README.md with the text below (docs only). Also create docs/how-we-work.md containing the current README's "How we work" section and learning path verbatim (with a one-line title), and keep Scope/Non-goals where they already are in docs/product.md. Check every claim in the new README against the repo (tool names incl. whether the tool is called Gradient or Fade in the UI, languages, formats, GTK/libadwaita versions, the release asset names) and fix any wrong line, telling JOD what you changed. Do not name any other app's repo as a source. Commit only if JOD says; no push.
-
 # Easel
 
 Draw and touch up pictures. A simple, native GNOME paint program in the style of Paint in Windows XP.
