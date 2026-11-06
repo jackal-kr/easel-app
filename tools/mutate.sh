@@ -340,7 +340,7 @@ run_worker () {
   echo $$ > "$W/pid"
   printf '%s %s %s\n' "${WAYLAND_DISPLAY:-}" "${DBUS_SESSION_BUS_ADDRESS:-}" "${HOME:-}" > "$W/session"
   # One copy of the sources and one build directory per worker, reused by its mutants: only the mutated file is built again.
-  rsync -a --exclude /build --exclude /builddir --exclude /.git --exclude /.scratch --exclude /.cache --exclude /docs \
+  rsync -a --exclude /build --exclude /.git --exclude /.scratch --exclude /.cache --exclude /docs \
         --exclude /.claude --exclude /.vscode ./ "$TREE/" || { echo "the sources could not be copied" > "$W/failed"; exit 2; }
   if ! meson setup "$BUILD" "$TREE" >"$W/setup.log" 2>&1 || ! read_tests; then
     tail -20 "$W/setup.log" > "$W/failed"; exit 2

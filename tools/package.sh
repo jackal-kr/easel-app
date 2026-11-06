@@ -16,14 +16,14 @@ bundle=dist/easel-$version.flatpak
 deb=dist/easel_${version}_amd64.deb
 
 build_flatpak () {
-  mkdir -p dist
-  flatpak-builder --user --force-clean --disable-rofiles-fuse --repo=.flatpak-builder/repo build-flatpak "$manifest"
-  flatpak build-bundle --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo .flatpak-builder/repo "$bundle" io.github.jackal_kr.Easel
+  mkdir -p dist build
+  flatpak-builder --user --force-clean --disable-rofiles-fuse --state-dir=build/flatpak-state --repo=build/flatpak-state/repo build/flatpak "$manifest"
+  flatpak build-bundle --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo build/flatpak-state/repo "$bundle" io.github.jackal_kr.Easel
   echo "built $bundle"
 }
 
 build_deb () {
-  mkdir -p dist
+  mkdir -p dist build
   dpkg-buildpackage -b -us -uc
   # The file name has no ~, which GitHub would change on upload (REQ-0024-03); the version inside keeps it.
   mv "../easel_${version/-/\~}_amd64.deb" "$deb"

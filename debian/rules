@@ -1,7 +1,7 @@
 #!/usr/bin/make -f
 # SPDX-License-Identifier: GPL-3.0-or-later
 %:
-	dh $@ --buildsystem=meson
+	dh $@ --buildsystem=meson --builddirectory=build/deb
 
 override_dh_auto_configure:
 	dh_auto_configure -- --buildtype=release

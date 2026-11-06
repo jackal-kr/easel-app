@@ -1,15 +1,10 @@
 /build/
-/build-flatpak/
-/build-deb/
-/build-appimage/
 /dist/
 /.cache/
 .scratch/
-.flatpak-builder/
 .claude/settings.local.json
 .vscode/settings.json
 __pycache__/
-/obj-*/
 /debian/easel/
 /debian/.debhelper/
 /debian/debhelper-build-stamp
