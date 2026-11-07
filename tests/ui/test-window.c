@@ -3428,6 +3428,23 @@ use_tool (EaselWindow *win, const char *tool)
   g_action_group_activate_action (G_ACTION_GROUP (win), "tool", g_variant_new_string (tool));
 }
 
+/* What the canvas shows (REQ-0029-01): a drawn cursor by its art's name ("crosshair"), a theme cursor as "theme:NAME", a
+   texture cursor (the Brush's and the Eraser's outline) as "outline", "" for none. */
+static const char *
+canvas_cursor_kind (EaselCanvas *canvas)
+{
+  GdkCursor *cursor = gtk_widget_get_cursor (GTK_WIDGET (canvas));
+  EaselCursorArt art = easel_canvas_get_cursor_art (canvas);
+
+  if (cursor == NULL)
+    return "";
+  if (gdk_cursor_get_name (cursor) != NULL)
+    return g_intern_string (g_strconcat ("theme:", gdk_cursor_get_name (cursor), NULL));
+  if (gdk_cursor_get_texture (cursor) != NULL)
+    return "outline";
+  return art < EASEL_CURSOR_COUNT ? easel_cursor_art_name (art) : "?";
+}
+
 /* The preset buttons of a tool, by their tooltips, in the order of the spec; the one that is on is returned (or -1). */
 static int
 check_presets (EaselWindow *win, const char *const *tips, int n, int columns)
@@ -5426,9 +5443,9 @@ as12_cursor_follows_tool_preset_and_zoom (void)
   EaselWindow *win = start_window ();
 
   wait_for_layout (win);
-  g_assert_cmpint (cursor_width (win), ==, 0);                              /* Pan: the hand */
+  g_assert_cmpstr (canvas_cursor_kind (easel_window_get_canvas (win)), ==, "theme:grab");     /* Pan: the desktop's hand (REQ-0029-01) */
   use_tool (win, "pencil");
-  g_assert_cmpint (cursor_width (win), ==, 32);                             /* the pencil's picture */
+  g_assert_cmpstr (canvas_cursor_kind (easel_window_get_canvas (win)), ==, "pencil");   /* drawn (REQ-0029-01) */
   use_tool (win, "eraser");
   choose_preset (win, "Eraser, 10 pixels");
   g_assert_cmpint (cursor_width (win), ==, 12);                             /* 10 at 100 %, and the white line */
@@ -5442,7 +5459,7 @@ as12_cursor_follows_tool_preset_and_zoom (void)
   g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-normal", NULL);
   g_assert_cmpint (cursor_width (win), ==, 9);
   use_tool (win, "airbrush");
-  g_assert_cmpint (cursor_width (win), ==, 32);                             /* the spray can's picture */
+  g_assert_cmpstr (canvas_cursor_kind (easel_window_get_canvas (win)), ==, "airbrush"); /* drawn (REQ-0029-01) */
   close_windows ();
 }
 
@@ -5453,31 +5470,24 @@ as1_cursors_follow_tool (void)
 {
   EaselWindow *win = start_window ();
   EaselCanvas *canvas = easel_window_get_canvas (win);
-  static const struct { const char *tool; int hot_x, hot_y; } tools[] = {
-    { "fill", 4, 29 }, { "pick", 2, 30 }, { "magnifier", 12, 12 },
-  };
+  static const char *const tools[] = { "fill", "pick", "magnifier" };
   graphene_rect_t r;
 
   wait_for_layout (win);
   for (guint i = 0; i < G_N_ELEMENTS (tools); i++)
     {
-      GdkCursor *cursor;
-
-      use_tool (win, tools[i].tool);
-      g_assert_cmpint (cursor_width (win), ==, 32);
-      cursor = gtk_widget_get_cursor (GTK_WIDGET (canvas));
-      g_assert_cmpint (gdk_cursor_get_hotspot_x (cursor), ==, tools[i].hot_x);
-      g_assert_cmpint (gdk_cursor_get_hotspot_y (cursor), ==, tools[i].hot_y);
+      use_tool (win, tools[i]);
+      g_assert_cmpstr (canvas_cursor_kind (canvas), ==, tools[i]);     /* the bucket, the dropper, the glass (REQ-0029-01) */
 
       /* Over the corner handle: the resize cursor; away from it: the tool's again. */
       g_assert_true (easel_canvas_get_handle_rect (canvas, EASEL_HANDLE_CORNER, &r));
       easel_canvas_pointer_at (canvas, r.origin.x + r.size.width / 2, r.origin.y + r.size.height / 2);
-      g_assert_cmpstr (gdk_cursor_get_name (gtk_widget_get_cursor (GTK_WIDGET (canvas))), ==, "nwse-resize");
+      g_assert_cmpstr (canvas_cursor_kind (canvas), ==, "nwse-resize");
       easel_canvas_pointer_at (canvas, 10, 10);
-      g_assert_cmpint (cursor_width (win), ==, 32);
+      g_assert_cmpstr (canvas_cursor_kind (canvas), ==, tools[i]);
     }
   use_tool (win, "pan");
-  g_assert_cmpint (cursor_width (win), ==, 0);
+  g_assert_cmpstr (canvas_cursor_kind (canvas), ==, "theme:grab");
   close_windows ();
 }
 
@@ -7744,7 +7754,7 @@ as1_shape_tools_toolbox_hints (void)
 
           g_assert_cmpstr (easel_status_bar_get_text (bar, EASEL_STATUS_HINT), ==, tools[i].hint);
           g_assert_nonnull (cursor);
-          g_assert_cmpstr (gdk_cursor_get_name (cursor), ==, "crosshair");
+          g_assert_cmpstr (canvas_cursor_kind (easel_window_get_canvas (win)), ==, "crosshair");
         }
     }
   close_windows ();
@@ -8507,7 +8517,7 @@ as1_curve_polygon_toolbox_hints (void)
 
           g_assert_cmpstr (easel_status_bar_get_text (bar, EASEL_STATUS_HINT), ==, tools[i].hint);
           g_assert_nonnull (cursor);
-          g_assert_cmpstr (gdk_cursor_get_name (cursor), ==, "crosshair");
+          g_assert_cmpstr (canvas_cursor_kind (easel_window_get_canvas (win)), ==, "crosshair");
         }
     }
 
@@ -9590,7 +9600,7 @@ as1_gradient_toolbox_hints (void)
                    "Fades the drawing color to transparent along a drag. A click or Enter applies it, Esc cancels it.");
   cursor = gtk_widget_get_cursor (GTK_WIDGET (easel_window_get_canvas (win)));
   g_assert_nonnull (cursor);
-  g_assert_cmpstr (gdk_cursor_get_name (cursor), ==, "crosshair");
+  g_assert_cmpstr (canvas_cursor_kind (easel_window_get_canvas (win)), ==, "crosshair");
   /* Over the corner handle the resize cursor wins (REQ-0004-17); away from it, the crosshair again. */
   {
     EaselCanvas *canvas = easel_window_get_canvas (win);
@@ -9598,9 +9608,9 @@ as1_gradient_toolbox_hints (void)
 
     g_assert_true (easel_canvas_get_handle_rect (canvas, EASEL_HANDLE_CORNER, &h));
     easel_canvas_pointer_at (canvas, h.origin.x + h.size.width / 2, h.origin.y + h.size.height / 2);
-    g_assert_cmpstr (gdk_cursor_get_name (gtk_widget_get_cursor (GTK_WIDGET (canvas))), ==, "nwse-resize");
+    g_assert_cmpstr (canvas_cursor_kind (canvas), ==, "nwse-resize");
     easel_canvas_pointer_at (canvas, 10, 10);
-    g_assert_cmpstr (gdk_cursor_get_name (gtk_widget_get_cursor (GTK_WIDGET (canvas))), ==, "crosshair");
+    g_assert_cmpstr (canvas_cursor_kind (canvas), ==, "crosshair");
   }
   assert_no_options_shown (win);
   /* Numpad + and - do nothing with Gradient: the line width and the zoom stay; Ctrl+Numpad + still zooms. */
@@ -10893,11 +10903,11 @@ as21_markers (void)
   assert_same_picture (img, yellow);
   /* The move cursor over each marker, the crosshair beside it. */
   easel_canvas_pointer_at (canvas, m[0].origin.x + 2.5, m[0].origin.y + 2.5);
-  g_assert_cmpstr (gdk_cursor_get_name (gtk_widget_get_cursor (GTK_WIDGET (canvas))), ==, "move");
+  g_assert_cmpstr (canvas_cursor_kind (canvas), ==, "move");
   easel_canvas_pointer_at (canvas, 60.5, 60.5);
-  g_assert_cmpstr (gdk_cursor_get_name (gtk_widget_get_cursor (GTK_WIDGET (canvas))), ==, "crosshair");
+  g_assert_cmpstr (canvas_cursor_kind (canvas), ==, "crosshair");
   easel_canvas_pointer_at (canvas, m[1].origin.x + 2.5, m[1].origin.y + 2.5);
-  g_assert_cmpstr (gdk_cursor_get_name (gtk_widget_get_cursor (GTK_WIDGET (canvas))), ==, "move");
+  g_assert_cmpstr (canvas_cursor_kind (canvas), ==, "move");
   easel_canvas_pointer_at (canvas, 60.5, 60.5);
   /* Applied: the pixels of AS-2, no marker in them, none shown. */
   press_enter (win, GDK_KEY_Return);
@@ -11309,10 +11319,10 @@ as1_select_toolbox_options (void)
   g_assert_cmpstr (easel_status_bar_get_text (bar, EASEL_STATUS_HINT), ==,
                    "Selects a rectangular part of the picture to move, copy, or edit.");
   easel_canvas_pointer_at (canvas, 10.5, 10.5);
-  g_assert_cmpstr (gdk_cursor_get_name (gtk_widget_get_cursor (GTK_WIDGET (canvas))), ==, "crosshair");
+  g_assert_cmpstr (canvas_cursor_kind (canvas), ==, "crosshair");
   g_assert_true (easel_canvas_get_handle_rect (canvas, EASEL_HANDLE_CORNER, &hr));
   easel_canvas_pointer_at (canvas, hr.origin.x + hr.size.width / 2, hr.origin.y + hr.size.height / 2);
-  g_assert_cmpstr (gdk_cursor_get_name (gtk_widget_get_cursor (GTK_WIDGET (canvas))), ==, "nwse-resize");
+  g_assert_cmpstr (canvas_cursor_kind (canvas), ==, "nwse-resize");
   easel_canvas_pointer_at (canvas, 10.5, 10.5);
   /* The two mode buttons, Opaque chosen at start, one above the other. */
   opaque = find_mapped_by_tooltip (GTK_WIDGET (win), "Opaque: keep background color");
@@ -11545,7 +11555,7 @@ static const char *
 cursor_at (EaselCanvas *canvas, double x, double y)
 {
   easel_canvas_pointer_at (canvas, x, y);
-  return gdk_cursor_get_name (gtk_widget_get_cursor (GTK_WIDGET (canvas)));
+  return canvas_cursor_kind (canvas);
 }
 
 /* AS-3 (REQ-0013-03, -07, -08, -11), the ui part: the move cursor on the selection's pixels, the crosshair on its outline; a
@@ -13149,10 +13159,10 @@ as1_free_select_toolbox_options (void)
   g_assert_cmpstr (easel_status_bar_get_text (bar, EASEL_STATUS_HINT), ==,
                    "Selects a free-form part of the picture to move, copy, or edit.");
   easel_canvas_pointer_at (canvas, 10.5, 10.5);
-  g_assert_cmpstr (gdk_cursor_get_name (gtk_widget_get_cursor (GTK_WIDGET (canvas))), ==, "crosshair");
+  g_assert_cmpstr (canvas_cursor_kind (canvas), ==, "crosshair");
   g_assert_true (easel_canvas_get_handle_rect (canvas, EASEL_HANDLE_CORNER, &hr));
   easel_canvas_pointer_at (canvas, hr.origin.x + hr.size.width / 2, hr.origin.y + hr.size.height / 2);
-  g_assert_cmpstr (gdk_cursor_get_name (gtk_widget_get_cursor (GTK_WIDGET (canvas))), ==, "nwse-resize");
+  g_assert_cmpstr (canvas_cursor_kind (canvas), ==, "nwse-resize");
   easel_canvas_pointer_at (canvas, 10.5, 10.5);
   /* The two mode buttons of Select, Opaque chosen, one above the other; Transparent chosen here is kept with Select. */
   opaque = find_mapped_by_tooltip (GTK_WIDGET (win), "Opaque: keep background color");
@@ -16966,7 +16976,7 @@ cursor_over (EaselWindow *win, int x, int y)
 
   canvas_point (win, x + 0.5, y + 0.5, &cx, &cy);
   easel_canvas_pointer_at (canvas, cx, cy);
-  return gdk_cursor_get_name (gtk_widget_get_cursor (GTK_WIDGET (canvas)));
+  return canvas_cursor_kind (canvas);
 }
 
 /* AS-5 (REQ-0014-03, REQ-0014-07): only a pixel of the shape is on the selection: over it the cursor is the move cursor, over the
@@ -18601,15 +18611,15 @@ as2_box_cursors (void)
   shape_release (win, 1);
   g_assert_true (box_is (win, 10, 10, 101, 41));
   easel_canvas_pointer_at (canvas, 60.5, 30.5);
-  g_assert_cmpstr (gdk_cursor_get_name (gtk_widget_get_cursor (GTK_WIDGET (canvas))), ==, "text");
+  g_assert_cmpstr (canvas_cursor_kind (canvas), ==, "text");
   easel_canvas_pointer_at (canvas, 30.5, 8.5);
-  g_assert_cmpstr (gdk_cursor_get_name (gtk_widget_get_cursor (GTK_WIDGET (canvas))), ==, "move");
+  g_assert_cmpstr (canvas_cursor_kind (canvas), ==, "move");
   easel_canvas_pointer_at (canvas, 7.5, 7.5);
-  g_assert_cmpstr (gdk_cursor_get_name (gtk_widget_get_cursor (GTK_WIDGET (canvas))), ==, "nwse-resize");
+  g_assert_cmpstr (canvas_cursor_kind (canvas), ==, "nwse-resize");
   easel_canvas_pointer_at (canvas, 200.5, 150.5);
-  g_assert_cmpstr (gdk_cursor_get_name (gtk_widget_get_cursor (GTK_WIDGET (canvas))), ==, "crosshair");
+  g_assert_cmpstr (canvas_cursor_kind (canvas), ==, "crosshair");
   easel_canvas_pointer_at (canvas, 30.5, 4.5);                                  /* past the band: 6 pixels above the edge */
-  g_assert_cmpstr (gdk_cursor_get_name (gtk_widget_get_cursor (GTK_WIDGET (canvas))), ==, "crosshair");
+  g_assert_cmpstr (canvas_cursor_kind (canvas), ==, "crosshair");
   close_windows ();
 }
 
@@ -22122,7 +22132,7 @@ as1_text_tool_and_options (void)
     g_assert_true (gtk_toggle_button_get_active (buttons[j]) == (j == 11));
   g_assert_cmpstr (easel_status_bar_get_text (bar, EASEL_STATUS_HINT), ==, "Inserts text into the picture.");
   easel_canvas_pointer_at (canvas, 10.5, 10.5);
-  g_assert_cmpstr (gdk_cursor_get_name (gtk_widget_get_cursor (GTK_WIDGET (canvas))), ==, "crosshair");
+  g_assert_cmpstr (canvas_cursor_kind (canvas), ==, "crosshair");
   /* the options: Opaque above Transparent, Transparent chosen, and nothing else shown */
   opaque = find_mapped_by_tooltip (GTK_WIDGET (win), "Opaque: fill the text box with the background color");
   transparent = find_mapped_by_tooltip (GTK_WIDGET (win), "Transparent: only the text");
@@ -33881,6 +33891,305 @@ as9_help_page (void)
     }
 }
 
+/* ---- 0029: the drawn cursors ---- */
+
+/* The hotspots of REQ-0029-02, on the 24-pixel artwork, as the approved sheet shows them (docs/reference/0029/cursors.png). */
+static const struct
+{
+  EaselCursorArt art;
+  int hot_x, hot_y;
+} drawn_hotspots[] = {
+  { EASEL_CURSOR_PENCIL, 2, 21 }, { EASEL_CURSOR_AIRBRUSH, 5, 6 }, { EASEL_CURSOR_FILL, 3, 21 },
+  { EASEL_CURSOR_PICK, 2, 21 }, { EASEL_CURSOR_MAGNIFIER, 9, 9 }, { EASEL_CURSOR_CROSSHAIR, 11, 11 },
+  { EASEL_CURSOR_MOVE, 11, 11 }, { EASEL_CURSOR_TEXT, 11, 11 }, { EASEL_CURSOR_EW_RESIZE, 11, 11 }, { EASEL_CURSOR_NS_RESIZE, 11, 11 },
+  { EASEL_CURSOR_NWSE_RESIZE, 11, 11 }, { EASEL_CURSOR_NESW_RESIZE, 11, 11 },
+};
+
+/* AS-1 (REQ-0029-01, REQ-0029-02): each tool's cursor over the canvas area, inside the picture and in the margin outside
+   it, is the drawn one named for it, Pan's the desktop's hand (closed while it drags); each drawn cursor's hotspot is the approved one,
+   inside its image. The places a handle, a selection, a marker or a text box win are 0004's, 0007's, 0012's, 0013's,
+   0015's and 0017's cases, which read the drawn cursor too. */
+static void
+as1_own_cursors (void)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  static const struct { const char *tool, *art; } tools[] = {
+    { "pencil", "pencil" }, { "airbrush", "airbrush" }, { "fill", "fill" }, { "pick", "pick" },
+    { "magnifier", "magnifier" }, { "line", "crosshair" }, { "curve", "crosshair" }, { "rectangle", "crosshair" },
+    { "rounded-rectangle", "crosshair" }, { "ellipse", "crosshair" }, { "polygon", "crosshair" },
+    { "select", "crosshair" }, { "free-select", "crosshair" }, { "gradient", "crosshair" }, { "text", "crosshair" },
+    { "pan", "theme:grab" },
+  };
+  double ix, iy, ox, oy;
+
+  wait_for_layout (win);
+  canvas_point (win, 3.5, 3.5, &ix, &iy);
+  canvas_point (win, -6, 2.5, &ox, &oy);         /* in the margin left of the picture (0009) */
+  for (guint i = 0; i < G_N_ELEMENTS (tools); i++)
+    {
+      use_tool (win, tools[i].tool);
+      easel_canvas_pointer_at (canvas, ix, iy);
+      g_assert_cmpstr (canvas_cursor_kind (canvas), ==, tools[i].art);
+      easel_canvas_pointer_at (canvas, ox, oy);
+      g_assert_cmpstr (canvas_cursor_kind (canvas), ==, tools[i].art);
+    }
+  /* Pan, dragging: the closed hand, and the open one after. */
+  easel_canvas_press (canvas, 1, ix, iy);
+  g_assert_true (easel_canvas_is_panning (canvas));
+  g_assert_cmpstr (canvas_cursor_kind (canvas), ==, "theme:grabbing");
+  easel_canvas_release (canvas, 1);
+  g_assert_cmpstr (canvas_cursor_kind (canvas), ==, "theme:grab");
+
+  for (guint i = 0; i < G_N_ELEMENTS (drawn_hotspots); i++)
+    {
+      int size, device, hx, hy;
+      g_autoptr (GdkTexture) t = easel_cursor_art_draw (drawn_hotspots[i].art, 24, 1, &size, &device, &hx, &hy);
+
+      g_assert_nonnull (t);
+      g_assert_cmpint (hx, ==, drawn_hotspots[i].hot_x);
+      g_assert_cmpint (hy, ==, drawn_hotspots[i].hot_y);
+      g_assert_cmpint (hx, <, size);
+      g_assert_cmpint (hy, <, size);
+    }
+  close_windows ();
+}
+
+/* AS-3 (REQ-0029-03): the art at the desktop's size and the screen's scale, as GDK asks for it: 48 is 48 device pixels
+   at scale 1 and 96 at scale 2, the hotspot logical and the same; 16 set by hand gives 24; and the canvas's cursor is
+   one GDK asks for (neither a theme name nor a fixed texture). */
+static void
+as3_cursor_art_sizes (void)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  GdkCursor *cursor;
+
+  for (int art = 0; art < EASEL_CURSOR_COUNT; art++)
+    {
+      int size, device, hx1, hy1, hx2, hy2;
+      g_autoptr (GdkTexture) one = easel_cursor_art_draw (art, 48, 1, &size, &device, &hx1, &hy1);
+      g_autoptr (GdkTexture) two = NULL, small = NULL;
+
+      g_assert_cmpint (size, ==, 48);
+      g_assert_cmpint (gdk_texture_get_width (one), ==, 48);
+      g_assert_cmpint (gdk_texture_get_height (one), ==, 48);
+      two = easel_cursor_art_draw (art, 48, 2, &size, &device, &hx2, &hy2);
+      g_assert_cmpint (gdk_texture_get_width (two), ==, 96);
+      g_assert_cmpint (hx2, ==, hx1);
+      g_assert_cmpint (hy2, ==, hy1);
+      small = easel_cursor_art_draw (art, 16, 1, &size, &device, &hx1, &hy1);
+      g_assert_cmpint (size, ==, 24);
+      g_assert_cmpint (gdk_texture_get_width (small), ==, 24);
+    }
+  wait_for_layout (win);
+  use_tool (win, "fill");
+  cursor = gtk_widget_get_cursor (GTK_WIDGET (canvas));
+  g_assert_nonnull (cursor);
+  g_assert_null (gdk_cursor_get_name (cursor));
+  g_assert_null (gdk_cursor_get_texture (cursor));
+  g_assert_cmpint (easel_canvas_get_cursor_art (canvas), ==, EASEL_CURSOR_FILL);
+  close_windows ();
+}
+
+/* AS-4 (REQ-0029-04): a tool changed with the pointer at rest over the canvas shows its cursor at once, with no motion. */
+static void
+as4_cursor_changes_at_rest (void)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  double x, y;
+
+  wait_for_layout (win);
+  canvas_point (win, 3.5, 3.5, &x, &y);
+  use_tool (win, "pencil");
+  easel_canvas_pointer_at (canvas, x, y);
+  g_assert_cmpstr (canvas_cursor_kind (canvas), ==, "pencil");
+  use_tool (win, "fill");                        /* no motion between */
+  g_assert_cmpstr (canvas_cursor_kind (canvas), ==, "fill");
+  use_tool (win, "line");
+  g_assert_cmpstr (canvas_cursor_kind (canvas), ==, "crosshair");
+  close_windows ();
+}
+
+/* The cursor a widget shows: its own, or the nearest ancestor's (GTK's rule); NULL when none has one (the desktop's). */
+static GdkCursor *
+cursor_shown_on (GtkWidget *w)
+{
+  for (; w != NULL; w = gtk_widget_get_parent (w))
+    if (gtk_widget_get_cursor (w) != NULL)
+      return gtk_widget_get_cursor (w);
+  return NULL;
+}
+
+/* AS-4 (REQ-0029-04): over the font card and the thumbnail, which lie over the canvas, the desktop's pointer shows, not
+   one of the drawn cursors. */
+static void
+as4_cards_keep_desktop_pointer (void)
+{
+  EaselWindow *win = start_window ();
+  GtkWidget *cards[] = { GTK_WIDGET (easel_window_get_font_card (win)), easel_window_get_thumbnail_card (win) };
+
+  wait_for_layout (win);
+  use_tool (win, "pencil");
+  for (guint i = 0; i < G_N_ELEMENTS (cards); i++)
+    {
+      GdkCursor *cursor = cursor_shown_on (cards[i]);
+
+      g_assert_nonnull (cards[i]);
+      g_assert_false (gtk_widget_is_ancestor (cards[i], GTK_WIDGET (easel_window_get_canvas (win))));
+      g_assert_true (cursor == NULL || gdk_cursor_get_name (cursor) != NULL);
+    }
+  close_windows ();
+}
+
+/* An icon of the toolbox drawn at 16 x 16 in one color, as the toolbox's theme finds it, its pixels in straight alpha
+   (R, G, B, A bytes). */
+static guchar *
+icon_at_16 (EaselWindow *win, const char *name, const GdkRGBA *fg)
+{
+  GtkIconTheme *theme = gtk_icon_theme_get_for_display (gtk_widget_get_display (GTK_WIDGET (win)));
+  g_autoptr (GtkIconPaintable) icon = gtk_icon_theme_lookup_icon (theme, name, NULL, 16, 1, GTK_TEXT_DIR_NONE, 0);
+  g_autoptr (GtkSnapshot) snapshot = gtk_snapshot_new ();
+  GdkRGBA colors[4] = { *fg, *fg, *fg, *fg };
+  g_autoptr (GskRenderNode) node = NULL;
+  g_autoptr (GdkTexture) texture = NULL;
+  g_autoptr (GdkTextureDownloader) down = NULL;
+  g_autoptr (GBytes) bytes = NULL;
+  gsize stride;
+
+  g_assert_nonnull (icon);
+  gtk_symbolic_paintable_snapshot_symbolic (GTK_SYMBOLIC_PAINTABLE (icon), GDK_SNAPSHOT (snapshot), 16, 16, colors, 4);
+  node = gtk_snapshot_to_node (snapshot);
+  g_assert_nonnull (node);
+  texture = gsk_renderer_render_texture (gtk_native_get_renderer (GTK_NATIVE (win)), node, &GRAPHENE_RECT_INIT (0, 0, 16, 16));
+  down = gdk_texture_downloader_new (texture);
+  gdk_texture_downloader_set_format (down, GDK_MEMORY_R8G8B8A8);
+  bytes = gdk_texture_downloader_download_bytes (down, &stride);
+  g_assert_cmpuint (stride, ==, 16 * 4);
+  return g_memdup2 (g_bytes_get_data (bytes, NULL), 16 * 16 * 4);
+}
+
+/* The 4-connected pieces of the icon's opaque pixels (alpha 128 and up). */
+static int
+icon_pieces (const guchar *px)
+{
+  int label[256] = { 0 }, n = 0, stack[256];
+
+  for (int i = 0; i < 256; i++)
+    if (px[i * 4 + 3] >= 128 && label[i] == 0)
+      {
+        int top = 0;
+
+        label[i] = ++n;
+        stack[top++] = i;
+        while (top > 0)
+          {
+            int k = stack[--top], x = k % 16, y = k / 16;
+            int next[4] = { x > 0 ? k - 1 : -1, x < 15 ? k + 1 : -1, y > 0 ? k - 16 : -1, y < 15 ? k + 16 : -1 };
+
+            for (int d = 0; d < 4; d++)
+              if (next[d] >= 0 && px[next[d] * 4 + 3] >= 128 && label[next[d]] == 0)
+                {
+                  label[next[d]] = n;
+                  stack[top++] = next[d];
+                }
+          }
+      }
+  return n;
+}
+
+/* AS-5 (REQ-0029-05, REQ-0029-06, REQ-0029-07): the eleven icons at 16 pixels, in black (light theme) and in white (dark):
+   the figure spans at least 12 pixels on its longer side; one color (the 1.5-pixel line weight is judged on the sheet, M1); a partly transparent pixel only at an edge (next to a mostly transparent one);
+   Select and Free-Form Select dashed (three pieces or more); Rounded Rectangle's corner pixel and the two next to it empty,
+   Rectangle's not. */
+static void
+as5_icons_at_16 (void)
+{
+  static const char *const names[] = { "select", "free-select", "magnifier", "line", "curve", "rectangle",
+                                       "rounded-rectangle", "ellipse", "polygon", "fill", "gradient" };
+  static const GdkRGBA fgs[] = { { 0, 0, 0, 1 }, { 1, 1, 1, 1 } };
+  EaselWindow *win = start_window ();
+
+  wait_for_layout (win);
+  for (guint f = 0; f < G_N_ELEMENTS (fgs); f++)
+    for (guint i = 0; i < G_N_ELEMENTS (names); i++)
+      {
+        g_autofree char *icon = g_strdup_printf ("easel-tool-%s-symbolic", names[i]);
+        g_autofree guchar *px = icon_at_16 (win, icon, &fgs[f]);
+        int x0 = 16, y0 = 16, x1 = -1, y1 = -1;
+        guchar want = fgs[f].red > 0.5 ? 255 : 0;
+
+        for (int y = 0; y < 16; y++)
+          for (int x = 0; x < 16; x++)
+            {
+              const guchar *p = px + (y * 16 + x) * 4;
+
+              if (p[3] == 0)
+                continue;
+              if (g_test_verbose ())
+                g_test_message ("%s %d,%d a=%d", names[i], x, y, p[3]);
+              /* one color */
+              g_assert_cmpint (abs (p[0] - want), <=, 2);
+              g_assert_cmpint (abs (p[1] - want), <=, 2);
+              g_assert_cmpint (abs (p[2] - want), <=, 2);
+              if (p[3] >= 128)
+                {
+                  x0 = MIN (x0, x); y0 = MIN (y0, y); x1 = MAX (x1, x); y1 = MAX (y1, y);
+                }
+              if (p[3] > 16 && p[3] < 240)
+                {
+                  gboolean at_edge = FALSE;
+
+                  for (int dy = -1; dy <= 1; dy++)
+                    for (int dx = -1; dx <= 1; dx++)
+                      {
+                        int nx = x + dx, ny = y + dy;
+
+                        if (nx < 0 || ny < 0 || nx > 15 || ny > 15 || px[(ny * 16 + nx) * 4 + 3] < 128)
+                          at_edge = TRUE;
+                      }
+                  g_assert_true (at_edge);
+                }
+            }
+        g_test_message ("%s: spans %d x %d", names[i], x1 - x0 + 1, y1 - y0 + 1);
+        g_assert_cmpint (MAX (x1 - x0, y1 - y0) + 1, >=, 12);
+        if (g_str_equal (names[i], "select") || g_str_equal (names[i], "free-select"))
+          g_assert_cmpint (icon_pieces (px), >=, 3);
+        if (g_str_equal (names[i], "rounded-rectangle") || g_str_equal (names[i], "rectangle"))
+          {
+            /* round by 3 pixels or more: the bounding box's corner pixel and the two next to it are empty */
+            gboolean empty = px[(y0 * 16 + x0) * 4 + 3] < 128 && px[(y0 * 16 + x0 + 1) * 4 + 3] < 128
+                             && px[((y0 + 1) * 16 + x0) * 4 + 3] < 128;
+
+            g_assert_true (empty == g_str_equal (names[i], "rounded-rectangle"));
+          }
+      }
+  close_windows ();
+}
+
+/* The contact sheet's input (T003 of 0029): every drawn cursor at sizes 24 and 48, scales 1 and 2, written as
+   NAME-SIZE-xSCALE-HOTX-HOTY.png into the folder EASEL_CURSOR_SHEET names. Registered only when it is set. */
+static void
+cursor_sheet_dump (void)
+{
+  const char *dir = g_getenv ("EASEL_CURSOR_SHEET");
+
+  for (int art = 0; art < EASEL_CURSOR_COUNT; art++)
+    for (int size = 24; size <= 48; size += 24)
+      for (int scale = 1; scale <= 2; scale++)
+        {
+          int logical, device, hx, hy;
+          g_autoptr (GdkTexture) t = easel_cursor_art_draw (art, size, scale, &logical, &device, &hx, &hy);
+          g_autofree char *name = g_strdup_printf ("%s/%s-%d-x%d-%d-%d.png", dir, easel_cursor_art_name (art), logical,
+                                                   scale, hx, hy);
+
+          g_assert_nonnull (t);
+          g_assert_cmpint (gdk_texture_get_width (t), ==, device);
+          g_assert_true (gdk_texture_save_to_png (t, name));
+        }
+}
+
 int
 main (int argc, char **argv)
 {
@@ -34369,6 +34678,13 @@ main (int argc, char **argv)
   g_test_add_func ("/0028-uk/journey_15_another_language", journey_15_another_language);
   g_test_add_func ("/0028-scale2/journey_1_at_scale_2", journey_1_at_scale_2);
   g_test_add_func ("/0028-scale2/journey_4_at_scale_2", journey_4_at_scale_2);
+  g_test_add_func ("/0029/as1_own_cursors", as1_own_cursors);
+  g_test_add_func ("/0029/as3_cursor_art_sizes", as3_cursor_art_sizes);
+  g_test_add_func ("/0029/as4_cursor_changes_at_rest", as4_cursor_changes_at_rest);
+  g_test_add_func ("/0029/as4_cards_keep_desktop_pointer", as4_cards_keep_desktop_pointer);
+  g_test_add_func ("/0029/as5_icons_at_16", as5_icons_at_16);
+  if (g_getenv ("EASEL_CURSOR_SHEET") != NULL)
+    g_test_add_func ("/0029-sheet/dump", cursor_sheet_dump);
   g_test_add_func ("/0024/as1_version", as1_version);
   g_test_add_func ("/0024/as11_file_type_list", as11_file_type_list);
   g_test_add_func ("/0024/as11_format_decides", as11_format_decides);

@@ -1,8 +1,19 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
-  <!-- A spray can; the middle of the spray, at (7, 26), is the cursor hotspot. -->
-  <path fill="#ffffff" d="M13 3h10v4h2v22H11V7h2z"/>
-  <path fill="#000000" d="M14.5 4.5h7V8h2v19.5h-11V8h2z"/>
-  <path fill="#c01c28" d="M15 5h6v3h2v6h-10V8h2z"/>
-  <path fill="#e0e0e0" d="M13 15h10v12H13z"/>
-  <path fill="#000000" d="M3 23.5h2v2H3zM7 21h2v2H7zM6 26h2v2H6zM10 24h2v2h-2zM3 28h2v2H3z"/>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="24" height="24" viewBox="0 0 24 24">
+  <!-- Hotspot: pixel (5, 6), the center of the spray. Black with a white outline, as every cursor Easel shows over the canvas (REQ-0029-01). -->
+  <defs>
+    <g id="figure">
+      <rect x="11" y="9" width="9" height="12" rx="1.6"/>
+      <rect x="13" y="5.8" width="5" height="3.4" rx="0.6"/>
+      <rect x="10.2" y="6.2" width="3.2" height="2.2"/>
+      <rect x="4.60" y="5.60" width="1.8" height="1.8"/>
+      <rect x="0.90" y="3.30" width="1.8" height="1.8"/>
+      <rect x="0.90" y="7.90" width="1.8" height="1.8"/>
+      <rect x="4.70" y="1.30" width="1.8" height="1.8"/>
+      <rect x="4.70" y="9.90" width="1.8" height="1.8"/>
+    </g>
+  </defs>
+  <use xlink:href="#figure" fill="#ffffff" stroke="#ffffff" stroke-width="2" stroke-linejoin="round"/>
+  <use xlink:href="#figure" fill="#000000" stroke="none"/>
+  <line x1="11.6" y1="11.6" x2="19.4" y2="11.6" stroke="#ffffff" stroke-width="0.9"/>
+
 </svg>

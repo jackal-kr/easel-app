@@ -90,6 +90,7 @@ struct _EaselCanvas
   int spray_x, spray_y;       /* the pointer's pixel, where the next sprays land */
   gboolean eraser_transparent;
   GdkCursor *outline_cursor;  /* the footprint's outline for cursor_footprint at cursor_zoom, NULL until made */
+  EaselCursorArt cursor_art;  /* the drawn cursor shown now, EASEL_CURSOR_COUNT for another (REQ-0029-01) */
   EaselFootprint cursor_footprint;
   int cursor_zoom;
   guint stroke_button;
@@ -3659,19 +3660,19 @@ easel_canvas_selection_handle_at (EaselCanvas *self, double x, double y)
 }
 
 /* The cursor of a selection handle's direction. */
-static const char *
+static EaselCursorArt
 selection_handle_cursor (int handle)
 {
   switch (handle)
     {
     case EASEL_SEL_HANDLE_L: case EASEL_SEL_HANDLE_R:
-      return "ew-resize";
+      return EASEL_CURSOR_EW_RESIZE;
     case EASEL_SEL_HANDLE_T: case EASEL_SEL_HANDLE_B:
-      return "ns-resize";
+      return EASEL_CURSOR_NS_RESIZE;
     case EASEL_SEL_HANDLE_TR: case EASEL_SEL_HANDLE_BL:
-      return "nesw-resize";
+      return EASEL_CURSOR_NESW_RESIZE;
     default:
-      return "nwse-resize";
+      return EASEL_CURSOR_NWSE_RESIZE;
     }
 }
 
@@ -4866,52 +4867,99 @@ canvas_snapshot_frame (EaselCanvas *self, GtkSnapshot *snapshot)
   append_keyboard_marker (self, snapshot);
 }
 
-static GdkCursor *
-pencil_cursor (void)
+/* The drawn cursors: each one's file and its hotspot, a pixel of the 24-pixel artwork (REQ-0029-01, REQ-0029-02). */
+static const struct
 {
-  /* Created once and kept for the life of the process, like named cursors. */
-  static GdkCursor *pencil;
+  const char *name;
+  int hot_x, hot_y;
+} cursor_art[EASEL_CURSOR_COUNT] = {
+  [EASEL_CURSOR_PENCIL] = { "pencil", 2, 21 },          /* the tip */
+  [EASEL_CURSOR_AIRBRUSH] = { "airbrush", 5, 6 },       /* the center of the spray */
+  [EASEL_CURSOR_FILL] = { "fill", 3, 21 },              /* the spilling tip */
+  [EASEL_CURSOR_PICK] = { "pick", 2, 21 },              /* the dropper's tip */
+  [EASEL_CURSOR_MAGNIFIER] = { "magnifier", 9, 9 },     /* the center of the lens */
+  [EASEL_CURSOR_CROSSHAIR] = { "crosshair", 11, 11 },
+  [EASEL_CURSOR_MOVE] = { "move", 11, 11 },
+  [EASEL_CURSOR_TEXT] = { "text", 11, 11 },
+  [EASEL_CURSOR_EW_RESIZE] = { "ew-resize", 11, 11 },
+  [EASEL_CURSOR_NS_RESIZE] = { "ns-resize", 11, 11 },
+  [EASEL_CURSOR_NWSE_RESIZE] = { "nwse-resize", 11, 11 },
+  [EASEL_CURSOR_NESW_RESIZE] = { "nesw-resize", 11, 11 },
+};
 
-  if (pencil == NULL)
-    {
-      g_autoptr (GdkTexture) texture = gdk_texture_new_from_resource (RESOURCE_PATH "/cursors/pencil.svg");
-      g_autoptr (GdkCursor) fallback = gdk_cursor_new_from_name ("crosshair", NULL);
-
-      /* The pencil's tip is the hotspot. */
-      pencil = gdk_cursor_new_from_texture (texture, 1, 31, fallback);
-    }
-  return pencil;
+EaselCursorArt
+easel_canvas_get_cursor_art (EaselCanvas *self)
+{
+  return self->cursor_art;
 }
 
-static GdkCursor *
-airbrush_cursor (void)
+const char *
+easel_cursor_art_name (EaselCursorArt art)
 {
-  static GdkCursor *spray_can;
-
-  if (spray_can == NULL)
-    {
-      g_autoptr (GdkTexture) texture = gdk_texture_new_from_resource (RESOURCE_PATH "/cursors/airbrush.svg");
-      g_autoptr (GdkCursor) fallback = gdk_cursor_new_from_name ("crosshair", NULL);
-
-      spray_can = gdk_cursor_new_from_texture (texture, 7, 26, fallback);
-    }
-  return spray_can;
+  g_return_val_if_fail (art < EASEL_CURSOR_COUNT, NULL);
+  return cursor_art[art].name;
 }
 
-/* The cursors of Fill, Pick Color and the Magnifier (REQ-0007-12): the hotspot is the spilling tip of the bucket, the tip of
-   the dropper and the center of the lens. */
-static GdkCursor *
-texture_cursor (GdkCursor **cache, const char *name, int hot_x, int hot_y)
+GdkTexture *
+easel_cursor_art_draw (EaselCursorArt art, int desktop_size, double scale, int *size, int *device, int *hot_x, int *hot_y)
 {
-  if (*cache == NULL)
-    {
-      g_autofree char *path = g_strconcat (RESOURCE_PATH "/cursors/", name, NULL);
-      g_autoptr (GdkTexture) texture = gdk_texture_new_from_resource (path);
-      g_autoptr (GdkCursor) fallback = gdk_cursor_new_from_name ("crosshair", NULL);
+  EaselToolCursor c;
+  g_autofree char *path = NULL;
+  g_autoptr (GdkPixbuf) pixbuf = NULL;
+  g_autoptr (GBytes) bytes = NULL;
+  g_autoptr (GError) error = NULL;
 
-      *cache = gdk_cursor_new_from_texture (texture, hot_x, hot_y, fallback);
+  g_return_val_if_fail (art < EASEL_CURSOR_COUNT, NULL);
+  c = easel_tool_cursor_size (desktop_size, scale, cursor_art[art].hot_x, cursor_art[art].hot_y);
+  path = g_strconcat (RESOURCE_PATH "/cursors/", cursor_art[art].name, ".svg", NULL);
+  pixbuf = gdk_pixbuf_new_from_resource_at_scale (path, c.device, c.device, FALSE, &error);
+  if (pixbuf == NULL)
+    {
+      g_critical ("Cannot draw the cursor %s: %s", path, error->message);
+      return NULL;
     }
-  return *cache;
+  *size = c.size;
+  *device = c.device;
+  *hot_x = c.hot_x;
+  *hot_y = c.hot_y;
+  bytes = gdk_pixbuf_read_pixel_bytes (pixbuf);
+  return gdk_memory_texture_new (gdk_pixbuf_get_width (pixbuf), gdk_pixbuf_get_height (pixbuf),
+                                 gdk_pixbuf_get_has_alpha (pixbuf) ? GDK_MEMORY_R8G8B8A8 : GDK_MEMORY_R8G8B8, bytes,
+                                 (gsize) gdk_pixbuf_get_rowstride (pixbuf));
+}
+
+/* GDK asks for a drawn cursor at the desktop's cursor size and the screen's scale, each time it shows it (REQ-0029-03). */
+static GdkTexture *
+drawn_cursor_texture (GdkCursor *cursor, int cursor_size, double scale, int *width, int *height, int *hotspot_x,
+                      int *hotspot_y, gpointer data)
+{
+  int size, device;
+  GdkTexture *texture = easel_cursor_art_draw (GPOINTER_TO_INT (data), cursor_size, scale, &size, &device, hotspot_x,
+                                               hotspot_y);
+
+  (void) cursor;
+  if (texture == NULL)
+    return NULL;
+  *width = size;
+  *height = size;
+  return texture;
+}
+
+/* A drawn cursor (REQ-0029-01), made once for the life of the process, like named cursors; its fallback is the theme's
+   cursor of the same name, or the crosshair for the tools' own. */
+static GdkCursor *
+drawn_cursor (EaselCursorArt art)
+{
+  static GdkCursor *made[EASEL_CURSOR_COUNT];
+
+  if (made[art] == NULL)
+    {
+      g_autoptr (GdkCursor) fallback = gdk_cursor_new_from_name (art >= EASEL_CURSOR_CROSSHAIR ? easel_cursor_art_name (art)
+                                                                 : "crosshair", NULL);
+
+      made[art] = gdk_cursor_new_from_callback (drawn_cursor_texture, GINT_TO_POINTER (art), NULL, fallback);
+    }
+  return made[art];
 }
 
 /* The outline of the Brush's or the Eraser's footprint at the current zoom (REQ-0006-16); made again only when the
@@ -4942,58 +4990,48 @@ outline_cursor (EaselCanvas *self)
   return self->outline_cursor;
 }
 
-/* The cursor shows the tool over the whole canvas area, not only over the picture (REQ-0001-10). */
+/* The cursor shows the tool over the whole canvas area, not only over the picture (REQ-0001-10); every cursor but the busy
+   one and the Brush's and the Eraser's outline is drawn by Easel (REQ-0029-01). */
 static void
 update_cursor (EaselCanvas *self)
 {
   g_autoptr (GdkCursor) cursor = NULL;
+  EaselCursorArt art = EASEL_CURSOR_COUNT;
 
   EaselHandle handle = self->resizing != EASEL_HANDLE_NONE ? self->resizing : self->hover;
 
   if (self->busy)
     cursor = gdk_cursor_new_from_name ("wait", NULL);
   else if (self->hover_sel_handle >= 0)
-    cursor = gdk_cursor_new_from_name (selection_handle_cursor (self->hover_sel_handle), NULL);    /* REQ-0015-02: before the picture's */
+    art = selection_handle_cursor (self->hover_sel_handle);       /* REQ-0015-02: before the picture's */
   else if (self->tool == EASEL_TOOL_TEXT && self->hover_text != 0)
-    cursor = gdk_cursor_new_from_name (self->hover_text == 1 ? "text" : "move", NULL);   /* REQ-0017-01, before the picture's handles */
+    art = self->hover_text == 1 ? EASEL_CURSOR_TEXT : EASEL_CURSOR_MOVE;    /* REQ-0017-01, before the picture's handles */
   else if (handle != EASEL_HANDLE_NONE)
-    cursor = gdk_cursor_new_from_name (handle == EASEL_HANDLE_RIGHT ? "ew-resize"
-                                       : handle == EASEL_HANDLE_BOTTOM ? "ns-resize" : "nwse-resize", NULL);
+    art = handle == EASEL_HANDLE_RIGHT ? EASEL_CURSOR_EW_RESIZE
+          : handle == EASEL_HANDLE_BOTTOM ? EASEL_CURSOR_NS_RESIZE : EASEL_CURSOR_NWSE_RESIZE;
   else if (self->hover_marker || self->hover_sel)
-    cursor = gdk_cursor_new_from_name ("move", NULL);                 /* over a gradient's marker (REQ-0012-13) */
+    art = EASEL_CURSOR_MOVE;                                      /* over a gradient's marker (REQ-0012-13) */
   else if (self->tool == EASEL_TOOL_PENCIL)
-    cursor = g_object_ref (pencil_cursor ());
+    art = EASEL_CURSOR_PENCIL;
   else if (self->tool == EASEL_TOOL_BRUSH || self->tool == EASEL_TOOL_ERASER)
     cursor = g_object_ref (outline_cursor (self));
   else if (self->tool == EASEL_TOOL_AIRBRUSH)
-    cursor = g_object_ref (airbrush_cursor ());
+    art = EASEL_CURSOR_AIRBRUSH;
   else if (self->tool == EASEL_TOOL_FILL)
-    {
-      static GdkCursor *bucket;
-
-      cursor = g_object_ref (texture_cursor (&bucket, "fill.svg", 4, 29));
-    }
+    art = EASEL_CURSOR_FILL;
   else if (self->tool == EASEL_TOOL_PICK)
-    {
-      static GdkCursor *dropper;
-
-      cursor = g_object_ref (texture_cursor (&dropper, "pick.svg", 2, 30));
-    }
+    art = EASEL_CURSOR_PICK;
   else if (easel_tool_draws_shape (self->tool) || easel_tool_draws_pending (self->tool) || easel_tool_selects (self->tool)
            || self->tool == EASEL_TOOL_TEXT)
-    {
-      /* The crosshair: its center is the pixel a shape would start from (REQ-0010-15, REQ-0011-03). */
-      cursor = gdk_cursor_new_from_name ("crosshair", NULL);
-    }
+    art = EASEL_CURSOR_CROSSHAIR;     /* its center is the pixel a shape would start from (REQ-0010-15, REQ-0011-03) */
   else if (self->tool == EASEL_TOOL_MAGNIFIER)
-    {
-      static GdkCursor *glass;
-
-      cursor = g_object_ref (texture_cursor (&glass, "magnifier.svg", 12, 12));
-    }
+    art = EASEL_CURSOR_MAGNIFIER;
   else
-    cursor = gdk_cursor_new_from_name (self->panning ? "grabbing" : "grab", NULL);
+    cursor = gdk_cursor_new_from_name (self->panning ? "grabbing" : "grab", NULL);   /* Pan: the desktop's hand (2026-11-07) */
 
+  if (art < EASEL_CURSOR_COUNT)
+    cursor = g_object_ref (drawn_cursor (art));
+  self->cursor_art = art;
   gtk_widget_set_cursor (GTK_WIDGET (self), cursor);
   if (self->area != NULL)
     gtk_widget_set_cursor (self->area, cursor);
@@ -6888,6 +6926,7 @@ easel_canvas_init (EaselCanvas *self)
 {
   self->tint = EASEL_TINT_DEFAULT;
   self->zoom = 100;
+  self->cursor_art = EASEL_CURSOR_COUNT;
   /* Input methods, compose and dead keys for the text box (REQ-0017-06): their text arrives by "commit" */
   self->im = gtk_im_multicontext_new ();                   /* its client widget is set while the canvas is realized */
   g_signal_connect (self->im, "commit", G_CALLBACK (on_im_commit), self);

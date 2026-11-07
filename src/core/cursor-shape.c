@@ -66,3 +66,31 @@ easel_cursor_render (EaselFootprint f, int zoom, int scale, uint32_t *argb)
         argb[y * (side + 2) + x] = c;
       }
 }
+
+/* The pixel of a cursor of the given size whose center holds the same fraction as the center of pixel h of 24, in whole
+   numbers: floor ((h + 0.5) * size / 24), inside 0 .. size - 1. */
+static int
+tool_cursor_hotspot (int h, int size)
+{
+  if (h < 0)
+    h = 0;
+  if (h > 23)
+    h = 23;
+  return (2 * h + 1) * size / 48;   /* at most 47 * size / 48, so inside the image */
+}
+
+EaselToolCursor
+easel_tool_cursor_size (int desktop_size, double scale, int hot_x24, int hot_y24)
+{
+  EaselToolCursor c;
+  double device = 0;
+
+  c.size = desktop_size < 24 ? 24 : desktop_size;
+  device = c.size * scale;
+  c.device = (int) device;
+  if (c.device < device)
+    c.device++;
+  c.hot_x = tool_cursor_hotspot (hot_x24, c.size);
+  c.hot_y = tool_cursor_hotspot (hot_y24, c.size);
+  return c;
+}

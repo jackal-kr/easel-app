@@ -14,7 +14,8 @@ Revision 2026-11-05: JOD's Phase 2 additions A to D (cursors, brush options, gra
 
 Order suggestion: A and B first, C after the graphics path audit, D with file input and output.
 
-### A. Tool cursors in one style (spec 0029, drafted 2026-11-06)
+### A. Tool cursors in one style (spec 0029, accepted 2026-11-06, implemented 2026-11-07; black and white for every cursor over the canvas)
+- Later, optional: accent-colored cursors, as a Preferences setting (JOD, 2026-11-06; the mockup `docs/reference/0029/cursors-mockup-accents.png` shows the accents losing contrast on many-colored pictures).
 - The cursors of Airbrush, Pencil, Fill and Pick Color are out of style next to the rest (JOD, 2026-11-05). A screencast does not show the pointer, so they are judged from the app's own images.
 - First task of the spec: draw every cursor of every tool and state (Magnifier in and out, Pan open and closed, any busy or blocked one) onto one contact sheet from the code's own cursor images, at scale 1 and 2, on light and dark backgrounds, with the hotspot marked. JOD names the odd ones from that sheet.
 - Then one set of rules: size, stroke weight, a light halo, the hotspot at the exact pixel the tool acts on, one source, scale-2 variants; and a test that every tool's cursor comes from the set, with its hotspot inside the image.

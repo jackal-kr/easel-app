@@ -26,5 +26,12 @@
     <file preprocess="xml-stripblanks">cursors/magnifier.svg</file>
     <file preprocess="xml-stripblanks">cursors/pick.svg</file>
     <file preprocess="xml-stripblanks">cursors/fill.svg</file>
+    <file preprocess="xml-stripblanks">cursors/crosshair.svg</file>
+    <file preprocess="xml-stripblanks">cursors/move.svg</file>
+    <file preprocess="xml-stripblanks">cursors/text.svg</file>
+    <file preprocess="xml-stripblanks">cursors/ew-resize.svg</file>
+    <file preprocess="xml-stripblanks">cursors/ns-resize.svg</file>
+    <file preprocess="xml-stripblanks">cursors/nwse-resize.svg</file>
+    <file preprocess="xml-stripblanks">cursors/nesw-resize.svg</file>
   </gresource>
 </gresources>

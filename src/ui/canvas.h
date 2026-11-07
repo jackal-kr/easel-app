@@ -389,4 +389,33 @@ void easel_canvas_listen_on (EaselCanvas *self, GtkWidget *area);
 /* The checkerboard drawn behind transparency, on screen only (REQ-0001-11, REQ-0003-05). */
 void easel_snapshot_append_checkerboard (GtkSnapshot *snapshot, const graphene_rect_t *bounds, float cell);
 
+/* The cursors Easel draws over the canvas area, black with a white outline (REQ-0029-01). */
+typedef enum
+{
+  EASEL_CURSOR_PENCIL,
+  EASEL_CURSOR_AIRBRUSH,
+  EASEL_CURSOR_FILL,
+  EASEL_CURSOR_PICK,
+  EASEL_CURSOR_MAGNIFIER,
+  EASEL_CURSOR_CROSSHAIR,
+  EASEL_CURSOR_MOVE,
+  EASEL_CURSOR_TEXT,
+  EASEL_CURSOR_EW_RESIZE,
+  EASEL_CURSOR_NS_RESIZE,
+  EASEL_CURSOR_NWSE_RESIZE,
+  EASEL_CURSOR_NESW_RESIZE,
+  EASEL_CURSOR_COUNT
+} EaselCursorArt;
+
+/* The drawn cursor the canvas shows now, EASEL_CURSOR_COUNT when it shows another (busy, outline) (a test hook). */
+EaselCursorArt easel_canvas_get_cursor_art (EaselCanvas *self);
+
+/* The art's short name ("pencil", "ew-resize"), as its file is named. */
+const char *easel_cursor_art_name (EaselCursorArt art);
+
+/* The art drawn for the desktop's cursor size and the screen scale, as GDK asks for it (REQ-0029-03): a texture of
+   *device x *device pixels; *size is the cursor's logical size and (*hot_x, *hot_y) its hotspot in logical pixels. */
+GdkTexture *easel_cursor_art_draw (EaselCursorArt art, int desktop_size, double scale, int *size, int *device, int *hot_x,
+                                   int *hot_y);
+
 G_END_DECLS

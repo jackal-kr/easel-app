@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="24" height="24" viewBox="0 0 24 24">
+  <!-- Hotspot: pixel (11, 11), the center. Black with a white outline, as every cursor Easel shows over the canvas (REQ-0029-01). -->
+  <defs>
+    <g id="figure">
+      <rect x="10.6" y="1.5" width="1.8" height="7.5"/>
+      <rect x="10.6" y="14.5" width="1.8" height="7.5"/>
+      <rect x="1.5" y="10.6" width="7.5" height="1.8"/>
+      <rect x="14.5" y="10.6" width="7.5" height="1.8"/>
+      <rect x="11.0" y="11.0" width="1.0" height="1.0"/>
+    </g>
+  </defs>
+  <use xlink:href="#figure" fill="#ffffff" stroke="#ffffff" stroke-width="2" stroke-linejoin="round"/>
+  <use xlink:href="#figure" fill="#000000" stroke="none"/>
+</svg>

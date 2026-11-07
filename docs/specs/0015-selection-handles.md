@@ -30,7 +30,7 @@ they are used.
   owns that handle's whole hit area, also the part inside the picture (JOD, 2026-10-22). While the pointer is over a handle the cursor shall be the resize cursor of its direction:
   horizontal for the left and right handles, vertical for the top and bottom ones, diagonal (top-left to bottom-right) for those two
   corners and the other diagonal for the top-right and bottom-left corners. (Pointer notes: REQ-0004-16, REQ-0013-03, REQ-0013-04,
-  REQ-0013-11, REQ-0013-12, REQ-0014-03 and REQ-0014-04, where "resize handle" means the picture's.) (Pointer note, Text, 2026-10-26: A text box's handles take presses as a selection's do, but inside the box a press always goes to its text, REQ-0017-09.)
+  REQ-0013-11, REQ-0013-12, REQ-0014-03 and REQ-0014-04, where "resize handle" means the picture's.) (Pointer note, Text, 2026-10-26: A text box's handles take presses as a selection's do, but inside the box a press always goes to its text, REQ-0017-09.) (Pointer note, Tool cursors, 2026-11-06: the cursors named here are drawn by Easel in black with a white outline; which cursor shows where stays as here.)
 
 ### Stretching
 - REQ-0015-03 When the user presses the primary button on a selection handle and drags, the app shall stretch the selection: the

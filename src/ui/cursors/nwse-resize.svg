@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="24" height="24" viewBox="0 0 24 24">
+  <!-- Hotspot: pixel (11, 11), the center. Black with a white outline, as every cursor Easel shows over the canvas (REQ-0029-01). -->
+  <defs>
+    <g id="figure">
+      <polygon points="17.58,17.58 11.64,17.58 13.83,15.39 7.61,9.17 5.42,11.36 5.42,5.42 11.36,5.42 9.17,7.61 15.39,13.83 17.58,11.64"/>
+    </g>
+  </defs>
+  <use xlink:href="#figure" fill="#ffffff" stroke="#ffffff" stroke-width="2" stroke-linejoin="round"/>
+  <use xlink:href="#figure" fill="#000000" stroke="none"/>
+</svg>

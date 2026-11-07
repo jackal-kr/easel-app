@@ -1,8 +1,11 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
-  <!-- A dropper; its tip, at (2, 30), is the cursor hotspot. -->
-  <path fill="#ffffff" d="M1 31v-6l3-3 3 3-6 6zM3 23l13-13 6 6-13 13zM15 9l3-3-1-1a3 3 0 0 1 4-4l9 9a3 3 0 0 1-4 4l-1-1-3 3z"/>
-  <path fill="#000000" d="M2 30v-4.5L4 23.5l2.5 2.5zM4 24l12-12 4 4-12 12z"/>
-  <path fill="#000000" d="M16.5 8.5l2.5-2.5 7 7-2.5 2.5z"/>
-  <path fill="#808080" d="M27 4l1 1-3 3-1-1z"/>
-  <path fill="#c01c28" d="M5.5 25.5l11-11 1 1-11 11z"/>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="24" height="24" viewBox="0 0 24 24">
+  <!-- Hotspot: pixel (2, 21), the dropper's tip. Black with a white outline, as every cursor Easel shows over the canvas (REQ-0029-01). -->
+  <defs>
+    <g id="figure">
+      <polygon points="2.50,21.50 3.94,21.25 9.85,16.13 11.27,17.54 12.26,16.55 11.54,15.83 15.14,12.22 14.95,9.05 11.78,8.86 8.17,12.46 7.45,11.74 6.46,12.73 7.87,14.15 2.75,20.06"/>
+    </g>
+  </defs>
+  <use xlink:href="#figure" fill="#ffffff" stroke="#ffffff" stroke-width="2" stroke-linejoin="round"/>
+  <use xlink:href="#figure" fill="#000000" stroke="none"/>
+
 </svg>

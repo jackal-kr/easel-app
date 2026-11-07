@@ -1,3 +1,4 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
-  <path fill="#222222" fill-rule="evenodd" d="M2 4h12v8H2zM3.2 5.2v5.6h9.6V5.2z"/>
+  <!-- Smooth 1.5 px lines, drawn as filled outlines (REQ-0029-05). -->
+  <path fill="#222222" d="M1.00 3.00L15.00 3.00L15.00 13.00L1.00 13.00ZM2.50 11.50L13.50 11.50L13.50 4.50L2.50 4.50Z"/>
 </svg>

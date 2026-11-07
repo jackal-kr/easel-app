@@ -2743,12 +2743,12 @@ file: src/ui/canvas.c
 test: ui-0012
 --- find
   else if (handle != EASEL_HANDLE_NONE)
-    cursor = gdk_cursor_new_from_name (handle == EASEL_HANDLE_RIGHT ? "ew-resize"
+    art = handle == EASEL_HANDLE_RIGHT ? EASEL_CURSOR_EW_RESIZE
 --- replace
   else if (self->tool == EASEL_TOOL_GRADIENT)
-    cursor = gdk_cursor_new_from_name ("crosshair", NULL);
+    art = EASEL_CURSOR_CROSSHAIR;
   else if (handle != EASEL_HANDLE_NONE)
-    cursor = gdk_cursor_new_from_name (handle == EASEL_HANDLE_RIGHT ? "ew-resize"
+    art = handle == EASEL_HANDLE_RIGHT ? EASEL_CURSOR_EW_RESIZE
 
 === REQ-0012-07 the gradient laid over a rectangle is not clipped at the picture's left and top edges
 file: src/core/gradient.c
@@ -5366,20 +5366,20 @@ file: src/ui/canvas.c
 test: ui-0015
 --- find
     case EASEL_SEL_HANDLE_TR: case EASEL_SEL_HANDLE_BL:
-      return "nesw-resize";
+      return EASEL_CURSOR_NESW_RESIZE;
 --- replace
     case EASEL_SEL_HANDLE_TR: case EASEL_SEL_HANDLE_BL:
-      return "nwse-resize";
+      return EASEL_CURSOR_NWSE_RESIZE;
 
 === REQ-0015-02 the left and right handles take the vertical cursor
 file: src/ui/canvas.c
 test: ui-0015
 --- find
     case EASEL_SEL_HANDLE_L: case EASEL_SEL_HANDLE_R:
-      return "ew-resize";
+      return EASEL_CURSOR_EW_RESIZE;
 --- replace
     case EASEL_SEL_HANDLE_L: case EASEL_SEL_HANDLE_R:
-      return "ns-resize";
+      return EASEL_CURSOR_NS_RESIZE;
 
 === REQ-0015-02 the cursor does not change when the pointer comes to a handle
 file: src/ui/canvas.c
@@ -7428,9 +7428,9 @@ test: ui-0017
 file: src/ui/canvas.c
 test: ui-0017
 --- find
-    cursor = gdk_cursor_new_from_name (self->hover_text == 1 ? "text" : "move", NULL);   /* REQ-0017-01, before the picture's handles */
+    art = self->hover_text == 1 ? EASEL_CURSOR_TEXT : EASEL_CURSOR_MOVE;    /* REQ-0017-01, before the picture's handles */
 --- replace
-    cursor = gdk_cursor_new_from_name ("move", NULL);   /* REQ-0017-01, before the picture's handles */
+    art = EASEL_CURSOR_MOVE;    /* REQ-0017-01, before the picture's handles */
 
 === REQ-0017-09 the move band is 6 logical pixels wide
 file: src/ui/canvas.c
@@ -11983,3 +11983,29 @@ test: ui-0024
       if (in_sandbox ())
 --- replace
       if (FALSE)
+
+=== REQ-0029-03 a desktop cursor size below 24 is used as it is
+file: src/core/cursor-shape.c
+test: core-cursor
+--- find
+  c.size = desktop_size < 24 ? 24 : desktop_size;
+--- replace
+  c.size = desktop_size;
+
+=== REQ-0029-03 a fractional scale's image is rounded down, not up
+file: src/core/cursor-shape.c
+test: core-cursor
+--- find
+  if (c.device < device)
+    c.device++;
+--- replace
+  if (0)
+    c.device++;
+
+=== REQ-0029-02 the hotspot is scaled from the pixel's corner, not its center
+file: src/core/cursor-shape.c
+test: core-cursor
+--- find
+  return (2 * h + 1) * size / 48;   /* at most 47 * size / 48, so inside the image */
+--- replace
+  return 2 * h * size / 48;
