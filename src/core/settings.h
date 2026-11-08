@@ -64,6 +64,7 @@ typedef struct
   bool text_bold, text_italic, text_underline, text_strike;
   char language[8];       /* `[interface] language`: "auto", or a language's code (REQ-0023-04) */
   bool frame_time;        /* `[view] frame-time`: the status bar shows it (REQ-0021-12) */
+  int toolbox_width;      /* `[view] toolbox-width`: logical pixels at the default text size, 0 for the default (REQ-0030-12) */
   EaselStyle style;       /* `[view] style` (REQ-0020-03) */
   int tint;               /* `[view] tint`, the selection's tint in percent, EASEL_TINT_MIN..EASEL_TINT_MAX */
   int brush;              /* `[drawing]` (REQ-0020-05): what the tools start with, by their place in the options panel */
@@ -79,6 +80,11 @@ typedef struct
 extern const char easel_settings_default_text[];
 
 void easel_settings_defaults (EaselSettings *s);
+
+/* The toolbox width a `[view] toolbox-width` value gives (REQ-0030-12): a whole number, past a limit the limit (0 to
+   EASEL_TOOLBOX_WIDTH_MAX); anything else 0, which means the default width (the window alone knows it). */
+#define EASEL_TOOLBOX_WIDTH_MAX 240
+int easel_settings_toolbox_width (const char *text, size_t len);
 
 /* The names the file holds for a setting (REQ-0020-03, REQ-0020-05). */
 const char *easel_settings_style_name (EaselStyle style);

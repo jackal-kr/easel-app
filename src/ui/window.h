@@ -92,6 +92,13 @@ void easel_window_preferences_closed (EaselWindow *self);
 /* The Text tool's mode: TRUE for Opaque (REQ-0017-02). */
 gboolean easel_window_get_text_opaque (EaselWindow *self);
 EaselStatusBar *easel_window_get_status_bar (EaselWindow *self);
+/* The toolbox's width (REQ-0030-09 to -14): what it shows now; a drag on its edge by dx since the press, ended or not, as
+   the edge's gestures call it; a drag cut short; a double-click; the edge. */
+int easel_window_get_toolbox_width (EaselWindow *self);
+void easel_window_drag_toolbox_edge (EaselWindow *self, double dx, gboolean end);
+void easel_window_cancel_toolbox_drag (EaselWindow *self);
+void easel_window_reset_toolbox_width (EaselWindow *self);
+GtkWidget *easel_window_get_toolbox_edge (EaselWindow *self);
 
 GtkMenuButton *easel_window_get_main_menu_button (EaselWindow *self);
 GtkMenuButton *easel_window_get_image_button (EaselWindow *self);

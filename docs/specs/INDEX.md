@@ -34,6 +34,7 @@ Vertical slices first (a thin end-to-end feature), breadth later.
 | 0027 | preferences-buttons | OK, Cancel and Apply in Preferences over a live preview; page Appearance split, with a new page Interface | Implemented 2026-11-04. JOD, 2026-11-04: a mistake in Preferences was hard to take back |
 | 0028 | phase1-acceptance | Fifteen journeys across the features, each one automated case and one manual step, ending in the saved file read back | Implemented 2026-11-06. The phase gate's acceptance spec (outline approved by JOD, 2026-11-02); cairo in the normal suite, Vulkan once at the gate, journeys 1 and 4 at scale 2, no mutants of their own, 2 minutes |
 | 0029 | tool-cursors | Twelve drawn cursors over the canvas, black with a white outline, at the desktop's cursor size (Pan keeps the theme's hand); smooth 1.5 px toolbox icons for the outline tools, Fill and Gradient | Phase 2, item A of `docs/phase2-plan.md`. Decided by JOD, 2026-11-06, from contact sheets: all five cursors, the theme's look, the desktop cursor size; the cursors shown on a sheet before code |
+| 0030 | brush-options | Size presets of Brush, Airbrush, Eraser and the line widths drawn at real size with their number, in two columns; the chosen one in the status bar; a toolbox the user can widen, which names them one per row | Phase 2, item B of `docs/phase2-plan.md`. Implemented 2026-11-08 (the options' look to be redesigned next, JOD); accepted 2026-11-07; JOD chose option C of `docs/reference/0030/brush-panel-mockup.png` |
 
 ### Phase 2: Modern extras (optional, starts only after the core XP scope is delivered)
 | Feature | One line |
@@ -44,9 +45,14 @@ Vertical slices first (a thin end-to-end feature), breadth later.
 | Smooth text option | An opt-in switch that draws text with antialiasing; off by default |
 | Smooth shapes and brushes option | One opt-in switch that draws lines, curves, shapes and brush strokes with antialiasing; off by default |
 | Extra shapes | Triangles, diamond, pentagon, hexagon, arrows, stars, callouts, heart, lightning bolt |
+| Gradient types | Linear, Radial and Reflected as an option row of Gradient (C) |
+| Black and white | Image, Attributes turns the picture to pure black and white, as XP (D) |
+| Curve bent on the line | A bend made by dragging a point of the line, finished by a click outside it; replaces XP's way (E, JOD 2026-11-07) |
+| Remove background | One command, as Windows 11 Paint: the subject found on the machine, the rest made transparent; an ADR for the model first (F) |
+| 10-pixel key move without a gap | Ctrl+Shift with an arrow (REQ-0013-10) moves without leaving the blank strip of a plain move (From JOD's use) |
+| Graphics path audit | The drawing path below 100 % and of previews looked at as a whole, before Gradient types (From 0025; the roadmap note on Gradient) |
 
 ## Roadmap notes
-- Gradient modes (a follow-up to Gradient, no number yet): more than the one fade of Gradient, in a later spec of its own.
 - The Phase 2 block is a plan, not a commitment of numbers: a row gets its number when its spec is written.
 - After Gradient: a later change draws the picture and the gradient preview through one path below 100 %, so that the preview
   is exact and its memory bounded (today a gradient dragged at the fit zoom of an 8000 x 8000 picture takes about 390 ms a frame

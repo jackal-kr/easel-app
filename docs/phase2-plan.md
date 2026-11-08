@@ -3,6 +3,7 @@
 Known gaps from Phase 1 specs, to take up after the core XP scope is delivered. The features of Phase 2 are in `docs/specs/INDEX.md`.
 
 Revision 2026-11-05: JOD's Phase 2 additions A to D (cursors, brush options, gradient types, Black and white), below, docs only, no spec yet.
+Revision 2026-11-07: JOD's further list sorted into E (Curve) and F (Remove background); its icon and cursor items are A, done; its gradient item is C. Every item here has a row in `docs/specs/INDEX.md`. The checks before the first beta are gathered in their own section.
 
 ## JOD's Phase 2 additions (2026-11-05)
 | Item | One line | Size |
@@ -11,8 +12,10 @@ Revision 2026-11-05: JOD's Phase 2 additions A to D (cursors, brush options, gra
 | B. Brush options that read at a glance | The twelve tips shown so their shape and size can be read | S |
 | C. Gradient types | The Gradient tool gains Linear, Radial and Reflected | M |
 | D. Black and white | The picture turned to pure black and white | (below) |
+| E. Curve bent on the line | A bend made by dragging a point of the line, the curve finished by a click outside it | S to M |
+| F. Remove background | The background of a picture made transparent | M |
 
-Order suggestion: A and B first, C after the graphics path audit, D with file input and output.
+Order suggestion: A and B first, C after the graphics path audit, D with file input and output; E and F once their open questions are settled.
 
 ### A. Tool cursors in one style (spec 0029, accepted 2026-11-06, implemented 2026-11-07; black and white for every cursor over the canvas)
 - Later, optional: accent-colored cursors, as a Preferences setting (JOD, 2026-11-06; the mockup `docs/reference/0029/cursors-mockup-accents.png` shows the accents losing contrast on many-colored pictures).
@@ -22,7 +25,7 @@ Order suggestion: A and B first, C after the graphics path audit, D with file in
 - The size-matched cursors of Eraser and Brush stay. Toolbox icons out of style go in the same spec.
 - P7: the spec states how the hotspot maps to the picture pixel; the cursor draws nothing.
 
-### B. Brush options that read at a glance
+### B. Brush options that read at a glance (spec 0030, implemented 2026-11-08; JOD: the options look ugly, a redesign of every tool's options follows)
 - The twelve tip glyphs are barely understood (JOD, 2026-11-05). The twelve tips stay.
 - Either each tip shown at its real size on a neutral swatch, grouped by shape with the sizes in a row, with a tooltip naming shape and size in pixels and the chosen tip also in the status bar; or two controls, shape and size. JOD sees a text layout first.
 - The options of Airbrush, Eraser and the line width are checked against the same reading rule.
@@ -90,15 +93,25 @@ Order suggestion: A and B first, C after the graphics path audit, D with file in
 ## From the mutation list
 - REQ-0017-14, the popover's scroll guard: survives on GTK 4.24, accepted (JOD, 2026-11-02). Re-decide at packaging-release, when the minimum GTK is chosen.
 
-## Other improvements
- - New functionlaity: Remove background of a picture.
- - Improvement: Drawing a curve line to be improved, see below the step-by-step instructions
-	1. Select the Curve Tool: Go to the Home tab and click on the Curve icon (which looks like a wavy line) in the Shapes section.
-	2. Draw a Straight Base Line: Click on your canvas, drag the mouse to draw a straight line, and then release the mouse button.
-	3. Create the First Bend: Click anywhere on the straight line you just drew, hold down the left mouse button, and drag the pointer (upwards or downwards) to bend the line into a curve, then release the mouse button.
-	4. Create a Second Bend (Optional): Click on a different part of the line and drag it again to add a second curve (Note: each line allows a maximum of two bends).
-	5. Finalize the Curve: Click anywhere outside the shape to lock and finish your curve.	
-- Improvement: Make toolbox icons / selection icons more consistent, readable, and user-friedly (ask for screenshots)
-- Improvement: Mouse cursors consitancy - focus on Magnifier, Pick Color, Fill, modes... make them more consistent and nicer looking (ask for screenshots)
-- Improvement: Gradient tool should have three options: Linear, Radial, Reflected (provide screenshots)
+## JOD's further list (2026-11-07)
+### E. Curve bent on the line
+- JOD's steps: drag a straight line; press on a point of the line and drag to bend it there; optionally a second bend from another point (two at most); a click outside the curve finishes it.
+- Today (REQ-0011-04, XP's way): a press anywhere starts the next bend, and the second bend puts the curve down.
+- Decided (JOD, 2026-11-07): this replaces XP's way, no option; REQ-0011-04 changes in its spec, and `docs/product.md`'s "XP-faithful by default" gets this as a named exception. Left for the spec: what a press that is not on the line does, and what Enter and Esc do with one bend made.
 
+### F. Remove background
+- New, beyond XP Paint (a modern extra).
+- Decided (JOD, 2026-11-07): follow the standard, Windows 11 Paint's Remove background: one command, no settings; the subject is found automatically and everything else becomes transparent; with a selection, only the selection's area is worked on; one undo step. Saving needs nothing new: PNG, TIFF and WebP keep the transparency, JPEG and BMP flatten it on white (REQ-0005-11), as Paint does.
+- Constraint: Paint finds the subject with a machine-learning model. Easel's Flatpak has no network (REQ-0024-10), so the model runs on the machine and ships with the app. Its choice (license, size, CPU time on an 8000 × 8000 picture, same pixels on every machine for P7) is an ADR before the spec's Plan; a picture where no subject is found is a case of the spec.
+
+### Done or merged
+- Toolbox icons and selection icons more consistent and readable: A, spec 0029, implemented 2026-11-07.
+- Mouse cursors consistent (Magnifier, Pick Color, Fill): A, spec 0029, implemented 2026-11-07.
+- Gradient with Linear, Radial and Reflected: C.
+
+## Before the first beta
+Gathered from the sections above; none has written steps yet.
+- Orca on the app, an open text box included (From 0022).
+- A fractional desktop scale (125 %, 150 %) and a scale 2 screen by eye (From 0025, 0029's edge case).
+- JOD's reading of ru, uk and pl and their Help pages (From 0023).
+- REQ-0017-14's scroll guard re-decided with the minimum GTK (From the mutation list; in 0024's row).

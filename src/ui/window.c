@@ -86,6 +86,14 @@ struct _EaselWindow
   EaselStatusBar *status_bar;
   GtkWidget *toolbox_panel;   /* the tool buttons, the options below them, and their separator */
   GtkWidget *tools_column;    /* the tool grid, and below it the options panel */
+  GtkWidget *toolbox_edge;    /* the band at the canvas area's left edge that widens the toolbox (REQ-0030-09) */
+  int toolbox_kept;           /* the kept width, in pixels at the default text size; 0 for the default (REQ-0030-12) */
+  int toolbox_shown;          /* the width the toolbox has now, in logical pixels */
+  int toolbox_drag_start;     /* the shown width at the press of a drag on the edge, or -1 without one */
+  gboolean toolbox_drag_moved;
+  int toolbox_window_width;   /* the window's width the shown width was worked out for */
+  int toolbox_default;        /* the default width, measured with the options in two columns */
+  guint toolbox_follow;       /* the idle that looks at the window's new width, or 0 */
   EaselToolOptions *tool_options;
   EaselTool pick_return_tool;   /* the tool that was active when Pick Color was chosen (REQ-0007-09) */
   gboolean pick_running;        /* a pick is in progress; the two colors below are those before its press (REQ-0007-10) */
@@ -132,6 +140,7 @@ struct _EaselWindow
   /* The color chooser (REQ-0003-11..14): what it edits, a swatch number or one of the CHOOSE_ values. */
   gboolean chooser_open;
   int chooser_target;
+  gboolean chooser_to_background;   /* a swatch's chooser opened by a secondary double-click (REQ-0003-12) */
   GCancellable *chooser_cancel;
 };
 
@@ -1486,12 +1495,16 @@ easel_window_finish_color_choice (EaselWindow *self, const GdkRGBA *rgba)
     set_colors (self, self->foreground, color);
   else
     {
-      /* A confirmed swatch color is also the new foreground (REQ-0003-12). */
+      /* A confirmed swatch color is also the new foreground, or the background after a secondary double-click
+         (REQ-0003-12). */
       g_autofree char *path = easel_palette_file_path ();
 
       self->palette.colors[self->chooser_target - 1] = color;
       easel_palette_bar_set_swatch (self->palette_bar, self->chooser_target, color);
-      pick_foreground (self, color);
+      if (self->chooser_to_background)
+        set_colors (self, self->foreground, color);
+      else
+        pick_foreground (self, color);
       /* Remembered at once; if writing fails the swatch still changes for this run, silently (REQ-0003-15,
          REQ-0003-16). */
       easel_palette_file_save (path, &self->palette);
@@ -1523,6 +1536,7 @@ open_chooser (EaselWindow *self, int target, uint32_t color)
     return;
   self->chooser_open = TRUE;
   self->chooser_target = target;
+  self->chooser_to_background = FALSE;
   self->chooser_cancel = g_cancellable_new ();
   easel_canvas_set_input_blocked (self->canvas, TRUE);
 
@@ -1545,9 +1559,12 @@ on_swatch_pressed (EaselWindow *self, int n, guint button, int n_press)
   else
     set_colors (self, self->foreground, color);
 
-  /* A primary double-click on one swatch edits it; the first click has already picked it (REQ-0003-11). */
-  if (button == GDK_BUTTON_PRIMARY && n_press == 2)
-    open_chooser (self, n, color);
+  /* A double-click on one swatch, with either button, edits it; the first click has already picked it (REQ-0003-11). */
+  if (n_press == 2)
+    {
+      open_chooser (self, n, color);
+      self->chooser_to_background = button == GDK_BUTTON_SECONDARY;
+    }
 }
 
 static void
@@ -1687,7 +1704,209 @@ set_panel_state (EaselWindow *self, const char *action, GtkWidget *panel, gboole
   GAction *a = g_action_map_lookup_action (G_ACTION_MAP (self), action);
 
   gtk_widget_set_visible (panel, shown);
+  if (panel == self->toolbox_panel && self->toolbox_edge != NULL)
+    gtk_widget_set_visible (self->toolbox_edge, shown);           /* hidden with the toolbox, and takes no presses (REQ-0030-14) */
   g_simple_action_set_state (G_SIMPLE_ACTION (a), g_variant_new_boolean (shown));
+}
+
+/* ---- the toolbox's width (REQ-0030-09 to -14) ---- */
+
+/* The text scale factor: the desktop's text size against the default 96 dpi (REQ-0008-07's text sizes). */
+static double
+text_factor (void)
+{
+  int dpi = 0;
+
+  g_object_get (gtk_settings_get_default (), "gtk-xft-dpi", &dpi, NULL);
+  return dpi > 0 ? dpi / (96.0 * 1024.0) : 1.0;
+}
+
+/* The default width: what the toolbox's own content asks for, the options in two columns (REQ-0008-07). */
+static int
+toolbox_default_width (EaselWindow *self)
+{
+  int nat = 0, sep = 0;
+  GtkWidget *line = gtk_widget_get_last_child (self->toolbox_panel);
+
+  gtk_widget_measure (self->tools_column, GTK_ORIENTATION_HORIZONTAL, -1, NULL, &nat, NULL, NULL);
+  if (line != NULL && line != self->tools_column)
+    gtk_widget_measure (line, GTK_ORIENTATION_HORIZONTAL, -1, NULL, &sep, NULL, NULL);
+  return nat + sep;
+}
+
+/* The widest the toolbox may be now: the limit, and half the window (REQ-0030-09), never under the default. */
+static int
+toolbox_widest (EaselWindow *self, int def)
+{
+  int limit = (int) lround (EASEL_TOOLBOX_WIDTH_MAX * text_factor ());
+  int window = gtk_widget_get_width (GTK_WIDGET (self));
+
+  if (window > 0)
+    limit = MIN (limit, window / 2);
+  return MAX (def, limit);
+}
+
+/* Shows the kept width as far as the window allows, and gives the options panel its form (REQ-0030-10, -13). */
+static void
+apply_toolbox_width (EaselWindow *self)
+{
+  int def, widest, want;
+
+  def = toolbox_default_width (self);
+  self->toolbox_default = def;
+  widest = toolbox_widest (self, def);
+  want = self->toolbox_kept > 0 ? (int) lround (self->toolbox_kept * text_factor ()) : def;
+  want = CLAMP (want, def, widest);
+  self->toolbox_shown = want;
+  self->toolbox_window_width = gtk_widget_get_width (GTK_WIDGET (self));
+  gtk_widget_set_size_request (self->toolbox_panel, want > def ? want : -1, -1);
+}
+
+static void
+write_toolbox_width (EaselWindow *self, int value)
+{
+  g_autofree char *text = g_strdup_printf ("%d", value);
+  EaselSettingChange change = { "view", "toolbox-width", text };
+
+  /* A file that cannot be written: nothing shown, the width applies for this run, and the next drag tries again
+     (REQ-0030-12). */
+  if (!easel_window_write_settings (self, &change, 1))
+    g_warning ("The toolbox width could not be written to settings.ini");
+}
+
+void
+easel_window_drag_toolbox_edge (EaselWindow *self, double dx, gboolean end)
+{
+  int def = self->toolbox_default, want;          /* measured in two columns, not in the form shown now */
+
+  if (self->toolbox_drag_start < 0)
+    {
+      self->toolbox_drag_start = self->toolbox_shown;
+      self->toolbox_drag_moved = FALSE;
+    }
+  if (dx != 0)
+    self->toolbox_drag_moved = TRUE;
+  /* The width moves by the pointer's movement since the press (REQ-0030-09). */
+  want = CLAMP (self->toolbox_drag_start + (int) lround (dx), def, toolbox_widest (self, def));
+  self->toolbox_kept = (int) lround (want / text_factor ());
+  apply_toolbox_width (self);
+  if (end)
+    {
+      self->toolbox_drag_start = -1;
+      if (self->toolbox_drag_moved)
+        write_toolbox_width (self, self->toolbox_kept);
+    }
+}
+
+void
+easel_window_cancel_toolbox_drag (EaselWindow *self)
+{
+  /* A lost focus or a release outside the window ends the drag as a stroke ends: the width kept and written (REQ-0030-13). */
+  if (self->toolbox_drag_start < 0)
+    return;
+  self->toolbox_drag_start = -1;
+  if (self->toolbox_drag_moved)
+    write_toolbox_width (self, self->toolbox_kept);
+}
+
+void
+easel_window_reset_toolbox_width (EaselWindow *self)
+{
+  self->toolbox_drag_start = -1;
+  self->toolbox_kept = 0;
+  apply_toolbox_width (self);
+  write_toolbox_width (self, (int) lround (self->toolbox_default / text_factor ()));
+}
+
+int
+easel_window_get_toolbox_width (EaselWindow *self)
+{
+  return self->toolbox_shown;
+}
+
+GtkWidget *
+easel_window_get_toolbox_edge (EaselWindow *self)
+{
+  return self->toolbox_edge;
+}
+
+static void
+edge_drag_update (GtkGestureDrag *gesture, double dx, double dy, EaselWindow *self)
+{
+  easel_window_drag_toolbox_edge (self, dx, FALSE);
+}
+
+static void
+edge_drag_end (GtkGestureDrag *gesture, double dx, double dy, EaselWindow *self)
+{
+  /* Nothing held: a press without movement, or a drag a cancel already ended (REQ-0030-12, -13). */
+  if (self->toolbox_drag_start < 0)
+    return;
+  easel_window_drag_toolbox_edge (self, dx, TRUE);
+}
+
+/* A lost focus or a release outside the window cancels the gesture: the drag ends with its last width, kept and
+   written (REQ-0030-13). */
+static void
+edge_drag_cancel (GtkGesture *gesture, GdkEventSequence *sequence, EaselWindow *self)
+{
+  easel_window_cancel_toolbox_drag (self);
+}
+
+static void
+edge_pressed (GtkGestureClick *gesture, int n_press, double x, double y, EaselWindow *self)
+{
+  if (n_press == 2)
+    easel_window_reset_toolbox_width (self);                        /* REQ-0030-11 */
+}
+
+/* The window's width changed: the toolbox shows as much of its kept width as half the window allows (REQ-0030-13).
+   Looked at once after the window's surface is laid out at a new size, when the window has its new width; nothing runs
+   while the size stays. */
+static void
+toolbox_follow_window (gpointer data)
+{
+  EaselWindow *self = data;
+
+  self->toolbox_follow = 0;
+  if (gtk_widget_get_width (GTK_WIDGET (self)) != self->toolbox_window_width)
+    apply_toolbox_width (self);
+}
+
+static void
+on_surface_layout (GdkSurface *surface, int width, int height, EaselWindow *self)
+{
+  if (self->toolbox_follow == 0)
+    self->toolbox_follow = g_idle_add_once (toolbox_follow_window, self);
+}
+
+static void
+on_window_realize (EaselWindow *self)
+{
+  g_signal_connect_object (gtk_native_get_surface (GTK_NATIVE (self)), "layout", G_CALLBACK (on_surface_layout), self, 0);
+}
+
+static void
+make_toolbox_edge (EaselWindow *self)
+{
+  GtkGesture *drag = gtk_gesture_drag_new (), *click = gtk_gesture_click_new ();
+
+  self->toolbox_drag_start = -1;
+  self->toolbox_edge = gtk_drawing_area_new ();
+  gtk_widget_set_size_request (self->toolbox_edge, 6, -1);
+  gtk_widget_set_halign (self->toolbox_edge, GTK_ALIGN_START);
+  gtk_widget_set_valign (self->toolbox_edge, GTK_ALIGN_FILL);
+  gtk_widget_set_cursor_from_name (self->toolbox_edge, "ew-resize");
+  gtk_gesture_single_set_button (GTK_GESTURE_SINGLE (drag), GDK_BUTTON_PRIMARY);      /* other buttons do nothing */
+  gtk_gesture_single_set_button (GTK_GESTURE_SINGLE (click), GDK_BUTTON_PRIMARY);
+  g_signal_connect (drag, "drag-update", G_CALLBACK (edge_drag_update), self);
+  g_signal_connect (drag, "drag-end", G_CALLBACK (edge_drag_end), self);
+  g_signal_connect (drag, "cancel", G_CALLBACK (edge_drag_cancel), self);
+  g_signal_connect (click, "pressed", G_CALLBACK (edge_pressed), self);
+  gtk_widget_add_controller (self->toolbox_edge, GTK_EVENT_CONTROLLER (drag));
+  gtk_widget_add_controller (self->toolbox_edge, GTK_EVENT_CONTROLLER (click));
+  gtk_overlay_add_overlay (self->canvas_overlay, self->toolbox_edge);
+  g_signal_connect (self, "realize", G_CALLBACK (on_window_realize), NULL);
 }
 
 /* Tool Box, Color Box and Status Bar toggle their panel. Like the other View actions, they do nothing while a dialog
@@ -2117,6 +2336,8 @@ magnifier_level_changed (GSimpleAction *action, GVariant *value, gpointer user_d
 }
 
 /* The line width and the fill style of the shape tools (REQ-0010-03): one state each, shared by every tool that shows it. */
+static void update_preset_part (EaselWindow *self);
+
 static void
 line_width_changed (GSimpleAction *action, GVariant *value, gpointer user_data)
 {
@@ -2128,6 +2349,7 @@ line_width_changed (GSimpleAction *action, GVariant *value, gpointer user_data)
     {
       g_simple_action_set_state (action, value);
       easel_canvas_set_shape_options (self->canvas, w, g_variant_get_int32 (style));
+      update_preset_part (self);
     }
 }
 
@@ -3865,6 +4087,23 @@ on_active_changed (EaselWindow *self)
 }
 
 /* What the canvas paints with follows the options panel (REQ-0006-03). */
+/* The status bar's part for the selected size preset, or none for a tool without sizes (REQ-0030-08). */
+static void
+update_preset_part (EaselWindow *self)
+{
+  g_auto (GStrv) names = easel_tool_options_size_names (self->tool);
+  g_autoptr (GVariant) width = g_action_group_get_action_state (G_ACTION_GROUP (self), "line-width");
+
+  if (names == NULL)
+    {
+      easel_status_bar_set_preset (self->status_bar, NULL, NULL);
+      return;
+    }
+  easel_status_bar_set_preset (self->status_bar,
+                               names[easel_tool_options_size_index (self->tool_options, self->tool, g_variant_get_int32 (width))],
+                               (const char *const *) names);
+}
+
 static void
 sync_canvas_options (EaselWindow *self)
 {
@@ -3874,6 +4113,7 @@ sync_canvas_options (EaselWindow *self)
   easel_canvas_set_selection_transparent (self->canvas, easel_tool_options_get_select_transparent (self->tool_options));
   easel_canvas_set_text_opaque (self->canvas, !easel_tool_options_get_text_transparent (self->tool_options));
   easel_status_bar_set_hint (self->status_bar, tool_hint (self->tool, easel_tool_options_get_transparent (self->tool_options)));
+  update_preset_part (self);
 }
 
 /* Pick Color (REQ-0007-08..10): the picked color is the foreground (primary button) or the background (secondary) at
@@ -4943,6 +5183,7 @@ easel_window_dispose (GObject *object)
   EaselWindow *self = EASEL_WINDOW (object);
 
   g_clear_handle_id (&self->card_idle, g_source_remove);
+  g_clear_handle_id (&self->toolbox_follow, g_source_remove);
   g_clear_handle_id (&self->frame_time_timer, g_source_remove);
   g_clear_handle_id (&self->help_error_timer, g_source_remove);
   self->help_dropped = TRUE;
@@ -5184,9 +5425,25 @@ easel_window_init (EaselWindow *self)
   /* The options panel sits below the tool buttons and shows only for the tools that have options. */
   self->tool_options = easel_tool_options_new ();
   easel_tool_options_set_start (self->tool_options, self->settings.brush, self->settings.airbrush, self->settings.eraser, self->settings.eraser_transparent);
-  gtk_box_append (GTK_BOX (self->tools_column), GTK_WIDGET (self->tool_options));
+  {
+    /* The panel asks for no width beyond its least: a long name wraps in the width the toolbox has instead of
+       widening it (REQ-0030-10). Nothing scrolls. */
+    GtkWidget *holder = gtk_scrolled_window_new ();
+
+    gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW (holder), GTK_POLICY_NEVER, GTK_POLICY_NEVER);
+    gtk_scrolled_window_set_propagate_natural_height (GTK_SCROLLED_WINDOW (holder), TRUE);
+    gtk_scrolled_window_set_child (GTK_SCROLLED_WINDOW (holder), GTK_WIDGET (self->tool_options));
+    gtk_box_append (GTK_BOX (self->tools_column), holder);
+  }
   g_signal_connect_swapped (self->tool_options, "preset-changed", G_CALLBACK (sync_canvas_options), self);
   g_signal_connect_object (self->canvas, "stroking-changed", G_CALLBACK (on_stroking_changed), self, G_CONNECT_SWAPPED);
+  /* The toolbox never shares the canvas area's space; its options keep their size, centered in a wider toolbox (REQ-0030-10). */
+  gtk_widget_set_hexpand (self->toolbox_panel, FALSE);
+  gtk_widget_set_halign (GTK_WIDGET (self->tool_options), GTK_ALIGN_CENTER);
+  gtk_widget_set_hexpand (self->tools_column, TRUE);             /* a wider toolbox: the column fills it, its line at the right */
+  make_toolbox_edge (self);
+  self->toolbox_kept = self->settings.toolbox_width;
+  apply_toolbox_width (self);
   set_panel_state (self, "show-toolbox", self->toolbox_panel, self->settings.show_toolbox);
   set_panel_state (self, "show-colorbox", GTK_WIDGET (self->palette_bar), self->settings.show_colorbox);
   set_panel_state (self, "show-statusbar", GTK_WIDGET (self->status_bar), self->settings.show_statusbar);

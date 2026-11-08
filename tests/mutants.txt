@@ -921,8 +921,10 @@ file: src/ui/window.c
 test: ui-0006
 --- find
   easel_status_bar_set_hint (self->status_bar, tool_hint (self->tool, easel_tool_options_get_transparent (self->tool_options)));
+  update_preset_part (self);
 }
 --- replace
+  update_preset_part (self);
 }
 
 === REQ-0006-17 the Airbrush shows the Brush's hint
@@ -1594,10 +1596,10 @@ test: io-settings-file core-settings
 file: src/ui/tool-options.c
 test: ui-0010
 --- find
-  add_width_buttons (GTK_BOX (box));
+  add_width_buttons (GTK_BOX (box), width_labels);
   return box;
 --- replace
-  add_width_buttons (GTK_BOX (box));
+  add_width_buttons (GTK_BOX (box), width_labels);
   if (with_fill_styles)
     for (GtkWidget *c = gtk_widget_get_last_child (box); c != NULL; c = gtk_widget_get_prev_sibling (c))
       if (GTK_IS_TOGGLE_BUTTON (c))
@@ -12009,3 +12011,37 @@ test: core-cursor
   return (2 * h + 1) * size / 48;   /* at most 47 * size / 48, so inside the image */
 --- replace
   return 2 * h * size / 48;
+
+=== REQ-0030-12 a toolbox width past the limit is kept as it is
+file: src/core/settings.c
+test: core-settings
+--- find
+  return v > EASEL_TOOLBOX_WIDTH_MAX ? EASEL_TOOLBOX_WIDTH_MAX : (int) v;
+--- replace
+  return (int) v;
+
+=== REQ-0030-12 a negative toolbox width is read as its number
+file: src/core/settings.c
+test: core-settings
+--- find
+  if (negative)
+    return 0;                                     /* below the lower limit: that limit, the default */
+--- replace
+  if (negative)
+    return (int) v;
+
+=== REQ-0030-12 a toolbox width with text after its digits is read as the digits
+file: src/core/settings.c
+test: core-settings
+--- find
+        return 0;                                 /* not a whole number: the default */
+--- replace
+        break;
+
+=== REQ-0030-12 the toolbox width key is not read
+file: src/core/settings.c
+test: core-settings
+--- find
+        s->toolbox_width = easel_settings_toolbox_width (value.p, value.n);
+--- replace
+        s->toolbox_width = 0;

@@ -89,6 +89,10 @@
                     <property name="orientation">vertical</property>
                     <child>
                   <object class="GtkGrid" id="toolbox">
+                    <property name="halign">center</property>
+                    <style>
+                      <class name="tool-grid"/>
+                    </style>
                     <property name="row-spacing">6</property>
                     <property name="column-spacing">6</property>
                     <property name="margin-start">6</property>

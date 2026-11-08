@@ -52,3 +52,36 @@ scrolledwindow.workspace > viewport,
   box-shadow: inset 0 0 0 3px black;
 }
 
+
+/* A well of tool options (REQ-0030-01, -16, -17): a sunken box in the view's color, cells without outlines, the chosen
+   cell tinted with the desktop's accent color and outlined in it, in light and dark style alike. */
+.options-well {
+  background-color: var(--view-bg-color);
+  border: 1px solid var(--border-color);
+}
+
+.options-well button.cell {
+  border-radius: 4px;
+  padding: 2px 0;           /* no side padding: three 24 px discs and "16x" fit the toolbox's width (REQ-0008-07) */
+  min-width: 0;
+  min-height: 0;
+  background: none;
+  box-shadow: none;
+}
+
+.options-well button.cell:hover {
+  background-color: color-mix(in srgb, currentColor 7%, transparent);
+}
+
+/* The chosen tool and the chosen option are shown alike (REQ-0030-17): the accent tint and a 1-pixel accent outline. */
+.options-well button.cell:checked,
+.tool-grid button:checked {
+  /* mixed with the window's color, not see-through, so the toolbox and the wells show the very same tint */
+  background-color: color-mix(in srgb, var(--accent-bg-color) 28%, var(--window-bg-color));
+  box-shadow: inset 0 0 0 1px var(--accent-color);
+}
+
+.options-well separator {
+  background-color: var(--border-color);
+  margin: 0 3px;
+}

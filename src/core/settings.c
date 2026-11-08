@@ -169,6 +169,7 @@ easel_settings_defaults (EaselSettings *s)
   s->tint = EASEL_TINT_DEFAULT;
   strcpy (s->language, "auto");
   s->frame_time = false;
+  s->toolbox_width = 0;
   s->brush = 1;
   s->airbrush = 1;
   s->eraser = 2;
@@ -358,6 +359,8 @@ apply (EaselSpan section, EaselSpan key, EaselSpan value, void *data)
         s->show_statusbar = true;
       else if (easel_span_is (key, "frame-time") && !parse_on_off (value, &s->frame_time))
         s->frame_time = false;
+      else if (easel_span_is (key, "toolbox-width"))
+        s->toolbox_width = easel_settings_toolbox_width (value.p, value.n);
       else if (easel_span_is (key, "workspace-color"))
         s->has_workspace_color = parse_rgb (value, &s->workspace_color);
       else if (easel_span_is (key, "workspace-color-dark"))
@@ -388,6 +391,32 @@ apply (EaselSpan section, EaselSpan key, EaselSpan value, void *data)
             s->grid_size = EASEL_GRID_SIZE_DEFAULT;
         }
     }
+}
+
+int
+easel_settings_toolbox_width (const char *text, size_t len)
+{
+  long v = 0;
+  size_t i = 0;
+  bool negative = false;
+
+  if (len > 0 && (text[0] == '-' || text[0] == '+'))
+    {
+      negative = text[0] == '-';
+      i = 1;
+    }
+  if (i == len)
+    return 0;                                     /* empty, or a sign alone */
+  for (; i < len; i++)
+    {
+      if (text[i] < '0' || text[i] > '9')
+        return 0;                                 /* not a whole number: the default */
+      if (v <= EASEL_TOOLBOX_WIDTH_MAX)           /* past the limit it stays past it, never overflows */
+        v = v * 10 + (text[i] - '0');
+    }
+  if (negative)
+    return 0;                                     /* below the lower limit: that limit, the default */
+  return v > EASEL_TOOLBOX_WIDTH_MAX ? EASEL_TOOLBOX_WIDTH_MAX : (int) v;
 }
 
 void

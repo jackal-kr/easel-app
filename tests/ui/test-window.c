@@ -1336,11 +1336,20 @@ as11_click_sequences (void)
   g_assert_false (easel_window_is_choosing_color (win));
   g_assert_cmphex (easel_window_get_foreground (win), ==, 0xFFFFFF00u);
 
-  /* A secondary double-click only sets the background. */
+  /* A secondary double-click sets the background and opens the chooser; confirming edits the swatch and the
+     background, the foreground stays (REQ-0003-11, -12, as changed 2026-11-08). */
   easel_palette_bar_press (bar, 21, 3, 1);
   easel_palette_bar_press (bar, 21, 3, 2);
-  g_assert_false (easel_window_is_choosing_color (win));
   g_assert_cmphex (easel_window_get_background (win), ==, 0xFF0000FFu);
+  g_assert_true (easel_window_is_choosing_color (win));
+  {
+    const uint32_t c = 0x8000FF00u;     /* #00FF0080 */
+
+    choose (win, &c);
+    g_assert_cmphex (easel_swatch_get_color (easel_palette_bar_get_swatch (bar, 21)), ==, c);
+    g_assert_cmphex (easel_window_get_background (win), ==, c);
+    g_assert_cmphex (easel_window_get_foreground (win), ==, 0xFFFFFF00u);
+  }
 
   /* A third quick click is a single click again. */
   easel_palette_bar_press (bar, 19, 1, 1);
@@ -1350,6 +1359,7 @@ as11_click_sequences (void)
   g_assert_false (easel_window_is_choosing_color (win));
   g_assert_cmphex (easel_window_get_foreground (win), ==, 0xFF00FF00u);
   close_windows ();
+  remove_palette_file ();
 }
 
 static void
@@ -3486,6 +3496,13 @@ static const char *const brush_tips[12] = {
   "Circle, 7 pixels", "Circle, 4 pixels", "Circle, 1 pixel", "Square, 8 pixels", "Square, 5 pixels", "Square, 2 pixels",
   "Slash, 8 pixels", "Slash, 5 pixels", "Slash, 2 pixels", "Backslash, 8 pixels", "Backslash, 5 pixels", "Backslash, 2 pixels",
 };
+/* The Brush's presets in 0030's well (REQ-0030-01), a row per shape, three across; the one that is on, as an index of brush_tips. */
+static int
+check_brush_presets (EaselWindow *win)
+{
+  return check_presets (win, brush_tips, 12, 3);
+}
+
 static const char *const airbrush_tips[3] = { "Spray, 9 pixels", "Spray, 16 pixels", "Spray, 24 pixels" };
 static const char *const eraser_tips[4] = { "Eraser, 4 pixels", "Eraser, 6 pixels", "Eraser, 8 pixels", "Eraser, 10 pixels" };
 static const char *const eraser_mode_tips[2] = { "Opaque: erase to the background color", "Transparent: erase to transparency" };
@@ -3506,44 +3523,34 @@ as1_options_panel (void)
   g_assert_false (on_screen (win, "Circle, 4 pixels"));
   assert_no_options_shown (win);
 
-  /* The Brush: twelve presets in two columns, the 4-pixel circle on. */
+  /* The Brush: twelve presets in two columns, the 4-pixel circle on; read row by row in 0030's layout (REQ-0030-01): the
+     circles and squares down the left column, "/" and "\" down the right. */
   use_tool (win, "brush");
   wait_for_layout (win);
-  g_assert_cmpint (check_presets (win, brush_tips, 12, 2), ==, 1);
+  g_assert_cmpint (check_brush_presets (win), ==, 1);
   brush_default = find_by_tooltip (GTK_WIDGET (win), "Circle, 4 pixels");
   g_assert_true (gtk_toggle_button_get_active (GTK_TOGGLE_BUTTON (brush_default)));
 
   /* The Airbrush: three, the 16 on. */
   use_tool (win, "airbrush");
   wait_for_layout (win);
-  g_assert_cmpint (check_presets (win, airbrush_tips, 3, 2), ==, 1);
+  g_assert_cmpint (check_presets (win, airbrush_tips, 3, 3), ==, 1);
   g_assert_false (on_screen (win, "Circle, 4 pixels"));
 
   /* The Eraser: four sizes (8 on), a line, and the two modes (Opaque on). */
   use_tool (win, "eraser");
   wait_for_layout (win);
-  g_assert_cmpint (check_presets (win, eraser_tips, 4, 2), ==, 2);
-  g_assert_cmpint (check_presets (win, eraser_mode_tips, 2, 1), ==, 0);
+  g_assert_cmpint (check_presets (win, eraser_tips, 4, 4), ==, 2);
+  g_assert_cmpint (check_presets (win, eraser_mode_tips, 2, 2), ==, 0);
   {
     GtkWidget *last_size = find_by_tooltip (GTK_WIDGET (win), "Eraser, 10 pixels");
     GtkWidget *opaque = find_by_tooltip (GTK_WIDGET (win), eraser_mode_tips[0]);
     graphene_rect_t rs = bounds_in (last_size, GTK_WIDGET (win)), ro = bounds_in (opaque, GTK_WIDGET (win));
 
     g_assert_cmpfloat (ro.origin.y, >, rs.origin.y + rs.size.height);
-    /* A separator, drawn on screen, lies between the last size and the modes. */
-    {
-      gboolean line = FALSE;
-
-      for (GtkWidget *w = gtk_widget_get_first_child (gtk_widget_get_ancestor (opaque, GTK_TYPE_BOX)); w;
-           w = gtk_widget_get_next_sibling (w))
-        if (GTK_IS_SEPARATOR (w) && gtk_widget_get_mapped (w))
-          {
-            graphene_rect_t rl = bounds_in (w, GTK_WIDGET (win));
-
-            line = line || (rl.origin.y > rs.origin.y + rs.size.height - 1 && rl.origin.y < ro.origin.y + 1);
-          }
-      g_assert_true (line);
-    }
+    /* The modes stand in a well of their own below the sizes' well (REQ-0030-04). */
+    g_assert_true (gtk_widget_get_ancestor (opaque, GTK_TYPE_GRID)
+                   != gtk_widget_get_ancestor (find_by_tooltip (GTK_WIDGET (win), "Eraser, 10 pixels"), GTK_TYPE_GRID));
   }
 
   /* Hiding the Tool Box hides the options with it, showing it brings them back. */
@@ -3552,7 +3559,7 @@ as1_options_panel (void)
   g_assert_false (on_screen (win, "Eraser, 8 pixels"));
   g_action_group_change_action_state (G_ACTION_GROUP (win), "show-toolbox", g_variant_new_boolean (TRUE));
   wait_for_layout (win);
-  g_assert_cmpint (check_presets (win, eraser_tips, 4, 2), ==, 2);
+  g_assert_cmpint (check_presets (win, eraser_tips, 4, 4), ==, 2);
 
   /* Back to Pan: gone again. */
   use_tool (win, "pan");
@@ -3572,13 +3579,13 @@ as2_presets_kept (void)
   use_tool (win, "brush");
   wait_for_layout (win);
   g_signal_emit_by_name (find_by_tooltip (GTK_WIDGET (win), "Slash, 5 pixels"), "clicked");
-  g_assert_cmpint (check_presets (win, brush_tips, 12, 2), ==, 7);
+  g_assert_cmpint (check_brush_presets (win), ==, 7);
   use_tool (win, "eraser");
   wait_for_layout (win);
   g_signal_emit_by_name (find_by_tooltip (GTK_WIDGET (win), "Eraser, 4 pixels"), "clicked");
   g_signal_emit_by_name (find_by_tooltip (GTK_WIDGET (win), eraser_mode_tips[1]), "clicked");
-  g_assert_cmpint (check_presets (win, eraser_tips, 4, 2), ==, 0);
-  g_assert_cmpint (check_presets (win, eraser_mode_tips, 2, 1), ==, 1);
+  g_assert_cmpint (check_presets (win, eraser_tips, 4, 4), ==, 0);
+  g_assert_cmpint (check_presets (win, eraser_mode_tips, 2, 2), ==, 1);
 
   /* What the canvas will use: the footprint and the mode of each tool, kept apart. */
   {
@@ -3599,14 +3606,14 @@ as2_presets_kept (void)
   g_signal_emit_by_name (find_by_tooltip (GTK_WIDGET (win), "Spray, 24 pixels"), "clicked");
   use_tool (win, "brush");
   wait_for_layout (win);
-  g_assert_cmpint (check_presets (win, brush_tips, 12, 2), ==, 7);
+  g_assert_cmpint (check_brush_presets (win), ==, 7);
   use_tool (win, "eraser");
   wait_for_layout (win);
-  g_assert_cmpint (check_presets (win, eraser_tips, 4, 2), ==, 0);
-  g_assert_cmpint (check_presets (win, eraser_mode_tips, 2, 1), ==, 1);
+  g_assert_cmpint (check_presets (win, eraser_tips, 4, 4), ==, 0);
+  g_assert_cmpint (check_presets (win, eraser_mode_tips, 2, 2), ==, 1);
   use_tool (win, "airbrush");
   wait_for_layout (win);
-  g_assert_cmpint (check_presets (win, airbrush_tips, 3, 2), ==, 2);
+  g_assert_cmpint (check_presets (win, airbrush_tips, 3, 3), ==, 2);
 
   /* A new window (a restart) has the defaults again. */
   close_windows ();
@@ -3614,11 +3621,11 @@ as2_presets_kept (void)
   wait_for_layout (win);
   use_tool (win, "brush");
   wait_for_layout (win);
-  g_assert_cmpint (check_presets (win, brush_tips, 12, 2), ==, 1);
+  g_assert_cmpint (check_brush_presets (win), ==, 1);
   use_tool (win, "eraser");
   wait_for_layout (win);
-  g_assert_cmpint (check_presets (win, eraser_tips, 4, 2), ==, 2);
-  g_assert_cmpint (check_presets (win, eraser_mode_tips, 2, 1), ==, 0);
+  g_assert_cmpint (check_presets (win, eraser_tips, 4, 4), ==, 2);
+  g_assert_cmpint (check_presets (win, eraser_mode_tips, 2, 2), ==, 0);
   close_windows ();
 }
 
@@ -5621,14 +5628,14 @@ as2_magnifier_level_kept (void)
   use_tool (win, "magnifier");
   wait_for_layout (win);
   g_assert_true (gtk_widget_get_mapped (GTK_WIDGET (options)));
-  g_assert_cmpint (check_presets (win, magnifier_tips, 6, 2), ==, 1);        /* 1x 2x / 4x 6x / 8x 16x; 2x is on */
+  g_assert_cmpint (check_presets (win, magnifier_tips, 6, 3), ==, 1);        /* 1x 2x 4x / 6x 8x 16x (REQ-0030-16); 2x is on */
   for (int i = 0; i < 6; i++)
     g_assert_cmpstr (gtk_button_get_label (GTK_BUTTON (find_by_tooltip (GTK_WIDGET (win), magnifier_tips[i]))), ==, labels[i]);
   g_assert_false (on_screen (win, "Circle, 4 pixels"));                      /* only its own group */
 
   choose_preset (win, "800 %");
   g_assert_cmpint (easel_window_get_zoom (win), ==, 100);                    /* choosing zooms nothing */
-  g_assert_cmpint (check_presets (win, magnifier_tips, 6, 2), ==, 4);
+  g_assert_cmpint (check_presets (win, magnifier_tips, 6, 3), ==, 4);
   g_assert_cmpint (magnifier_level (win), ==, 800);
   choose_preset (win, "100 %");
   g_assert_cmpint (easel_window_get_zoom (win), ==, 100);
@@ -5648,7 +5655,7 @@ as2_magnifier_level_kept (void)
   g_assert_false (on_screen (win, "800 %"));
   use_tool (win, "magnifier");
   wait_for_layout (win);
-  g_assert_cmpint (check_presets (win, magnifier_tips, 6, 2), ==, 4);        /* kept */
+  g_assert_cmpint (check_presets (win, magnifier_tips, 6, 3), ==, 4);        /* kept */
   g_assert_cmpint (magnifier_level (win), ==, 800);
   close_windows ();
 }
@@ -6646,39 +6653,39 @@ as10_numpad_steps (void)
   /* The Brush: 4 -> 7, the end stays, 7 -> 4 -> 1, the end stays. */
   use_tool (win, "brush");
   wait_for_layout (win);
-  g_assert_cmpint (check_presets (win, brush_tips, 12, 2), ==, 1);
+  g_assert_cmpint (check_brush_presets (win), ==, 1);
   g_action_group_activate_action (G_ACTION_GROUP (win), "preset-larger", NULL);
-  g_assert_cmpint (check_presets (win, brush_tips, 12, 2), ==, 0);
+  g_assert_cmpint (check_brush_presets (win), ==, 0);
   g_action_group_activate_action (G_ACTION_GROUP (win), "preset-larger", NULL);
-  g_assert_cmpint (check_presets (win, brush_tips, 12, 2), ==, 0);
+  g_assert_cmpint (check_brush_presets (win), ==, 0);
   g_action_group_activate_action (G_ACTION_GROUP (win), "preset-smaller", NULL);
   g_action_group_activate_action (G_ACTION_GROUP (win), "preset-smaller", NULL);
-  g_assert_cmpint (check_presets (win, brush_tips, 12, 2), ==, 2);
+  g_assert_cmpint (check_brush_presets (win), ==, 2);
   g_action_group_activate_action (G_ACTION_GROUP (win), "preset-smaller", NULL);
-  g_assert_cmpint (check_presets (win, brush_tips, 12, 2), ==, 2);
+  g_assert_cmpint (check_brush_presets (win), ==, 2);
   /* Within the shape: the slashes go 8, 5, 2. */
   choose_preset (win, "Slash, 5 pixels");
   g_action_group_activate_action (G_ACTION_GROUP (win), "preset-larger", NULL);
-  g_assert_cmpint (check_presets (win, brush_tips, 12, 2), ==, 6);
+  g_assert_cmpint (check_brush_presets (win), ==, 6);
 
   /* The Airbrush: 16 -> 24, the end stays, then 16 -> 9. */
   use_tool (win, "airbrush");
   wait_for_layout (win);
   g_action_group_activate_action (G_ACTION_GROUP (win), "preset-larger", NULL);
-  g_assert_cmpint (check_presets (win, airbrush_tips, 3, 2), ==, 2);
+  g_assert_cmpint (check_presets (win, airbrush_tips, 3, 3), ==, 2);
   g_action_group_activate_action (G_ACTION_GROUP (win), "preset-larger", NULL);
-  g_assert_cmpint (check_presets (win, airbrush_tips, 3, 2), ==, 2);
+  g_assert_cmpint (check_presets (win, airbrush_tips, 3, 3), ==, 2);
   g_action_group_activate_action (G_ACTION_GROUP (win), "preset-smaller", NULL);
   g_action_group_activate_action (G_ACTION_GROUP (win), "preset-smaller", NULL);
-  g_assert_cmpint (check_presets (win, airbrush_tips, 3, 2), ==, 0);
+  g_assert_cmpint (check_presets (win, airbrush_tips, 3, 3), ==, 0);
 
   /* The Eraser keeps its mode: 8 Transparent -> 10 Transparent. */
   use_tool (win, "eraser");
   wait_for_layout (win);
   choose_preset (win, eraser_mode_tips[1]);
   g_action_group_activate_action (G_ACTION_GROUP (win), "preset-larger", NULL);
-  g_assert_cmpint (check_presets (win, eraser_tips, 4, 2), ==, 3);
-  g_assert_cmpint (check_presets (win, eraser_mode_tips, 2, 1), ==, 1);
+  g_assert_cmpint (check_presets (win, eraser_tips, 4, 4), ==, 3);
+  g_assert_cmpint (check_presets (win, eraser_mode_tips, 2, 2), ==, 1);
   g_assert_true (easel_tool_options_get_transparent (easel_window_get_tool_options (win)));
 
   /* Not an edit (REQ-0006-15). */
@@ -6689,9 +6696,9 @@ as10_numpad_steps (void)
   easel_canvas_press (canvas, 1, 10.5, 10.5);
   g_action_group_activate_action (G_ACTION_GROUP (win), "preset-smaller", NULL);
   easel_canvas_release (canvas, 1);
-  g_assert_cmpint (check_presets (win, eraser_tips, 4, 2), ==, 3);
+  g_assert_cmpint (check_presets (win, eraser_tips, 4, 4), ==, 3);
   g_action_group_activate_action (G_ACTION_GROUP (win), "preset-smaller", NULL);
-  g_assert_cmpint (check_presets (win, eraser_tips, 4, 2), ==, 2);
+  g_assert_cmpint (check_presets (win, eraser_tips, 4, 4), ==, 2);
 
   /* Pencil and Pan do nothing, and the presets of the others are kept. */
   use_tool (win, "pencil");
@@ -6700,13 +6707,13 @@ as10_numpad_steps (void)
   g_action_group_activate_action (G_ACTION_GROUP (win), "preset-larger", NULL);
   use_tool (win, "eraser");
   wait_for_layout (win);
-  g_assert_cmpint (check_presets (win, eraser_tips, 4, 2), ==, 2);
+  g_assert_cmpint (check_presets (win, eraser_tips, 4, 4), ==, 2);
 
   /* The color chooser open: nothing happens. */
   easel_palette_bar_press_indicator (easel_window_get_palette_bar (win), TRUE);
   g_assert_true (easel_window_is_choosing_color (win));
   g_action_group_activate_action (G_ACTION_GROUP (win), "preset-larger", NULL);
-  g_assert_cmpint (check_presets (win, eraser_tips, 4, 2), ==, 2);
+  g_assert_cmpint (check_presets (win, eraser_tips, 4, 4), ==, 2);
   easel_window_finish_color_choice (win, NULL);
   close_windows ();
 }
@@ -6951,33 +6958,6 @@ assert_options_fit (EaselWindow *win, const char *const *tips, int n)
     }
 }
 
-/* The Magnifier's level buttons are laid out as the tool buttons are (REQ-0008-07): 1x, 4x and 8x under Pan, 2x, 6x and 16x
-   under the Magnifier tool button, as wide as a tool button, their labels at the window's own text size. */
-static void
-assert_lens_like_tool_buttons (EaselWindow *win)
-{
-  static const char *const left[] = { "100 %", "400 %", "800 %" }, *const right[] = { "200 %", "600 %", "1600 %" };
-  GtkWidget *panel = toolbox_panel (win);
-  graphene_rect_t pan = bounds_in (find_by_tooltip (GTK_WIDGET (win), "Pan"), panel);
-  graphene_rect_t mag = bounds_in (find_by_tooltip (GTK_WIDGET (win), "Magnifier"), panel);
-  int window_size = pango_font_description_get_size (pango_context_get_font_description (
-                      gtk_widget_get_pango_context (GTK_WIDGET (win))));
-
-  use_tool (win, "magnifier");
-  wait_for_layout (win);
-  for (guint i = 0; i < G_N_ELEMENTS (left) + G_N_ELEMENTS (right); i++)
-    {
-      gboolean on_left = i < G_N_ELEMENTS (left);
-      GtkWidget *b = find_by_tooltip (GTK_WIDGET (win), on_left ? left[i] : right[i - G_N_ELEMENTS (left)]);
-      graphene_rect_t r = bounds_in (b, panel);
-      GtkWidget *label = gtk_button_get_child (GTK_BUTTON (b));
-
-      g_assert_cmpfloat_with_epsilon (r.origin.x, on_left ? pan.origin.x : mag.origin.x, 1.0);
-      g_assert_cmpfloat_with_epsilon (r.size.width, pan.size.width, 1.0);
-      g_assert_cmpint (pango_font_description_get_size (pango_context_get_font_description (gtk_widget_get_pango_context (label))),
-                       ==, window_size);
-    }
-}
 
 /* AS-6 (REQ-0008-07): the toolbox has the same width for every tool, 87 px at the default text size, and at 150 % and
    200 % text the same for every tool at each size; every preset and level button is fully shown, no label cut. */
@@ -7025,7 +7005,6 @@ as6_toolbox_width_is_the_same_for_every_tool (void)
       if (pct == 100)
         {
           g_assert_cmpint (width, ==, 87);
-          assert_lens_like_tool_buttons (win);
         }
     }
   g_object_set (st, "gtk-xft-dpi", dpi, NULL);
@@ -11324,14 +11303,16 @@ as1_select_toolbox_options (void)
   easel_canvas_pointer_at (canvas, hr.origin.x + hr.size.width / 2, hr.origin.y + hr.size.height / 2);
   g_assert_cmpstr (canvas_cursor_kind (canvas), ==, "nwse-resize");
   easel_canvas_pointer_at (canvas, 10.5, 10.5);
-  /* The two mode buttons, Opaque chosen at start, one above the other. */
+  /* The two mode buttons, Opaque chosen at start, side by side (REQ-0030-16). */
   opaque = find_mapped_by_tooltip (GTK_WIDGET (win), "Opaque: keep background color");
   transparent = find_mapped_by_tooltip (GTK_WIDGET (win), "Transparent: moving or clearing leaves a transparent hole");
   g_assert_nonnull (opaque);
   g_assert_nonnull (transparent);
   g_assert_true (gtk_toggle_button_get_active (GTK_TOGGLE_BUTTON (opaque)));
   g_assert_false (gtk_toggle_button_get_active (GTK_TOGGLE_BUTTON (transparent)));
-  g_assert_cmpfloat (bounds_in (transparent, GTK_WIDGET (win)).origin.y, >, bounds_in (opaque, GTK_WIDGET (win)).origin.y + 1);
+  /* side by side in one well (REQ-0030-16) */
+  g_assert_cmpfloat_with_epsilon (bounds_in (transparent, GTK_WIDGET (win)).origin.y, bounds_in (opaque, GTK_WIDGET (win)).origin.y, 1.0);
+  g_assert_cmpfloat (bounds_in (transparent, GTK_WIDGET (win)).origin.x, >, bounds_in (opaque, GTK_WIDGET (win)).origin.x + 1);
   /* The mode is the selection's own: Transparent here leaves the Eraser Opaque, and is kept when Select comes back. */
   g_signal_emit_by_name (transparent, "clicked");
   g_assert_true (gtk_toggle_button_get_active (GTK_TOGGLE_BUTTON (transparent)));
@@ -13164,13 +13145,15 @@ as1_free_select_toolbox_options (void)
   easel_canvas_pointer_at (canvas, hr.origin.x + hr.size.width / 2, hr.origin.y + hr.size.height / 2);
   g_assert_cmpstr (canvas_cursor_kind (canvas), ==, "nwse-resize");
   easel_canvas_pointer_at (canvas, 10.5, 10.5);
-  /* The two mode buttons of Select, Opaque chosen, one above the other; Transparent chosen here is kept with Select. */
+  /* The two mode buttons of Select, Opaque chosen, side by side; Transparent chosen here is kept with Select. */
   opaque = find_mapped_by_tooltip (GTK_WIDGET (win), "Opaque: keep background color");
   transparent = find_mapped_by_tooltip (GTK_WIDGET (win), "Transparent: moving or clearing leaves a transparent hole");
   g_assert_nonnull (opaque);
   g_assert_nonnull (transparent);
   g_assert_true (gtk_toggle_button_get_active (GTK_TOGGLE_BUTTON (opaque)));
-  g_assert_cmpfloat (bounds_in (transparent, GTK_WIDGET (win)).origin.y, >, bounds_in (opaque, GTK_WIDGET (win)).origin.y + 1);
+  /* side by side in one well (REQ-0030-16) */
+  g_assert_cmpfloat_with_epsilon (bounds_in (transparent, GTK_WIDGET (win)).origin.y, bounds_in (opaque, GTK_WIDGET (win)).origin.y, 1.0);
+  g_assert_cmpfloat (bounds_in (transparent, GTK_WIDGET (win)).origin.x, >, bounds_in (opaque, GTK_WIDGET (win)).origin.x + 1);
   g_signal_emit_by_name (transparent, "clicked");
   use_tool (win, "select");
   wait_for_layout (win);
@@ -22141,7 +22124,9 @@ as1_text_tool_and_options (void)
   g_assert_null (find_mapped_by_tooltip (GTK_WIDGET (win), "Opaque: keep background color"));
   g_assert_true (gtk_toggle_button_get_active (GTK_TOGGLE_BUTTON (transparent)));
   g_assert_false (gtk_toggle_button_get_active (GTK_TOGGLE_BUTTON (opaque)));
-  g_assert_cmpfloat (bounds_in (transparent, GTK_WIDGET (win)).origin.y, >, bounds_in (opaque, GTK_WIDGET (win)).origin.y + 1);
+  /* side by side in one well (REQ-0030-16) */
+  g_assert_cmpfloat_with_epsilon (bounds_in (transparent, GTK_WIDGET (win)).origin.y, bounds_in (opaque, GTK_WIDGET (win)).origin.y, 1.0);
+  g_assert_cmpfloat (bounds_in (transparent, GTK_WIDGET (win)).origin.x, >, bounds_in (opaque, GTK_WIDGET (win)).origin.x + 1);
   g_assert_cmpint (count_mapped_toggles_in_options (win), ==, 2);
   /* Text's own mode: Opaque here leaves Select's as it was */
   g_signal_emit_by_name (opaque, "clicked");
@@ -34168,6 +34153,655 @@ as5_icons_at_16 (void)
   close_windows ();
 }
 
+/* 0030: the mapped widget with this tooltip (the same tooltip can stand on a hidden page too), or NULL. */
+static GtkWidget *
+find_shown_by_tooltip (GtkWidget *root, const char *text)
+{
+  for (GtkWidget *child = gtk_widget_get_first_child (root); child; child = gtk_widget_get_next_sibling (child))
+    {
+      GtkWidget *found;
+
+      if (g_strcmp0 (gtk_widget_get_tooltip_text (child), text) == 0 && gtk_widget_get_mapped (child))
+        return child;
+      found = find_shown_by_tooltip (child, text);
+      if (found != NULL)
+        return found;
+    }
+  return NULL;
+}
+
+/* 0030: the first GtkDrawingArea inside a widget (a preset's swatch). */
+static GtkWidget *
+preset_area_of (GtkWidget *w)
+{
+  for (GtkWidget *c = gtk_widget_get_first_child (w); c; c = gtk_widget_get_next_sibling (c))
+    {
+      GtkWidget *found = GTK_IS_DRAWING_AREA (c) ? c : preset_area_of (c);
+
+      if (found != NULL)
+        return found;
+    }
+  return NULL;
+}
+
+/* 0030: the text of the first GtkLabel inside a widget, or NULL. */
+static const char *
+label_in (GtkWidget *w)
+{
+  for (GtkWidget *c = gtk_widget_get_first_child (w); c; c = gtk_widget_get_next_sibling (c))
+    {
+      const char *found = GTK_IS_LABEL (c) ? gtk_label_get_text (GTK_LABEL (c)) : label_in (c);
+
+      if (found != NULL)
+        return found;
+    }
+  return NULL;
+}
+
+/* REQ-0030-02, -03, -07: the pixels of a cell in the text color (opaque), as drawn in the window, are exactly the
+   footprint (spray: only its pixels whose x + y is even), each picture pixel a scale x scale block. */
+static void
+assert_swatch (EaselWindow *win, const uint32_t *px, int w, int h, const char *tip, EaselFootprint f, gboolean spray)
+{
+  GtkWidget *button = find_by_tooltip (GTK_WIDGET (win), tip), *area;
+  double scale = easel_canvas_get_scale (easel_window_get_canvas (win));
+  graphene_rect_t r;
+  int x0, y0, x1, y1, minx = G_MAXINT, miny = G_MAXINT, black = 0, want = 0;
+  GdkRGBA text;
+  uint32_t ink;
+
+  g_assert_nonnull (button);
+  area = preset_area_of (button);
+  g_assert_nonnull (area);
+  gtk_widget_get_color (area, &text);
+  ink = 0xFF000000u | (uint32_t) lround (text.red * 255) << 16 | (uint32_t) lround (text.green * 255) << 8
+        | (uint32_t) lround (text.blue * 255);
+  g_assert_true (gtk_widget_compute_bounds (area, GTK_WIDGET (win), &r));
+  x0 = (int) (r.origin.x * scale); y0 = (int) (r.origin.y * scale);
+  x1 = MIN (w, (int) ((r.origin.x + r.size.width) * scale)); y1 = MIN (h, (int) ((r.origin.y + r.size.height) * scale));
+  for (int y = y0; y < y1; y++)
+    for (int x = x0; x < x1; x++)
+      {
+        uint32_t c = px[y * w + x];
+
+        if (c == ink)
+          {
+            black++; minx = MIN (minx, x); miny = MIN (miny, y);
+          }
+      }
+  for (int row = 0; row < f.size; row++)
+    for (int col = 0; col < f.size; col++)
+      if (easel_footprint_has (f, col, row) && (!spray || (col + row) % 2 == 0))
+        want++;
+  g_test_message ("%s: %d device pixels of the text color #%06X, %d wanted", tip, black, ink & 0xFFFFFF, (int) (want * scale * scale));
+  g_assert_cmpint (black, ==, (int) (want * scale * scale));
+  /* The footprint's top-left set pixel is the origin of the black pixels' box: each black pixel is one of the mask's. */
+  {
+    int fminx = f.size, fminy = f.size;
+
+    for (int row = 0; row < f.size; row++)
+      for (int col = 0; col < f.size; col++)
+        if (easel_footprint_has (f, col, row) && (!spray || (col + row) % 2 == 0))
+          {
+            fminx = MIN (fminx, col); fminy = MIN (fminy, row);
+          }
+    for (int y = y0; y < y1; y++)
+      for (int x = x0; x < x1; x++)
+        if (px[y * w + x] == ink)
+          {
+            int col = (int) ((x - minx) / scale) + fminx, row = (int) ((y - miny) / scale) + fminy;
+
+            g_assert_true (col < f.size && row < f.size && easel_footprint_has (f, col, row)
+                           && (!spray || (col + row) % 2 == 0));
+          }
+  }
+}
+
+/* AS-1 (REQ-0030-01, -02, -06, -17): the Brush's twelve in one well, a row per shape (circle, square, "/", "\\"), the three
+   sizes across from the largest; each cell is its footprint in the text color, in light and dark style; no number. */
+static void
+as1_brush_two_columns (void)
+{
+  EaselWindow *win = start_window ();
+  graphene_rect_t b[12];
+
+  wait_for_layout (win);
+  use_tool (win, "brush");
+  wait_for_layout (win);
+  for (int i = 0; i < 12; i++)
+    {
+      GtkWidget *button = find_by_tooltip (GTK_WIDGET (win), brush_tips[i]);
+      GtkWidget *label = NULL;
+
+      g_assert_nonnull (button);
+      g_assert_true (gtk_widget_get_mapped (button));
+      b[i] = bounds_in (button, GTK_WIDGET (win));
+      for (GtkWidget *c = gtk_widget_get_first_child (gtk_button_get_child (GTK_BUTTON (button))); c; c = gtk_widget_get_next_sibling (c))
+        if (GTK_IS_LABEL (c))
+          label = c;
+      g_assert_true (label == NULL || !gtk_widget_get_visible (label));         /* no number */
+    }
+  g_assert_true (gtk_toggle_button_get_active (GTK_TOGGLE_BUTTON (find_by_tooltip (GTK_WIDGET (win), "Circle, 4 pixels"))));
+  for (int i = 0; i < 12; i++)
+    {
+      if (i % 3 != 0)
+        {
+          /* the sizes of a shape in one row, from the largest */
+          g_assert_cmpfloat_with_epsilon (b[i].origin.y, b[i - 1].origin.y, 1.0);
+          g_assert_cmpfloat (b[i].origin.x, >, b[i - 1].origin.x + b[i - 1].size.width - 1);
+        }
+      else if (i > 0)
+        g_assert_cmpfloat (b[i].origin.y, >, b[i - 1].origin.y + b[i - 1].size.height - 1);    /* the next shape below */
+    }
+  for (int scheme = 0; scheme < 2; scheme++)
+    {
+      int w, h, cx, cy;
+      g_autofree uint32_t *px = NULL;
+
+      adw_style_manager_set_color_scheme (adw_style_manager_get_default (),
+                                          scheme ? ADW_COLOR_SCHEME_FORCE_DARK : ADW_COLOR_SCHEME_FORCE_LIGHT);
+      wait_for_layout (win);
+      px = render_pixels (win, &w, &h, &cx, &cy);
+      for (int i = 0; i < 12; i++)
+        assert_swatch (win, px, w, h, brush_tips[i], easel_brush_presets[i], FALSE);
+      {
+        /* The chosen tool and the chosen option show the same tint, just inside their outline (REQ-0030-17). */
+        double sc = easel_canvas_get_scale (easel_window_get_canvas (win));
+        graphene_rect_t tool = bounds_in (GTK_WIDGET (find_tool_button (GTK_WIDGET (win), "brush")), GTK_WIDGET (win));
+        graphene_rect_t cell = bounds_in (find_by_tooltip (GTK_WIDGET (win), "Circle, 4 pixels"), GTK_WIDGET (win));
+        uint32_t at_tool = px[(int) ((tool.origin.y + tool.size.height / 2) * sc) * w + (int) ((tool.origin.x + 3) * sc)];
+        uint32_t at_cell = px[(int) ((cell.origin.y + cell.size.height / 2) * sc) * w + (int) ((cell.origin.x + 3) * sc)];
+
+        /* the same tint, mixed with the window's color in both places */
+        g_test_message ("tint: tool #%08X, option #%08X", at_tool, at_cell);
+        for (int k = 0; k < 32; k += 8)
+          g_assert_cmpint (abs ((int) ((at_tool >> k) & 0xFF) - (int) ((at_cell >> k) & 0xFF)), <=, 1);
+      }
+    }
+  adw_style_manager_set_color_scheme (adw_style_manager_get_default (), ADW_COLOR_SCHEME_DEFAULT);
+  close_windows ();
+}
+
+/* The painted pixels of one click equal the footprint the button shows (AS-8): the swatch's black pixels are the footprint
+   (assert_swatch), and the pixels a click paints, from their top-left, are the same mask. */
+static void
+assert_click_paints_shown (EaselWindow *win, const char *tool, const char *tip, EaselFootprint f)
+{
+  const EaselImage *img;
+  uint32_t fg = g_str_equal (tool, "eraser") ? easel_window_get_background (win) : easel_window_get_foreground (win);
+  int w, h, cx, cy, minx = G_MAXINT, miny = G_MAXINT, n = 0, want = 0;
+  g_autofree uint32_t *px = NULL;
+
+  use_tool (win, tool);
+  wait_for_layout (win);
+  choose_preset (win, tip);
+  px = render_pixels (win, &w, &h, &cx, &cy);
+  assert_swatch (win, px, w, h, tip, f, FALSE);
+  stroke_with (win, 1, 30, 30, 30, 30);
+  img = easel_window_get_picture (win);
+  for (int y = 0; y < 60; y++)
+    for (int x = 0; x < 60; x++)
+      if (easel_image_get (img, x, y) == fg)
+        {
+          minx = MIN (minx, x); miny = MIN (miny, y); n++;
+        }
+  {
+    int fminx = f.size, fminy = f.size;
+
+    for (int row = 0; row < f.size; row++)
+      for (int col = 0; col < f.size; col++)
+        if (easel_footprint_has (f, col, row))
+          {
+            want++; fminx = MIN (fminx, col); fminy = MIN (fminy, row);
+          }
+    g_assert_cmpint (n, ==, want);
+    for (int y = 0; y < 60; y++)
+      for (int x = 0; x < 60; x++)
+        if (easel_image_get (img, x, y) == fg)
+          g_assert_true (easel_footprint_has (f, x - minx + fminx, y - miny + fminy));
+  }
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+}
+
+/* AS-8 (REQ-0030-15): for each Brush and Eraser size, one click paints exactly the footprint its button shows. The Eraser
+   paints with the background color, so it works on a picture cleared to the other color. */
+static void
+as8_shown_equals_painted (void)
+{
+  EaselWindow *win = start_window ();
+
+  wait_for_layout (win);
+  for (int i = 0; i < 12; i++)
+    assert_click_paints_shown (win, "brush", brush_tips[i], easel_brush_presets[i]);
+  /* The Eraser erases to the background: a black picture first, so its white is what it paints. */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "swap-colors", NULL);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "clear-image", NULL);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "swap-colors", NULL);
+  for (int i = 0; i < 4; i++)
+    assert_click_paints_shown (win, "eraser", eraser_tips[i], easel_eraser_presets[i]);
+  close_windows ();
+}
+
+/* AS-2 (REQ-0030-03, -04, -05, -06): the Airbrush's discs (9 and 16, then 24), sprayed, the number under each; the Eraser's
+   squares (4 and 6, then 8 and 10) with the number beside; the line widths with their number beside the line. */
+static void
+as2_other_sizes (void)
+{
+  EaselWindow *win = start_window ();
+  int w, h, cx, cy;
+
+  wait_for_layout (win);
+  use_tool (win, "airbrush");
+  wait_for_layout (win);
+  {
+    g_autofree uint32_t *px = render_pixels (win, &w, &h, &cx, &cy);
+    graphene_rect_t r[3];
+
+    for (int i = 0; i < 3; i++)
+      {
+        r[i] = bounds_in (find_by_tooltip (GTK_WIDGET (win), airbrush_tips[i]), GTK_WIDGET (win));
+        assert_swatch (win, px, w, h, airbrush_tips[i], easel_airbrush_presets[i], TRUE);
+      }
+    (void) r;
+    g_assert_cmpint (check_presets (win, airbrush_tips, 3, 3), ==, 1);              /* one row */
+  }
+  use_tool (win, "eraser");
+  wait_for_layout (win);
+  g_assert_cmpint (check_presets (win, eraser_tips, 4, 4), ==, 2);                  /* one row */
+  g_assert_cmpint (check_presets (win, eraser_mode_tips, 2, 2), ==, 0);             /* side by side */
+  {
+    g_autofree uint32_t *px = render_pixels (win, &w, &h, &cx, &cy);
+
+    for (int i = 0; i < 4; i++)
+      assert_swatch (win, px, w, h, eraser_tips[i], easel_eraser_presets[i], FALSE);
+  }
+  for (int t = 0; t < 2; t++)
+    {
+      use_tool (win, t ? "rectangle" : "line");
+      wait_for_layout (win);
+      for (int i = 0; i < 5; i++)
+        {
+          GtkWidget *b = find_shown_by_tooltip (GTK_WIDGET (win), width_tips[i]);
+          g_autofree char *number = g_strdup_printf ("%d px", i + 1);
+
+          g_assert_nonnull (b);
+          g_assert_true (gtk_widget_get_mapped (b));
+          g_assert_cmpstr (label_in (b), ==, number);
+        }
+    }
+  close_windows ();
+}
+
+/* AS-3 (REQ-0030-07): on a screen of scale 2, each picture pixel of a footprint, a spray disc and a line width is a sharp
+   2 x 2 block: the swatches as AS-1 and AS-2 check them (exact black blocks, scale x scale each), and the 3-pixel line is 6
+   device pixels of one color, with nothing partly covered at its edges. */
+static void
+as3_footprints_at_scale2 (void)
+{
+  EaselWindow *win;
+  int w, h, cx, cy;
+
+  if (!session_of_scale_2 ())
+    return;
+  win = start_window ();
+  wait_for_layout (win);
+  g_assert_cmpfloat (easel_canvas_get_scale (easel_window_get_canvas (win)), ==, 2.0);
+  use_tool (win, "airbrush");
+  wait_for_layout (win);
+  {
+    g_autofree uint32_t *px = render_pixels (win, &w, &h, &cx, &cy);
+
+    for (int i = 0; i < 3; i++)
+      assert_swatch (win, px, w, h, airbrush_tips[i], easel_airbrush_presets[i], TRUE);
+  }
+  use_tool (win, "line");
+  wait_for_layout (win);
+  {
+    g_autofree uint32_t *px = render_pixels (win, &w, &h, &cx, &cy);
+    GtkWidget *b = find_shown_by_tooltip (GTK_WIDGET (win), "3 pixels");
+    graphene_rect_t r = bounds_in (preset_area_of (b), GTK_WIDGET (win));
+    int x = (int) ((r.origin.x + r.size.width / 2) * 2), y0 = (int) (r.origin.y * 2), y1 = (int) ((r.origin.y + r.size.height) * 2);
+    int run = 0, partial = 0;
+    uint32_t bgc = px[y0 * w + x];
+
+    for (int y = y0; y < y1; y++)
+      {
+        uint32_t c = px[y * w + x];
+
+        if (c != bgc)
+          {
+            run++;
+            if (c >> 24 != 0xFF)
+              partial++;
+          }
+      }
+    g_test_message ("3-pixel line at scale 2: %d device pixels, %d partly covered", run, partial);
+    g_assert_cmpint (run, ==, 6);
+  }
+  close_windows ();
+}
+
+static void
+as1_brush_two_columns_scale2 (void)
+{
+  if (session_of_scale_2 ())
+    as1_brush_two_columns ();
+}
+
+/* AS-4 (REQ-0030-08): the selected size preset as its own part, directly left of the position, of a fixed width; it follows
+   a click and Numpad + and -, shows the width for the shapes, and is gone for a tool without sizes; the hint is cut first. */
+static void
+as4_status_preset (void)
+{
+  EaselWindow *win = start_window ();
+  EaselStatusBar *bar = easel_window_get_status_bar (win);
+  GtkWidget *part = GTK_WIDGET (easel_status_bar_get_label (bar, EASEL_STATUS_PRESET));
+  GtkWidget *pos = GTK_WIDGET (easel_status_bar_get_label (bar, EASEL_STATUS_POSITION));
+  GtkWidget *hint = GTK_WIDGET (easel_status_bar_get_label (bar, EASEL_STATUS_HINT));
+  graphene_rect_t r1, r2, h1, h2;
+
+  wait_for_layout (win);
+  use_tool (win, "brush");
+  wait_for_layout (win);
+  g_assert_cmpstr (easel_status_bar_get_text (bar, EASEL_STATUS_PRESET), ==, "Circle, 4 pixels");
+  g_assert_true (gtk_widget_get_mapped (part));
+  r1 = bounds_in (part, GTK_WIDGET (win));
+  h1 = bounds_in (hint, GTK_WIDGET (win));
+  {
+    graphene_rect_t p = bounds_in (pos, GTK_WIDGET (win));
+
+    g_assert_cmpfloat (r1.origin.x + r1.size.width, <=, p.origin.x);
+    /* directly left of it: no other shown part between them */
+    for (int f = 0; f < EASEL_STATUS_N_FIELDS; f++)
+      {
+        GtkWidget *l = GTK_WIDGET (easel_status_bar_get_label (bar, f));
+
+        if (f != EASEL_STATUS_PRESET && f != EASEL_STATUS_POSITION && gtk_widget_get_mapped (l))
+          {
+            graphene_rect_t o = bounds_in (l, GTK_WIDGET (win));
+
+            g_assert_false (o.origin.x > r1.origin.x && o.origin.x < p.origin.x);
+          }
+      }
+  }
+  g_action_group_activate_action (G_ACTION_GROUP (win), "preset-larger", NULL);
+  wait_for_layout (win);
+  g_assert_cmpstr (easel_status_bar_get_text (bar, EASEL_STATUS_PRESET), ==, "Circle, 7 pixels");
+  r2 = bounds_in (part, GTK_WIDGET (win));
+  h2 = bounds_in (hint, GTK_WIDGET (win));
+  g_assert_cmpfloat_with_epsilon (r2.origin.x, r1.origin.x, 0.5);           /* a fixed width: nothing moved */
+  g_assert_cmpfloat_with_epsilon (h2.size.width, h1.size.width, 0.5);
+  choose_preset (win, "Backslash, 2 pixels");
+  g_assert_cmpstr (easel_status_bar_get_text (bar, EASEL_STATUS_PRESET), ==, "Backslash, 2 pixels");
+  use_tool (win, "eraser");
+  g_action_group_activate_action (G_ACTION_GROUP (win), "preset-smaller", NULL);
+  g_assert_cmpstr (easel_status_bar_get_text (bar, EASEL_STATUS_PRESET), ==, "Eraser, 6 pixels");
+  use_tool (win, "rectangle");
+  g_action_group_change_action_state (G_ACTION_GROUP (win), "line-width", g_variant_new_int32 (2));
+  g_assert_cmpstr (easel_status_bar_get_text (bar, EASEL_STATUS_PRESET), ==, "2 pixels");
+  use_tool (win, "pan");
+  wait_for_layout (win);
+  g_assert_false (gtk_widget_get_visible (part));
+  /* A narrow window: the hint is cut, the part is whole. */
+  use_tool (win, "airbrush");
+  gtk_window_set_default_size (GTK_WINDOW (win), 400, 500);
+  wait_for_layout (win);
+  g_assert_true (gtk_label_get_ellipsize (GTK_LABEL (hint)) != PANGO_ELLIPSIZE_NONE);
+  {
+    int min, nat;
+
+    gtk_widget_measure (part, GTK_ORIENTATION_HORIZONTAL, -1, &min, &nat, NULL, NULL);
+    g_assert_cmpint (gtk_widget_get_width (part), >=, nat);
+  }
+  close_windows ();
+}
+
+/* 0030: the value of [view] toolbox-width in the settings file, or NULL. */
+static char *
+toolbox_width_in_file (void)
+{
+  g_autofree char *text = settings_text ();
+  const char *at = strstr (text, "toolbox-width=");
+
+  if (at == NULL)
+    return NULL;
+  at += strlen ("toolbox-width=");
+  return g_strndup (at, strcspn (at, "\n"));
+}
+
+/* AS-6 (REQ-0030-12): the width from the file at start-up; text, a negative and a large value; a still press writes
+   nothing; a file that cannot be written: nothing shown, a warning in the log, the width kept, and the next drag writes. */
+static void
+as6_toolbox_width_start (void)
+{
+  static const struct { const char *value; int want; } cases[] = { { "wide", 87 }, { "-5", 87 }, { "180", 180 }, { "999", 240 } };
+  g_autofree char *path = easel_settings_file_path ();
+
+  for (guint i = 0; i < G_N_ELEMENTS (cases); i++)
+    {
+      g_autofree char *text = g_strdup_printf ("[view]\ntoolbox-width=%s\n", cases[i].value);
+      EaselWindow *win;
+
+      write_settings (text);
+      win = start_window ();
+      wait_for_layout (win);
+      g_test_message ("toolbox-width=%s: %d px", cases[i].value, easel_window_get_toolbox_width (win));
+      g_assert_cmpint (easel_window_get_toolbox_width (win), ==, cases[i].want);
+      close_windows ();
+    }
+  write_settings ("[view]\ngrid=off\n");                    /* no width yet: a write would add the key */
+  {
+    EaselWindow *win = start_window ();
+    g_autofree char *before = NULL, *after = NULL, *now = NULL;
+
+    wait_for_layout (win);
+    before = settings_text ();
+    easel_window_drag_toolbox_edge (win, 0, TRUE);                 /* a press and release without movement */
+    wait_for_layout (win);
+    after = settings_text ();
+    g_assert_cmpstr (after, ==, before);
+    /* A file that cannot be written: silent, a warning in the log, the width applies for this run. */
+    g_assert_cmpint (g_chmod (path, 0444), ==, 0);
+    if (access (path, W_OK) == 0)
+      g_test_message ("root ignores the file's mode: the failed write is not tried here");
+    else
+      {
+        g_test_expect_message (G_LOG_DOMAIN, G_LOG_LEVEL_WARNING, "*toolbox*");
+        easel_window_drag_toolbox_edge (win, 20, FALSE);
+        easel_window_drag_toolbox_edge (win, 20, TRUE);
+        g_test_assert_expected_messages ();
+        wait_for_layout (win);
+        g_assert_cmpint (easel_window_get_toolbox_width (win), ==, 107);
+        g_assert_null (open_alert (win));                          /* nothing shown */
+        now = settings_text ();
+        g_assert_cmpstr (now, ==, before);
+        g_clear_pointer (&now, g_free);
+      }
+    g_assert_cmpint (g_chmod (path, 0644), ==, 0);
+    easel_window_drag_toolbox_edge (win, 10, FALSE);
+    easel_window_drag_toolbox_edge (win, 10, TRUE);
+    wait_for_layout (win);
+    now = toolbox_width_in_file ();
+    g_assert_cmpstr (now, ==, easel_window_get_toolbox_width (win) == 117 ? "117" : "97");
+    close_windows ();
+  }
+  write_settings ("[new-picture]\nwidth=300\nheight=200\n");
+}
+
+/* The tool buttons of Pan and Magnifier: still in two columns of their size, centered in the toolbox (REQ-0030-09). */
+static void
+assert_tool_columns (EaselWindow *win, double width, double height)
+{
+  graphene_rect_t pan = bounds_in (find_by_tooltip (GTK_WIDGET (win), "Pan"), GTK_WIDGET (win));
+  graphene_rect_t mag = bounds_in (find_by_tooltip (GTK_WIDGET (win), "Magnifier"), GTK_WIDGET (win));
+  graphene_rect_t panel = bounds_in (toolbox_panel (win), GTK_WIDGET (win));
+
+  /* as far from the toolbox's left as the Magnifier is from its right, give or take the 1 px line and an odd pixel */
+  g_assert_cmpfloat_with_epsilon (pan.origin.x - panel.origin.x,
+                                  panel.origin.x + panel.size.width - (mag.origin.x + mag.size.width), 2.5);
+
+  g_assert_cmpfloat_with_epsilon (pan.origin.y, mag.origin.y, 0.5);
+  g_assert_cmpfloat (mag.origin.x, >, pan.origin.x + pan.size.width - 1);
+  g_assert_cmpfloat_with_epsilon (pan.size.width, width, 0.5);
+  g_assert_cmpfloat_with_epsilon (pan.size.height, height, 0.5);
+}
+
+/* AS-5 (REQ-0030-09, -10, -11): the edge widens the toolbox by the pointer's movement; the tool buttons keep two columns of
+   their size and the options keep theirs, both centered; the limit; a double-click gives the default and writes it. */
+static void
+as5_toolbox_edge (void)
+{
+  EaselWindow *win;
+  graphene_rect_t pan, well;
+  g_autofree char *now = NULL;
+
+  write_settings ("[new-picture]\nwidth=300\nheight=200\n");
+  win = start_window ();
+  wait_for_layout (win);
+  use_tool (win, "brush");
+  wait_for_layout (win);
+  g_assert_cmpint (easel_window_get_toolbox_width (win), ==, 87);
+  pan = bounds_in (find_by_tooltip (GTK_WIDGET (win), "Pan"), GTK_WIDGET (win));
+  well = bounds_in (gtk_widget_get_parent (find_by_tooltip (GTK_WIDGET (win), "Circle, 7 pixels")), GTK_WIDGET (win));
+  easel_window_drag_toolbox_edge (win, 70, FALSE);
+  easel_window_drag_toolbox_edge (win, 70, TRUE);
+  wait_for_layout (win);
+  g_assert_cmpint (easel_window_get_toolbox_width (win), ==, 157);
+  now = toolbox_width_in_file ();
+  g_assert_cmpstr (now, ==, "157");
+  g_clear_pointer (&now, g_free);
+  assert_tool_columns (win, pan.size.width, pan.size.height);
+  {
+    /* the options keep their size and stand centered (REQ-0030-10) */
+    graphene_rect_t w2 = bounds_in (gtk_widget_get_parent (find_by_tooltip (GTK_WIDGET (win), "Circle, 7 pixels")), GTK_WIDGET (win));
+    graphene_rect_t panel = bounds_in (toolbox_panel (win), GTK_WIDGET (win));
+
+    g_assert_cmpfloat_with_epsilon (w2.size.width, well.size.width, 0.5);
+    g_assert_cmpfloat_with_epsilon (w2.origin.x - panel.origin.x, panel.origin.x + panel.size.width - (w2.origin.x + w2.size.width), 2.5);
+    g_assert_cmpint (check_brush_presets (win), ==, 1);
+  }
+  /* far to the larger x: the limit */
+  easel_window_drag_toolbox_edge (win, 1000, FALSE);
+  easel_window_drag_toolbox_edge (win, 1000, TRUE);
+  wait_for_layout (win);
+  g_assert_cmpint (easel_window_get_toolbox_width (win), ==, 240);
+  assert_tool_columns (win, pan.size.width, pan.size.height);
+  /* a double-click: the default, and the file holds the default's value */
+  easel_window_reset_toolbox_width (win);
+  wait_for_layout (win);
+  g_assert_cmpint (easel_window_get_toolbox_width (win), ==, 87);
+  now = toolbox_width_in_file ();
+  g_assert_cmpstr (now, ==, "87");
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\n");
+}
+
+/* AS-7 (REQ-0030-13, -14): a drag cut short keeps and writes its width; a narrow window shows the toolbox narrower and the
+   form that fits, the file unchanged; Tool Box off hides the edge, on again keeps the width. */
+static void
+as7_edge_interrupted_and_clamped (void)
+{
+  EaselWindow *win;
+  g_autofree char *now = NULL;
+
+  write_settings ("[new-picture]\nwidth=300\nheight=200\n");
+  win = start_window ();
+  wait_for_layout (win);
+  use_tool (win, "brush");
+  /* the drag ends by a lost focus: the gesture's end, with the last position */
+  easel_window_drag_toolbox_edge (win, 40, FALSE);
+  {
+    /* the edge's own gesture is cancelled, as GTK does at a lost focus; its end after it changes nothing */
+    GListModel *controllers = gtk_widget_observe_controllers (easel_window_get_toolbox_edge (win));
+    gboolean sent = FALSE;
+
+    for (guint i = 0; i < g_list_model_get_n_items (controllers); i++)
+      {
+        g_autoptr (GtkEventController) c = g_list_model_get_item (controllers, i);
+
+        if (GTK_IS_GESTURE_DRAG (c))
+          {
+            g_signal_emit_by_name (c, "cancel", NULL);
+            g_signal_emit_by_name (c, "drag-end", 55.0, 0.0);
+            sent = TRUE;
+          }
+      }
+    g_object_unref (controllers);
+    g_assert_true (sent);
+  }
+  wait_for_layout (win);
+  g_assert_cmpint (easel_window_get_toolbox_width (win), ==, 127);
+  now = toolbox_width_in_file ();
+  g_assert_cmpstr (now, ==, "127");
+  g_clear_pointer (&now, g_free);
+  /* the limit in a window of 1440, then made 400 wide */
+  gtk_window_set_default_size (GTK_WINDOW (win), 1440, 900);
+  wait_for_layout (win);
+  easel_window_drag_toolbox_edge (win, 1000, FALSE);
+  easel_window_drag_toolbox_edge (win, 1000, TRUE);
+  wait_for_layout (win);
+  g_assert_cmpint (easel_window_get_toolbox_width (win), ==, 240);
+  gtk_window_set_default_size (GTK_WINDOW (win), 400, 900);
+  wait_for_layout (win);
+  wait_for_layout (win);
+  g_test_message ("window %d wide: toolbox %d", gtk_widget_get_width (GTK_WIDGET (win)), easel_window_get_toolbox_width (win));
+  /* The window keeps room for the kept width (R5 of the Plan): it does not get narrower than the toolbox and the canvas
+     area need; the toolbox is never more than half of what it gets. */
+  g_assert_cmpint (easel_window_get_toolbox_width (win), ==, MIN (240, MAX (87, gtk_widget_get_width (GTK_WIDGET (win)) / 2)));
+  g_assert_cmpint (gtk_widget_get_width (GTK_WIDGET (win)), >=, 2 * easel_window_get_toolbox_width (win));
+  now = toolbox_width_in_file ();
+  g_assert_cmpstr (now, ==, "240");
+  g_clear_pointer (&now, g_free);
+  gtk_window_set_default_size (GTK_WINDOW (win), 1440, 900);
+  wait_for_layout (win);
+  wait_for_layout (win);
+  g_assert_cmpint (easel_window_get_toolbox_width (win), ==, 240);
+  /* Tool Box off: the edge is hidden; on: the same width */
+  g_action_group_change_action_state (G_ACTION_GROUP (win), "show-toolbox", g_variant_new_boolean (FALSE));
+  wait_for_layout (win);
+  g_assert_false (gtk_widget_get_mapped (easel_window_get_toolbox_edge (win)));
+  g_action_group_change_action_state (G_ACTION_GROUP (win), "show-toolbox", g_variant_new_boolean (TRUE));
+  wait_for_layout (win);
+  g_assert_true (gtk_widget_get_mapped (easel_window_get_toolbox_edge (win)));
+  g_assert_cmpint (easel_window_get_toolbox_width (win), ==, 240);
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\n");
+}
+
+/* A look at the toolbox for the eye (0030): the window with each tool's options, saved as EASEL_PANEL_SHOT/TOOL-THEME.png.
+   Registered only when EASEL_PANEL_SHOT is set. */
+static void
+panel_shot_dump (void)
+{
+  static const char *const tools[] = { "brush", "airbrush", "eraser", "magnifier", "line", "rectangle", "select", "text" };
+  const char *dir = g_getenv ("EASEL_PANEL_SHOT");
+  EaselWindow *win = start_window ();
+
+  wait_for_layout (win);
+  for (int scheme = 0; scheme < 2; scheme++)
+    {
+      adw_style_manager_set_color_scheme (adw_style_manager_get_default (),
+                                          scheme ? ADW_COLOR_SCHEME_FORCE_DARK : ADW_COLOR_SCHEME_FORCE_LIGHT);
+      for (guint i = 0; i < G_N_ELEMENTS (tools); i++)
+        {
+          int w, h, cx, cy;
+          g_autofree uint32_t *px = NULL;
+          g_autofree char *name = g_strdup_printf ("%s/%s-%s.png", dir, tools[i], scheme ? "dark" : "light");
+          g_autoptr (GdkTexture) t = NULL;
+          g_autoptr (GBytes) bytes = NULL;
+
+          use_tool (win, tools[i]);
+          wait_for_layout (win);
+          px = render_pixels (win, &w, &h, &cx, &cy);
+          bytes = g_bytes_new (px, (gsize) w * h * 4);
+          t = gdk_memory_texture_new (w, h, GDK_MEMORY_DEFAULT, bytes, (gsize) w * 4);
+          g_assert_true (gdk_texture_save_to_png (t, name));
+        }
+    }
+  adw_style_manager_set_color_scheme (adw_style_manager_get_default (), ADW_COLOR_SCHEME_DEFAULT);
+  close_windows ();
+}
+
 /* The contact sheet's input (T003 of 0029): every drawn cursor at sizes 24 and 48, scales 1 and 2, written as
    NAME-SIZE-xSCALE-HOTX-HOTY.png into the folder EASEL_CURSOR_SHEET names. Registered only when it is set. */
 static void
@@ -34678,6 +35312,17 @@ main (int argc, char **argv)
   g_test_add_func ("/0028-uk/journey_15_another_language", journey_15_another_language);
   g_test_add_func ("/0028-scale2/journey_1_at_scale_2", journey_1_at_scale_2);
   g_test_add_func ("/0028-scale2/journey_4_at_scale_2", journey_4_at_scale_2);
+  g_test_add_func ("/0030/as1_brush_two_columns", as1_brush_two_columns);
+  if (g_getenv ("EASEL_PANEL_SHOT") != NULL)
+    g_test_add_func ("/0030-shot/dump", panel_shot_dump);
+  g_test_add_func ("/0030/as2_other_sizes", as2_other_sizes);
+  g_test_add_func ("/0030/as4_status_preset", as4_status_preset);
+  g_test_add_func ("/0030/as5_toolbox_edge", as5_toolbox_edge);
+  g_test_add_func ("/0030/as6_toolbox_width_start", as6_toolbox_width_start);
+  g_test_add_func ("/0030/as7_edge_interrupted_and_clamped", as7_edge_interrupted_and_clamped);
+  g_test_add_func ("/0030/as8_shown_equals_painted", as8_shown_equals_painted);
+  g_test_add_func ("/0030-scale2/as3_footprints_at_scale2", as3_footprints_at_scale2);
+  g_test_add_func ("/0030-scale2/as1_brush_two_columns", as1_brush_two_columns_scale2);
   g_test_add_func ("/0029/as1_own_cursors", as1_own_cursors);
   g_test_add_func ("/0029/as3_cursor_art_sizes", as3_cursor_art_sizes);
   g_test_add_func ("/0029/as4_cursor_changes_at_rest", as4_cursor_changes_at_rest);

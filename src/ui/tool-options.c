@@ -7,14 +7,15 @@
 enum { SIGNAL_PRESET_CHANGED, N_SIGNALS };
 static guint signals[N_SIGNALS];
 
-/* A button shows its footprint in a square this big (the largest footprint is 24 pixels). */
-#define BUTTON_SIZE 28
 
 typedef struct
 {
   EaselFootprint footprint;
   int mode;                  /* -1 for a size preset, 0 for Opaque, 1 for Transparent (the Eraser's and the selection's alike) */
+  gboolean spray;            /* the Airbrush's disc: only its pixels whose x + y is even (REQ-0030-03) */
 } PresetData;
+
+
 
 struct _EaselToolOptions
 {
@@ -26,6 +27,12 @@ struct _EaselToolOptions
   GtkToggleButton *brush[EASEL_BRUSH_N_PRESETS];
   GtkToggleButton *airbrush[EASEL_AIRBRUSH_N_PRESETS];
   GtkToggleButton *eraser[EASEL_ERASER_N_SIZES];
+  GtkLabel *brush_label[EASEL_BRUSH_N_PRESETS];       /* the number, or the name in the named form (REQ-0030-02, -10) */
+  GtkLabel *airbrush_label[EASEL_AIRBRUSH_N_PRESETS];
+  GtkLabel *eraser_label[EASEL_ERASER_N_SIZES];
+  GtkLabel *width_label[2][5];                        /* Line's page and the shapes' page */
+  GtkWidget *brush_grid, *air_grid, *eraser_grid;
+  GtkWidget *brush_line[3];                           /* the thin lines between the Brush's shapes */
   GtkToggleButton *modes[2];
   GtkToggleButton *select_modes[2];
   GtkToggleButton *text_modes[2];
@@ -68,13 +75,16 @@ draw_preset (GtkDrawingArea *area, cairo_t *cr, int width, int height, gpointer 
         }
       return;
     }
-  /* The footprint, one logical pixel per picture pixel, centered in the button. */
+  /* A size preset: the footprint in the theme's text color made opaque, one logical pixel per picture pixel, centered
+     on whole pixels with no smoothing (REQ-0030-02, -03, -07). */
   {
     int size = p->footprint.size, x0 = (width - size) / 2, y0 = (height - size) / 2;
 
+    cairo_set_antialias (cr, CAIRO_ANTIALIAS_NONE);
+    cairo_set_source_rgb (cr, color.red, color.green, color.blue);
     for (int row = 0; row < size; row++)
       for (int col = 0; col < size; col++)
-        if (easel_footprint_has (p->footprint, col, row))
+        if (easel_footprint_has (p->footprint, col, row) && (!p->spray || (col + row) % 2 == 0))
           cairo_rectangle (cr, x0 + col, y0 + row, 1, 1);
     cairo_fill (cr);
   }
@@ -108,18 +118,25 @@ on_toggled (GtkToggleButton *button, EaselToolOptions *self)
   g_signal_emit (self, signals[SIGNAL_PRESET_CHANGED], 0);
 }
 
+/* An option button is a cell of a well: no outline of its own, the chosen one tinted with the accent (REQ-0030-01, -17). */
+static void
+make_cell (GtkWidget *button)
+{
+  gtk_widget_add_css_class (button, "flat");
+  gtk_widget_add_css_class (button, "cell");
+}
+
 static GtkToggleButton *
 add_button (EaselToolOptions *self, GtkGrid *grid, int index, int columns, const char *name, PresetData *data,
             GtkToggleButton *group_first)
 {
   GtkWidget *button = gtk_toggle_button_new (), *area = gtk_drawing_area_new ();
 
-  gtk_widget_add_css_class (button, "flat");
-  gtk_widget_add_css_class (button, "compact");
+  make_cell (button);
   gtk_widget_set_tooltip_text (button, name);
   gtk_accessible_update_property (GTK_ACCESSIBLE (button), GTK_ACCESSIBLE_PROPERTY_LABEL, name, -1);
-  gtk_drawing_area_set_content_width (GTK_DRAWING_AREA (area), BUTTON_SIZE);
-  gtk_drawing_area_set_content_height (GTK_DRAWING_AREA (area), BUTTON_SIZE);
+  gtk_drawing_area_set_content_width (GTK_DRAWING_AREA (area), 22);
+  gtk_drawing_area_set_content_height (GTK_DRAWING_AREA (area), 22);
   gtk_drawing_area_set_draw_func (GTK_DRAWING_AREA (area), draw_preset, data, g_free);
   gtk_button_set_child (GTK_BUTTON (button), area);
   if (group_first != NULL)
@@ -127,6 +144,41 @@ add_button (EaselToolOptions *self, GtkGrid *grid, int index, int columns, const
   gtk_grid_attach (grid, button, index % columns, index / columns, 1, 1);
   g_signal_connect (button, "toggled", G_CALLBACK (on_toggled), self);
   return GTK_TOGGLE_BUTTON (button);
+}
+
+/* A size preset's cell: its footprint only (REQ-0030-02 to -04); the name is its tooltip and accessible name. */
+static GtkToggleButton *
+add_size_button (EaselToolOptions *self, GtkGrid *grid, int column, int row, const char *name, PresetData *data, int side,
+                 int height, GtkLabel **label, GtkToggleButton *group_first)
+{
+  GtkWidget *button = gtk_toggle_button_new (), *area = gtk_drawing_area_new ();
+  GtkWidget *box = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 4);
+
+  make_cell (button);
+  gtk_widget_set_tooltip_text (button, name);
+  gtk_accessible_update_property (GTK_ACCESSIBLE (button), GTK_ACCESSIBLE_PROPERTY_LABEL, name, -1);
+  gtk_drawing_area_set_content_width (GTK_DRAWING_AREA (area), side);
+  gtk_drawing_area_set_content_height (GTK_DRAWING_AREA (area), height);
+  gtk_widget_set_halign (area, GTK_ALIGN_CENTER);
+  gtk_widget_set_valign (area, GTK_ALIGN_CENTER);
+  gtk_drawing_area_set_draw_func (GTK_DRAWING_AREA (area), draw_preset, data, g_free);
+  *label = NULL;                                     /* no number in the well: the size is in the tooltip (REQ-0030-02) */
+  gtk_box_append (GTK_BOX (box), area);
+  gtk_widget_set_halign (box, GTK_ALIGN_CENTER);
+  gtk_button_set_child (GTK_BUTTON (button), box);
+  if (group_first != NULL)
+    gtk_toggle_button_set_group (GTK_TOGGLE_BUTTON (button), group_first);
+  gtk_grid_attach (grid, button, column, row, 1, 1);
+  g_signal_connect (button, "toggled", G_CALLBACK (on_toggled), self);
+  return GTK_TOGGLE_BUTTON (button);
+}
+
+/* The two-column place of a Brush preset (REQ-0030-01): circles then squares on the left, "/" then "\" on the right. */
+static void
+brush_place (int i, int *column, int *row)
+{
+  *column = i % 3;                                    /* a row per shape, the sizes across, a line between (REQ-0030-01) */
+  *row = (i / 3) * 2;
 }
 
 /* A text button of the Magnifier's levels: "2x", with the zoom it gives as its tooltip. It selects the level through the
@@ -139,12 +191,12 @@ add_level_button (EaselToolOptions *self, GtkGrid *grid, int index, int pct)
   g_autofree char *tip = g_strdup_printf ("%d %%", pct);
   GtkWidget *button = gtk_toggle_button_new_with_label (label);
 
-  gtk_widget_add_css_class (button, "flat");
+  make_cell (button);
   gtk_widget_add_css_class (button, "level");
   gtk_widget_set_tooltip_text (button, tip);
   gtk_actionable_set_action_name (GTK_ACTIONABLE (button), "win.magnifier-level");
   gtk_actionable_set_action_target_value (GTK_ACTIONABLE (button), g_variant_new_int32 (pct));
-  gtk_grid_attach (grid, button, index % 2, index / 2, 1, 1);
+  gtk_grid_attach (grid, button, index % 3, index / 3, 1, 1);       /* two rows of three (REQ-0030-16) */
   g_signal_connect (button, "toggled", G_CALLBACK (on_toggled), self);
   return GTK_TOGGLE_BUTTON (button);
 }
@@ -195,37 +247,65 @@ draw_fill_style (GtkDrawingArea *area, cairo_t *cr, int width, int height, gpoin
 
 static GtkWidget *
 add_shape_button (GtkBox *box, const char *tip, const char *action, int target, GtkDrawingAreaDrawFunc draw, int content_w,
-                  int content_h)
+                  int content_h, const char *number)
 {
   GtkWidget *button = gtk_toggle_button_new (), *area = gtk_drawing_area_new ();
 
-  gtk_widget_add_css_class (button, "flat");
-  gtk_widget_add_css_class (button, "compact");
+  make_cell (button);
   gtk_widget_set_tooltip_text (button, tip);
   gtk_accessible_update_property (GTK_ACCESSIBLE (button), GTK_ACCESSIBLE_PROPERTY_LABEL, tip, -1);
   gtk_drawing_area_set_content_width (GTK_DRAWING_AREA (area), content_w);
   gtk_drawing_area_set_content_height (GTK_DRAWING_AREA (area), content_h);
   gtk_drawing_area_set_draw_func (GTK_DRAWING_AREA (area), draw, GINT_TO_POINTER (target), NULL);
-  gtk_button_set_child (GTK_BUTTON (button), area);
+  if (number != NULL)
+    {
+      /* A line width: the line and "3 px" to its larger x, dimmed (REQ-0030-05). */
+      GtkWidget *row = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 4), *label = gtk_label_new (number);
+
+      gtk_label_set_xalign (GTK_LABEL (label), 0);
+      gtk_widget_add_css_class (label, "dim-label");
+      gtk_box_append (GTK_BOX (row), area);
+      gtk_box_append (GTK_BOX (row), label);
+      gtk_button_set_child (GTK_BUTTON (button), row);
+    }
+  else
+    gtk_button_set_child (GTK_BUTTON (button), area);
   gtk_actionable_set_action_name (GTK_ACTIONABLE (button), action);
   gtk_actionable_set_action_target_value (GTK_ACTIONABLE (button), g_variant_new_int32 (target));
   gtk_box_append (box, button);
   return button;
 }
 
+static const char *const width_tips[5] = { N_ ("1 pixel"), N_ ("2 pixels"), N_ ("3 pixels"), N_ ("4 pixels"), N_ ("5 pixels") };
+
 static void
-add_width_buttons (GtkBox *box)
+add_width_buttons (GtkBox *box, GtkLabel **labels)
 {
-  static const char *const tips[5] = { N_ ("1 pixel"), N_ ("2 pixels"), N_ ("3 pixels"), N_ ("4 pixels"), N_ ("5 pixels") };
+  const char *const *tips = width_tips;
 
   for (int w = 1; w <= 5; w++)
-    add_shape_button (box, _ (tips[w - 1]), "win.line-width", w, draw_width, 52, 14);
+    {
+      g_autofree char *number = g_strdup_printf ("%d px", w);
+      GtkWidget *b = add_shape_button (box, _ (tips[w - 1]), "win.line-width", w, draw_width, 40, 14, number);
+
+      labels[w - 1] = GTK_LABEL (gtk_widget_get_last_child (gtk_button_get_child (GTK_BUTTON (b))));
+    }
+}
+
+/* A well: a sunken box for one group of options (REQ-0030-01, -05, -16); its look is in style.css. */
+static GtkWidget *
+new_well_box (void)
+{
+  GtkWidget *box = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
+
+  gtk_widget_add_css_class (box, "options-well");
+  return box;
 }
 
 static GtkWidget *
-new_shape_box (gboolean with_fill_styles)
+new_shape_box (gboolean with_fill_styles, GtkLabel **width_labels)
 {
-  GtkWidget *box = gtk_box_new (GTK_ORIENTATION_VERTICAL, 2);
+  GtkWidget *box = gtk_box_new (GTK_ORIENTATION_VERTICAL, 6), *widths = new_well_box ();
 
   gtk_widget_set_margin_start (box, 4);
   gtk_widget_set_margin_end (box, 4);
@@ -234,12 +314,14 @@ new_shape_box (gboolean with_fill_styles)
   if (with_fill_styles)
     {
       static const char *const tips[3] = { N_ ("Outline"), N_ ("Outline and fill"), N_ ("Fill") };
+      GtkWidget *styles = new_well_box ();
 
       for (int i = 0; i < 3; i++)
-        add_shape_button (GTK_BOX (box), _ (tips[i]), "win.fill-style", i, draw_fill_style, 52, 22);
-      gtk_box_append (GTK_BOX (box), gtk_separator_new (GTK_ORIENTATION_HORIZONTAL));
+        add_shape_button (GTK_BOX (styles), _ (tips[i]), "win.fill-style", i, draw_fill_style, 52, 22, NULL);
+      gtk_box_append (GTK_BOX (box), styles);
     }
-  add_width_buttons (GTK_BOX (box));
+  add_width_buttons (GTK_BOX (widths), width_labels);
+  gtk_box_append (GTK_BOX (box), widths);
   return box;
 }
 
@@ -248,9 +330,9 @@ new_grid (void)
 {
   GtkWidget *grid = gtk_grid_new ();
 
-  /* Small margins and gap, with the compact buttons, keep each group within the tool grid's width (REQ-0008-07). */
-  gtk_grid_set_row_spacing (GTK_GRID (grid), 4);
-  gtk_grid_set_column_spacing (GTK_GRID (grid), 2);
+  /* A well of cells (REQ-0030-01): no gaps, equal columns, within the tool grid's width (REQ-0008-07). */
+  gtk_widget_add_css_class (grid, "options-well");
+  gtk_grid_set_column_homogeneous (GTK_GRID (grid), TRUE);
   gtk_widget_set_margin_start (grid, 4);
   gtk_widget_set_margin_end (grid, 4);
   gtk_widget_set_margin_top (grid, 6);
@@ -261,10 +343,19 @@ new_grid (void)
 static PresetData *
 preset_data (EaselFootprint f, int mode)
 {
-  PresetData *p = g_new (PresetData, 1);
+  PresetData *p = g_new0 (PresetData, 1);
 
   p->footprint = f;
   p->mode = mode;
+  return p;
+}
+
+static PresetData *
+spray_data (EaselFootprint f)
+{
+  PresetData *p = preset_data (f, -1);
+
+  p->spray = TRUE;
   return p;
 }
 
@@ -278,38 +369,47 @@ build_presets (EaselToolOptions *self)
     {
       g_autofree char *name = preset_name (easel_brush_presets[i], EASEL_TOOL_BRUSH);
 
-      self->brush[i] = add_button (self, GTK_GRID (brush_grid), i, 2, name, preset_data (easel_brush_presets[i], -1),
-                                   i ? self->brush[0] : NULL);
+      int column, row;
+
+      brush_place (i, &column, &row);
+      self->brush[i] = add_size_button (self, GTK_GRID (brush_grid), column, row, name, preset_data (easel_brush_presets[i], -1),
+                                        12, 16, &self->brush_label[i], i ? self->brush[0] : NULL);
+    }
+  for (int k = 0; k < 3; k++)
+    {
+      /* the thin line between the shapes */
+      self->brush_line[k] = gtk_separator_new (GTK_ORIENTATION_HORIZONTAL);
+      gtk_grid_attach (GTK_GRID (brush_grid), self->brush_line[k], 0, 2 * k + 1, 3, 1);
     }
   for (int i = 0; i < EASEL_AIRBRUSH_N_PRESETS; i++)
     {
       g_autofree char *name = preset_name (easel_airbrush_presets[i], EASEL_TOOL_AIRBRUSH);
 
-      self->airbrush[i] = add_button (self, GTK_GRID (air_grid), i, 2, name, preset_data (easel_airbrush_presets[i], -1),
-                                      i ? self->airbrush[0] : NULL);
+      self->airbrush[i] = add_size_button (self, GTK_GRID (air_grid), i, 0, name, spray_data (easel_airbrush_presets[i]),
+                                           24, 26, &self->airbrush_label[i], i ? self->airbrush[0] : NULL);
     }
   for (int i = 0; i < EASEL_ERASER_N_SIZES; i++)
     {
       g_autofree char *name = preset_name (easel_eraser_presets[i], EASEL_TOOL_ERASER);
 
-      self->eraser[i] = add_button (self, GTK_GRID (size_grid), i, 2, name, preset_data (easel_eraser_presets[i], -1),
-                                    i ? self->eraser[0] : NULL);
+      self->eraser[i] = add_size_button (self, GTK_GRID (size_grid), i, 0, name, preset_data (easel_eraser_presets[i], -1),
+                                         12, 18, &self->eraser_label[i], i ? self->eraser[0] : NULL);
     }
-  /* The modes are a group of their own, one under the other, after a line. */
-  self->modes[0] = add_button (self, GTK_GRID (mode_grid), 0, 1, _ ("Opaque: erase to the background color"),
+  /* The modes are a well of their own below, side by side (REQ-0030-04). */
+  self->modes[0] = add_button (self, GTK_GRID (mode_grid), 0, 2, _ ("Opaque: erase to the background color"),
                                preset_data ((EaselFootprint) { EASEL_SHAPE_SQUARE, 1 }, 0), NULL);
-  self->modes[1] = add_button (self, GTK_GRID (mode_grid), 1, 1, _ ("Transparent: erase to transparency"),
+  self->modes[1] = add_button (self, GTK_GRID (mode_grid), 1, 2, _ ("Transparent: erase to transparency"),
                                preset_data ((EaselFootprint) { EASEL_SHAPE_SQUARE, 1 }, 1), self->modes[0]);
+  gtk_widget_set_margin_top (mode_grid, 0);
   gtk_box_append (GTK_BOX (eraser_box), size_grid);
-  gtk_box_append (GTK_BOX (eraser_box), gtk_separator_new (GTK_ORIENTATION_HORIZONTAL));
   gtk_box_append (GTK_BOX (eraser_box), mode_grid);
   {
-    /* The selection's modes, one under the other, as the Eraser's (REQ-0013-02). */
+    /* The selection's modes, side by side in a well, as the Eraser's (REQ-0013-02, REQ-0030-16). */
     GtkWidget *select_grid = new_grid ();
 
-    self->select_modes[0] = add_button (self, GTK_GRID (select_grid), 0, 1, _ ("Opaque: keep background color"),
+    self->select_modes[0] = add_button (self, GTK_GRID (select_grid), 0, 2, _ ("Opaque: keep background color"),
                                         preset_data ((EaselFootprint) { EASEL_SHAPE_SQUARE, 1 }, 0), NULL);
-    self->select_modes[1] = add_button (self, GTK_GRID (select_grid), 1, 1, _ ("Transparent: moving or clearing leaves a transparent hole"),
+    self->select_modes[1] = add_button (self, GTK_GRID (select_grid), 1, 2, _ ("Transparent: moving or clearing leaves a transparent hole"),
                                         preset_data ((EaselFootprint) { EASEL_SHAPE_SQUARE, 1 }, 1), self->select_modes[0]);
     self->groups[6] = select_grid;
   }
@@ -317,22 +417,16 @@ build_presets (EaselToolOptions *self)
     /* The Text tool's own modes, drawn as Select's, and nothing else (REQ-0017-02). */
     GtkWidget *text_grid = new_grid ();
 
-    self->text_modes[0] = add_button (self, GTK_GRID (text_grid), 0, 1, _ ("Opaque: fill the text box with the background color"),
+    self->text_modes[0] = add_button (self, GTK_GRID (text_grid), 0, 2, _ ("Opaque: fill the text box with the background color"),
                                       preset_data ((EaselFootprint) { EASEL_SHAPE_SQUARE, 1 }, 0), NULL);
-    self->text_modes[1] = add_button (self, GTK_GRID (text_grid), 1, 1, _ ("Transparent: only the text"),
+    self->text_modes[1] = add_button (self, GTK_GRID (text_grid), 1, 2, _ ("Transparent: only the text"),
                                       preset_data ((EaselFootprint) { EASEL_SHAPE_SQUARE, 1 }, 1), self->text_modes[0]);
     self->groups[7] = text_grid;
   }
 
   {
-    /* The levels line up under the two tool columns: the tool grid's margins and gaps, two equal columns (REQ-0008-07). */
+    /* The levels in a well, two rows of three (REQ-0030-16). */
     GtkWidget *magnifier_grid = new_grid ();
-
-    gtk_grid_set_column_spacing (GTK_GRID (magnifier_grid), 6);
-    gtk_grid_set_row_spacing (GTK_GRID (magnifier_grid), 6);
-    gtk_grid_set_column_homogeneous (GTK_GRID (magnifier_grid), TRUE);
-    gtk_widget_set_margin_start (magnifier_grid, 6);
-    gtk_widget_set_margin_end (magnifier_grid, 6);
 
     for (int i = 0; i < EASEL_MAGNIFIER_N_LEVELS; i++)
       self->magnifier[i] = add_level_button (self, GTK_GRID (magnifier_grid), i, easel_magnifier_levels[i]);
@@ -341,8 +435,11 @@ build_presets (EaselToolOptions *self)
   self->groups[0] = brush_grid;
   self->groups[1] = air_grid;
   self->groups[2] = eraser_box;
-  self->groups[4] = new_shape_box (FALSE);          /* Line: the widths */
-  self->groups[5] = new_shape_box (TRUE);           /* the shapes: the fill styles, a line, the widths */
+  self->groups[4] = new_shape_box (FALSE, self->width_label[0]);          /* Line: the widths */
+  self->groups[5] = new_shape_box (TRUE, self->width_label[1]);           /* the shapes: the fill styles, a line, the widths */
+  self->brush_grid = brush_grid;
+  self->air_grid = air_grid;
+  self->eraser_grid = size_grid;
   /* The groups are the pages of a stack as wide as its widest page and as high as the page shown, so that the toolbox has
      one width for every tool at any text size; a tool without options shows the empty page (REQ-0008-07, REQ-0006-02). */
   self->stack = gtk_stack_new ();
@@ -498,6 +595,41 @@ easel_tool_options_step (EaselToolOptions *self, EaselTool tool, int direction)
   *index = next;
   sync_selection (self);
   return TRUE;
+}
+
+GStrv
+easel_tool_options_size_names (EaselTool tool)
+{
+  g_autoptr (GStrvBuilder) b = g_strv_builder_new ();
+  const EaselFootprint *table = NULL;
+  int n = 0;
+
+  if (easel_tool_uses_line_width (tool))
+    {
+      for (int w = 1; w <= 5; w++)
+        g_strv_builder_add (b, _ (width_tips[w - 1]));
+      return g_strv_builder_end (b);
+    }
+  if (tool == EASEL_TOOL_BRUSH)
+    table = easel_brush_presets, n = EASEL_BRUSH_N_PRESETS;
+  else if (tool == EASEL_TOOL_AIRBRUSH)
+    table = easel_airbrush_presets, n = EASEL_AIRBRUSH_N_PRESETS;
+  else if (tool == EASEL_TOOL_ERASER)
+    table = easel_eraser_presets, n = EASEL_ERASER_N_SIZES;
+  else
+    return NULL;
+  for (int i = 0; i < n; i++)
+    g_strv_builder_take (b, preset_name (table[i], tool));
+  return g_strv_builder_end (b);
+}
+
+int
+easel_tool_options_size_index (EaselToolOptions *self, EaselTool tool, int line_width)
+{
+  read_selection (self);
+  if (easel_tool_uses_line_width (tool))
+    return CLAMP (line_width, 1, 5) - 1;
+  return tool == EASEL_TOOL_AIRBRUSH ? self->airbrush_index : tool == EASEL_TOOL_ERASER ? self->eraser_index : self->brush_index;
 }
 
 void

@@ -71,6 +71,8 @@ test('install-run', find_program('sh'), args: [meson.current_source_dir() / 'ins
 # 0028: the journeys. Journey 15 in its own process, in Ukrainian under the C locale, from the settings file.
 test('ui-0028', test_window, args: ['-p', '/0028'], env: ui_env, suite: 'ui', timeout: 300, is_parallel: false)
 test('ui-0029', test_window, args: ['-p', '/0029'], env: ui_env, suite: 'ui', timeout: 120, is_parallel: false)
+test('ui-0030', test_window, args: ['-p', '/0030'], env: ui_env, suite: 'ui', timeout: 180, is_parallel: false)
+test('ui-0030-scale2', test_window, args: ['-p', '/0030-scale2'], env: ui_env, suite: 'ui', timeout: 180, is_parallel: false)
 journey_uk_env = environment()
 journey_uk_env.set('GSK_RENDERER', 'cairo')
 journey_uk_env.set('GTK_A11Y', 'none')

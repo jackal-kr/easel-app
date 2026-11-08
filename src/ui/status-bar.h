@@ -18,6 +18,7 @@ typedef enum
   EASEL_STATUS_HINT,
   EASEL_STATUS_SELECTION,
   EASEL_STATUS_FRAME_TIME,
+  EASEL_STATUS_PRESET,
   EASEL_STATUS_N_FIELDS
 } EaselStatusField;
 
@@ -31,6 +32,8 @@ void easel_status_bar_set_selection (EaselStatusBar *self, gboolean exists, int 
 /* The Frame time part (REQ-0021-12), left of the position; hidden, it takes no room. NULL text keeps what it shows. */
 void easel_status_bar_show_frame_time (EaselStatusBar *self, gboolean shown);
 void easel_status_bar_set_frame_time (EaselStatusBar *self, const char *text);
+/* The selected size preset (REQ-0030-08), as wide as the longest of names (NULL-terminated); NULL text hides it. */
+void easel_status_bar_set_preset (EaselStatusBar *self, const char *text, const char *const *names);
 
 /* Test hooks: a field's text, how many times its label has been written, and the label (for its ellipsis). */
 const char *easel_status_bar_get_text (EaselStatusBar *self, EaselStatusField field);

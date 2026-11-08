@@ -262,6 +262,28 @@ as14_view_settings (void)
   CHECK (!s.grid && s.show_toolbox);
 }
 
+/* 0030 AS-6 (REQ-0030-12): [view] toolbox-width is a whole number of logical pixels, past a limit the limit (0 to 240);
+   a missing key, text that is no number, or an empty value give 0, the default width. */
+static void
+as6_toolbox_width_key (void)
+{
+  CHECK (parse ("").toolbox_width == 0);
+  CHECK (parse (easel_settings_default_text).toolbox_width == 0);
+  CHECK (parse ("[view]\ntoolbox-width=180\n").toolbox_width == 180);
+  CHECK (parse ("[view]\ntoolbox-width = 120 \n").toolbox_width == 120);
+  CHECK (parse ("[view]\ntoolbox-width=240\n").toolbox_width == 240);
+  CHECK (parse ("[view]\ntoolbox-width=999\n").toolbox_width == 240);
+  CHECK (parse ("[view]\ntoolbox-width=99999999999999999999\n").toolbox_width == 240);
+  CHECK (parse ("[view]\ntoolbox-width=-5\n").toolbox_width == 0);
+  CHECK (parse ("[view]\ntoolbox-width=0\n").toolbox_width == 0);
+  CHECK (parse ("[view]\ntoolbox-width=wide\n").toolbox_width == 0);
+  CHECK (parse ("[view]\ntoolbox-width=12px\n").toolbox_width == 0);
+  CHECK (parse ("[view]\ntoolbox-width=1.5\n").toolbox_width == 0);
+  CHECK (parse ("[view]\ntoolbox-width=\n").toolbox_width == 0);
+  CHECK (parse ("[view]\ntoolbox-width=180\ntoolbox-width=bad\n").toolbox_width == 0);    /* the last repeat wins */
+  CHECK (parse ("[history]\ntoolbox-width=180\n").toolbox_width == 0);                    /* another section */
+}
+
 /* 0005 AS-16: [save] jpeg-quality is a whole number from 1 to 100, else 90, silently. */
 static void
 as16_jpeg_quality_setting (void)
@@ -379,5 +401,6 @@ main (void)
   RUN (as6_garbage_is_all_defaults);
   RUN (as7_size_limits);
   RUN (as36_syntax_rules);
+  RUN (as6_toolbox_width_key);
   return 0;
 }

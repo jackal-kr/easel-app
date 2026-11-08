@@ -35,6 +35,10 @@ gboolean easel_tool_options_get_text_transparent (EaselToolOptions *self);
 /* Numpad + or - (direction 1 or -1): the next larger or smaller preset of the tool; the ends stay. Returns TRUE if the
    selection changed. */
 gboolean easel_tool_options_step (EaselToolOptions *self, EaselTool tool, int direction);
+/* The names of a tool's size presets (Brush, Airbrush, Eraser, or the line widths), NULL-terminated, or NULL for a tool
+   without sizes; and the selected one's index (line_width for the tools with widths) (REQ-0030-06, -08). */
+GStrv easel_tool_options_size_names (EaselTool tool);
+int easel_tool_options_size_index (EaselToolOptions *self, EaselTool tool, int line_width);
 
 /* The Magnifier's selected level in percent: 100, 200, 400, 600, 800 or 1600 (REQ-0007-02); kept for the session. */
 

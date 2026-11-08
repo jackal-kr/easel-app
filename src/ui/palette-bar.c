@@ -307,6 +307,11 @@ on_indicator_pressed (GtkGestureClick *gesture, int n_press, double x, double y,
 {
   int hit = indicator_hit (self->indicator, x, y);
 
+  /* The press is the color box's: unclaimed, it would reach the bar below, which the desktop treats as the window's
+     frame, and a secondary press there opens the window menu (REQ-0003-06). */
+  gtk_gesture_set_state (GTK_GESTURE (gesture), GTK_EVENT_SEQUENCE_CLAIMED);
+  if (gtk_gesture_single_get_current_button (GTK_GESTURE_SINGLE (gesture)) != GDK_BUTTON_PRIMARY)
+    return;                                     /* the other buttons do nothing here, as before */
   if (hit >= 0)
     easel_palette_bar_press_indicator (self, hit == 1);
 }
@@ -316,6 +321,7 @@ on_swatch_pressed (GtkGestureClick *gesture, int n_press, double x, double y, Ea
 {
   EaselSwatch *swatch = EASEL_SWATCH (gtk_event_controller_get_widget (GTK_EVENT_CONTROLLER (gesture)));
 
+  gtk_gesture_set_state (GTK_GESTURE (gesture), GTK_EVENT_SEQUENCE_CLAIMED);   /* no window menu (REQ-0003-06) */
   easel_palette_bar_press (self, swatch->number, gtk_gesture_single_get_current_button (GTK_GESTURE_SINGLE (gesture)),
                            n_press);
 }
@@ -418,6 +424,7 @@ easel_palette_bar_init (EaselPaletteBar *self)
   {
     GtkGesture *click = gtk_gesture_click_new ();
 
+    gtk_gesture_single_set_button (GTK_GESTURE_SINGLE (click), 0);          /* every button, so that each is claimed */
     g_signal_connect_object (click, "pressed", G_CALLBACK (on_indicator_pressed), self, G_CONNECT_DEFAULT);
     gtk_widget_add_controller (GTK_WIDGET (self->indicator), GTK_EVENT_CONTROLLER (click));
   }
