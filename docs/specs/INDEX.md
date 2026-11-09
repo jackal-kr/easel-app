@@ -50,10 +50,6 @@ Vertical slices first (a thin end-to-end feature), breadth later.
 | Smooth text option | An opt-in switch that draws text with antialiasing; off by default |
 | Smooth shapes and brushes option | One opt-in switch that draws lines, curves, shapes and brush strokes with antialiasing; off by default |
 | Extra shapes | Triangles, diamond, pentagon, hexagon, arrows, stars, callouts, heart, lightning bolt |
-| Gradient types | Linear, Radial and Reflected as an option row of Gradient (C) |
-| Black and white | Image, Attributes turns the picture to pure black and white, as XP (D) |
-| Curve bent on the line | A bend made by dragging a point of the line, finished by a click outside it; replaces XP's way (E, JOD 2026-11-07) |
-| Remove background | One command, as Windows 11 Paint: the subject found on the machine, the rest made transparent; an ADR for the model first (F) |
 | 10-pixel key move without a gap | Ctrl+Shift with an arrow (REQ-0013-10) moves without leaving the blank strip of a plain move (From JOD's use) |
 
 ## Roadmap notes

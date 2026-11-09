@@ -103,7 +103,8 @@ Order suggestion: A and B first, C after the graphics path audit, D with file in
 - Today (REQ-0011-04, XP's way): a press anywhere starts the next bend, and the second bend puts the curve down.
 - Decided (JOD, 2026-11-07): this replaces XP's way, no option; REQ-0011-04 changes in its spec, and `docs/product.md`'s "XP-faithful by default" gets this as a named exception. Left for the spec: what a press that is not on the line does, and what Enter and Esc do with one bend made.
 
-### F. Remove background
+### F. Remove background (spec 0035, accepted 2026-11-09; ADR-0006 accepted: IS-Net, permission for its weights asked before any release that ships it)
+- JOD, 2026-11-09: hard edges; a progress dialog with Cancel; "No Subject Found" when nothing changes; same pixels on one machine (P7.4's exception between machines, in the model's ADR).
 - New, beyond XP Paint (a modern extra).
 - Decided (JOD, 2026-11-07): follow the standard, Windows 11 Paint's Remove background: one command, no settings; the subject is found automatically and everything else becomes transparent; with a selection, only the selection's area is worked on; one undo step. Saving needs nothing new: PNG, TIFF and WebP keep the transparency, JPEG and BMP flatten it on white (REQ-0005-11), as Paint does.
 - Constraint: Paint finds the subject with a machine-learning model. Easel's Flatpak has no network (REQ-0024-10), so the model runs on the machine and ships with the app. Its choice (license, size, CPU time on an 8000 × 8000 picture, same pixels on every machine for P7) is an ADR before the spec's Plan; a picture where no subject is found is a case of the spec.

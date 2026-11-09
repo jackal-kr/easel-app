@@ -31,6 +31,9 @@ still apply: one source of truth for tool definitions, and no threads or caches 
   Opening starts with a header sniffer of our own, because gdk-pixbuf's `get_file_info` decodes the whole picture
   through glycin, and a memory pre-check, because glycin aborts the process when an allocation fails (0005 Plan).
   Every write is atomic (temporary file and rename), so a failure leaves the old file.
+- **`src/ml`** (ONNX Runtime, from Remove background, ADR-0006; no display, no GTK) loads the subject-finding model and runs it on
+  pixels it is given, returning a mask; only `src/ui` links it, in a worker thread. The pixel rules around it (the threshold at a
+  half, the mask's scaling, removing the background's pixels) are `src/core`'s.
 - **`src/ui`** (GTK 4 + libadwaita) has the application, the window (template `window.ui` in a GResource; it owns New,
   Open, Save and Save As, and the one "Save Changes?" prompt that Quit, New and Open share), the `EaselCanvas` widget
   (tiles, grid, resize handles, busy cursor), the palette bar (indicator, swap button, swatches), the status bar and
@@ -181,6 +184,8 @@ with numbers written in a spec weeks before (0018: `scale_region` made 0015's 80
 | Fill, a whole 8000x8000 picture (core) | < 500 ms (JOD, 2026-10-18; measured 160 ms) |
 | Fill or Magnifier press to the painted frame | < 100 ms at 1920x1080 and 8000x8000 (JOD, 2026-10-18; measured one frame) |
 | Text: the font card's family list, first opening to its painted frame | < 250 ms with ~300 families; later openings within two frames (JOD, 2026-10-27; measured 187 to 192 ms and 16 to 20 ms) |
+| A gradient or a moved selection below 100 %, Fit to Window on 8000x8000 in 1920x1080 | median frame ≤ 33 ms, view memory ≤ 8 bytes per device pixel (ADR-0004, 0031; measured 16.6 to 16.7 ms, 375 ms before) |
+| Remove background (ADR-0006), from the choice of the command to the result painted, the first run included | at most 2 s for 1920x1080 and 3 s for 8000x8000 on the dev machine; at most 2 GB of memory beyond the picture and its undo step (JOD, 2026-11-09) |
 
 A benchmark refuses to run while another Easel or test window is open (`perf-common.h`), as the ui tests do, since a second window changes its timings, and it runs in the real session, never through `tools/isolated.sh` (see Testing).
 
