@@ -777,8 +777,8 @@ msgstr "Zeichnet ein abgerundetes Rechteck im gewählten Füllstil."
 msgid "Draws an ellipse with the selected fill style."
 msgstr "Zeichnet eine Ellipse im gewählten Füllstil."
 
-msgid "Draws a curved line with the selected line width."
-msgstr "Zeichnet eine gebogene Linie in der gewählten Stärke."
+msgid "Draws a curved line: drag a line, then drag points of it to bend it. A click away from it finishes it."
+msgstr "Zeichnet eine gebogene Linie: Linie ziehen, dann Punkte darauf ziehen, um sie zu biegen. Ein Klick daneben schließt sie ab."
 
 msgid "Draws a polygon with the selected fill style."
 msgstr "Zeichnet ein Vieleck im gewählten Füllstil."

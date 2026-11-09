@@ -777,8 +777,8 @@ msgstr "Lekerekített téglalapot rajzol a választott kitöltési stílussal."
 msgid "Draws an ellipse with the selected fill style."
 msgstr "Ellipszist rajzol a választott kitöltési stílussal."
 
-msgid "Draws a curved line with the selected line width."
-msgstr "Görbe vonalat rajzol a választott vastagsággal."
+msgid "Draws a curved line: drag a line, then drag points of it to bend it. A click away from it finishes it."
+msgstr "Görbe vonalat rajzol: húzzon egy vonalat, majd húzza a pontjait a hajlításhoz. A mellé kattintás befejezi."
 
 msgid "Draws a polygon with the selected fill style."
 msgstr "Sokszöget rajzol a választott kitöltési stílussal."

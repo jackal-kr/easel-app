@@ -777,8 +777,8 @@ msgstr "Dibuja un rectángulo redondeado con el estilo de relleno elegido."
 msgid "Draws an ellipse with the selected fill style."
 msgstr "Dibuja una elipse con el estilo de relleno elegido."
 
-msgid "Draws a curved line with the selected line width."
-msgstr "Dibuja una línea curva del grosor elegido."
+msgid "Draws a curved line: drag a line, then drag points of it to bend it. A click away from it finishes it."
+msgstr "Dibuja una línea curva: arrastre una línea y luego arrastre puntos de ella para curvarla. Un clic fuera de ella la termina."
 
 msgid "Draws a polygon with the selected fill style."
 msgstr "Dibuja un polígono con el estilo de relleno elegido."

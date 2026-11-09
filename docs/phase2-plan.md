@@ -95,7 +95,8 @@ Order suggestion: A and B first, C after the graphics path audit, D with file in
 - REQ-0017-14, the popover's scroll guard: survives on GTK 4.24, accepted (JOD, 2026-11-02). Re-decide at packaging-release, when the minimum GTK is chosen.
 
 ## JOD's further list (2026-11-07)
-### E. Curve bent on the line
+### E. Curve bent on the line (spec 0033, implemented 2026-11-09)
+- Built 2026-11-09 (the peak under the pointer after JOD's M1). Known gaps, tests only: Esc and the other button while a press off the curve is held; a handle pressed over a waiting curve; the hit test without memory (0033 Check F1, F3, F5).
 - JOD's steps: drag a straight line; press on a point of the line and drag to bend it there; optionally a second bend from another point (two at most); a click outside the curve finishes it.
 - Today (REQ-0011-04, XP's way): a press anywhere starts the next bend, and the second bend puts the curve down.
 - Decided (JOD, 2026-11-07): this replaces XP's way, no option; REQ-0011-04 changes in its spec, and `docs/product.md`'s "XP-faithful by default" gets this as a named exception. Left for the spec: what a press that is not on the line does, and what Enter and Esc do with one bend made.

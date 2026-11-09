@@ -3,7 +3,7 @@ core_wrap = {
   'stretch-skew': ['-Wl,--wrap=malloc', '-Wl,--wrap=calloc', '-Wl,--wrap=realloc'],
   'settings-edit': ['-Wl,--wrap=malloc'],
 }
-foreach name : ['cursor', 'stretch-skew', 'settings-edit', 'window-extras', 'print-layout', 'catalog', 'figure', 'figure-apply', 'figure-curve', 'figure-polygon', 'figure-step', 'gradient', 'selection', 'fill', 'footprint', 'format', 'grid', 'history', 'image', 'lasso', 'lattice', 'magnifier', 'number', 'palette', 'resize', 'settings', 'spray', 'stroke', 'rich-text', 'text-buffer', 'text-put', 'transform', 'view']
+foreach name : ['cursor', 'stretch-skew', 'settings-edit', 'window-extras', 'print-layout', 'catalog', 'figure', 'figure-apply', 'figure-curve', 'figure-polygon', 'figure-step', 'curve-bend', 'gradient', 'selection', 'fill', 'footprint', 'format', 'grid', 'history', 'image', 'lasso', 'lattice', 'magnifier', 'number', 'palette', 'resize', 'settings', 'spray', 'stroke', 'rich-text', 'text-buffer', 'text-put', 'transform', 'view']
   test('core-' + name,
     executable('test-' + name, 'core/test-' + name + '.c', dependencies: easel_core_dep,
                link_args: core_wrap.get(name, [])),
@@ -77,6 +77,8 @@ test('ui-0031', test_window, args: ['-p', '/0031'], env: ui_env, suite: 'ui', ti
 test('ui-0031-scale2', test_window, args: ['-p', '/0031-scale2'], env: ui_env, suite: 'ui', timeout: 180, is_parallel: false)
 test('ui-0032', test_window, args: ['-p', '/0032'], env: ui_a11y_env, suite: 'ui', timeout: 300, is_parallel: false)
 test('ui-0032-scale2', test_window, args: ['-p', '/0032-scale2'], env: ui_env, suite: 'ui', timeout: 180, is_parallel: false)
+test('ui-0033', test_window, args: ['-p', '/0033'], env: ui_env, suite: 'ui', timeout: 300, is_parallel: false)
+test('ui-0033-scale2', test_window, args: ['-p', '/0033-scale2'], env: ui_env, suite: 'ui', timeout: 180, is_parallel: false)
 journey_uk_env = environment()
 journey_uk_env.set('GSK_RENDERER', 'cairo')
 journey_uk_env.set('GTK_A11Y', 'none')

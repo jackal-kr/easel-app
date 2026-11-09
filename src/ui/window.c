@@ -1664,7 +1664,7 @@ tool_hint (EaselTool tool, gboolean transparent)
     case EASEL_TOOL_ELLIPSE:
       return _ ("Draws an ellipse with the selected fill style.");
     case EASEL_TOOL_CURVE:
-      return _ ("Draws a curved line with the selected line width.");
+      return _ ("Draws a curved line: drag a line, then drag points of it to bend it. A click away from it finishes it.");
     case EASEL_TOOL_POLYGON:
       return _ ("Draws a polygon with the selected fill style.");
     case EASEL_TOOL_SELECT:

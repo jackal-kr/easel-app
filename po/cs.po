@@ -785,8 +785,8 @@ msgstr "Kreslí zaoblený obdélník zvoleným stylem výplně."
 msgid "Draws an ellipse with the selected fill style."
 msgstr "Kreslí elipsu zvoleným stylem výplně."
 
-msgid "Draws a curved line with the selected line width."
-msgstr "Kreslí křivku zvolené šířky."
+msgid "Draws a curved line: drag a line, then drag points of it to bend it. A click away from it finishes it."
+msgstr "Kreslí křivku: táhněte čáru, pak táhněte její body a ohněte ji. Klepnutí mimo ni ji dokončí."
 
 msgid "Draws a polygon with the selected fill style."
 msgstr "Kreslí mnohoúhelník zvoleným stylem výplně."

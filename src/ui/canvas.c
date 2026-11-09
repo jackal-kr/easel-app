@@ -6,6 +6,7 @@
 #include <adwaita.h>
 
 #include "canvas.h"
+#include "curve-bend.h"
 #include "cursor-shape.h"
 #include "fill.h"
 #include "figure.h"
@@ -119,7 +120,23 @@ struct _EaselCanvas
   /* A pending curve or polygon (0011): from its first press until it is put down or dropped. */
   gboolean pending;
   gboolean pend_held;                           /* a stage's button is held */
-  int pend_step;                                /* a curve: 0 the line, 1 the first bend, 2 the second bend (held now, or done last) */
+  int pend_step;                                /* a curve: 0 its line held or waiting with no grab yet, 1 a grab held or done (0033) */
+  /* A curve's bends (0033): at most two, in the order of their places; and the grab held now. */
+  int curve_n;
+  EaselCurveBend curve_bend[2];
+  int grab_kind, grab_which;                    /* EaselCurveGrab, and the bend it makes, moves or replaces (REQ-0033-04) */
+  int grab_px, grab_py;                         /* the pixel under the press */
+  int64_t grab_x, grab_y;                       /* the point that moves, as it was at the press (REQ-0033-02) */
+  int grab_t;                                   /* the grab's place */
+  int grab_n;                                   /* the bends at the press, which the grab changes from */
+  EaselCurveBend grab_base[2];
+  gboolean grab_left;                           /* the pointer has left the press's pixel: until then nothing changes */
+  /* A press off a waiting curve (REQ-0033-03): the curve is put down at the press; held, it starts a new line once the pointer
+     leaves the press's pixel. */
+  gboolean off_press;
+  guint off_button;
+  int off_px, off_py;
+  gboolean off_closed;                          /* the last click put a curve down from off it: the rest of that multi-click is ignored */
   guint pend_button;                            /* the button of the first press, used by every stage (REQ-0011-10) */
   int pend_pts[8];                              /* a curve: the start, the two control points and the end */
   int pend_px, pend_py;                         /* the pixel under the pointer now */
@@ -5303,7 +5320,7 @@ easel_canvas_is_pending (EaselCanvas *self)
 gboolean
 easel_canvas_is_stroking (EaselCanvas *self)
 {
-  return self->stroke != NULL || self->picking || self->shaping || self->pend_held || self->selecting || self->sel_moving
+  return self->stroke != NULL || self->picking || self->shaping || self->pend_held || self->off_press || self->selecting || self->sel_moving
          || self->lassoing || self->stretching || self->text_drag != 0;
 }
 
@@ -5336,6 +5353,143 @@ finish_pick (EaselCanvas *self, gboolean cancelled)
   self->picking = FALSE;
   g_signal_emit (self, signals[SIGNAL_STROKING_CHANGED], 0, FALSE);
   g_signal_emit (self, signals[SIGNAL_PICK_ENDED], 0, cancelled);
+}
+
+/* The curve's control points from its line and its bends (REQ-0033-05); with no bend, on the start, so the curve is the Line
+   (REQ-0011-05). */
+static void
+curve_set_controls (EaselCanvas *self)
+{
+  if (self->curve_n == 0)
+    {
+      self->pend_pts[2] = self->pend_pts[4] = self->pend_pts[0];
+      self->pend_pts[3] = self->pend_pts[5] = self->pend_pts[1];
+      return;
+    }
+  easel_curve_controls (self->pend_pts[0], self->pend_pts[1], self->pend_pts[6], self->pend_pts[7], self->curve_bend,
+                        self->curve_n, self->pend_pts + 2);
+}
+
+/* The first stage of a curve: the line from the pixel (px, py), the colors those of the press's button (REQ-0011-04, -10). */
+static void
+curve_line_start (EaselCanvas *self, guint button, int px, int py)
+{
+  set_pending (self, TRUE);
+  self->pend_polygon = FALSE;
+  self->pend_gradient = FALSE;
+  self->pend_held = TRUE;
+  self->pend_step = 0;
+  self->curve_n = 0;
+  self->pend_button = button;
+  self->pend_pts[0] = self->pend_pts[6] = self->pend_px = px;
+  self->pend_pts[1] = self->pend_pts[7] = self->pend_py = py;
+  self->pend_pts[2] = self->pend_pts[4] = px;
+  self->pend_pts[3] = self->pend_pts[5] = py;
+  self->pend_draw = button == GDK_BUTTON_PRIMARY ? self->foreground : self->background;
+  self->pend_other = button == GDK_BUTTON_PRIMARY ? self->background : self->foreground;
+  g_signal_emit (self, signals[SIGNAL_STROKING_CHANGED], 0, TRUE);
+  gtk_widget_queue_draw (GTK_WIDGET (self));
+}
+
+/* Is the canvas point (x, y) on the waiting curve (REQ-0033-01): within 4 logical pixels of the square of a pixel it draws inside
+   the picture, the squares measured on screen with the view's edges (so below 100 % by REQ-0031-01's rule)? */
+static gboolean
+curve_hit (EaselCanvas *self, double x, double y)
+{
+  EaselFigure f = pending_figure (self);
+  double scale = easel_canvas_get_scale (self), reach = 4.0;
+  int px, py, r, y0, y1;
+  gboolean hit = FALSE;
+  EaselFigureRun runs[8];
+
+  to_pixel (self, x, y, &px, &py);
+  r = (int) ceil (reach / logical_per_pixel (self)) + 2;
+  y0 = MAX (py - r, 0);
+  y1 = MIN (py + r, self->img->height - 1);
+  if (y0 > y1 || !easel_figure_prepare (&f, y0, y1))
+    return FALSE;
+  for (int row = y0; row <= y1 && !hit; row++)
+    {
+      size_t n = easel_figure_row (&f, row, runs, G_N_ELEMENTS (runs));
+      double top = view_edge (self, row) / scale, bottom = view_edge (self, row + 1) / scale;
+
+      for (size_t k = 0; k < n && !hit; k++)
+        {
+          int a = MAX (runs[k].x0, 0), b = MIN (runs[k].x1, self->img->width - 1);
+          double left, right, dx, dy;
+
+          if (a > b)
+            continue;
+          left = view_edge (self, a) / scale;
+          right = view_edge (self, b + 1) / scale;
+          dx = x < left ? left - x : x > right ? x - right : 0;
+          dy = y < top ? top - y : y > bottom ? y - bottom : 0;
+          hit = dx * dx + dy * dy <= reach * reach;
+        }
+    }
+  easel_figure_release (&f);
+  return hit;
+}
+
+/* The press off the curve is let go: released, lost or cancelled (Esc, Undo, the other button): no new line (REQ-0033-03). */
+static void
+off_press_end (EaselCanvas *self, gboolean cancelled)
+{
+  if (!self->off_press)
+    return;
+  self->off_press = FALSE;
+  if (cancelled)
+    self->cancelled_button = self->off_button;
+  g_signal_emit (self, signals[SIGNAL_STROKING_CHANGED], 0, FALSE);
+}
+
+/* A press of the curve's button on the waiting curve grabs it (REQ-0033-02, -04): its place, what it does with the bends, the
+   point that moves. Nothing changes until the pointer leaves the press's pixel. */
+static void
+curve_grab_start (EaselCanvas *self, int px, int py)
+{
+  gboolean straight = self->curve_n == 0;
+  int which = 0;
+
+  self->grab_t = easel_curve_grab (self->pend_pts, straight, px, py);
+  self->grab_kind = easel_curve_bend_rule (self->pend_pts[0], self->pend_pts[1], self->pend_pts[6], self->pend_pts[7],
+                                           self->curve_bend, self->curve_n, self->grab_t, &which);
+  self->grab_which = which;
+  self->grab_px = px;
+  self->grab_py = py;
+  self->grab_left = FALSE;
+  self->grab_n = self->curve_n;
+  memcpy (self->grab_base, self->curve_bend, sizeof self->grab_base);
+  if (self->grab_kind == EASEL_CURVE_MOVE)
+    {
+      self->grab_x = self->curve_bend[which].x;
+      self->grab_y = self->curve_bend[which].y;
+    }
+  else
+    easel_curve_point (self->pend_pts, straight, self->grab_t, &self->grab_x, &self->grab_y);
+}
+
+/* The held grab follows the pointer's movement since the press (REQ-0033-02): the bends at the press, changed by the grab, put
+   in the order of their places (REQ-0033-04). */
+static void
+curve_grab_follow (EaselCanvas *self, int x, int y)
+{
+  EaselCurveBend moved, *b = self->curve_bend;
+
+  if (x != self->grab_px || y != self->grab_py)
+    self->grab_left = TRUE;
+  if (!self->grab_left)
+    return;
+  moved.x = self->grab_x + (int64_t) (x - self->grab_px) * EASEL_CURVE_ONE;
+  moved.y = self->grab_y + (int64_t) (y - self->grab_py) * EASEL_CURVE_ONE;
+  self->curve_n = self->grab_n;
+  memcpy (b, self->grab_base, sizeof self->grab_base);
+  if (self->grab_kind == EASEL_CURVE_NEW)
+    b[self->curve_n++] = moved;
+  else
+    b[self->grab_which] = moved;
+  easel_curve_order (self->pend_pts[0], self->pend_pts[1], self->pend_pts[6], self->pend_pts[7], b, self->curve_n);
+  curve_set_controls (self);
 }
 
 /* The held stage of a curve follows the pointer (REQ-0011-04): the line from its start, Shift constraining it as for Line; a
@@ -5375,16 +5529,8 @@ pend_follow (EaselCanvas *self)
       self->pend_pts[2] = self->pend_pts[4] = self->pend_pts[0];
       self->pend_pts[3] = self->pend_pts[5] = self->pend_pts[1];
     }
-  else if (self->pend_step == 1)
-    {
-      self->pend_pts[2] = self->pend_pts[4] = x;
-      self->pend_pts[3] = self->pend_pts[5] = y;
-    }
   else
-    {
-      self->pend_pts[4] = x;
-      self->pend_pts[5] = y;
-    }
+    curve_grab_follow (self, x, y);
   gtk_widget_queue_draw (GTK_WIDGET (self));
 }
 
@@ -5523,10 +5669,7 @@ end_pending_stage (EaselCanvas *self)
           return;
         }
     }
-  if (!self->pend_polygon && self->pend_step == 2)
-    put_down_pending (self);
-  else
-    gtk_widget_queue_draw (GTK_WIDGET (self));
+  gtk_widget_queue_draw (GTK_WIDGET (self));             /* a curve waits after every grab (REQ-0033-02) */
 }
 
 gboolean
@@ -5612,6 +5755,11 @@ easel_canvas_cancel_stroke (EaselCanvas *self)
     }
   if (cancel_selection_drag (self))
     return;
+  if (self->off_press)
+    {
+      off_press_end (self, TRUE);               /* Esc or Undo: no new line; the put-down stays (REQ-0033-03) */
+      return;
+    }
   if (self->picking)
     {
       self->cancelled_button = self->stroke_button;
@@ -5649,8 +5797,8 @@ easel_canvas_buttons_released (EaselCanvas *self)
   /* What a release would have done, for each press the canvas still holds (REQ-0007-18). */
   self->action_button = 0;
   self->text_selecting = FALSE;
-  if (self->stroke != NULL || self->picking || self->shaping || self->pend_held || self->selecting || self->sel_moving
-      || self->lassoing || self->stretching)
+  if (self->stroke != NULL || self->picking || self->shaping || self->pend_held || self->off_press || self->selecting
+      || self->sel_moving || self->lassoing || self->stretching)
     easel_canvas_end_stroke (self);
   if (self->resizing != EASEL_HANDLE_NONE)
     easel_canvas_release (self, self->resize_button);
@@ -5723,6 +5871,11 @@ easel_canvas_end_stroke (EaselCanvas *self)
 {
   size_t changed;
 
+  if (self->off_press)
+    {
+      off_press_end (self, FALSE);              /* a lost release on the press's pixel: nothing more (REQ-0033-03) */
+      return;
+    }
   if (self->picking)
     {
       finish_pick (self, FALSE);
@@ -5842,6 +5995,7 @@ count_click (EaselCanvas *self, guint button, double x, double y, guint32 time_m
     {
       self->click_count = 1;
       self->dbl_closed = FALSE;
+      self->off_closed = FALSE;
     }
   self->click_button = button;
   self->click_time = time_ms;
@@ -5885,6 +6039,14 @@ easel_canvas_press_timed (EaselCanvas *self, guint button, double x, double y, g
     count_click (self, button, x, y, time_ms);
   if (self->dbl_closed && self->click_count >= 3 && self->tool == EASEL_TOOL_POLYGON && !self->pending)
     return;                                 /* the third click of a multi-click that closed a polygon starts nothing (REQ-0011-07) */
+  if (self->off_closed && self->click_count >= 2 && self->tool == EASEL_TOOL_CURVE && !self->pending)
+    return;                                 /* the next click of a multi-click that put a curve down from off it (REQ-0033-03) */
+  if (self->off_press)
+    {
+      if (button != self->off_button)
+        off_press_end (self, TRUE);         /* the other button cancels the new line; the put-down stays (REQ-0033-03) */
+      return;
+    }
 
   if (self->selecting || self->sel_moving || self->lassoing || self->stretching)
     {
@@ -5996,8 +6158,26 @@ easel_canvas_press_timed (EaselCanvas *self, guint button, double x, double y, g
               g_signal_emit (self, signals[SIGNAL_SHAPE_FAILED], 0);
               return;
             }
+          if (!self->pend_polygon && !curve_hit (self, x, y))
+            {
+              /* Off the curve: put down as shown at once; held, the press may start a new line (REQ-0033-03). Without the
+                 memory, the dialog and nothing more. */
+              if (put_down_pending (self) == EASEL_FIGURE_NO_MEMORY)
+                return;
+              self->off_press = TRUE;
+              self->off_button = button;
+              self->off_px = px;
+              self->off_py = py;
+              self->off_closed = TRUE;
+              g_signal_emit (self, signals[SIGNAL_STROKING_CHANGED], 0, TRUE);
+              return;
+            }
           self->pend_held = TRUE;
-          self->pend_step++;
+          if (!self->pend_polygon)
+            {
+              self->pend_step = 1;                       /* a grab of the waiting curve (REQ-0033-02) */
+              curve_grab_start (self, px, py);
+            }
           self->pend_px = px;
           self->pend_py = py;
           self->pend_dbl = self->pend_polygon && self->click_count == 2;
@@ -6101,20 +6281,7 @@ easel_canvas_press_timed (EaselCanvas *self, guint button, double x, double y, g
     {
       /* The first stage of a curve: the line from the pixel under the press, the colors those of the press (REQ-0011-04,
          -10). */
-      set_pending (self, TRUE);
-      self->pend_polygon = FALSE;
-      self->pend_gradient = FALSE;
-      self->pend_held = TRUE;
-      self->pend_step = 0;
-      self->pend_button = button;
-      self->pend_pts[0] = self->pend_pts[6] = self->pend_px = px;
-      self->pend_pts[1] = self->pend_pts[7] = self->pend_py = py;
-      self->pend_pts[2] = self->pend_pts[4] = px;
-      self->pend_pts[3] = self->pend_pts[5] = py;
-      self->pend_draw = button == GDK_BUTTON_PRIMARY ? self->foreground : self->background;
-      self->pend_other = button == GDK_BUTTON_PRIMARY ? self->background : self->foreground;
-      g_signal_emit (self, signals[SIGNAL_STROKING_CHANGED], 0, TRUE);
-      gtk_widget_queue_draw (GTK_WIDGET (self));
+      curve_line_start (self, button, px, py);
       return;
     }
   if (self->tool == EASEL_TOOL_FREE_SELECT)
@@ -6333,6 +6500,19 @@ easel_canvas_motion (EaselCanvas *self, double x, double y)
       return;
     }
 
+  if (self->off_press)
+    {
+      /* Once the pointer leaves the press's pixel, the press off the curve starts a new line from it (REQ-0033-03). */
+      to_pixel (self, x, y, &px, &py);
+      if (px == self->off_px && py == self->off_py)
+        return;
+      self->off_press = FALSE;
+      curve_line_start (self, self->off_button, self->off_px, self->off_py);
+      self->pend_px = px;
+      self->pend_py = py;
+      pend_follow (self);
+      return;
+    }
   if (self->picking)
     {
       to_pixel (self, x, y, &px, &py);
@@ -6496,6 +6676,11 @@ easel_canvas_release (EaselCanvas *self, guint button)
     self->cancelled_button = 0;
   if (button == self->action_button)
     self->action_button = 0;
+  if (self->off_press && button == self->off_button)
+    {
+      off_press_end (self, FALSE);              /* released on its pixel: nothing more (REQ-0033-03) */
+      return;
+    }
   if (self->resizing != EASEL_HANDLE_NONE && button == self->resize_button)
     {
       int w = self->outline_w, h = self->outline_h;

@@ -1198,10 +1198,10 @@ test: ui-0007
 file: src/ui/canvas.c
 test: ui-0007
 --- find
-  return self->stroke != NULL || self->picking || self->shaping || self->pend_held || self->selecting || self->sel_moving
+  return self->stroke != NULL || self->picking || self->shaping || self->pend_held || self->off_press || self->selecting || self->sel_moving
          || self->lassoing || self->stretching || self->text_drag != 0;
 --- replace
-  return self->stroke != NULL || self->shaping || self->pend_held || self->selecting || self->sel_moving
+  return self->stroke != NULL || self->shaping || self->pend_held || self->off_press || self->selecting || self->sel_moving
          || self->lassoing || self->stretching || self->text_drag != 0;
 
 === REQ-0007-03 the selected Magnifier level never reaches the canvas
@@ -1265,8 +1265,8 @@ test: ui-0007
 file: src/ui/canvas.c
 test: ui-0007
 --- find
-  if (self->stroke != NULL || self->picking || self->shaping || self->pend_held || self->selecting || self->sel_moving
-      || self->lassoing || self->stretching)
+  if (self->stroke != NULL || self->picking || self->shaping || self->pend_held || self->off_press || self->selecting
+      || self->sel_moving || self->lassoing || self->stretching)
     easel_canvas_end_stroke (self);
   if (self->resizing != EASEL_HANDLE_NONE)
     easel_canvas_release (self, self->resize_button);
@@ -1392,14 +1392,6 @@ easel_view_preset_index (int pct)
 {
   if (pct == 10)
     return 0;
-
-=== REQ-0008-07 the Magnifier's levels are not lined up under the tool columns (a narrower gap)
-file: src/ui/tool-options.c
-test: ui-0008
---- find
-    gtk_grid_set_column_spacing (GTK_GRID (magnifier_grid), 6);
---- replace
-    gtk_grid_set_column_spacing (GTK_GRID (magnifier_grid), 2);
 
 === REQ-0008-07 the Magnifier's level labels are smaller than the normal text size
 file: src/ui/style.css
@@ -1596,15 +1588,15 @@ test: io-settings-file core-settings
 file: src/ui/tool-options.c
 test: ui-0010
 --- find
-  add_width_buttons (GTK_BOX (box), width_labels);
-  return box;
+  add_width_buttons (GTK_BOX (widths), width_labels);
+  gtk_box_append (GTK_BOX (box), widths);
 --- replace
-  add_width_buttons (GTK_BOX (box), width_labels);
+  add_width_buttons (GTK_BOX (widths), width_labels);
   if (with_fill_styles)
-    for (GtkWidget *c = gtk_widget_get_last_child (box); c != NULL; c = gtk_widget_get_prev_sibling (c))
+    for (GtkWidget *c = gtk_widget_get_last_child (widths); c != NULL; c = gtk_widget_get_prev_sibling (c))
       if (GTK_IS_TOGGLE_BUTTON (c))
         gtk_actionable_set_action_name (GTK_ACTIONABLE (c), "win.fill-style");
-  return box;
+  gtk_box_append (GTK_BOX (box), widths);
 
 === REQ-0010-02 Line shows the fill styles
 file: src/ui/tool-options.c
@@ -1842,7 +1834,7 @@ test: ui-0011
 file: src/ui/window.c
 test: ui-0011
 --- find
-      return _ ("Draws a curved line with the selected line width.");
+      return _ ("Draws a curved line: drag a line, then drag points of it to bend it. A click away from it finishes it.");
 --- replace
       return _ ("Draws a polygon with the selected fill style.");
 
@@ -1984,42 +1976,14 @@ test: core-figure-step
 --- replace
   if (0)
 
-=== REQ-0011-04 the second bend moves both control points
-file: src/ui/canvas.c
-test: ui-0011
---- find
-      self->pend_pts[4] = x;
-      self->pend_pts[5] = y;
-    }
-  gtk_widget_queue_draw (GTK_WIDGET (self));
---- replace
-      self->pend_pts[4] = self->pend_pts[2] = x;
-      self->pend_pts[5] = self->pend_pts[3] = y;
-    }
-  gtk_widget_queue_draw (GTK_WIDGET (self));
-
-=== REQ-0011-04 Shift constrains the first bend
-file: src/ui/canvas.c
-test: ui-0011
---- find
-  else if (self->pend_step == 1)
-    {
-      self->pend_pts[2] = self->pend_pts[4] = x;
---- replace
-  else if (self->pend_step == 1)
-    {
-      if (self->shift)
-        easel_figure_constrain (EASEL_FIGURE_LINE, self->pend_pts[0], self->pend_pts[1], &x, &y);
-      self->pend_pts[2] = self->pend_pts[4] = x;
-
 === REQ-0011-10 a later stage takes the colors of its own press
 file: src/ui/canvas.c
 test: ui-0011
 --- find
-          self->pend_step++;
+              self->pend_step = 1;                       /* a grab of the waiting curve (REQ-0033-02) */
 --- replace
-          self->pend_step++;
-          self->pend_draw = button == GDK_BUTTON_PRIMARY ? self->foreground : self->background;
+              self->pend_step = 1;                       /* a grab of the waiting curve (REQ-0033-02) */
+              self->pend_draw = button == GDK_BUTTON_PRIMARY ? self->foreground : self->background;
 
 === REQ-0011-09 the pending curve is not shown
 file: src/ui/canvas.c
@@ -2032,16 +1996,6 @@ test: ui-0011
   if (0)
     {
       *f = pending_figure (self);
-
-=== REQ-0011-04 the second bend does not put the curve down
-file: src/ui/canvas.c
-test: ui-0011
---- find
-  if (!self->pend_polygon && self->pend_step == 2)
-    put_down_pending (self);
---- replace
-  if (!self->pend_polygon && self->pend_step == 7)
-    put_down_pending (self);
 
 === REQ-0011-09 the open polygon is shown closed, with its fill
 file: src/ui/canvas.c
@@ -2325,13 +2279,13 @@ test: ui-0011
 file: src/ui/canvas.c
 test: ui-0011
 --- find
-  if (self->stroke != NULL || self->picking || self->shaping || self->pend_held || self->selecting || self->sel_moving
-      || self->lassoing || self->stretching)
+  if (self->stroke != NULL || self->picking || self->shaping || self->pend_held || self->off_press || self->selecting
+      || self->sel_moving || self->lassoing || self->stretching)
     easel_canvas_end_stroke (self);
   if (self->resizing != EASEL_HANDLE_NONE)
     easel_canvas_release (self, self->resize_button);
 --- replace
-  if (self->stroke != NULL || self->picking || self->shaping || self->selecting || self->lassoing || self->stretching)
+  if (self->stroke != NULL || self->picking || self->shaping || self->off_press || self->selecting || self->lassoing || self->stretching)
     easel_canvas_end_stroke (self);
   if (self->resizing != EASEL_HANDLE_NONE)
     easel_canvas_release (self, self->resize_button);
@@ -2351,10 +2305,12 @@ test: ui-0011
 file: src/ui/canvas.c
 test: ui-0011
 --- find
+      to_pixel (self, x, y, &px, &py);
       self->pend_px = px;
       self->pend_py = py;
       pend_follow (self);
 --- replace
+      to_pixel (self, x, y, &px, &py);
       self->pend_px = px < 0 ? 0 : px >= self->img->width ? self->img->width - 1 : px;
       self->pend_py = py < 0 ? 0 : py >= self->img->height ? self->img->height - 1 : py;
       pend_follow (self);
@@ -2444,9 +2400,9 @@ test: ui-0012
 file: src/core/gradient.c
 test: core-gradient
 --- find
-  return (unsigned) ((2 * alpha * (length2 - d) + length2) / (2 * length2));
+  return (unsigned) ((2 * (long long) span * (length2 - d) + length2) / (2 * length2));
 --- replace
-  return (unsigned) ((2 * alpha * (length2 - d) + length2 - 1) / (2 * length2));
+  return (unsigned) ((2 * (long long) span * (length2 - d) + length2 - 1) / (2 * length2));
 
 === REQ-0012-04 the pixels behind the start are not limited to the full opacity
 file: src/core/gradient.c
@@ -2476,9 +2432,9 @@ test: core-gradient
 file: src/core/gradient.c
 test: core-gradient
 --- find
-  long long length2 = dx * dx + dy * dy, d, alpha = g->color >> 24;
+  f.alpha = g->color >> 24;
 --- replace
-  long long length2 = dx * dx + dy * dy, d, alpha = 255;
+  f.alpha = 255;
 
 === REQ-0012-05 the alpha of a picture pixel is not blended
 file: src/core/gradient.c
@@ -2680,8 +2636,8 @@ test: ui-0012
 --- find
   self->action_button = 0;
   self->text_selecting = FALSE;
-  if (self->stroke != NULL || self->picking || self->shaping || self->pend_held || self->selecting || self->sel_moving
-      || self->lassoing || self->stretching)
+  if (self->stroke != NULL || self->picking || self->shaping || self->pend_held || self->off_press || self->selecting
+      || self->sel_moving || self->lassoing || self->stretching)
     easel_canvas_end_stroke (self);
 --- replace
   self->action_button = 0;
@@ -4930,10 +4886,10 @@ test: ui-0014
 file: src/ui/canvas.c
 test: ui-0014
 --- find
-  return self->stroke != NULL || self->picking || self->shaping || self->pend_held || self->selecting || self->sel_moving
+  return self->stroke != NULL || self->picking || self->shaping || self->pend_held || self->off_press || self->selecting || self->sel_moving
          || self->lassoing || self->stretching || self->text_drag != 0;
 --- replace
-  return self->stroke != NULL || self->picking || self->shaping || self->pend_held || self->selecting || self->sel_moving
+  return self->stroke != NULL || self->picking || self->shaping || self->pend_held || self->off_press || self->selecting || self->sel_moving
          || self->stretching || self->text_drag != 0;
 
 # ---- the shape's memory dialog, blocked presses, the whole-picture path (0014 T014) ----
@@ -12163,4 +12119,152 @@ test: core-view
   return scale == floor (scale) && (pct < 100 || easel_view_draws_by_edges (pct) || scale != 1);
 --- replace
   return scale == floor (scale) && (easel_view_draws_by_edges (pct) || scale != 1);
+
+=== REQ-0033-02 Shift constrains a grab
+file: src/ui/canvas.c
+test: ui-0011
+--- find
+  moved.x = self->grab_x + (int64_t) (x - self->grab_px) * EASEL_CURVE_ONE;
+--- replace
+  if (self->shift)
+    easel_figure_constrain (EASEL_FIGURE_LINE, self->grab_px, self->grab_py, &x, &y);
+  moved.x = self->grab_x + (int64_t) (x - self->grab_px) * EASEL_CURVE_ONE;
+
+=== REQ-0033-02 the grabbed place is not limited to 1/8 to 7/8
+file: src/core/curve-bend.c
+test: core-curve-bend
+--- find
+  return best < T / 8 ? T / 8 : best > T - T / 8 ? T - T / 8 : best;
+--- replace
+  return best;
+
+=== REQ-0033-02 a tie of the nearest point goes to the larger place
+file: src/core/curve-bend.c
+test: core-curve-bend
+--- find
+      if (i == 0 || d < best_d)
+--- replace
+      if (i == 0 || d <= best_d)
+
+=== REQ-0033-02 a grab changes the curve before the pointer leaves the press's pixel
+file: src/ui/canvas.c
+test: ui-0033
+--- find
+  if (!self->grab_left)
+    return;
+  moved.x
+--- replace
+  moved.x
+
+=== REQ-0033-02 a second grab adds a bend instead of ending at the release
+file: src/ui/canvas.c
+test: ui-0033
+--- find
+  gtk_widget_queue_draw (GTK_WIDGET (self));             /* a curve waits after every grab (REQ-0033-02) */
+--- replace
+  if (!self->pend_polygon && self->curve_n == 2)
+    put_down_pending (self);
+  gtk_widget_queue_draw (GTK_WIDGET (self));             /* a curve waits after every grab (REQ-0033-02) */
+
+=== REQ-0033-04 a grab exactly 1/8 from the one bend moves it
+file: src/core/curve-bend.c
+test: core-curve-bend
+--- find
+      *which = abs (t - p[0]) < T / 8 ? 0 : 1;
+--- replace
+      *which = abs (t - p[0]) <= T / 8 ? 0 : 1;
+
+=== REQ-0033-04 a grab as near both bends concerns the second
+file: src/core/curve-bend.c
+test: core-curve-bend
+--- find
+  *which = abs (t - p[0]) <= abs (t - p[1]) ? 0 : 1;
+--- replace
+  *which = abs (t - p[0]) < abs (t - p[1]) ? 0 : 1;
+
+=== REQ-0033-04 two close places are not moved apart
+file: src/core/curve-bend.c
+test: core-curve-bend
+--- find
+  if (n > 1 && t[1] - t[0] < T / 8)
+--- replace
+  if (0)
+
+=== REQ-0033-04 a place's half rounds down
+file: src/core/curve-bend.c
+test: core-curve-bend
+--- find
+  t = floor_div (2 * T * a + length2 * EASEL_CURVE_ONE, 2 * length2 * EASEL_CURVE_ONE);
+--- replace
+  t = floor_div (2 * T * a + length2 * EASEL_CURVE_ONE - 1, 2 * length2 * EASEL_CURVE_ONE);
+
+=== REQ-0033-05 one bend is not the peak (its first control point taken as the second)
+file: src/core/curve-bend.c
+test: core-curve-bend
+--- find
+      u = 2 * a <= d ? 0 : 8 * a - 4 * d;
+--- replace
+      u = 2 * a <= d ? 8 * a - d : 8 * a - 4 * d;
+
+=== REQ-0033-05 a control point is rounded toward zero, not down
+file: src/core/curve-bend.c
+test: core-curve-bend
+--- find
+  if (a % b != 0 && a < 0)
+--- replace
+  if (0)
+
+=== REQ-0033-05 the control points are not limited
+file: src/core/curve-bend.c
+test: core-curve-bend
+--- find
+  return q < -COORD_LIMIT ? -COORD_LIMIT : q > COORD_LIMIT ? COORD_LIMIT : (int) q;
+--- replace
+  return (int) q;
+
+=== REQ-0033-01 the hit distance is 5.5 logical pixels
+file: src/ui/canvas.c
+test: ui-0033
+--- find
+  double scale = easel_canvas_get_scale (self), reach = 4.0;
+--- replace
+  double scale = easel_canvas_get_scale (self), reach = 5.5;
+
+=== REQ-0033-01 pixels of the curve outside the picture count
+file: src/ui/canvas.c
+test: ui-0033
+--- find
+          int a = MAX (runs[k].x0, 0), b = MIN (runs[k].x1, self->img->width - 1);
+--- replace
+          int a = runs[k].x0, b = runs[k].x1;
+
+=== REQ-0033-03 the rest of a multi-click away is not ignored
+file: src/ui/canvas.c
+test: ui-0033
+--- find
+  if (self->off_closed && self->click_count >= 2 && self->tool == EASEL_TOOL_CURVE && !self->pending)
+--- replace
+  if (0)
+
+=== REQ-0033-03 a press off the curve does not put it down
+file: src/ui/canvas.c
+test: ui-0033
+--- find
+              if (put_down_pending (self) == EASEL_FIGURE_NO_MEMORY)
+                return;
+              self->off_press = TRUE;
+--- replace
+              easel_canvas_drop (self);
+              self->off_press = TRUE;
+
+=== REQ-0033-03 a drag away starts no new line
+file: src/ui/canvas.c
+test: ui-0033
+--- find
+      self->off_press = FALSE;
+      curve_line_start (self, self->off_button, self->off_px, self->off_py);
+--- replace
+      off_press_end (self, FALSE);
+      return;
+      curve_line_start (self, self->off_button, self->off_px, self->off_py);
 

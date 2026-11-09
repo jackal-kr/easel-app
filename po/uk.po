@@ -785,8 +785,8 @@ msgstr "Малює заокруглений прямокутник вибран�
 msgid "Draws an ellipse with the selected fill style."
 msgstr "Малює еліпс вибраним стилем заливки."
 
-msgid "Draws a curved line with the selected line width."
-msgstr "Малює криву лінію вибраної товщини."
+msgid "Draws a curved line: drag a line, then drag points of it to bend it. A click away from it finishes it."
+msgstr "Малює криву лінію: проведіть лінію, потім перетягуйте її точки, щоб вигнути. Клацання поруч завершує її."
 
 msgid "Draws a polygon with the selected fill style."
 msgstr "Малює багатокутник вибраним стилем заливки."

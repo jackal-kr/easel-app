@@ -785,8 +785,8 @@ msgstr "Rysuje zaokrąglony prostokąt wybranym stylem wypełnienia."
 msgid "Draws an ellipse with the selected fill style."
 msgstr "Rysuje elipsę wybranym stylem wypełnienia."
 
-msgid "Draws a curved line with the selected line width."
-msgstr "Rysuje krzywą linię wybranej grubości."
+msgid "Draws a curved line: drag a line, then drag points of it to bend it. A click away from it finishes it."
+msgstr "Rysuje krzywą: przeciągnij linię, a potem przeciągaj jej punkty, aby ją wygiąć. Kliknięcie obok kończy ją."
 
 msgid "Draws a polygon with the selected fill style."
 msgstr "Rysuje wielokąt wybranym stylem wypełnienia."

@@ -785,8 +785,8 @@ msgstr "Desenează un dreptunghi rotunjit cu stilul de umplere ales."
 msgid "Draws an ellipse with the selected fill style."
 msgstr "Desenează o elipsă cu stilul de umplere ales."
 
-msgid "Draws a curved line with the selected line width."
-msgstr "Desenează o linie curbă de grosimea aleasă."
+msgid "Draws a curved line: drag a line, then drag points of it to bend it. A click away from it finishes it."
+msgstr "Desenează o linie curbă: trageți o linie, apoi trageți puncte ale ei pentru a o curba. Un clic în afara ei o încheie."
 
 msgid "Draws a polygon with the selected fill style."
 msgstr "Desenează un poligon cu stilul de umplere ales."

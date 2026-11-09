@@ -8448,7 +8448,7 @@ as1_curve_polygon_toolbox_hints (void)
     { "fill", "Fill", NULL, 0, 3, EASEL_TOOL_FILL }, { "pencil", "Pencil", NULL, 0, 4, EASEL_TOOL_PENCIL },
     { "brush", "Brush", NULL, 1, 4, EASEL_TOOL_BRUSH }, { "airbrush", "Airbrush", NULL, 0, 5, EASEL_TOOL_AIRBRUSH },
     { "line", "Line", NULL, 0, 6, EASEL_TOOL_LINE },
-    { "curve", "Curve", "Draws a curved line with the selected line width.", 1, 6, EASEL_TOOL_CURVE },
+    { "curve", "Curve", "Draws a curved line: drag a line, then drag points of it to bend it. A click away from it finishes it.", 1, 6, EASEL_TOOL_CURVE },   /* 0033 (before: "Draws a curved line with the selected line width.") */
     { "rectangle", "Rectangle", NULL, 0, 7, EASEL_TOOL_RECTANGLE },
     { "rounded-rectangle", "Rounded Rectangle", NULL, 1, 7, EASEL_TOOL_ROUNDED_RECTANGLE },
     { "ellipse", "Ellipse", NULL, 0, 8, EASEL_TOOL_ELLIPSE },
@@ -8532,9 +8532,12 @@ as1_curve_polygon_toolbox_hints (void)
   close_windows ();
 }
 
-/* AS-2 (REQ-0011-04, -05, -09, -14): the curve in three stages. The picture is unchanged until the second bend is released;
-   what the window shows while it waits is what the release draws; one undo step. Shift constrains the line and not the
-   bends. */
+static void press_enter (EaselWindow *win, guint keyval);
+
+/* AS-2 (REQ-0011-04, -05, -09, -14; changed by 0033): the line, then grabs of the waiting curve. The picture is unchanged until
+   Enter; what the window shows while it waits is what Enter draws; one undo step. Shift constrains the line and not the grabs.
+   (Before 0033: three stages, a click for each bend, the second bend's release putting the curve down: 41 pixels, the top in row
+   25 from 28 to 32; the S-curve of a second click at (50, 80), 52 pixels.) */
 static void
 as2_curve_stages_and_preview (void)
 {
@@ -8557,26 +8560,27 @@ as2_curve_stages_and_preview (void)
   g_assert_true (easel_canvas_is_pending (canvas));
   g_assert_cmpint (count_color (img, 0xFF000000u), ==, 0);
   g_assert_false (easel_window_get_modified (win));
-  /* The first bend: a click at (30, 20). */
-  shape_press_move (win, 1, 30, 20, 30, 20);
+  /* A grab of (30, 40) to (30, 20); then a second, of (30, 20) itself near the first bend: it moves nothing and the curve waits. */
+  shape_press_move (win, 1, 30, 40, 30, 20);
   g_assert_true (easel_canvas_is_stroking (canvas));
+  shape_release (win, 1);
+  shape_press_move (win, 1, 30, 20, 30, 20);
   shape_release (win, 1);
   g_assert_true (easel_canvas_is_pending (canvas));
   g_assert_cmpint (count_color (img, 0xFF000000u), ==, 0);
   wait_for_next_frame (win);
   waiting = render_pixels (win, &w, &h, &cx, &cy);
-  /* The second bend, at the same place, puts the curve down: AS-2's 41 pixels, the top in row 25 from 28 to 32. */
-  shape_press_move (win, 1, 30, 20, 30, 20);
-  shape_release (win, 1);
+  /* Enter puts it down: 0033 AS-1's 59 pixels, the top in row 20 from 24 to 35. */
+  press_enter (win, GDK_KEY_Return);
   g_assert_false (easel_canvas_is_pending (canvas));
   g_assert_false (easel_canvas_is_stroking (canvas));
-  g_assert_cmpint (count_color (img, 0xFF000000u), ==, 41);
+  g_assert_cmpint (count_color (img, 0xFF000000u), ==, 59);
   g_assert_true (easel_window_get_modified (win));
   g_assert_cmphex (easel_image_get (img, 10, 40), ==, 0xFF000000u);
   g_assert_cmphex (easel_image_get (img, 50, 40), ==, 0xFF000000u);
   for (int x = 0; x < 300; x++)
-    g_assert_true ((x >= 28 && x <= 32) == (easel_image_get (img, x, 25) == 0xFF000000u));
-  for (int y = 0; y < 25; y++)
+    g_assert_true ((x >= 24 && x <= 35) == (easel_image_get (img, x, 20) == 0xFF000000u));
+  for (int y = 0; y < 20; y++)
     for (int x = 0; x < 300; x++)
       g_assert_cmphex (easel_image_get (img, x, y), ==, 0xFFFFFF00u);
   wait_for_next_frame (win);
@@ -8589,36 +8593,21 @@ as2_curve_stages_and_preview (void)
   g_assert_cmpint (count_color (img, 0xFF000000u), ==, 0);
   g_assert_false (action_enabled (win, "undo"));
 
-  /* The second bend moves the second control point only: the S-curve of the core test (52 pixels, the lowest in row 54). */
+  /* Shift flattens the line (pressed without a move, too) and leaves the grab alone: the curve is the one drawn without
+     Shift, whose bend is not on a 45-degree line from the start. */
   shape_press_move (win, 1, 10, 40, 50, 40);
   shape_release (win, 1);
-  shape_press_move (win, 1, 30, 20, 30, 20);
+  shape_press_move (win, 1, 30, 40, 33, 22);
   shape_release (win, 1);
-  shape_press_move (win, 1, 50, 80, 50, 80);
-  shape_release (win, 1);
-  g_assert_cmpint (count_color (img, 0xFF000000u), ==, 52);
-  for (int y = 55; y < 200; y++)
-    for (int x = 0; x < 300; x++)
-      g_assert_cmphex (easel_image_get (img, x, y), ==, 0xFFFFFF00u);
-  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
-
-  /* Shift flattens the line (pressed without a move, too) and leaves the bends alone: the curve is the one drawn without
-     Shift, whose bends are not on a 45-degree line from the start. */
-  shape_press_move (win, 1, 10, 40, 50, 40);
-  shape_release (win, 1);
-  shape_press_move (win, 1, 33, 22, 33, 22);
-  shape_release (win, 1);
-  shape_press_move (win, 1, 33, 22, 33, 22);
-  shape_release (win, 1);
+  press_enter (win, GDK_KEY_Return);
   without = g_memdup2 (img->px, (gsize) 300 * 200 * sizeof img->px[0]);
   g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
   shape_press_move (win, 1, 10, 40, 50, 47);
   shift_key (win, TRUE);
   shape_release (win, 1);
-  shape_press_move (win, 1, 33, 22, 33, 22);
+  shape_press_move (win, 1, 30, 40, 33, 22);
   shape_release (win, 1);
-  shape_press_move (win, 1, 33, 22, 33, 22);
-  shape_release (win, 1);
+  press_enter (win, GDK_KEY_Return);
   shift_key (win, FALSE);
   g_assert_false (easel_canvas_is_pending (canvas));
   g_assert_cmpint (memcmp (without, img->px, (gsize) 300 * 200 * sizeof img->px[0]), ==, 0);
@@ -8653,12 +8642,13 @@ as9_curve_colors_of_the_first_press (void)
   shape_release (win, 3);
   g_action_group_activate_action (G_ACTION_GROUP (win), "swap-colors", NULL);
   g_assert_cmphex (easel_window_get_background (win), ==, fg);
-  shape_press_move (win, 3, 30, 20, 30, 20);
+  /* A grab with the secondary button, then Enter (0033; before, two secondary clicks at (30, 20) and 41 pixels). */
+  shape_press_move (win, 3, 30, 40, 30, 20);
   shape_release (win, 3);
-  shape_press_move (win, 3, 30, 20, 30, 20);
-  shape_release (win, 3);
+  g_assert_true (easel_canvas_is_pending (canvas));
+  press_enter (win, GDK_KEY_Return);
   g_assert_false (easel_canvas_is_pending (canvas));
-  g_assert_cmpint (count_color (img, bg), ==, 41);                 /* the background of the first press */
+  g_assert_cmpint (count_color (img, bg), ==, 59);                 /* the background of the first press */
   g_assert_cmpint (count_color (img, fg), ==, 0);                  /* not the one it became by the swap */
   close_windows ();
 }
@@ -9284,26 +9274,25 @@ as10_lost_release_focus_save (void)
   g_assert_false (easel_window_get_modified (win));
   easel_canvas_drop (canvas);
 
-  /* The second bend of a curve held when the release is lost, or the focus: that stage's release puts the curve down. */
+  /* A grab of a curve held when the release is lost, or the focus: the grab ends as last shown and the curve waits; Enter
+     puts it down (0033; before, the second bend's lost release put the curve down, 41 pixels). */
   use_tool (win, "curve");
-  shape_press_move (win, 1, 10, 40, 50, 40);
-  shape_release (win, 1);
-  shape_press_move (win, 1, 30, 20, 30, 20);
-  shape_release (win, 1);
-  shape_press_move (win, 1, 30, 20, 30, 20);
-  easel_canvas_buttons_released (canvas);
-  g_assert_false (easel_canvas_is_pending (canvas));
-  g_assert_cmpint (count_color (img, fg), ==, 41);
-  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
-  shape_press_move (win, 1, 10, 40, 50, 40);
-  shape_release (win, 1);
-  shape_press_move (win, 1, 30, 20, 30, 20);
-  shape_release (win, 1);
-  shape_press_move (win, 1, 30, 20, 30, 20);
-  easel_canvas_reset_pointer (canvas);
-  g_assert_false (easel_canvas_is_pending (canvas));
-  g_assert_cmpint (count_color (img, fg), ==, 41);
-  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  for (int way = 0; way < 2; way++)
+    {
+      shape_press_move (win, 1, 10, 40, 50, 40);
+      shape_release (win, 1);
+      shape_press_move (win, 1, 30, 40, 30, 20);
+      if (way == 0)
+        easel_canvas_buttons_released (canvas);
+      else
+        easel_canvas_reset_pointer (canvas);
+      g_assert_false (easel_canvas_is_stroking (canvas));
+      g_assert_true (easel_canvas_is_pending (canvas));
+      press_enter (win, GDK_KEY_Return);
+      g_assert_false (easel_canvas_is_pending (canvas));
+      g_assert_cmpint (count_color (img, fg), ==, 59);
+      g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+    }
 
   /* Save while a polygon's side is held: it ends as shown, the polygon is closed and put down, and the file holds it. */
   g_assert_true (easel_window_save_to (win, path));
@@ -9388,23 +9377,22 @@ as12_nothing_memory_blocked (void)
   use_tool (win, "curve");
   shape_press_move (win, 1, 10, 40, 50, 40);
   shape_release (win, 1);
-  shape_press_move (win, 1, 30, 20, 30, 20);
+  shape_press_move (win, 1, 30, 40, 30, 20);                    /* a grab, then Enter (0033; before, two clicks) */
   shape_release (win, 1);
-  shape_press_move (win, 1, 30, 20, 30, 20);
-  shape_release (win, 1);
+  press_enter (win, GDK_KEY_Return);
   g_assert_false (easel_canvas_is_pending (canvas));
   g_assert_false (easel_window_get_modified (win));
   g_assert_false (action_enabled (win, "undo"));
   easel_canvas_set_colors (canvas, 0xFF000000u, 0xFFFFFFFFu);
 
-  /* No memory for the curve's step: at the release of the second bend the dialog comes, nothing changes, it is not pending. */
+  /* No memory for the curve's step: at Enter the dialog comes, nothing changes, it is not pending (0033; before, at the release
+     of the second bend). */
   easel_canvas_set_shape_memory_limit (canvas, 1000);
   shape_press_move (win, 1, 10, 40, 50, 40);
   shape_release (win, 1);
-  shape_press_move (win, 1, 30, 20, 30, 20);
+  shape_press_move (win, 1, 30, 40, 30, 20);
   shape_release (win, 1);
-  shape_press_move (win, 1, 30, 20, 30, 20);
-  shape_release (win, 1);
+  press_enter (win, GDK_KEY_Return);
   easel_canvas_set_shape_memory_limit (canvas, SIZE_MAX);
   wait_for_dialogs (win, 1);
   dialog = open_alert (win);
@@ -25307,8 +25295,9 @@ run_figure (const DragRun *run, int tool, uint32_t *out)
       set_tool (win, "curve");
       set_shape_options (win, 1, 0);
       run_drag (run, 20, 30, 150, 100);
-      run_click (run, 60, 120);
-      run_click (run, 110, 10);
+      /* A grab of the line's middle, then another tool puts it down (0033; before, clicks at (60, 120) and (110, 10)). */
+      run_drag (run, 85, 65, 60, 120);
+      set_tool (win, "pan");
       break;
     case TOOL_POLYGON:
       set_tool (win, "polygon");
@@ -26031,18 +26020,13 @@ as4b_preview_equals_release (void)
           shape_press_move (win, 1, 20, 30, 150, 100);
           if (g_strcmp0 (shapes[s].tool, "curve") == 0 && !stage_line)
             {
+              /* 0033: bends are grabs of the curve (before: clicks at (60, 120) and (110, 10), the second putting it down). */
+              shape_release (win, 1);
+              shape_press_move (win, 1, 85, 65, 60, 120);            /* the line's middle grabbed and bent */
               shape_release (win, 1);
               if (g_strcmp0 (shapes[s].what, "curve, the second bend") == 0)
-                {
-                  shape_press_move (win, 1, 60, 120, 60, 120);
-                  shape_release (win, 1);
-                  shape_press_move (win, 1, 110, 10, 110, 10);       /* held: the curve as the release will put it down */
-                }
-              else
-                {
-                  shape_press_move (win, 1, 60, 120, 60, 120);
-                  shape_release (win, 1);                            /* waiting, one bend: a second one at the same place puts it down */
-                }
+                shape_press_move (win, 1, 110, 130, 120, 110);       /* a point of the bent curve, held: as Enter will put it down */
+              /* else waiting, one bend: Enter puts it down */
             }
           else if (g_strcmp0 (shapes[s].tool, "polygon") == 0)
             {
@@ -26062,10 +26046,11 @@ as4b_preview_equals_release (void)
               shape_press_move (win, 1, 20, 30, 150, 100);
               shape_release (win, 1);
             }
-          else if (g_strcmp0 (shapes[s].what, "curve, the first bend") == 0)
+          else if (g_strcmp0 (shapes[s].tool, "curve") == 0)
             {
-              shape_press_move (win, 1, 60, 120, 60, 120);
-              shape_release (win, 1);
+              if (g_strcmp0 (shapes[s].what, "curve, the second bend") == 0)
+                shape_release (win, 1);
+              press_enter (win, GDK_KEY_Return);
             }
           else if (g_strcmp0 (shapes[s].tool, "polygon") == 0)
             {
@@ -35867,6 +35852,434 @@ as11_types_recolor_stack (void)
   write_settings ("[new-picture]\nwidth=300\nheight=200\n");
 }
 
+/* ---- 0033: Curve bent on the line ---- */
+
+/* A window with a white 300 x 200 picture, black as the foreground, Curve chosen. */
+static EaselWindow *
+curve_window (void)
+{
+  EaselWindow *win;
+
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFFFF\n");
+  win = start_window ();
+  wait_for_layout (win);
+  use_tool (win, "curve");
+  wait_for_layout (win);
+  g_assert_cmpint (easel_window_get_tool (win), ==, EASEL_TOOL_CURVE);
+  g_assert_cmphex (easel_window_get_foreground (win), ==, 0xFF000000u);
+  g_assert_cmpint (count_color (easel_window_get_picture (win), 0xFFFFFFFFu), ==, 300 * 200);
+  return win;
+}
+
+static void
+curve_window_done (void)
+{
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\n");
+}
+
+/* A press on (x0, y0), a move to (x1, y1) and the release: a line, or a grab of the waiting curve. */
+static void
+curve_drag (EaselWindow *win, int x0, int y0, int x1, int y1)
+{
+  shape_press_move (win, 1, x0, y0, x1, y1);
+  shape_release (win, 1);
+}
+
+/* The rendered picture area of two renders is the same. */
+static void
+assert_same_render (const uint32_t *a, const uint32_t *b, int w, int cx, int cy)
+{
+  for (int y = 0; y < 200; y++)
+    for (int x = 0; x < 300; x++)
+      g_assert_cmphex (rendered_pixel (a, w, cx, cy, x, y), ==, rendered_pixel (b, w, cx, cy, x, y));
+}
+
+/* 0033 AS-1 (REQ-0033-02, -04, -05, -08): a press on the line's (30, 40) dragged to (30, 20) puts the curve's peak there; the
+   picture is unchanged while held and while it waits; what the window shows while it waits is what Enter writes: 59 pixels, the
+   smallest y 20 with 24 to 35; one step. (The click away of AS-1 is T003's, in as6_on_or_off.) */
+static void
+curve_as1_one_bend (void)
+{
+  EaselWindow *win = curve_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  g_autofree uint32_t *held = NULL, *waiting = NULL, *done = NULL;
+  int w, h, cx, cy;
+
+  curve_drag (win, 10, 40, 50, 40);
+  g_assert_true (easel_canvas_is_pending (canvas));
+  shape_press_move (win, 1, 30, 40, 30, 20);
+  g_assert_true (easel_canvas_is_stroking (canvas));
+  g_assert_cmpint (count_color (img, 0xFF000000u), ==, 0);
+  wait_for_next_frame (win);
+  held = render_pixels (win, &w, &h, &cx, &cy);
+  shape_release (win, 1);
+  g_assert_false (easel_canvas_is_stroking (canvas));
+  g_assert_true (easel_canvas_is_pending (canvas));                   /* no put-down at a release */
+  g_assert_cmpint (count_color (img, 0xFF000000u), ==, 0);
+  g_assert_false (easel_window_get_modified (win));
+  wait_for_next_frame (win);
+  waiting = render_pixels (win, &w, &h, &cx, &cy);
+  assert_same_render (held, waiting, w, cx, cy);
+  press_enter (win, GDK_KEY_Return);
+  g_assert_false (easel_canvas_is_pending (canvas));
+  g_assert_cmpint (count_color (img, 0xFF000000u), ==, 59);
+  for (int x = 0; x < 300; x++)
+    g_assert_true ((x >= 24 && x <= 35) == (easel_image_get (img, x, 20) == 0xFF000000u));
+  for (int y = 0; y < 20; y++)
+    for (int x = 0; x < 300; x++)
+      g_assert_cmphex (easel_image_get (img, x, y), ==, 0xFFFFFFFFu);
+  wait_for_next_frame (win);
+  done = render_pixels (win, &w, &h, &cx, &cy);
+  assert_same_render (waiting, done, w, cx, cy);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_cmpint (count_color (img, 0xFFFFFFFFu), ==, 300 * 200);
+  g_assert_false (action_enabled (win, "undo"));
+  curve_window_done ();
+}
+
+/* 0033 AS-2, AS-3 (REQ-0033-04, -05): a second bend; a third grab near the first bend moves it; one elsewhere replaces the
+   nearer bend. */
+static void
+curve_as2_two_bends (void)
+{
+  EaselWindow *win = curve_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+
+  for (int way = 0; way < 3; way++)
+    {
+      static const int want[3] = { 82, 94, 69 };
+
+      curve_drag (win, 10, 40, 70, 40);
+      curve_drag (win, 25, 40, 25, 20);
+      curve_drag (win, 44, 25, 48, 48);
+      g_assert_true (easel_canvas_is_pending (canvas));                 /* two bends: still waiting */
+      if (way == 1)
+        curve_drag (win, 25, 20, 25, 15);
+      else if (way == 2)
+        curve_drag (win, 40, 37, 40, 30);
+      g_assert_true (easel_canvas_is_pending (canvas));
+      g_assert_cmpint (count_color (img, 0xFF000000u), ==, 0);
+      press_enter (win, GDK_KEY_Return);
+      g_assert_cmpint (count_color (img, 0xFF000000u), ==, want[way]);
+      if (way == 0)
+        g_assert_true (easel_image_get (img, 25, 20) == 0xFF000000u && easel_image_get (img, 48, 48) == 0xFF000000u);
+      else if (way == 1)
+        g_assert_cmphex (easel_image_get (img, 25, 15), ==, 0xFF000000u);
+      else
+        g_assert_true (easel_image_get (img, 40, 30) == 0xFF000000u && easel_image_get (img, 25, 20) == 0xFF000000u);
+      g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+      g_assert_cmpint (count_color (img, 0xFFFFFFFFu), ==, 300 * 200);
+    }
+  curve_window_done ();
+}
+
+/* 0033 AS-4 (REQ-0033-02): a grab near either end takes 1/8 or 7/8 and moves it by the pointer's movement; a press and
+   release on one pixel changes nothing, on a line and on a bent curve. */
+static void
+curve_as4_ends_and_still_click (void)
+{
+  EaselWindow *win = curve_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  g_autofree uint32_t *before = NULL, *after = NULL;
+  int w, h, cx, cy;
+
+  curve_drag (win, 10, 40, 90, 40);
+  curve_drag (win, 11, 40, 11, 30);
+  press_enter (win, GDK_KEY_Return);
+  g_assert_cmpint (count_color (img, 0xFF000000u), ==, 87);
+  g_assert_cmphex (easel_image_get (img, 20, 30), ==, 0xFF000000u);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  curve_drag (win, 10, 40, 90, 40);
+  curve_drag (win, 89, 40, 89, 30);
+  press_enter (win, GDK_KEY_Return);
+  g_assert_cmpint (count_color (img, 0xFF000000u), ==, 87);
+  g_assert_cmphex (easel_image_get (img, 80, 30), ==, 0xFF000000u);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  /* Still clicks: the line stays the Line (41 pixels), the bent curve stays AS-2's (82). */
+  curve_drag (win, 10, 40, 50, 40);
+  wait_for_next_frame (win);
+  before = render_pixels (win, &w, &h, &cx, &cy);
+  curve_drag (win, 30, 40, 30, 40);
+  g_assert_true (easel_canvas_is_pending (canvas));
+  wait_for_next_frame (win);
+  after = render_pixels (win, &w, &h, &cx, &cy);
+  assert_same_render (before, after, w, cx, cy);
+  press_enter (win, GDK_KEY_Return);
+  g_assert_cmpint (count_color (img, 0xFF000000u), ==, 41);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  curve_drag (win, 10, 40, 70, 40);
+  curve_drag (win, 25, 40, 25, 20);
+  curve_drag (win, 44, 25, 48, 48);
+  curve_drag (win, 40, 37, 40, 37);
+  press_enter (win, GDK_KEY_Return);
+  g_assert_cmpint (count_color (img, 0xFF000000u), ==, 82);
+  curve_window_done ();
+}
+
+/* 0033 AS-7 (REQ-0033-06, REQ-0011-11, -12): Enter puts a bent curve down; Esc, Undo and the other button drop it; the middle
+   button keeps it; another tool puts it down. */
+static void
+curve_as7_keys_and_buttons (void)
+{
+  EaselWindow *win = curve_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+
+  curve_drag (win, 10, 40, 50, 40);
+  curve_drag (win, 30, 40, 30, 20);
+  press_enter (win, GDK_KEY_KP_Enter);
+  g_assert_false (easel_canvas_is_pending (canvas));
+  g_assert_cmpint (count_color (img, 0xFF000000u), ==, 59);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  for (int way = 0; way < 3; way++)
+    {
+      curve_drag (win, 10, 40, 70, 40);
+      curve_drag (win, 25, 40, 25, 20);
+      curve_drag (win, 44, 25, 48, 48);
+      g_assert_true (easel_canvas_is_pending (canvas));
+      if (way == 0)
+        press_key (win, GDK_KEY_Escape, 0);
+      else if (way == 1)
+        g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+      else
+        {
+          shape_press_move (win, 3, 25, 20, 25, 20);
+          shape_release (win, 3);
+        }
+      g_assert_false (easel_canvas_is_pending (canvas));
+      g_assert_cmpint (count_color (img, 0xFFFFFFFFu), ==, 300 * 200);
+      g_assert_false (action_enabled (win, "undo"));
+    }
+  curve_drag (win, 10, 40, 50, 40);
+  curve_drag (win, 30, 40, 30, 20);
+  shape_press_move (win, 2, 30, 20, 30, 20);
+  shape_release (win, 2);
+  g_assert_true (easel_canvas_is_pending (canvas));
+  use_tool (win, "pencil");
+  g_assert_false (easel_canvas_is_pending (canvas));
+  g_assert_cmpint (count_color (img, 0xFF000000u), ==, 59);
+  curve_window_done ();
+}
+
+/* A press and release of the primary button at the canvas point of the picture point (x, y): is the curve still waiting (the press
+   was on it) or put down (off it)? */
+static gboolean
+curve_still_after_click (EaselWindow *win, double x, double y)
+{
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  double cx, cy;
+
+  canvas_point (win, x, y, &cx, &cy);
+  easel_canvas_press (canvas, 1, cx, cy);
+  easel_canvas_release (canvas, 1);
+  return easel_canvas_is_pending (canvas);
+}
+
+/* The line from (10, 40) to (50, 40) waiting: its pixels' squares end at y 41 (picture), at x 10 and 51. */
+static void
+curve_line_waiting (EaselWindow *win)
+{
+  curve_drag (win, 10, 40, 50, 40);
+  g_assert_true (easel_canvas_is_pending (easel_window_get_canvas (win)));
+}
+
+/* 0033 AS-6 (REQ-0033-01, -03): on the curve within 4 logical pixels of a pixel it draws inside the picture, at any zoom; off it,
+   a click puts it down once (a double-click too) and a drag starts a new line, which Esc drops alone. */
+static void
+curve_as6_on_or_off (void)
+{
+  static const int zooms[] = { 100, 400, 25 };
+  EaselWindow *win = curve_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  double scale = easel_canvas_get_scale (canvas);
+
+  for (guint z = 0; z < G_N_ELEMENTS (zooms); z++)
+    {
+      double l;
+
+      easel_canvas_set_zoom (canvas, zooms[z]);
+      wait_for_layout (win);
+      g_assert_cmpint (easel_window_get_zoom (win), ==, zooms[z]);
+      l = zooms[z] / 100.0 / scale;                             /* logical pixels a picture pixel */
+      /* Below the line: 3 logical pixels from its squares (and exactly 4 from 100 % up, where the edges are k l) on; 5 off.
+         Below 100 % the squares' edges are the view's (0031), within a device pixel of k l: 3 and 6 there. */
+      curve_line_waiting (win);
+      g_assert_true (curve_still_after_click (win, 30.5, 41 + 3 / l));
+      if (zooms[z] >= 100)
+        g_assert_true (curve_still_after_click (win, 30.5, 41 + 4 / l));
+      g_assert_false (curve_still_after_click (win, 30.5, 41 + (zooms[z] >= 100 ? 5 : 6) / l));
+      g_assert_cmpint (count_color (img, 0xFF000000u), ==, 41);        /* put down by the press off it, one step */
+      g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+      g_assert_false (action_enabled (win, "undo"));
+      /* Beyond the end, along the line: the same rule. */
+      curve_line_waiting (win);
+      g_assert_true (curve_still_after_click (win, 51 + 3 / l, 40.5));
+      g_assert_false (curve_still_after_click (win, 51 + (zooms[z] >= 100 ? 5 : 6) / l, 40.5));
+      g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+    }
+  easel_canvas_set_zoom (canvas, 100);
+  wait_for_layout (win);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 100);
+  if (scale != 1)
+    {
+      curve_window_done ();
+      return;                                                     /* the rest at scale 1 */
+    }
+  /* With 3 pixels the distance counts from the wider line (rows 39 to 41, ending at 42). */
+  set_shape_options (win, 3, 0);
+  curve_line_waiting (win);
+  g_assert_true (curve_still_after_click (win, 30.5, 45.5));
+  easel_canvas_drop (canvas);
+  set_shape_options (win, 1, 0);
+  curve_line_waiting (win);
+  g_assert_false (curve_still_after_click (win, 30.5, 45.5));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  /* Pixels outside the picture are not shown and do not count. */
+  curve_drag (win, 280, 40, 340, 40);
+  g_assert_true (curve_still_after_click (win, 290.5, 40.5));
+  g_assert_false (curve_still_after_click (win, 320.5, 40.5));
+  g_assert_cmpint (count_color (img, 0xFF000000u), ==, 20);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  /* A double-click away: put down once, its second click ignored (no dot left waiting). */
+  curve_line_waiting (win);
+  press_at (win, 1000, 100, 100);
+  easel_canvas_release (canvas, 1);
+  g_assert_false (easel_canvas_is_pending (canvas));
+  press_at (win, 1100, 100, 100);
+  easel_canvas_release (canvas, 1);
+  g_assert_false (easel_canvas_is_pending (canvas));
+  g_assert_false (easel_canvas_is_stroking (canvas));
+  g_assert_cmpint (count_color (img, 0xFF000000u), ==, 41);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_false (action_enabled (win, "undo"));
+  /* A drag away: the first put down, a new line waiting; Esc drops the new one only. */
+  curve_line_waiting (win);
+  shape_press_move (win, 1, 100, 100, 140, 120);
+  g_assert_cmpint (count_color (img, 0xFF000000u), ==, 41);
+  g_assert_true (easel_canvas_is_stroking (canvas));
+  shape_release (win, 1);
+  g_assert_true (easel_canvas_is_pending (canvas));
+  press_key (win, GDK_KEY_Escape, 0);
+  g_assert_false (easel_canvas_is_pending (canvas));
+  g_assert_cmpint (count_color (img, 0xFF000000u), ==, 41);
+  g_assert_true (action_enabled (win, "undo"));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_cmpint (count_color (img, 0xFFFFFFFFu), ==, 300 * 200);
+  /* Undo while the press off it is held, before it moves: that press's line is cancelled, the put-down stays (one step). */
+  curve_line_waiting (win);
+  shape_press_move (win, 1, 100, 150, 100, 150);
+  g_assert_true (easel_canvas_is_stroking (canvas));
+  g_assert_cmpint (count_color (img, 0xFF000000u), ==, 41);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_false (easel_canvas_is_stroking (canvas));
+  shape_release (win, 1);
+  g_assert_false (easel_canvas_is_pending (canvas));
+  g_assert_cmpint (count_color (img, 0xFF000000u), ==, 41);
+  g_assert_true (action_enabled (win, "undo"));
+  curve_window_done ();
+}
+
+/* 0033 AS-9's memory case (REQ-0033-03): a press off the curve whose put-down cannot get its memory: the dialog at once, the
+   curve dropped, the picture unchanged, no new line. */
+static void
+curve_as9_off_without_memory (void)
+{
+  EaselWindow *win = curve_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  AdwAlertDialog *dialog;
+
+  curve_line_waiting (win);
+  easel_canvas_set_shape_memory_limit (canvas, 100);
+  shape_press_move (win, 1, 100, 100, 140, 120);
+  easel_canvas_set_shape_memory_limit (canvas, SIZE_MAX);
+  wait_for_dialogs (win, 1);
+  dialog = open_alert (win);
+  g_assert_nonnull (dialog);
+  g_assert_cmpstr (adw_alert_dialog_get_heading (dialog), ==, "Could Not Draw the Shape");
+  shape_release (win, 1);
+  g_assert_false (easel_canvas_is_pending (canvas));
+  g_assert_cmpint (count_color (img, 0xFFFFFFFFu), ==, 300 * 200);
+  adw_dialog_close (ADW_DIALOG (dialog));
+  wait_for_dialogs (win, 0);
+  curve_window_done ();
+}
+
+/* 0033 AS-8, AS-9 (REQ-0011-10, -11, -13, REQ-0033-02): the secondary button's curve is in the background color, its grabs with
+   that button; the primary button drops it; a held grab whose release is lost, or whose window loses the focus, ends as last
+   shown and the curve waits; a window resized while the grab is held changes nothing of the bend; Enter while held does nothing. */
+static void
+curve_as8_buttons_and_held (void)
+{
+  EaselWindow *win = curve_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  int w0, h0;
+
+  easel_canvas_set_colors (canvas, 0xFF000000u, 0xFFFF0000u);
+  shape_press_move (win, 3, 10, 40, 50, 40);
+  shape_release (win, 3);
+  shape_press_move (win, 3, 30, 40, 30, 20);
+  shape_release (win, 3);
+  press_enter (win, GDK_KEY_Return);
+  g_assert_cmpint (count_color (img, 0xFFFF0000u), ==, 59);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  shape_press_move (win, 3, 10, 40, 50, 40);
+  shape_release (win, 3);
+  shape_press_move (win, 1, 30, 40, 30, 20);                     /* the primary button on it: dropped */
+  g_assert_false (easel_canvas_is_pending (canvas));
+  shape_release (win, 1);
+  g_assert_cmpint (count_color (img, 0xFFFFFFFFu), ==, 300 * 200);
+  for (int way = 0; way < 3; way++)
+    {
+      curve_drag (win, 10, 40, 50, 40);
+      shape_press_move (win, 1, 30, 40, 30, 30);
+      g_assert_true (easel_canvas_is_stroking (canvas));
+      if (way == 0)
+        easel_canvas_buttons_released (canvas);
+      else if (way == 1)
+        easel_canvas_reset_pointer (canvas);
+      else
+        {
+          /* Resized while held, then Enter while held (nothing), then the pointer on to (30, 20) and the release. */
+          gtk_window_get_default_size (GTK_WINDOW (win), &w0, &h0);
+          gtk_window_set_default_size (GTK_WINDOW (win), w0 - 120, h0 - 80);
+          wait_for_layout (win);
+          press_enter (win, GDK_KEY_Return);
+          g_assert_true (easel_canvas_is_stroking (canvas));
+          g_assert_true (easel_canvas_is_pending (canvas));
+          shape_press_move (win, 1, 30, 30, 30, 20);              /* a lost release first: the press then grabs again */
+          shape_release (win, 1);
+          gtk_window_set_default_size (GTK_WINDOW (win), w0, h0);
+          wait_for_layout (win);
+        }
+      g_assert_false (easel_canvas_is_stroking (canvas));
+      g_assert_true (easel_canvas_is_pending (canvas));
+      press_enter (win, GDK_KEY_Return);
+      g_assert_false (easel_canvas_is_pending (canvas));
+      if (way < 2)
+        g_assert_cmphex (easel_image_get (img, 30, 30), ==, 0xFF000000u);   /* the bend as last shown */
+      else
+        g_assert_cmpint (count_color (img, 0xFF000000u), ==, 59);
+      g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+    }
+  curve_window_done ();
+}
+
+/* AS-6 at scale 2: the hit distance in logical pixels. */
+static void
+curve_as6_scale2 (void)
+{
+  if (!session_of_scale_2 ())
+    return;
+  curve_as6_on_or_off ();
+}
+
 /* AS-7 at scale 2 (REQ-0032-11): the user path of each type, the preview equal to the put-down at 100 %, 50 % and 200 %. */
 static void
 as7_types_scale2 (void)
@@ -36438,6 +36851,14 @@ main (int argc, char **argv)
   g_test_add_func ("/0032/as8_types_keep_0012_rules", as8_types_keep_0012_rules);
   g_test_add_func ("/0032/as9_type_change_held", as9_type_change_held);
   g_test_add_func ("/0032/as11_types_recolor_stack", as11_types_recolor_stack);
+  g_test_add_func ("/0033/as1_one_bend", curve_as1_one_bend);
+  g_test_add_func ("/0033/as2_two_bends", curve_as2_two_bends);
+  g_test_add_func ("/0033/as4_ends_and_still_click", curve_as4_ends_and_still_click);
+  g_test_add_func ("/0033/as7_keys_and_buttons", curve_as7_keys_and_buttons);
+  g_test_add_func ("/0033/as6_on_or_off", curve_as6_on_or_off);
+  g_test_add_func ("/0033/as9_off_without_memory", curve_as9_off_without_memory);
+  g_test_add_func ("/0033/as8_buttons_and_held", curve_as8_buttons_and_held);
+  g_test_add_func ("/0033-scale2/as6_on_or_off_scale2", curve_as6_scale2);
   g_test_add_func ("/0032-scale2/as7_types_scale2", as7_types_scale2);
   g_test_add_func ("/0030/as1_brush_two_columns", as1_brush_two_columns);
   if (g_getenv ("EASEL_PANEL_SHOT") != NULL)
