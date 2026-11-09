@@ -38,7 +38,9 @@ Order suggestion: A and B first, C after the graphics path audit, D with file in
 - The math lives in `src/core`, so `--core` covers it.
 - Built as 0032 (2026-11-09; to transparent kept, a blend into the background tried and withdrawn by JOD). Known gaps, tests only: per-type ui tests of Shift, a click, a moved marker and a press outside; the cells' keyboard path; the reshow of a waiting gradient after its memory returns (0032 Check F1 to F3).
 
-### D. Black and white
+### D. Black and white (spec 0034, implemented 2026-11-09)
+- Built 2026-11-09. Known gaps, tests only: a text box that blocks the dialog, a marked selection whose conversion fails, a free-form selection through the window, the dialog's strings in a translated session (0034 Check F1 to F4).
+- JOD, 2026-11-09: an Image command, not XP's mode; Threshold, Ordered dither or Error diffusion in a dialog (Threshold first); one step, no warning; alpha kept, palette unchanged.
 - Decided as Phase 2 on 2026-11-04; its notes and open question are in the section "Black and white" below.
 
 ## From 0025 (pixel contract tests)

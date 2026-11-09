@@ -1223,3 +1223,41 @@ msgstr "Radialny"
 msgid "Reflected"
 msgstr "Odbity"
 
+msgid "_Black and White…"
+msgstr "Czarno-_białe…"
+
+msgid "Black and White"
+msgstr "Czarno-białe"
+
+msgid "Turns the picture to black and white."
+msgstr "Zamienia obraz na czarno-biały."
+
+msgid "Turns the selection to black and white."
+msgstr "Zamienia zaznaczenie na czarno-białe."
+
+msgid "Threshold"
+msgstr "Próg"
+
+msgid "Hard edges, no dots"
+msgstr "Ostre krawędzie, bez kropek"
+
+msgid "Ordered dither"
+msgstr "Rastrowanie uporządkowane"
+
+msgid "Grays as an even pattern"
+msgstr "Szarości jako regularny wzór"
+
+msgid "Error diffusion"
+msgstr "Dyfuzja błędu"
+
+msgid "Most like a photo"
+msgstr "Najbardziej jak zdjęcie"
+
+msgid "Con_vert"
+msgstr "_Konwertuj"
+
+msgid "Could Not Convert the Picture"
+msgstr "Nie można przekształcić obrazu"
+
+msgid "Could Not Convert the Selection"
+msgstr "Nie można przekształcić zaznaczenia"

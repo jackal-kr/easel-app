@@ -9,6 +9,7 @@
 #include <stdint.h>
 
 #include "history.h"
+#include "black-white.h"
 #include "image.h"
 #include "transform.h"
 
@@ -123,6 +124,11 @@ EaselSelectionResult easel_selection_stretch_lazy (EaselFloat *f, int x, int y, 
    lifted, the orientation starts again, and what no row or column reaches is outside the shape. The hole and the copies made before keep
    theirs. NOTHING with no amount; NO_MEMORY, with the float as it was, past max_bytes (each allocation) or if one cannot be had. */
 EaselSelectionResult easel_selection_skew (EaselFloat *f, int amount_h, int amount_v, size_t max_bytes);
+
+/* Black and White of the float (REQ-0034-03): the image as shown (made whole), with its shape, converted (easel_bw_convert), becomes
+   the image as lifted at the shown size, the orientation starting again, as a skew makes its image; the hole and the copies made before
+   keep theirs. NO_MEMORY, with the float as it was, past max_bytes (each allocation) or if one cannot be had. */
+EaselSelectionResult easel_selection_black_white (EaselFloat *f, EaselBw how, size_t max_bytes);
 
 /* The same two stretches with an orientation given (REQ-0018-11): the float's orientation becomes `orient`, the shown image being the
    lifted pixels scaled to W x H before it and then oriented; the plain ones keep the float's own. */

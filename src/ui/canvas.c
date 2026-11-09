@@ -2595,6 +2595,41 @@ easel_canvas_stretch_skew_selection (EaselCanvas *self, int W, int H, int amount
 }
 
 gboolean
+easel_canvas_black_white_selection (EaselCanvas *self, EaselBw how)
+{
+  gboolean lifted_here = FALSE;
+
+  if (self->sel_state == 0 || self->img == NULL)
+    return FALSE;
+  if (self->sel_state == 1)
+    {
+      /* A marked selection is lifted first, also when the conversion changes none of its pixels (REQ-0034-03). */
+      if (easel_selection_lift (&self->sel_float, self->img, self->sel_x, self->sel_y, self->sel_w, self->sel_h, self->sel_mask,
+                                FALSE, hole_color (self), self->sel_lift_max) != EASEL_SELECTION_DONE)
+        {
+          g_signal_emit (self, signals[SIGNAL_SELECTION_FAILED], 0, 0);      /* the lift's own dialog (REQ-0013-19); still marked */
+          return TRUE;
+        }
+      self->sel_state = 2;
+      lifted_here = TRUE;
+      g_signal_emit (self, signals[SIGNAL_PENDING_CHANGED], 0);
+    }
+  if (easel_selection_black_white (&self->sel_float, how, self->sel_lift_max) != EASEL_SELECTION_DONE)
+    {
+      transform_refused (self, lifted_here, 8);
+      return TRUE;
+    }
+  /* What is shown became the image as lifted (REQ-0034-03): its line as shown is the one to scale from now, as after a skew. */
+  easel_path_free (&self->sel_path0);
+  self->sel_w = self->sel_float.w;                         /* the size as shown, which it already had */
+  self->sel_h = self->sel_float.h;                         /* (and its place) */
+  self->sel_epoch++;
+  g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);
+  gtk_widget_queue_draw (GTK_WIDGET (self));
+  return TRUE;
+}
+
+gboolean
 easel_canvas_transform_selection (EaselCanvas *self, EaselOp op)
 {
   gboolean lifted_here = FALSE;

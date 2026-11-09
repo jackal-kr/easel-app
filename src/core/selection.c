@@ -1074,10 +1074,15 @@ easel_selection_transform (EaselFloat *f, EaselOp op, size_t max_bytes)
                      easel_orient_compose (f->orient, step));
 }
 
-EaselSelectionResult
-easel_selection_skew (EaselFloat *f, int amount_h, int amount_v, size_t max_bytes)
+/* The float's shown image, with its shape, replaced by an image of out_w x out_h that make () draws from it (REQ-0019-12's skew,
+   REQ-0034-03's conversion): the new image becomes the image as lifted and the orientation starts again; the hole and the copies made
+   before keep theirs. Every allocation is had before anything changes; NO_MEMORY, with the float as it was, past max_bytes (each
+   allocation) or if one cannot be had, or if make () fails. */
+typedef bool (*ImageMaker) (const EaselFloat *f, uint32_t *npx, uint8_t *nmask, void *data);
+
+static EaselSelectionResult
+replace_image (EaselFloat *f, int out_w, int out_h, size_t max_bytes, ImageMaker make, void *data)
 {
-  int out_w = f->w + abs (amount_h), out_h = f->h + abs (amount_v);
   size_t n = (size_t) out_w * (size_t) out_h;
   bool same_image = f->orig_px == NULL, uses_current = false, uses_orig = false;
   ImageView hole = hole_view (f);
@@ -1087,8 +1092,6 @@ easel_selection_skew (EaselFloat *f, int amount_h, int amount_v, size_t max_byte
   EaselKept *kept = NULL;
   EaselSelectionResult r;
 
-  if (amount_h == 0 && amount_v == 0)
-    return EASEL_SELECTION_NOTHING;
   r = image_alloc (true, out_w, out_h, max_bytes, false, &npx, &nmask);
   if (r != EASEL_SELECTION_DONE)
     return r;
@@ -1122,8 +1125,8 @@ easel_selection_skew (EaselFloat *f, int amount_h, int amount_v, size_t max_byte
         goto no_memory;
       f->kept = kept;                       /* still valid with its old contents, if a later step were to fail */
     }
-  easel_selection_complete (f);             /* the shown image is whole before it is skewed */
-  if (!easel_ss_make (f->px, f->mask, f->w, f->h, f->w, f->h, amount_h, amount_v, 0, npx, nmask))
+  easel_selection_complete (f);             /* the shown image is whole before the new one is made from it */
+  if (!make (f, npx, nmask, data))
     goto no_memory;
 
   /* Everything is had: from here nothing fails. */
@@ -1187,6 +1190,49 @@ no_memory:
   free (hole_mask);
   free (img);
   return EASEL_SELECTION_NO_MEMORY;
+}
+
+typedef struct
+{
+  int amount_h, amount_v;
+} SkewAmounts;
+
+static bool
+make_skewed (const EaselFloat *f, uint32_t *npx, uint8_t *nmask, void *data)
+{
+  const SkewAmounts *a = data;
+
+  return easel_ss_make (f->px, f->mask, f->w, f->h, f->w, f->h, a->amount_h, a->amount_v, 0, npx, nmask);
+}
+
+EaselSelectionResult
+easel_selection_skew (EaselFloat *f, int amount_h, int amount_v, size_t max_bytes)
+{
+  SkewAmounts a = { amount_h, amount_v };
+
+  if (amount_h == 0 && amount_v == 0)
+    return EASEL_SELECTION_NOTHING;
+  return replace_image (f, f->w + abs (amount_h), f->h + abs (amount_v), max_bytes, make_skewed, &a);
+}
+
+/* The shown image and its shape copied, then converted (REQ-0034-03). */
+static bool
+make_black_white (const EaselFloat *f, uint32_t *npx, uint8_t *nmask, void *data)
+{
+  size_t n = (size_t) f->w * (size_t) f->h;
+
+  memcpy (npx, f->px, n * sizeof *npx);
+  if (f->mask != NULL)
+    memcpy (nmask, f->mask, n);
+  else
+    memset (nmask, 1, n);
+  return easel_bw_convert (npx, f->mask != NULL ? nmask : NULL, f->w, f->h, *(const EaselBw *) data);   /* a rectangle: no shape to test */
+}
+
+EaselSelectionResult
+easel_selection_black_white (EaselFloat *f, EaselBw how, size_t max_bytes)
+{
+  return replace_image (f, f->w, f->h, max_bytes, make_black_white, &how);
 }
 
 EaselSelectionResult

@@ -1223,3 +1223,41 @@ msgstr "Radial"
 msgid "Reflected"
 msgstr "Reflectat"
 
+msgid "_Black and White…"
+msgstr "_Alb-negru…"
+
+msgid "Black and White"
+msgstr "Alb-negru"
+
+msgid "Turns the picture to black and white."
+msgstr "Transformă imaginea în alb-negru."
+
+msgid "Turns the selection to black and white."
+msgstr "Transformă selecția în alb-negru."
+
+msgid "Threshold"
+msgstr "Prag"
+
+msgid "Hard edges, no dots"
+msgstr "Margini clare, fără puncte"
+
+msgid "Ordered dither"
+msgstr "Dithering ordonat"
+
+msgid "Grays as an even pattern"
+msgstr "Griuri ca model regulat"
+
+msgid "Error diffusion"
+msgstr "Difuzia erorii"
+
+msgid "Most like a photo"
+msgstr "Cel mai asemănător unei fotografii"
+
+msgid "Con_vert"
+msgstr "_Convertește"
+
+msgid "Could Not Convert the Picture"
+msgstr "Nu s-a putut converti imaginea"
+
+msgid "Could Not Convert the Selection"
+msgstr "Nu s-a putut converti selecția"

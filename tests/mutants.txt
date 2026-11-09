@@ -9719,12 +9719,20 @@ test: ui-0018
         <attribute name="action">win.invert</attribute>
         <attribute name="accel">&lt;Control&gt;i</attribute>
       </item>
+      <item>
+        <attribute name="label" translatable="yes">_Black and White…</attribute>
+        <attribute name="action">win.black-white</attribute>
+      </item>
     </section>
     <section>
       <item>
         <attribute name="label" translatable="yes">Attributes…</attribute>
 --- replace
         <attribute name="action">win.invert</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">_Black and White…</attribute>
+        <attribute name="action">win.black-white</attribute>
       </item>
     </section>
     <section>
@@ -9974,10 +9982,18 @@ test: ui-0018
         <attribute name="action">win.invert</attribute>
         <attribute name="accel">&lt;Control&gt;i</attribute>
       </item>
+      <item>
+        <attribute name="label" translatable="yes">_Black and White…</attribute>
+        <attribute name="action">win.black-white</attribute>
+      </item>
     </section>
   </menu>
   <menu id="text_menu">
 --- replace
+      <item>
+        <attribute name="label" translatable="yes">_Black and White…</attribute>
+        <attribute name="action">win.black-white</attribute>
+      </item>
     </section>
   </menu>
   <menu id="text_menu">
@@ -10666,9 +10682,9 @@ test: ui-0025
 file: src/ui/canvas.c
 test: ui-0025
 --- find
- || self->view_gen != self->tiles_gen ||
+ || self->view_tex == NULL || self->view_gen != self->tiles_gen
 --- replace
- ||
+ || self->view_tex == NULL
 === REQ-0025-02 an axis line of the grid floors its place, not the cell's edge
 file: src/ui/canvas.c
 test: ui-0025
@@ -12267,4 +12283,134 @@ test: ui-0033
       off_press_end (self, FALSE);
       return;
       curve_line_start (self, self->off_button, self->off_px, self->off_py);
+
+=== REQ-0034-04 Threshold makes Y = 128000 black
+file: src/core/black-white.c
+test: core-black-white
+--- find
+            bool white = how == EASEL_BW_THRESHOLD ? yv >= 128000
+--- replace
+            bool white = how == EASEL_BW_THRESHOLD ? yv > 128000
+
+=== REQ-0034-05 Ordered dither reads the matrix by column, row
+file: src/core/black-white.c
+test: core-black-white
+--- find
+255000 * (int64_t) (2 * matrix[y & 7][x & 7] + 1);
+--- replace
+255000 * (int64_t) (2 * matrix[x & 7][y & 7] + 1);
+
+=== REQ-0034-06 a share is rounded down, not toward zero
+file: src/core/black-white.c
+test: core-black-white
+--- find
+            cur[x + 1] += 7 * e / 16;
+--- replace
+            cur[x + 1] += (7 * e) >> 4;
+
+=== REQ-0034-06 the share below is not given
+file: src/core/black-white.c
+test: core-black-white
+--- find
+                next[x] += 5 * e / 16;
+--- replace
+                next[x] += 0;
+
+=== REQ-0034-06 a fully transparent pixel takes the shares it was sent
+file: src/core/black-white.c
+test: core-black-white
+--- find
+          if ((row[x] >> 24) == 0)
+            {
+--- replace
+          if ((row[x] >> 24) == 0 && 0)
+            {
+
+=== REQ-0034-03 the whole picture's step is always a log
+file: src/core/black-white.c
+test: core-black-white
+--- find
+  if (changed > total / 3)
+--- replace
+  if (changed > total)
+
+=== REQ-0034-03 a conversion that changes nothing adds a step
+file: src/core/black-white.c
+test: core-black-white
+--- find
+  if (changed == 0)
+    {
+      free (px);
+      return EASEL_TRANSFORM_NOTHING;
+    }
+--- replace
+  if (changed == 0 && 0)
+    {
+      free (px);
+      return EASEL_TRANSFORM_NOTHING;
+    }
+
+=== REQ-0034-03 a float's shape is ignored
+file: src/core/selection.c
+test: core-black-white
+--- find
+  return easel_bw_convert (npx, f->mask != NULL ? nmask : NULL, f->w, f->h, *(const EaselBw *) data);   /* a rectangle: no shape to test */
+--- replace
+  return easel_bw_convert (npx, NULL, f->w, f->h, *(const EaselBw *) data);
+
+=== REQ-0034-03 a selection is ignored: the whole picture is converted
+file: src/ui/window.c
+test: ui-0034
+--- find
+  if (easel_canvas_black_white_selection (self->canvas, how))
+--- replace
+  if (0 && easel_canvas_black_white_selection (self->canvas, how))
+
+=== REQ-0034-02 the dialog opens on Ordered dither
+file: src/ui/black-white-dialog.c
+test: ui-0034
+--- find
+  gtk_check_button_set_active (d->choice[0], TRUE);          /* Threshold each time it opens (REQ-0034-02) */
+--- replace
+  gtk_check_button_set_active (d->choice[1], TRUE);
+
+=== REQ-0034-02 the focus does not start on the chosen choice
+file: src/ui/black-white-dialog.c
+test: ui-0034
+--- find
+  adw_dialog_set_focus (ADW_DIALOG (d->dialog), GTK_WIDGET (d->choice[0]));   /* the focus on the chosen one */
+--- replace
+  adw_dialog_set_focus (ADW_DIALOG (d->dialog), NULL);
+
+=== REQ-0034-02 the line names the picture with a selection too
+file: src/ui/black-white-dialog.c
+test: ui-0034
+--- find
+                                                      selection ? _ ("Turns the selection to black and white.")
+--- replace
+                                                      0 ? _ ("Turns the selection to black and white.")
+
+=== REQ-0034-08 no dialog when the picture's conversion cannot get its memory
+file: src/ui/window.c
+test: ui-0034
+--- find
+    show_save_error (self, _ ("Could Not Convert the Picture"), _ ("There is not enough memory for this change."));
+--- replace
+    (void) 0;
+
+=== REQ-0034-08 the selection's failure shows Invert's dialog
+file: src/ui/canvas.c
+test: ui-0034
+--- find
+      transform_refused (self, lifted_here, 8);
+--- replace
+      transform_refused (self, lifted_here, 6);
+
+=== REQ-0034-10 a quit leaves the dialog open
+file: src/ui/window.c
+test: ui-0034
+--- find
+  present_extra_dialog (self, easel_black_white_dialog_new (selection, black_white_applied, self));
+--- replace
+  adw_dialog_present (easel_black_white_dialog_new (selection, black_white_applied, self), GTK_WIDGET (self));
 

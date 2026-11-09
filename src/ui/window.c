@@ -13,6 +13,7 @@
 #include "print.h"
 #include "thumbnail-card.h"
 #include "stretch-skew-dialog.h"
+#include "black-white-dialog.h"
 #include "stretch-skew.h"
 #include "grid-dialog.h"
 #include "magnifier.h"
@@ -58,7 +59,7 @@ struct _EaselWindow
   gsize rich_limit;                             /* tests: rich text longer than this fails as for memory; G_MAXSIZE is off */
   EaselSettings chosen;                         /* what Preferences shows: as read at start, as changed there (REQ-0020-02) */
   AdwDialog *preferences;                       /* Preferences while it is open */
-  AdwDialog *extra_dialog;                      /* Keyboard Shortcuts, About Easel, Help's or a print's error while it is open */
+  AdwDialog *extra_dialog;                      /* Keyboard Shortcuts, About Easel, Help's or a print's error, or Black and White, while it is open */
   EaselPageSetup page_setup;                    /* kept until the app quits (REQ-0026-04) */
   gboolean print_dialog_open;
   gboolean put_down_failed;                     /* a shape's or a gradient's, whose dialog is on its way */
@@ -3743,6 +3744,48 @@ stretch_skew_activated (GSimpleAction *action, GVariant *parameter, gpointer use
   easel_stretch_skew_dialog_present (GTK_WIDGET (self), w, h, stretch_skew_applied, self);
 }
 
+/* ---- Black and White (0034) ---- */
+
+/* Convert: the one function every conversion goes through; the dialog has closed. On the selection while one exists, else on the whole
+   picture as one step (REQ-0034-03); without the memory, its dialog and nothing changed (REQ-0034-08). */
+static void
+black_white_applied (EaselBw how, gpointer data)
+{
+  EaselWindow *self = data;
+  EaselTransformResult r;
+
+  if (easel_canvas_black_white_selection (self->canvas, how))
+    {
+      sync_history_ui (self);
+      return;
+    }
+  r = easel_image_black_white (self->picture, self->history, how, self->transform_limit);
+  if (r == EASEL_TRANSFORM_NO_MEMORY)
+    show_save_error (self, _ ("Could Not Convert the Picture"), _ ("There is not enough memory for this change."));
+  if (r != EASEL_TRANSFORM_DONE)
+    return;
+  easel_canvas_update (self->canvas);
+  sync_history_ui (self);
+}
+
+/* The item (REQ-0034-01): opening the dialog puts down what waits, as Stretch and Skew does, and leaves a selection as it is
+   (REQ-0034-03). */
+static void
+black_white_activated (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+  EaselWindow *self = user_data;
+  int x, y, w, h;
+  gboolean floating, selection;
+
+  if (!view_actions_allowed (self) || easel_canvas_is_panning (self->canvas) || card_field_focus (self) != NULL)
+    return;
+  selection = easel_canvas_get_selection (self->canvas, &x, &y, &w, &h, &floating);
+  if (!selection && !put_down_for_action (self, FALSE))
+    return;
+  /* As an extra dialog, so that a quit closes it as Cancel and goes on (REQ-0034-10, as REQ-0021-03). */
+  present_extra_dialog (self, easel_black_white_dialog_new (selection, black_white_applied, self));
+}
+
 static void
 invert_activated (GSimpleAction *action, GVariant *parameter, gpointer user_data)
 {
@@ -4222,6 +4265,8 @@ show_selection_error (gpointer data)
     show_save_error (self, _ ("Could Not Invert the Selection"), _ ("There is not enough memory for this change."));
   else if (kind == 7)
     show_save_error (self, _ ("Could Not Stretch or Skew the Selection"), _ ("There is not enough memory for this change."));
+  else if (kind == 8)
+    show_save_error (self, _ ("Could Not Convert the Selection"), _ ("There is not enough memory for this change."));
   else
     show_save_error (self, _ ("Could Not Move the Selection"), _ ("There is not enough memory to move this selection."));
   g_object_unref (self);
@@ -5079,6 +5124,7 @@ static const GActionEntry win_actions[] = {
   { .name = "help", .activate = help_activated },
   { .name = "about", .activate = about_activated },
   { .name = "invert", .activate = invert_activated },
+  { .name = "black-white", .activate = black_white_activated },
   { .name = "clear-image", .activate = clear_image_activated },
   { .name = "show-toolbox", .state = "true", .change_state = show_panel_state_changed },
   { .name = "show-colorbox", .state = "true", .change_state = show_panel_state_changed },

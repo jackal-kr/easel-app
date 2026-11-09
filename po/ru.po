@@ -1223,3 +1223,41 @@ msgstr "Радиальный"
 msgid "Reflected"
 msgstr "Отражённый"
 
+msgid "_Black and White…"
+msgstr "_Чёрно-белое…"
+
+msgid "Black and White"
+msgstr "Чёрно-белое"
+
+msgid "Turns the picture to black and white."
+msgstr "Делает изображение чёрно-белым."
+
+msgid "Turns the selection to black and white."
+msgstr "Делает выделение чёрно-белым."
+
+msgid "Threshold"
+msgstr "Порог"
+
+msgid "Hard edges, no dots"
+msgstr "Чёткие края, без точек"
+
+msgid "Ordered dither"
+msgstr "Упорядоченный дизеринг"
+
+msgid "Grays as an even pattern"
+msgstr "Серые как ровный узор"
+
+msgid "Error diffusion"
+msgstr "Рассеивание ошибки"
+
+msgid "Most like a photo"
+msgstr "Больше всего похоже на фото"
+
+msgid "Con_vert"
+msgstr "_Преобразовать"
+
+msgid "Could Not Convert the Picture"
+msgstr "Не удалось преобразовать изображение"
+
+msgid "Could Not Convert the Selection"
+msgstr "Не удалось преобразовать выделение"

@@ -1213,3 +1213,41 @@ msgstr "Sugaras"
 msgid "Reflected"
 msgstr "Tükrözött"
 
+msgid "_Black and White…"
+msgstr "Fe_kete-fehér…"
+
+msgid "Black and White"
+msgstr "Fekete-fehér"
+
+msgid "Turns the picture to black and white."
+msgstr "Fekete-fehérré alakítja a képet."
+
+msgid "Turns the selection to black and white."
+msgstr "Fekete-fehérré alakítja a kijelölést."
+
+msgid "Threshold"
+msgstr "Küszöb"
+
+msgid "Hard edges, no dots"
+msgstr "Éles szélek, pontok nélkül"
+
+msgid "Ordered dither"
+msgstr "Rendezett raszter"
+
+msgid "Grays as an even pattern"
+msgstr "Szürkék egyenletes mintaként"
+
+msgid "Error diffusion"
+msgstr "Hibaszórás"
+
+msgid "Most like a photo"
+msgstr "Leginkább fényképszerű"
+
+msgid "Con_vert"
+msgstr "Át_alakítás"
+
+msgid "Could Not Convert the Picture"
+msgstr "Nem sikerült átalakítani a képet"
+
+msgid "Could Not Convert the Selection"
+msgstr "Nem sikerült átalakítani a kijelölést"

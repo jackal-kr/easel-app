@@ -1213,3 +1213,41 @@ msgstr "Radial"
 msgid "Reflected"
 msgstr "Réfléchi"
 
+msgid "_Black and White…"
+msgstr "_Noir et blanc…"
+
+msgid "Black and White"
+msgstr "Noir et blanc"
+
+msgid "Turns the picture to black and white."
+msgstr "Convertit l'image en noir et blanc."
+
+msgid "Turns the selection to black and white."
+msgstr "Convertit la sélection en noir et blanc."
+
+msgid "Threshold"
+msgstr "Seuil"
+
+msgid "Hard edges, no dots"
+msgstr "Bords nets, sans points"
+
+msgid "Ordered dither"
+msgstr "Tramage ordonné"
+
+msgid "Grays as an even pattern"
+msgstr "Gris en motif régulier"
+
+msgid "Error diffusion"
+msgstr "Diffusion d'erreur"
+
+msgid "Most like a photo"
+msgstr "Le plus proche d'une photo"
+
+msgid "Con_vert"
+msgstr "_Convertir"
+
+msgid "Could Not Convert the Picture"
+msgstr "Impossible de convertir l'image"
+
+msgid "Could Not Convert the Selection"
+msgstr "Impossible de convertir la sélection"

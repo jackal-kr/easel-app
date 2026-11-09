@@ -470,6 +470,10 @@
         <attribute name="action">win.invert</attribute>
         <attribute name="accel">&lt;Control&gt;i</attribute>
       </item>
+      <item>
+        <attribute name="label" translatable="yes">_Black and White…</attribute>
+        <attribute name="action">win.black-white</attribute>
+      </item>
     </section>
     <section>
       <item>
@@ -600,6 +604,10 @@
         <attribute name="label" translatable="yes">_Invert Colors</attribute>
         <attribute name="action">win.invert</attribute>
         <attribute name="accel">&lt;Control&gt;i</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">_Black and White…</attribute>
+        <attribute name="action">win.black-white</attribute>
       </item>
     </section>
   </menu>

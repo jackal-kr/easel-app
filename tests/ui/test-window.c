@@ -13,6 +13,7 @@
 
 #include "application.h"
 #include "canvas.h"
+#include "black-white.h"
 #include "gradient.h"
 #include "selection.h"
 #include "magnifier.h"
@@ -23219,7 +23220,7 @@ as1_image_menus (void)
   i1 = describe_section (im, 1);
   i2 = describe_section (im, 2);
   g_assert_cmpstr (i0, ==, "_Flip|(null); _Rotate|(null); Stretch and _Skew…|win.stretch-skew");       /* its item: REQ-0019-01 */
-  g_assert_cmpstr (i1, ==, "_Invert Colors|win.invert");
+  g_assert_cmpstr (i1, ==, "_Invert Colors|win.invert; _Black and White…|win.black-white");   /* 0034 (before: Invert Colors alone) */
   g_assert_cmpstr (i2, ==, "Attributes…|win.attributes; _Clear Image|win.clear-image");
   section0 = g_menu_model_get_item_link (im, 0, G_MENU_LINK_SECTION);
   flip = g_menu_model_get_item_link (section0, 0, G_MENU_LINK_SUBMENU);
@@ -23841,7 +23842,9 @@ as1_selection_menu (void)
 
   g_assert_cmpint (g_menu_model_get_n_items (sel), ==, 3);
   s2 = describe_section (sel, 2);
-  g_assert_cmpstr (s2, ==, "_Flip|(null); _Rotate|(null); Stretch and _Skew…|win.stretch-skew; _Invert Colors|win.invert");
+  /* 0034 adds Black and White after Invert Colors (before: the section ended with Invert Colors). */
+  g_assert_cmpstr (s2, ==, "_Flip|(null); _Rotate|(null); Stretch and _Skew…|win.stretch-skew; _Invert Colors|win.invert; "
+                           "_Black and White…|win.black-white");
   section = g_menu_model_get_item_link (sel, 2, G_MENU_LINK_SECTION);
   flip = g_menu_model_get_item_link (section, 0, G_MENU_LINK_SUBMENU);
   rotate = g_menu_model_get_item_link (section, 1, G_MENU_LINK_SUBMENU);
@@ -36280,6 +36283,363 @@ curve_as6_scale2 (void)
   curve_as6_on_or_off ();
 }
 
+/* ---- 0034: Black and white ---- */
+
+/* A window on a w x h picture whose pixel (x, y) is a gray that differs along the picture (opaque), Select chosen. */
+static EaselWindow *
+bw_window (int w, int h)
+{
+  g_autofree char *settings = g_strdup_printf ("[new-picture]\nwidth=%d\nheight=%d\nbackground=#FFFFFF\n", w, h);
+  EaselWindow *win = window_with (settings);
+  EaselImage *img = (EaselImage *) easel_window_get_picture (win);
+
+  for (int y = 0; y < h; y++)
+    for (int x = 0; x < w; x++)
+      img->px[y * w + x] = 0xFF000000u | (guint32) ((x * 37 + y * 11) % 256) * 0x010101u;
+  img->dirty = (EaselRect) { 0, 0, w, h };
+  easel_canvas_update (easel_window_get_canvas (win));
+  return win;
+}
+
+static void
+bw_done (void)
+{
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* The open Black and White dialog, its choice buttons by name. */
+static AdwAlertDialog *
+bw_dialog (EaselWindow *win, GtkCheckButton **choice)
+{
+  static const char *const names[3] = { "bw-threshold", "bw-ordered", "bw-diffusion" };
+  AdwAlertDialog *d;
+
+  wait_for_dialogs (win, 1);
+  d = open_alert (win);
+  g_assert_nonnull (d);
+  for (int i = 0; i < 3 && choice != NULL; i++)
+    {
+      choice[i] = GTK_CHECK_BUTTON (find_named (GTK_WIDGET (d), names[i]));
+      g_assert_nonnull (choice[i]);
+    }
+  return d;
+}
+
+/* Opens the dialog, chooses the conversion and presses Convert. */
+static void
+bw_convert (EaselWindow *win, EaselBw how)
+{
+  GtkCheckButton *choice[3];
+  AdwAlertDialog *d;
+
+  g_action_group_activate_action (G_ACTION_GROUP (win), "black-white", NULL);
+  d = bw_dialog (win, choice);
+  gtk_check_button_set_active (choice[how], TRUE);
+  g_signal_emit_by_name (d, "response", "convert");
+  adw_dialog_close (ADW_DIALOG (d));
+  wait_for_dialogs (win, 0);
+}
+
+static gboolean
+all_black_or_white (const EaselImage *img, int x0, int y0, int w, int h)
+{
+  for (int y = y0; y < y0 + h; y++)
+    for (int x = x0; x < x0 + w; x++)
+      {
+        guint32 c = easel_image_get (img, x, y) & 0x00FFFFFFu;
+
+        if (c != 0 && c != 0x00FFFFFFu)
+          return FALSE;
+      }
+  return TRUE;
+}
+
+/* 0034 AS-1 (REQ-0034-01, -02): the menus; the dialog's strings, choices, default and buttons; Cancel and Esc change nothing; Threshold
+   again at each opening; the line names the selection while one exists. */
+static void
+bw_as1_menus_and_dialog (void)
+{
+  EaselWindow *win = bw_window (40, 30);
+  const EaselImage *img = easel_window_get_picture (win);
+  GMenuModel *im = menu_of (easel_window_get_image_button (win));
+  GMenuModel *sel = gtk_popover_menu_get_menu_model (easel_window_get_selection_menu (win));
+  g_autofree char *i1 = describe_section (im, 1), *s2 = describe_section (sel, 2), *accel = NULL;
+  g_autofree guint32 *before = g_memdup2 (img->px, 40 * 30 * 4);
+  GtkCheckButton *choice[3];
+  AdwAlertDialog *d;
+  static const char *const titles[3] = { "Threshold", "Ordered dither", "Error diffusion" };
+
+  g_assert_cmpstr (i1, ==, "_Invert Colors|win.invert; _Black and White…|win.black-white");
+  g_assert_cmpstr (s2, ==, "_Flip|(null); _Rotate|(null); Stretch and _Skew…|win.stretch-skew; _Invert Colors|win.invert; "
+                           "_Black and White…|win.black-white");
+  {
+    g_auto (GStrv) accels = gtk_application_get_accels_for_action (GTK_APPLICATION (g_application_get_default ()), "win.black-white");
+
+    g_assert_cmpint (g_strv_length (accels), ==, 0);                          /* no shortcut */
+  }
+  for (int round = 0; round < 2; round++)
+    {
+      g_action_group_activate_action (G_ACTION_GROUP (win), "black-white", NULL);
+      d = bw_dialog (win, choice);
+      g_assert_cmpstr (adw_alert_dialog_get_heading (d), ==, "Black and White");
+      g_assert_cmpstr (adw_alert_dialog_get_body (d), ==, "Turns the picture to black and white.");
+      g_assert_cmpstr (adw_alert_dialog_get_response_label (d, "cancel"), ==, "_Cancel");
+      g_assert_cmpstr (adw_alert_dialog_get_response_label (d, "convert"), ==, "Con_vert");          /* not C: Cancel has it */
+      g_assert_cmpstr (adw_alert_dialog_get_default_response (d), ==, "convert");
+      g_assert_cmpstr (adw_alert_dialog_get_close_response (d), ==, "cancel");
+      g_assert_cmpint (adw_alert_dialog_get_response_appearance (d, "convert"), ==, ADW_RESPONSE_SUGGESTED);
+      for (int i = 0; i < 3; i++)
+        {
+          g_assert_cmpint (gtk_check_button_get_active (choice[i]), ==, i == 0);        /* Threshold each time */
+          assert_label (GTK_WIDGET (choice[i]), titles[i]);
+        }
+      gtk_check_button_set_active (choice[2], TRUE);
+      g_assert_false (gtk_check_button_get_active (choice[0]));
+      g_signal_emit_by_name (d, "response", round == 0 ? "cancel" : "close");
+      adw_dialog_close (ADW_DIALOG (d));
+      wait_for_dialogs (win, 0);
+      g_assert_cmpint (memcmp (img->px, before, 40 * 30 * 4), ==, 0);
+      g_assert_false (action_enabled (win, "undo"));
+    }
+  /* With a selection the line says so. */
+  use_tool (win, "select");
+  drag_selection (win, 2, 2, 9, 7);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "black-white", NULL);
+  d = bw_dialog (win, NULL);
+  g_assert_cmpstr (adw_alert_dialog_get_body (d), ==, "Turns the selection to black and white.");
+  adw_dialog_close (ADW_DIALOG (d));
+  wait_for_dialogs (win, 0);
+  bw_done ();
+}
+
+/* 0034 AS-1's keys (REQ-0034-02): the focus starts on the chosen choice; Down moves to the next and chooses it; Tab leaves the three as one
+   stop, to Cancel and then Convert; Enter on the focused Cancel cancels. Probed through GTK's own focus moves. */
+static void
+bw_as1_keys (void)
+{
+  EaselWindow *win = bw_window (40, 30);
+  const EaselImage *img = easel_window_get_picture (win);
+  g_autofree guint32 *before = g_memdup2 (img->px, 40 * 30 * 4);
+  GtkCheckButton *choice[3];
+  AdwAlertDialog *d;
+  GtkWidget *focus;
+
+  g_action_group_activate_action (G_ACTION_GROUP (win), "black-white", NULL);
+  d = bw_dialog (win, choice);
+  wait_for_layout (win);
+  focus = gtk_root_get_focus (GTK_ROOT (win));
+  g_test_message ("focus at the start: %s", focus != NULL ? G_OBJECT_TYPE_NAME (focus) : "none");
+  g_assert_true (focus == GTK_WIDGET (choice[0]));
+  g_assert_true (gtk_widget_child_focus (GTK_WIDGET (d), GTK_DIR_DOWN));
+  focus = gtk_root_get_focus (GTK_ROOT (win));
+  g_test_message ("after Down: %s, chosen %d %d %d", focus != NULL ? gtk_widget_get_name (focus) : "none",
+                  gtk_check_button_get_active (choice[0]), gtk_check_button_get_active (choice[1]), gtk_check_button_get_active (choice[2]));
+  g_assert_true (focus == GTK_WIDGET (choice[1]));
+  g_assert_true (gtk_check_button_get_active (choice[1]));
+  g_assert_true (gtk_widget_child_focus (GTK_WIDGET (d), GTK_DIR_TAB_FORWARD));
+  focus = gtk_root_get_focus (GTK_ROOT (win));
+  g_test_message ("after Tab: %s %s", focus != NULL ? G_OBJECT_TYPE_NAME (focus) : "none",
+                  GTK_IS_BUTTON (focus) ? gtk_button_get_label (GTK_BUTTON (focus)) : "-");
+  g_assert_true (GTK_IS_BUTTON (focus) && !GTK_IS_CHECK_BUTTON (focus));
+  g_assert_cmpstr (gtk_button_get_label (GTK_BUTTON (focus)), ==, "_Cancel");
+  gtk_widget_activate (focus);                                             /* Enter on Cancel */
+  wait_for_dialogs (win, 0);
+  g_assert_cmpint (memcmp (img->px, before, 40 * 30 * 4), ==, 0);
+  g_assert_false (action_enabled (win, "undo"));
+  bw_done ();
+}
+
+/* 0034 AS-5, AS-6 (REQ-0034-03, -06): the whole picture as one step and Undo; already black and white, no step; a marked selection
+   floats converted, the rest unchanged, one Undo; one already black and white is lifted all the same; Error diffusion on a selection
+   uses its own rows and columns; a pending curve is put down when the dialog opens and stays put down after Cancel. */
+static void
+bw_as5_convert (void)
+{
+  EaselWindow *win = bw_window (40, 30);
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  g_autofree guint32 *before = g_memdup2 (img->px, 40 * 30 * 4);
+
+  bw_convert (win, EASEL_BW_THRESHOLD);
+  g_assert_true (all_black_or_white (img, 0, 0, 40, 30));
+  g_assert_true (action_enabled (win, "undo"));
+  bw_convert (win, EASEL_BW_THRESHOLD);                                    /* already black and white: no second step */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_cmpint (memcmp (img->px, before, 40 * 30 * 4), ==, 0);
+  g_assert_false (action_enabled (win, "undo"));
+
+  /* A marked selection: floats converted, the rest unchanged; one Undo after its put-down gives the picture back. */
+  use_tool (win, "select");
+  drag_selection (win, 2, 1, 5, 3);
+  {
+    int sx, sy, sw, sh;
+    gboolean fl;
+
+    g_assert_true (easel_canvas_get_selection (canvas, &sx, &sy, &sw, &sh, &fl));
+    g_test_message ("selection %d %d %d x %d", sx, sy, sw, sh);
+    g_assert_true (sx == 2 && sy == 1 && sw == 4 && sh == 3);                /* (2, 1) to (5, 3), 4 x 3 */
+  }
+  bw_convert (win, EASEL_BW_DIFFUSION);
+  g_assert_true (easel_canvas_is_pending (canvas));                        /* floating */
+  g_assert_true (easel_canvas_put_down (canvas));
+  g_assert_true (all_black_or_white (img, 2, 1, 4, 3));
+  for (int y = 0; y < 30; y++)
+    for (int x = 0; x < 40; x++)
+      if (x < 2 || x > 5 || y < 1 || y > 3)
+        g_assert_cmphex (easel_image_get (img, x, y), ==, before[y * 40 + x]);
+  {
+    /* AS-6: the selection's own rows and columns: the 4 x 3 part converted alone. */
+    guint32 part[12];
+
+    for (int y = 0; y < 3; y++)
+      for (int x = 0; x < 4; x++)
+        part[y * 4 + x] = before[(y + 1) * 40 + x + 2];
+    g_assert_true (easel_bw_convert (part, NULL, 4, 3, EASEL_BW_DIFFUSION));
+    for (int y = 0; y < 3; y++)
+      for (int x = 0; x < 4; x++)
+        g_assert_cmphex (easel_image_get (img, x + 2, y + 1), ==, part[y * 4 + x]);
+  }
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_cmpint (memcmp (img->px, before, 40 * 30 * 4), ==, 0);
+
+  /* Already black and white, marked: lifted and floating all the same. */
+  bw_convert (win, EASEL_BW_THRESHOLD);
+  use_tool (win, "select");
+  drag_selection (win, 2, 1, 5, 3);
+  g_assert_false (easel_canvas_is_pending (canvas));
+  bw_convert (win, EASEL_BW_THRESHOLD);
+  g_assert_true (easel_canvas_is_pending (canvas));
+  g_assert_true (easel_canvas_put_down (canvas));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_cmpint (memcmp (img->px, before, 40 * 30 * 4), ==, 0);
+
+  /* A pending curve: put down when the dialog opens, still put down after Cancel. */
+  use_tool (win, "curve");
+  shape_press_move (win, 1, 2, 20, 30, 20);
+  shape_release (win, 1);
+  g_assert_true (easel_canvas_is_pending (canvas));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "black-white", NULL);
+  bw_dialog (win, NULL);
+  g_assert_false (easel_canvas_is_pending (canvas));
+  g_assert_true (action_enabled (win, "undo"));
+  respond (win, "cancel");
+  g_assert_true (action_enabled (win, "undo"));
+  bw_done ();
+}
+
+/* 0034 AS-9 (REQ-0034-03, -05): a 4 x 4 selection floating, stretched to 8 x 8, converted by Ordered dither: one-pixel dots, those of an
+   8 x 8 picture of the same gray. */
+static void
+bw_as9_stretched (void)
+{
+  EaselWindow *win = window_with ("[new-picture]\nwidth=40\nheight=30\nbackground=#808080\n");
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  guint32 want[64];
+
+  for (int i = 0; i < 64; i++)
+    want[i] = 0xFF808080u;
+  g_assert_true (easel_bw_convert (want, NULL, 8, 8, EASEL_BW_ORDERED));
+  use_tool (win, "select");
+  drag_selection (win, 4, 4, 8, 8);
+  g_assert_true (easel_canvas_stretch_skew_selection (canvas, 8, 8, 0, 0));
+  bw_convert (win, EASEL_BW_ORDERED);
+  g_assert_true (easel_canvas_put_down (canvas));
+  for (int y = 0; y < 8; y++)
+    for (int x = 0; x < 8; x++)
+      g_assert_cmphex (easel_image_get (img, 4 + x, 4 + y), ==, want[y * 8 + x]);
+  g_assert_cmphex (easel_image_get (img, 4, 4), !=, easel_image_get (img, 5, 4));      /* one-pixel dots, not 2 x 2 */
+  bw_done ();
+}
+
+/* 0034 AS-7 (REQ-0034-08): no memory: the dialog, nothing changed, for the picture and for a selection. */
+static void
+bw_as7_memory (void)
+{
+  EaselWindow *win = bw_window (40, 30);
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  g_autofree guint32 *before = g_memdup2 (img->px, 40 * 30 * 4);
+  AdwAlertDialog *d;
+
+  easel_window_set_transform_limit (win, 100);
+  bw_convert (win, EASEL_BW_THRESHOLD);
+  easel_window_set_transform_limit (win, G_MAXSIZE);
+  wait_for_dialogs (win, 1);
+  d = open_alert (win);
+  g_assert_nonnull (d);                                                    /* a dialog came (a missing one is a failure, not a crash) */
+  g_assert_cmpstr (adw_alert_dialog_get_heading (d), ==, "Could Not Convert the Picture");
+  g_assert_cmpstr (adw_alert_dialog_get_body (d), ==, "There is not enough memory for this change.");
+  respond (win, "close");
+  g_assert_cmpint (memcmp (img->px, before, 40 * 30 * 4), ==, 0);
+  g_assert_false (action_enabled (win, "undo"));
+  /* A floating selection (floated by a first conversion): a second one without the memory leaves it as it was, floating. */
+  use_tool (win, "select");
+  drag_selection (win, 2, 1, 12, 9);
+  bw_convert (win, EASEL_BW_THRESHOLD);
+  g_assert_true (easel_canvas_is_pending (canvas));
+  {
+    g_autofree guint32 *shown = NULL;
+    int w, h, cx, cy;
+    g_autofree guint32 *again = NULL;
+
+    wait_for_next_frame (win);
+    shown = render_pixels (win, &w, &h, &cx, &cy);
+    easel_canvas_set_selection_lift_limit (canvas, 10);
+    bw_convert (win, EASEL_BW_DIFFUSION);
+    easel_canvas_set_selection_lift_limit (canvas, G_MAXSIZE);
+    wait_for_dialogs (win, 1);
+    d = open_alert (win);
+    g_assert_nonnull (d);
+    g_assert_cmpstr (adw_alert_dialog_get_heading (d), ==, "Could Not Convert the Selection");
+    g_assert_cmpstr (adw_alert_dialog_get_body (d), ==, "There is not enough memory for this change.");
+    respond (win, "close");
+    g_assert_true (easel_canvas_is_pending (canvas));                       /* still floating, as it was */
+    wait_for_next_frame (win);
+    again = render_pixels (win, &w, &h, &cx, &cy);
+    for (int y = 0; y < 30; y++)
+      for (int x = 0; x < 40; x++)
+        g_assert_cmphex (rendered_pixel (again, w, cx, cy, x, y), ==, rendered_pixel (shown, w, cx, cy, x, y));
+  }
+  bw_done ();
+}
+
+/* 0034 AS-10 (REQ-0034-10): a modified picture and the dialog open: Ctrl+Q's and Ctrl+W's actions close it, the picture unchanged, the
+   Save prompt shows. */
+static void
+bw_as10_quit (void)
+{
+  for (int way = 0; way < 2; way++)
+    {
+      EaselWindow *win = bw_window (40, 30);
+      const EaselImage *img = easel_window_get_picture (win);
+      g_autofree guint32 *before = NULL;
+      AdwDialog *d;
+
+      use_tool (win, "pencil");
+      easel_canvas_press (easel_window_get_canvas (win), 1, 5.5, 5.5);
+      easel_canvas_release (easel_window_get_canvas (win), 1);
+      before = g_memdup2 (img->px, 40 * 30 * 4);
+      g_action_group_activate_action (G_ACTION_GROUP (win), "black-white", NULL);
+      d = visible_dialog (win);
+      g_assert_nonnull (d);
+      g_object_add_weak_pointer (G_OBJECT (d), (gpointer *) &d);
+      if (way == 0)
+        g_action_group_activate_action (G_ACTION_GROUP (g_application_get_default ()), "quit", NULL);    /* Ctrl+Q's action */
+      else
+        g_action_group_activate_action (G_ACTION_GROUP (win), "close", NULL);                            /* Ctrl+W's */
+      wait_for_dialogs (win, 1);
+      g_assert_null (d);                                                  /* Black and White is gone (a weak pointer) */
+      g_assert_true (ADW_IS_ALERT_DIALOG (visible_dialog (win)));
+      g_assert_cmpstr (adw_alert_dialog_get_heading (ADW_ALERT_DIALOG (visible_dialog (win))), ==, "Save Changes?");
+      g_assert_cmpint (memcmp (img->px, before, 40 * 30 * 4), ==, 0);
+      close_windows ();
+    }
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
 /* AS-7 at scale 2 (REQ-0032-11): the user path of each type, the preview equal to the put-down at 100 %, 50 % and 200 %. */
 static void
 as7_types_scale2 (void)
@@ -36858,6 +37218,12 @@ main (int argc, char **argv)
   g_test_add_func ("/0033/as6_on_or_off", curve_as6_on_or_off);
   g_test_add_func ("/0033/as9_off_without_memory", curve_as9_off_without_memory);
   g_test_add_func ("/0033/as8_buttons_and_held", curve_as8_buttons_and_held);
+  g_test_add_func ("/0034/as1_menus_and_dialog", bw_as1_menus_and_dialog);
+  g_test_add_func ("/0034/as1_keys", bw_as1_keys);
+  g_test_add_func ("/0034/as5_convert", bw_as5_convert);
+  g_test_add_func ("/0034/as9_stretched", bw_as9_stretched);
+  g_test_add_func ("/0034/as7_memory", bw_as7_memory);
+  g_test_add_func ("/0034/as10_quit", bw_as10_quit);
   g_test_add_func ("/0033-scale2/as6_on_or_off_scale2", curve_as6_scale2);
   g_test_add_func ("/0032-scale2/as7_types_scale2", as7_types_scale2);
   g_test_add_func ("/0030/as1_brush_two_columns", as1_brush_two_columns);

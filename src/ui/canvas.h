@@ -241,6 +241,10 @@ gboolean easel_canvas_is_stroking (EaselCanvas *self);
    stays marked; if the new image cannot, the dialog of the command ("selection-failed" kind 4 flip, 5 rotate, 6 invert) and the selection
    is as it was (marked again if this command lifted it). */
 gboolean easel_canvas_transform_selection (EaselCanvas *self, EaselOp op);
+/* Black and White of the selection (REQ-0034-03): a marked one is lifted first (also when nothing changes), what is shown is converted
+   and becomes its image (easel_selection_black_white), and it floats. FALSE, nothing done, without a selection. If the lift cannot get
+   its memory the dialog of REQ-0013-19; if the conversion cannot, "selection-failed" kind 8 and the selection as it was. */
+gboolean easel_canvas_black_white_selection (EaselCanvas *self, EaselBw how);
 /* Stretch and Skew on the selection (REQ-0019-12): to W x H at its place, then the amounts, and it floats. FALSE, nothing done, without a
    selection. No change at all leaves it as it is, marked or floating (REQ-0019-13). If the lift cannot get its memory the dialog of
    REQ-0013-19 comes; if the rest cannot, "selection-failed" kind 7, with the selection as it was (marked again if this lifted it). */
