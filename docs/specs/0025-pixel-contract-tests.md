@@ -37,10 +37,10 @@ device pixel is one dot of the screen. P7.2 is stated from 100 % up, where a pic
   box) shall not change a picture pixel, the list of undo steps, the modified mark or the file saved; the tint and the grid let the
   pixels show through, and the outline, the handles and the caret cover pixels only with thin lines and small marks (the outline at
   most 2 logical pixels thick, REQ-0014-17; a handle 5 × 5, REQ-0015-01; the caret at most 2 wide, REQ-0017-05).
-- REQ-0025-06 (P7.6) A pointer position shall map to an integer picture pixel, so that a drag from the picture pixel A to the picture
+- REQ-0025-06 (Pointer note, One view path below 100 %, 2026-11-08: below 100 % a pointer maps to the pixel its device pixel shows, REQ-0031-03.) (P7.6) A pointer position shall map to an integer picture pixel, so that a drag from the picture pixel A to the picture
   pixel B makes the same figure at any zoom, wherever inside A and B the pointer is, and however many pointer events the drag has. The picture pixel is the
   one whose square is drawn under the pointer's device pixel, by the same rule that places the squares, so that what is pointed at and what is
-  drawn cannot differ; where zoom/100 is a whole number, and below 100 %, this is the position divided by the pixel's size,
+  drawn cannot differ; where zoom/100 is a whole number, and below 100 % the pixel its device pixel shows (REQ-0031-03; before 2026-11-08, the position divided by the pixel's size),
   rounded down. A position exactly on the border of two squares belongs to the one starting there (to its right or below); a negative position
   (-0.5, say) maps to a negative pixel (-1, not 0), and the pixels written are clipped to the picture (REQ-0010-21).
 

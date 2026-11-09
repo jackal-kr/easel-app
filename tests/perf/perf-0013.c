@@ -120,7 +120,7 @@ int
 main (int argc, char **argv)
 {
   g_autofree char *config_dir = g_dir_make_tmp ("easel-perf-XXXXXX", NULL);
-  static const int sizes[][2] = { { 1920, 1080 }, { 8000, 8000 } };
+  static const int sizes[][2] = { { 1920, 1080 }, { 2000, 2000 }, { 8000, 8000 } };   /* 2000 x 2000: 0031 AS-6 */
 
   g_setenv ("XDG_CONFIG_HOME", config_dir, TRUE);
   if (!gtk_init_check ())

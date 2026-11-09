@@ -56,6 +56,10 @@ struct _EaselCanvas
   GdkTexture **sel_tiles;
   int comp_x, comp_y;     /* where the float was when comp_tex were laid */
   guint64 trail_key;      /* what the trail was laid from, see trail_key_of (); 0: none */
+  uint32_t *vtrail;       /* below 100 %: the picture, the hole and the stamps laid so far, one pixel per device pixel of the view (REQ-0031-04) */
+  guint64 vtrail_key;     /* the trail it was laid from (trail_key_of ()); 0: none */
+  int vtrail_view[5];     /* the view it was laid for: zoom, x0, y0, width, height in device pixels */
+  size_t vtrail_n;        /* the stamps laid into it */
   guint sel_epoch;        /* counts every cut-back of the copies: the trail laid before it is stale */
   gboolean probe_no_line, probe_no_tint;   /* benchmark hook, see easel_canvas_set_overlay_probe () */
   size_t view_memory_max;                  /* test hook, see easel_canvas_set_view_memory_limit () */
@@ -283,6 +287,13 @@ static gboolean on_spray_tick (gpointer data);
 #define HANDLE_SIZE 5.0
 #define HANDLE_HIT 9.0
 static gboolean view_built_by_edges (EaselCanvas *self);
+static int view_edge (EaselCanvas *self, int k);
+static int view_cell (EaselCanvas *self, int d);
+static int view_extent (EaselCanvas *self, int size);
+static EaselGradient shown_gradient (EaselCanvas *self);
+static void set_pending (EaselCanvas *self, gboolean pending);
+static EaselFigure pending_figure (EaselCanvas *self);
+static guint64 trail_key_of (EaselCanvas *self);
 static gboolean append_cells_by_edges (EaselCanvas *self, GtkSnapshot *snapshot, const uint32_t *px, int x0, int y0, int rw, int rh);
 
 #define TEXT_BAND 4.0          /* the width of a text box's move band, logical pixels (REQ-0017-09) */
@@ -440,6 +451,12 @@ easel_canvas_get_handle_rect (EaselCanvas *self, EaselHandle handle, graphene_re
   l = logical_per_pixel (self);
   pw = self->img->width * l;
   ph = self->img->height * l;
+  if (self->zoom < 100 && view_built_by_edges (self))
+    {
+      /* at the edge of the device columns and rows the picture covers (REQ-0031-01) */
+      pw = view_extent (self, self->img->width) / easel_canvas_get_scale (self);
+      ph = view_extent (self, self->img->height) / easel_canvas_get_scale (self);
+    }
   x = handle == EASEL_HANDLE_BOTTOM ? pw / 2 - HANDLE_SIZE / 2 : pw;
   y = handle == EASEL_HANDLE_RIGHT ? ph / 2 - HANDLE_SIZE / 2 : ph;
   *rect = GRAPHENE_RECT_INIT ((float) x, (float) y, HANDLE_SIZE, HANDLE_SIZE);
@@ -1888,8 +1905,8 @@ append_float_outside (EaselCanvas *self, GtkSnapshot *snapshot, double l)
   data = g_bytes_new_take (px, (gsize) rw * rh * sizeof *px);
   texture = gdk_memory_texture_new (rw, rh, PICTURE_FORMAT, data, (gsize) rw * sizeof *px);
   by_edges = view_built_by_edges (self);
-  pw = (float) (by_edges ? easel_view_edge (self->img->width, self->zoom) / easel_canvas_get_scale (self) : self->img->width * l);
-  ph = (float) (by_edges ? easel_view_edge (self->img->height, self->zoom) / easel_canvas_get_scale (self) : self->img->height * l);
+  pw = (float) (by_edges ? view_extent (self, self->img->width) / easel_canvas_get_scale (self) : self->img->width * l);
+  ph = (float) (by_edges ? view_extent (self, self->img->height) / easel_canvas_get_scale (self) : self->img->height * l);
   {
     const float big = 1e5f;                                  /* past any picture, and within the range Cairo can clip */
     const graphene_rect_t bands[] = {
@@ -3314,6 +3331,42 @@ view_built_by_edges (EaselCanvas *self)
   return easel_view_built_by_edges (self->zoom, easel_canvas_get_scale (self));
 }
 
+/* Where picture pixel k's run starts in device pixels, and the picture pixel device pixel d shows: the edges from 100 % up (REQ-0025-02),
+   REQ-0031-01's rule below. */
+static int
+view_edge (EaselCanvas *self, int k)
+{
+  return self->zoom < 100 ? easel_view_edge_below (k, self->zoom) : easel_view_edge (k, self->zoom);
+}
+
+/* The grid's line on a run's start, by the same rule as the view it lies on. */
+static int
+grid_edge (int k, int zoom)
+{
+  return zoom < 100 ? easel_view_edge_below (k, zoom) : easel_view_edge (k, zoom);
+}
+
+static int
+view_cell (EaselCanvas *self, int d)
+{
+  return self->zoom < 100 ? easel_view_pixel_below (d, self->zoom) : easel_view_cell_at (d, self->zoom);
+}
+
+/* The picture pixel device pixel d shows, held to the picture: a picture under one device pixel at the zoom shows its last pixel there
+   (REQ-0031-01). */
+static int
+view_pixel (EaselCanvas *self, int d, int size)
+{
+  return MIN (view_cell (self, d), size - 1);
+}
+
+/* The picture's size in device pixels where the view is built: below 100 %, REQ-0031-01's columns (at least one). */
+static int
+view_extent (EaselCanvas *self, int size)
+{
+  return self->zoom < 100 ? easel_view_count_below (size, self->zoom) : view_edge (self, size);
+}
+
 /* An allocation of a view built on the edges (REQ-0025-03; the edge case of 0025): NULL without memory, or past the test hook's limit. */
 static gpointer
 view_try_malloc (EaselCanvas *self, gsize count, gsize size)
@@ -3330,7 +3383,6 @@ static gboolean
 append_cells_by_edges (EaselCanvas *self, GtkSnapshot *snapshot, const uint32_t *px, int x0, int y0, int rw, int rh)
 {
   double scale = easel_canvas_get_scale (self);
-  int zoom = self->zoom;
   graphene_rect_t seen;
   int dx0, dy0, dx1, dy1, vw, vh, prev_y = INT_MIN;
   uint32_t *dst;
@@ -3340,10 +3392,10 @@ append_cells_by_edges (EaselCanvas *self, GtkSnapshot *snapshot, const uint32_t 
 
   if (!gtk_widget_compute_bounds (gtk_widget_get_parent (GTK_WIDGET (self)), GTK_WIDGET (self), &seen))
     return TRUE;
-  dx0 = MAX (easel_view_edge (x0, zoom), (int) floor (seen.origin.x * scale));
-  dy0 = MAX (easel_view_edge (y0, zoom), (int) floor (seen.origin.y * scale));
-  dx1 = MIN (easel_view_edge (x0 + rw, zoom), (int) ceil ((seen.origin.x + seen.size.width) * scale));
-  dy1 = MIN (easel_view_edge (y0 + rh, zoom), (int) ceil ((seen.origin.y + seen.size.height) * scale));
+  dx0 = MAX (view_edge (self, x0), (int) floor (seen.origin.x * scale));
+  dy0 = MAX (view_edge (self, y0), (int) floor (seen.origin.y * scale));
+  dx1 = MIN (view_edge (self, x0 + rw), (int) ceil ((seen.origin.x + seen.size.width) * scale));
+  dy1 = MIN (view_edge (self, y0 + rh), (int) ceil ((seen.origin.y + seen.size.height) * scale));
   vw = dx1 - dx0;
   vh = dy1 - dy0;
   if (vw <= 0 || vh <= 0)
@@ -3357,10 +3409,10 @@ append_cells_by_edges (EaselCanvas *self, GtkSnapshot *snapshot, const uint32_t 
       return FALSE;
     }
   for (int i = 0; i < vw; i++)
-    xk[i] = easel_view_cell_at (dx0 + i, zoom) - x0;
+    xk[i] = view_cell (self, dx0 + i) - x0;
   for (int r = 0; r < vh; r++)
     {
-      int ky = easel_view_cell_at (dy0 + r, zoom);
+      int ky = view_cell (self, dy0 + r);
       uint32_t *row = dst + (gsize) r * vw;
 
       if (ky == prev_y)
@@ -3384,6 +3436,77 @@ append_cells_by_edges (EaselCanvas *self, GtkSnapshot *snapshot, const uint32_t 
 /* The part of the picture in view at device size, each device pixel from the cell the edge rule puts there, through a source index per device
    column (0025's Plan, T001). While a preview replaces some tiles their pixels are read from those; a repaint with nothing changed reuses the
    last texture. FALSE without memory, with nothing drawn: the caller draws the tiles by the renderer's scaling, for this frame. */
+/* Below 100 %, a moved or floating selection's view (REQ-0031-02, -04): the trail (the picture, the hole and the stamps) is kept at the view's
+   resolution, and each frame lays only the stamps added since, then the float over a copy of it, one picture pixel per device pixel, by the
+   selection's own lay (T001's probe: per pixel; the stamps once each). FALSE without memory: the caller draws the picture alone (REQ-0031-05). */
+static gboolean
+append_view_of_selection (EaselCanvas *self, GtkSnapshot *snapshot, int x0, int y0, int vw, int vh)
+{
+  const EaselFloat *f = &self->sel_float;
+  double scale = easel_canvas_get_scale (self);
+  size_t n = f->n_stamps;
+  guint64 key = trail_key_of (self);
+  int view[5] = { self->zoom, x0, y0, vw, vh };
+  int *xk, *yk;
+  uint32_t *dst;
+  g_autoptr (GBytes) bytes = NULL;
+
+  if (memcmp (view, self->vtrail_view, sizeof view) != 0)
+    self->vtrail_key = 0;
+  xk = view_try_malloc (self, vw, sizeof (int));
+  yk = view_try_malloc (self, vh, sizeof (int));
+  dst = view_try_malloc (self, (gsize) vw * (gsize) vh, sizeof (uint32_t));
+  if (key != self->vtrail_key || n < self->vtrail_n)
+    {
+      g_clear_pointer (&self->vtrail, g_free);
+      self->vtrail_key = 0;
+      self->vtrail = view_try_malloc (self, (gsize) vw * (gsize) vh, sizeof (uint32_t));
+      self->vtrail_n = 0;
+    }
+  if (xk == NULL || yk == NULL || dst == NULL || self->vtrail == NULL)
+    {
+      g_free (xk);
+      g_free (yk);
+      g_free (dst);
+      g_clear_pointer (&self->vtrail, g_free);
+      self->vtrail_key = 0;
+      return FALSE;
+    }
+  for (int i = 0; i < vw; i++)
+    xk[i] = view_pixel (self, x0 + i, self->img->width);
+  for (int r = 0; r < vh; r++)
+    yk[r] = view_pixel (self, y0 + r, self->img->height);
+  /* the base and the stamps not laid yet, once each */
+  if (self->vtrail_key != key || self->vtrail_n < n)
+    {
+      gboolean with_base = self->vtrail_key != key;
+
+      for (int r = 0; r < vh; r++)
+        for (int i = 0; i < vw; i++)
+          easel_selection_lay_range (f, self->vtrail_n, n, FALSE, self->img, xk[i], yk[r], 1, 1, &self->vtrail[(gsize) r * vw + i], 1,
+                                     with_base);
+      self->vtrail_key = key;
+      memcpy (self->vtrail_view, view, sizeof view);
+      self->vtrail_n = n;
+    }
+  /* the float over a copy of it */
+  memcpy (dst, self->vtrail, (gsize) vw * (gsize) vh * sizeof (uint32_t));
+  for (int r = 0; r < vh; r++)
+    if (yk[r] >= f->y && yk[r] < f->y + f->h)
+      for (int i = 0; i < vw; i++)
+        if (xk[i] >= f->x && xk[i] < f->x + f->w)
+          easel_selection_lay_range (f, n, n, TRUE, self->img, xk[i], yk[r], 1, 1, &dst[(gsize) r * vw + i], 1, FALSE);
+  g_free (xk);
+  g_free (yk);
+  bytes = g_bytes_new_take (dst, (gsize) vw * (gsize) vh * sizeof (uint32_t));
+  g_clear_object (&self->view_tex);
+  self->view_tex = gdk_memory_texture_new (vw, vh, PICTURE_FORMAT, bytes, (gsize) vw * sizeof (uint32_t));
+  self->view_kept = FALSE;
+  gtk_snapshot_append_texture (snapshot, self->view_tex,
+                               &GRAPHENE_RECT_INIT ((float) (x0 / scale), (float) (y0 / scale), (float) (vw / scale), (float) (vh / scale)));
+  return TRUE;
+}
+
 static gboolean
 append_view_by_edges (EaselCanvas *self, GtkSnapshot *snapshot, GdkTexture **preview)
 {
@@ -3397,14 +3520,22 @@ append_view_by_edges (EaselCanvas *self, GtkSnapshot *snapshot, GdkTexture **pre
     return TRUE;
   x0 = MAX (0, (int) floor (seen.origin.x * scale));
   y0 = MAX (0, (int) floor (seen.origin.y * scale));
-  x1 = MIN (easel_view_edge (img->width, zoom), (int) ceil ((seen.origin.x + seen.size.width) * scale));
-  y1 = MIN (easel_view_edge (img->height, zoom), (int) ceil ((seen.origin.y + seen.size.height) * scale));
+  x1 = MIN (view_extent (self, img->width), (int) ceil ((seen.origin.x + seen.size.width) * scale));
+  y1 = MIN (view_extent (self, img->height), (int) ceil ((seen.origin.y + seen.size.height) * scale));
   vw = x1 - x0;
   vh = y1 - y0;
   if (vw <= 0 || vh <= 0)
     return TRUE;
-  if (preview != NULL || !self->view_kept || self->view_tex == NULL || self->view_gen != self->tiles_gen || self->view_zoom != zoom
-      || self->view_x != x0 || self->view_y != y0 || self->view_w != vw || self->view_h != vh)
+  gboolean sampled_gradient = zoom < 100 && self->pending && self->pend_gradient;
+  gboolean sampled_selection = zoom < 100 && self->sel_state == 2;
+  EaselGradient g = { 0 };
+
+  if (sampled_gradient)
+    g = shown_gradient (self);
+  if (sampled_selection)
+    return append_view_of_selection (self, snapshot, x0, y0, vw, vh);
+  if (preview != NULL || sampled_gradient || !self->view_kept || self->view_tex == NULL || self->view_gen != self->tiles_gen
+      || self->view_zoom != zoom || self->view_x != x0 || self->view_y != y0 || self->view_w != vw || self->view_h != vh)
     {
       uint32_t *dst = view_try_malloc (self, (gsize) vw * (gsize) vh, sizeof (uint32_t));
       int *xk = view_try_malloc (self, vw, sizeof (int));
@@ -3418,7 +3549,7 @@ append_view_by_edges (EaselCanvas *self, GtkSnapshot *snapshot, GdkTexture **pre
 
       if (have_memory)
         for (int i = 0; i < vw; i++)
-          xk[i] = easel_view_cell_at (x0 + i, zoom);
+          xk[i] = view_pixel (self, x0 + i, img->width);
       if (have_memory && preview != NULL)
         {
           first_col = xk[0] / EASEL_CANVAS_TILE;
@@ -3439,11 +3570,18 @@ append_view_by_edges (EaselCanvas *self, GtkSnapshot *snapshot, GdkTexture **pre
         }
       for (int r = 0; r < vh; r++)
         {
-          int ky = easel_view_cell_at (y0 + r, zoom);
+          int ky = view_pixel (self, y0 + r, img->height);
           uint32_t *row = dst + (gsize) r * vw;
 
           if (ky == prev_y)
             memcpy (row, row - vw, (gsize) vw * sizeof (uint32_t));
+          else if (sampled_gradient)
+            {
+              /* The put-down's own pixel at each sampled place (REQ-0031-02): the gradient's lay, one pixel at a time (T001: about 10 ms
+                 for a view of 800 x 800). */
+              for (int i = 0; i < vw; i++)
+                easel_gradient_lay (&g, img, xk[i], ky, 1, 1, &row[i], 1);
+            }
           else if (preview == NULL)
             {
               const uint32_t *src = img->px + (gsize) ky * img->width;
@@ -3491,7 +3629,7 @@ append_view_by_edges (EaselCanvas *self, GtkSnapshot *snapshot, GdkTexture **pre
       bytes = g_bytes_new_take (dst, (gsize) vw * (gsize) vh * sizeof (uint32_t));
       g_clear_object (&self->view_tex);
       self->view_tex = gdk_memory_texture_new (vw, vh, PICTURE_FORMAT, bytes, (gsize) vw * sizeof (uint32_t));
-      self->view_kept = preview == NULL;
+      self->view_kept = preview == NULL && !sampled_gradient;
       self->view_gen = self->tiles_gen;
       self->view_zoom = zoom;
       self->view_x = x0;
@@ -3515,9 +3653,9 @@ grid_segment (double x0, double y0, double x1, double y1, void *data)
   double half = 0.5 / d->scale;
 
   if (x0 == x1)
-    ax = bx = (d->edge_zoom != 0 ? easel_view_edge ((int) lround (x0), d->edge_zoom) : floor (ax * d->scale)) / d->scale + half;
+    ax = bx = (d->edge_zoom != 0 ? grid_edge ((int) lround (x0), d->edge_zoom) : floor (ax * d->scale)) / d->scale + half;
   else if (y0 == y1)
-    ay = by = (d->edge_zoom != 0 ? easel_view_edge ((int) lround (y0), d->edge_zoom) : floor (ay * d->scale)) / d->scale + half;
+    ay = by = (d->edge_zoom != 0 ? grid_edge ((int) lround (y0), d->edge_zoom) : floor (ay * d->scale)) / d->scale + half;
   cairo_move_to (d->cr, ax, ay);
   cairo_line_to (d->cr, bx, by);
 }
@@ -3985,8 +4123,8 @@ append_shape_preview (EaselCanvas *self, GtkSnapshot *snapshot)
   scale = easel_canvas_get_scale (self);
   picture = GRAPHENE_RECT_INIT (0, 0, (float) (self->img->width * l), (float) (self->img->height * l));
   if (by_edges)
-    picture = GRAPHENE_RECT_INIT (0, 0, (float) (easel_view_edge (self->img->width, self->zoom) / scale),
-                                  (float) (easel_view_edge (self->img->height, self->zoom) / scale));
+    picture = GRAPHENE_RECT_INIT (0, 0, (float) (view_extent (self, self->img->width) / scale),
+                                  (float) (view_extent (self, self->img->height) / scale));
   row0 = (int) floor (fmax (0, seen.origin.y) / l);
   row1 = (int) ceil (fmin (self->img->height * l, seen.origin.y + seen.size.height) / l) - 1;
   if (row1 > self->img->height - 1)
@@ -4018,10 +4156,10 @@ append_shape_preview (EaselCanvas *self, GtkSnapshot *snapshot)
           if (by_edges)
             {
               /* On the squares drawn under it (REQ-0025-03). */
-              int ax = easel_view_edge (x0, self->zoom), ay = easel_view_edge (y, self->zoom);
+              int ax = view_edge (self, x0), ay = view_edge (self, y);
 
-              r = GRAPHENE_RECT_INIT ((float) (ax / scale), (float) (ay / scale), (float) ((easel_view_edge (x1 + 1, self->zoom) - ax) / scale),
-                                      (float) ((easel_view_edge (y + step, self->zoom) - ay) / scale));
+              r = GRAPHENE_RECT_INIT ((float) (ax / scale), (float) (ay / scale), (float) ((view_edge (self, x1 + 1) - ax) / scale),
+                                      (float) ((view_edge (self, y + step) - ay) / scale));
             }
           append_shape_run (snapshot, &r, &picture, color);
         }
@@ -4072,6 +4210,8 @@ free_trail (EaselCanvas *self)
   self->trail_key = 0;
   self->trail_bytes = 0;
   self->comp_bytes = 0;
+  g_clear_pointer (&self->vtrail, g_free);
+  self->vtrail_key = 0;
 }
 
 /* The floating selection is freed (put down, cancelled, removed, or lifted afresh): its trail with it. */
@@ -4598,10 +4738,10 @@ easel_canvas_marker_bounds (EaselCanvas *self, double *x0, double *y0, double *x
 {
   double scale = easel_canvas_get_scale (self);
 
-  *x0 = easel_view_edge (self->marker_x, self->zoom) / scale;
-  *y0 = easel_view_edge (self->marker_y, self->zoom) / scale;
-  *x1 = MAX (easel_view_edge (self->marker_x, self->zoom) + 1, easel_view_edge (self->marker_x + 1, self->zoom)) / scale;
-  *y1 = MAX (easel_view_edge (self->marker_y, self->zoom) + 1, easel_view_edge (self->marker_y + 1, self->zoom)) / scale;
+  *x0 = view_edge (self, self->marker_x) / scale;
+  *y0 = view_edge (self, self->marker_y) / scale;
+  *x1 = MAX (view_edge (self, self->marker_x) + 1, view_edge (self, self->marker_x + 1)) / scale;
+  *y1 = MAX (view_edge (self, self->marker_y) + 1, view_edge (self, self->marker_y + 1)) / scale;
 }
 
 gboolean
@@ -4755,10 +4895,10 @@ append_keyboard_marker (EaselCanvas *self, GtkSnapshot *snapshot)
 
   if (!self->marker_on || self->img == NULL)
     return;
-  x0 = easel_view_edge (self->marker_x, self->zoom);
-  y0 = easel_view_edge (self->marker_y, self->zoom);
-  x1 = MAX (x0 + 1, easel_view_edge (self->marker_x + 1, self->zoom));
-  y1 = MAX (y0 + 1, easel_view_edge (self->marker_y + 1, self->zoom));
+  x0 = view_edge (self, self->marker_x);
+  y0 = view_edge (self, self->marker_y);
+  x1 = MAX (x0 + 1, view_edge (self, self->marker_x + 1));
+  y1 = MAX (y0 + 1, view_edge (self, self->marker_y + 1));
   append_ring (snapshot, &black, x0 - 1, y0 - 1, x1 + 1, y1 + 1, scale);
   append_ring (snapshot, &white, x0 - 2, y0 - 2, x1 + 2, y1 + 2, scale);
   /* The footprint's outline, which a mouse has as its cursor (REQ-0022-11). */
@@ -4812,17 +4952,36 @@ canvas_snapshot_frame (EaselCanvas *self, GtkSnapshot *snapshot)
   gboolean by_edges;
 
   l = self->zoom / (100.0 * easel_canvas_get_scale (self));
-  preview = self->sel_state == 2 ? selection_preview (self) : gradient_preview (self, l);
-  if (self->sel_state != 2)
-    free_trail (self);
+  /* Below 100 % a waiting gradient and a moved selection are laid by the view itself, one pixel per device pixel (REQ-0031-02, -04): no tiles
+     of the picture's size. */
+  preview = self->zoom < 100 && view_built_by_edges (self) ? NULL
+            : self->sel_state == 2 ? selection_preview (self) : gradient_preview (self, l);
+  if (self->sel_state != 2 || (self->zoom < 100 && view_built_by_edges (self) && self->trail_data != NULL))
+    {
+      /* no selection, or a tile trail left from 100 % and up: the view's own trail stays */
+      uint32_t *vtrail = self->vtrail;
+      guint64 key = self->vtrail_key;
+      size_t n = self->vtrail_n;
+
+      self->vtrail = NULL;
+      free_trail (self);
+      if (self->sel_state == 2)
+        {
+          self->vtrail = vtrail;
+          self->vtrail_key = key;
+          self->vtrail_n = n;
+        }
+      else
+        g_free (vtrail);
+    }
   by_edges = view_built_by_edges (self);
   bounds = GRAPHENE_RECT_INIT (0, 0, (float) (self->img->width * l), (float) (self->img->height * l));
   if (by_edges)
     {
       double scale = easel_canvas_get_scale (self);
 
-      bounds.size.width = (float) (easel_view_edge (self->img->width, self->zoom) / scale);
-      bounds.size.height = (float) (easel_view_edge (self->img->height, self->zoom) / scale);
+      bounds.size.width = (float) (view_extent (self, self->img->width) / scale);
+      bounds.size.height = (float) (view_extent (self, self->img->height) / scale);
     }
 
   /* Transparent pixels show the checkerboard (REQ-0001-11); nearest filtering keeps pixels hard-edged

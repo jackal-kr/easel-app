@@ -49,8 +49,10 @@ logical_per_pixel (int pct, double scale)
 int
 easel_view_content_size (int picture_size, int pct, double scale)
 {
-  /* The epsilon keeps exact sizes such as 1920 / 1.0 from rounding up through floating-point noise. */
-  int size = (int) ceil (picture_size * logical_per_pixel (pct, scale) - 1e-9);
+  /* The epsilon keeps exact sizes such as 1920 / 1.0 from rounding up through floating-point noise. Below 100 %, the device pixels
+     REQ-0031-01 gives the picture, in logical pixels. */
+  int size = pct < 100 ? (int) ceil (easel_view_count_below (picture_size, pct) / scale - 1e-9)
+                       : (int) ceil (picture_size * logical_per_pixel (pct, scale) - 1e-9);
 
   return size < 1 ? 1 : size;
 }
@@ -69,6 +71,33 @@ easel_view_cell_at (int d, int pct)
   int64_t a = ((int64_t) 2 * d + 1) * 50;
 
   return (int) ((a > 0 ? (a + pct - 1) / pct : -(-a / pct)) - 1);
+}
+
+int
+easel_view_pixel_below (int d, int pct)
+{
+  /* floor ((d + 1/2) x 100 / pct) = floor ((2d + 1) x 50 / pct), in whole numbers, rounded toward smaller values for d < 0 too. */
+  int64_t a = ((int64_t) 2 * d + 1) * 50;
+
+  return (int) (a >= 0 ? a / pct : -((-a + pct - 1) / pct));
+}
+
+int
+easel_view_edge_below (int k, int pct)
+{
+  /* The first d whose pixel is k or more: (2d + 1) x 50 >= k x pct, so d >= (k x pct - 50) / 100, rounded up, also left of or above the
+     picture (a float outside it, REQ-0031-02). */
+  int64_t a = (int64_t) k * pct - 50;
+
+  return (int) (a >= 0 ? (a + 99) / 100 : -((-a) / 100));
+}
+
+int
+easel_view_count_below (int size, int pct)
+{
+  int n = easel_view_edge_below (size, pct);
+
+  return n < 1 ? 1 : n;
 }
 
 int
@@ -94,7 +123,8 @@ easel_view_draws_by_edges (int pct)
 bool
 easel_view_built_by_edges (int pct, double scale)
 {
-  return scale == floor (scale) && (easel_view_draws_by_edges (pct) || scale != 1);
+  /* Below 100 % the view is built by REQ-0031-01's rule at a whole screen scale. */
+  return scale == floor (scale) && (pct < 100 || easel_view_draws_by_edges (pct) || scale != 1);
 }
 
 void
@@ -102,6 +132,13 @@ easel_view_to_pixel (double x, double y, int pct, double scale, int *px, int *py
 {
   double l = logical_per_pixel (pct, scale);
 
+  /* Below 100 %: the pixel the point's device pixel shows (REQ-0031-03). */
+  if (pct < 100)
+    {
+      *px = easel_view_pixel_below ((int) floor (x * scale), pct);
+      *py = easel_view_pixel_below ((int) floor (y * scale), pct);
+      return;
+    }
   /* The pixel whose square is drawn under the point (REQ-0025-06): the view's edges are the only rule, drawn and pointed. A fractional screen
      scale stays with the division, untested (0025's Plan). */
   if (easel_view_built_by_edges (pct, scale))

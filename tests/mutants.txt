@@ -10671,9 +10671,9 @@ test: ui-0025
 file: src/ui/canvas.c
 test: ui-0025
 --- find
-(float) ((easel_view_edge (x1 + 1, self->zoom) - ax) / scale),
+(float) ((view_edge (self, x1 + 1) - ax) / scale),
 --- replace
-(float) ((easel_view_edge (x1, self->zoom) - ax) / scale),
+(float) ((view_edge (self, x1) - ax) / scale),
 === REQ-0025-04 the put-down of a text box depends on the zoom
 file: src/ui/canvas.c
 test: ui-0025
@@ -10747,21 +10747,9 @@ test: ui-0025
 file: src/core/view.c
 test: core-view
 --- find
-  return scale == floor (scale) && (easel_view_draws_by_edges (pct) || scale != 1);
+  return scale == floor (scale) && (pct < 100 || easel_view_draws_by_edges (pct) || scale != 1);
 --- replace
-  return scale == floor (scale) && (easel_view_draws_by_edges (pct) || (scale != 1 && pct >= 100));
-
-=== REQ-0025-06 the pointer does not follow the view below 100 % on a scale above 1
-file: src/core/view.c
-test: core-view
---- find
-  if (easel_view_built_by_edges (pct, scale))
-    {
-      *px = easel_view_cell_at
---- replace
-  if (easel_view_draws_by_edges (pct) && scale == floor (scale))
-    {
-      *px = easel_view_cell_at
+  return scale == floor (scale) && ((pct < 100 && scale == 1) || easel_view_draws_by_edges (pct) || (scale != 1 && pct >= 100));
 
 === REQ-0025-02 a view with no memory draws nothing
 file: src/ui/canvas.c
@@ -12045,3 +12033,56 @@ test: core-settings
         s->toolbox_width = easel_settings_toolbox_width (value.p, value.n);
 --- replace
         s->toolbox_width = 0;
+
+=== REQ-0031-01 below 100 % a device pixel shows the pixel at its left edge, not its center
+file: src/core/view.c
+test: core-view
+--- find
+  /* floor ((d + 1/2) x 100 / pct) = floor ((2d + 1) x 50 / pct), in whole numbers, rounded toward smaller values for d < 0 too. */
+  int64_t a = ((int64_t) 2 * d + 1) * 50;
+--- replace
+  /* floor ((d + 1/2) x 100 / pct) = floor ((2d + 1) x 50 / pct), in whole numbers, rounded toward smaller values for d < 0 too. */
+  int64_t a = (int64_t) 2 * d * 50;
+
+=== REQ-0031-03 below 100 % a device pixel left of the picture rounds toward zero
+file: src/core/view.c
+test: core-view
+--- find
+  return (int) (a >= 0 ? a / pct : -((-a + pct - 1) / pct));
+--- replace
+  return (int) (a / pct);
+
+=== REQ-0031-02 a run starting left of or above the picture starts at 0
+file: src/core/view.c
+test: core-view
+--- find
+  return (int) (a >= 0 ? (a + 99) / 100 : -((-a) / 100));
+--- replace
+  return (int) (a >= 0 ? (a + 99) / 100 : 0);
+
+=== REQ-0031-01 a picture narrower than one device pixel covers none
+file: src/core/view.c
+test: core-view
+--- find
+  return n < 1 ? 1 : n;
+--- replace
+  return n;
+
+=== REQ-0031-03 the pointer below 100 % keeps the division
+file: src/core/view.c
+test: core-view
+--- find
+  /* Below 100 %: the pixel the point's device pixel shows (REQ-0031-03). */
+  if (pct < 100)
+--- replace
+  /* Below 100 %: the pixel the point's device pixel shows (REQ-0031-03). */
+  if (pct < 30)
+
+=== REQ-0031-01 below 100 % the view is not built by the rule
+file: src/core/view.c
+test: core-view
+--- find
+  return scale == floor (scale) && (pct < 100 || easel_view_draws_by_edges (pct) || scale != 1);
+--- replace
+  return scale == floor (scale) && (easel_view_draws_by_edges (pct) || scale != 1);
+

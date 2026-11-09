@@ -74,7 +74,7 @@ as17_zoomed_click_maps_to_pixel (void)
   easel_view_to_pixel (5.5, 0.0, 100, 1.25, &px, &py);
   CHECK (px == 6);
   easel_view_to_pixel (3.0, 0.0, 10, 1.0, &px, &py);
-  CHECK (px == 30);
+  CHECK (px == 35);                              /* the pixel device pixel 3 shows (REQ-0031-03; 30 by the division before 0031) */
 
   /* Left of or above the picture is negative, not 0. */
   easel_view_to_pixel (-0.5, -3.0, 100, 1.0, &px, &py);
@@ -417,11 +417,11 @@ as2b_pointer_on_border (void)
     /* A screen of scale 2: 0.5 logical pixels are one device pixel. */
     easel_view_to_pixel (21 / 2.0, 0, 129, 2, &px, &py);
     CHECK (px == 16);
-    /* A whole size and a zoom below 100 %: the division, unchanged. */
+    /* A whole size: the division, unchanged; below 100 % the pixel the device pixel shows (REQ-0031-03; 42 by the division before 0031). */
     easel_view_to_pixel (21.0, -0.5, 400, 1, &px, &py);
     CHECK (px == 5 && py == -1);
     easel_view_to_pixel (21.0, 0, 50, 1, &px, &py);
-    CHECK (px == 42);
+    CHECK (px == 43);
     /* A fractional screen scale: unchanged too, untested on a real screen (the Plan). */
     easel_view_to_pixel (1.0, 0, 129, 1.5, &px, &py);
     CHECK (px == (int) floor (1.0 / (129 / 150.0)));
@@ -433,7 +433,7 @@ as2b_pointer_on_border (void)
 static void
 built_by_edges_at_any_zoom_on_a_scale_above_1 (void)
 {
-  CHECK (!easel_view_built_by_edges (50, 1));
+  CHECK (easel_view_built_by_edges (50, 1));                     /* below 100 %: REQ-0031-01's rule (not built before 0031) */
   CHECK (!easel_view_built_by_edges (100, 1));
   CHECK (!easel_view_built_by_edges (800, 1));
   CHECK (easel_view_built_by_edges (129, 1));
@@ -449,8 +449,8 @@ built_by_edges_at_any_zoom_on_a_scale_above_1 (void)
       int px, py;
 
       easel_view_to_pixel ((d + 0.25) / 2.0, (d + 0.75) / 2.0, 75, 2, &px, &py);
-      CHECK (px == easel_view_cell_at (d, 75));
-      CHECK (py == easel_view_cell_at (d, 75));
+      CHECK (px == easel_view_pixel_below (d, 75));      /* below 100 %, the rule of REQ-0031-01 (the edges' before 0031) */
+      CHECK (py == easel_view_pixel_below (d, 75));
     }
 }
 
@@ -466,6 +466,83 @@ draws_by_edges_only_where_a_square_is_fractional (void)
   CHECK (!easel_view_draws_by_edges (99));
   CHECK (!easel_view_draws_by_edges (75));
   CHECK (!easel_view_draws_by_edges (50));
+}
+
+/* 0031 AS-1 (REQ-0031-01): below 100 % device pixel d shows the picture pixel under its center, floor ((d + 0.5) x 100 / zoom). */
+static void
+as1_pixel_below (void)
+{
+  static const int at25[] = { 2, 6, 10, 14, 18 }, at10[] = { 5, 15, 25, 35, 45 }, at42[] = { 1, 3, 5, 8, 10 };
+  static const int at16[] = { 3, 9, 15, 21, 28 }, at50[] = { 1, 3, 5, 7, 9 };
+
+  for (int d = 0; d < 5; d++)
+    {
+      CHECK (easel_view_pixel_below (d, 25) == at25[d]);
+      CHECK (easel_view_pixel_below (d, 10) == at10[d]);
+      CHECK (easel_view_pixel_below (d, 42) == at42[d]);
+      CHECK (easel_view_pixel_below (d, 16) == at16[d]);
+      CHECK (easel_view_pixel_below (d, 50) == at50[d]);
+    }
+  CHECK (easel_view_pixel_below (1000, 25) == 4002);                 /* AS-2's pixel, far from the corner */
+  CHECK (easel_view_pixel_below (-1, 25) == -2);                     /* before the picture */
+  CHECK (easel_view_pixel_below (-2, 25) == -6);
+  CHECK (easel_view_pixel_below (99, 99) == 100);                    /* (99.5 x 100 / 99 = 100.5) */
+}
+
+/* 0031 AS-2 (REQ-0031-01): the device columns a picture covers below 100 %, at least one. */
+static void
+as2_count_below (void)
+{
+  CHECK (easel_view_count_below (401, 25) == 100);
+  CHECK (easel_view_count_below (403, 25) == 101);
+  CHECK (easel_view_count_below (400, 25) == 100);
+  CHECK (easel_view_count_below (3, 10) == 1);
+  CHECK (easel_view_count_below (8000, 10) == 800);
+  CHECK (easel_view_count_below (1, 10) == 1);
+  /* where a run starts, also before the picture: the first device pixel showing k or after, so the one before shows less than k */
+  for (int pct = 10; pct < 100; pct += 7)
+    for (int k = -300; k < 300; k += 11)
+      {
+        int d = easel_view_edge_below (k, pct);
+
+        CHECK (easel_view_pixel_below (d, pct) >= k);
+        CHECK (easel_view_pixel_below (d - 1, pct) < k);
+      }
+  /* in both directions: the last column covered shows an existing pixel, the next one does not */
+  for (int pct = 10; pct < 100; pct += 7)
+    for (int size = 1; size < 300; size += 13)
+      {
+        int n = easel_view_count_below (size, pct);
+
+        CHECK (n == 1 || easel_view_pixel_below (n - 1, pct) < size);
+        CHECK (easel_view_pixel_below (n, pct) >= size);
+      }
+}
+
+/* 0031 AS-4 and AS-5 (REQ-0031-03): below 100 % a point maps to the pixel its device pixel shows; the point is in logical pixels, times the
+   screen scale gives its device pixel. */
+static void
+as4_pointer_below (void)
+{
+  int px, py;
+
+  easel_view_to_pixel (0.1, 0.1, 25, 1.0, &px, &py);
+  CHECK (px == 2 && py == 2);
+  easel_view_to_pixel (0.9, 3.9, 25, 1.0, &px, &py);
+  CHECK (px == 2 && py == 14);
+  easel_view_to_pixel (1.0, -0.1, 25, 1.0, &px, &py);
+  CHECK (px == 6 && py == -2);
+}
+
+static void
+as5_scale2_below (void)
+{
+  int px, py;
+
+  easel_view_to_pixel (0.3, 0.6, 25, 2.0, &px, &py);                /* devices 0.6 and 1.2 */
+  CHECK (px == 2 && py == 6);
+  easel_view_to_pixel (0.3, 0.6, 50, 2.0, &px, &py);
+  CHECK (px == 1 && py == 3);
 }
 
 int
@@ -490,5 +567,9 @@ main (void)
   RUN (as2b_pointer_on_border);
   RUN (draws_by_edges_only_where_a_square_is_fractional);
   RUN (built_by_edges_at_any_zoom_on_a_scale_above_1);
+  RUN (as1_pixel_below);
+  RUN (as2_count_below);
+  RUN (as4_pointer_below);
+  RUN (as5_scale2_below);
   return 0;
 }

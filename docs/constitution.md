@@ -12,7 +12,7 @@ the plan against it). Changing a principle needs an ADR in `docs/decisions/`. JO
 - **P6** Every user-adjustable default is a setting in a configuration file, not a constant in code; the Preferences dialog edits the same settings.
 - **P7 The pixel contract** (ADR-0003).
   1. Every tool writes whole picture pixels with exact colors. Smoothing, where it exists, is opt-in and still writes whole pixels.
-  2. The view only magnifies: one picture pixel is exactly zoom/100 device pixels on a side, on any screen, at every scroll position and window size. At a fractional zoom every edge is one position that depends only on k and the zoom: no gaps, no overlaps, and no cell that moves when the view scrolls.
+  2. The view only magnifies: one picture pixel is exactly zoom/100 device pixels on a side, on any screen, at every scroll position and window size. At a fractional zoom every edge is one position that depends only on k and the zoom: no gaps, no overlaps, and no cell that moves when the view scrolls. Below 100 % each device pixel shows the one picture pixel under its center, by a rule that depends only on the zoom (JOD, 2026-11-08, feature 0031).
   3. A preview, a floating selection and a text box show exactly the pixels the put-down writes, made by the same code.
   4. The same input gives the same pixels: a letter is the same bitmap wherever it falls in a line, and a shape's pixels depend only on its integer coordinates, not on the zoom, the scroll or the screen scale.
   5. Overlays (outline, handles, caret, grid, tint) are drawn in screen space and never change a picture pixel. The tint and the grid let the pixels show through; the outline, the handles and the caret cover pixels only with thin lines and small marks.
