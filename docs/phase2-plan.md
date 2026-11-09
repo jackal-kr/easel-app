@@ -36,6 +36,7 @@ Order suggestion: A and B first, C after the graphics path audit, D with file in
 - Open product question for JOD, in the spec: keep "to transparent", or run from the foreground to the background color, perhaps as a second row "To transparent / To background".
 - The preview equals the put-down (P7.3); exact colors with a defined rounding rule; integer or checked-table arithmetic, so the same input gives the same pixels on every machine. The spec states a drag of zero length, a drag past the picture, a fill inside a selection only, and a radial edge beyond the radius.
 - The math lives in `src/core`, so `--core` covers it.
+- Built as 0032 (2026-11-09; to transparent kept, a blend into the background tried and withdrawn by JOD). Known gaps, tests only: per-type ui tests of Shift, a click, a moved marker and a press outside; the cells' keyboard path; the reshow of a waiting gradient after its memory returns (0032 Check F1 to F3).
 
 ### D. Black and white
 - Decided as Phase 2 on 2026-11-04; its notes and open question are in the section "Black and white" below.
@@ -48,7 +49,7 @@ Order suggestion: A and B first, C after the graphics path audit, D with file in
 - `append_float_outside` builds a texture it does not use and rebuilds the cells once per band: a small waste on a rare path.
 - `perf-0025` keeps its diagnostic modes (`fractional`, `pencil`, `pencil-log`).
 - The rule below 100 % at scale 2 in `canvas.c` is proved by its red run and by the core rule's mutant: `tools/mutate.sh` sessions are of scale 1 and cannot run a scale 2 mutant.
-- A graphics path audit was named for this phase; it has no document yet.
+- A graphics path audit was named for this phase: done 2026-11-08, `docs/graphics-path-audit.md`; it proposes one view path below 100 % before Gradient types.
 
 ## From 0019 (Stretch and Skew)
 - Cases the code handles and no test of their own observes: Ctrl+T at the quit prompt and with the focus in the font card; the scroll kept after OK; a stretch back through the dialog, and a free-form or pasted selection skewed in the window (the core tests have them); a refused lift; AS-16 compares the pixels, not a saved file.

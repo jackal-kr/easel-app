@@ -4112,6 +4112,7 @@ sync_canvas_options (EaselWindow *self)
   easel_canvas_set_eraser_transparent (self->canvas, easel_tool_options_get_transparent (self->tool_options));
   easel_canvas_set_selection_transparent (self->canvas, easel_tool_options_get_select_transparent (self->tool_options));
   easel_canvas_set_text_opaque (self->canvas, !easel_tool_options_get_text_transparent (self->tool_options));
+  easel_canvas_set_gradient_type (self->canvas, easel_tool_options_get_gradient_type (self->tool_options));
   easel_status_bar_set_hint (self->status_bar, tool_hint (self->tool, easel_tool_options_get_transparent (self->tool_options)));
   update_preset_part (self);
 }

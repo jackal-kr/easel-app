@@ -10,6 +10,7 @@
 #include "text-buffer.h"
 #include "text-put.h"
 #include "footprint.h"
+#include "gradient.h"
 #include "tool.h"
 #include "view.h"
 
@@ -351,6 +352,8 @@ gboolean easel_canvas_text_can_redo (EaselCanvas *self);
 gboolean easel_canvas_text_ink (EaselCanvas *self, EaselTextInk *ink);
 /* The style at the caret, a line's start being the text's or a line started by Enter (REQ-0017-26). */
 void easel_canvas_text_style_at_caret (EaselCanvas *self, EaselTextStyle *out);
+/* Gradient's type (REQ-0032-01): a waiting or held gradient takes it at once (REQ-0032-08, -09). */
+void easel_canvas_set_gradient_type (EaselCanvas *self, EaselGradientType type);
 /* The Text tool's mode: TRUE for Opaque (REQ-0017-02). */
 void easel_canvas_set_text_opaque (EaselCanvas *self, gboolean opaque);
 /* A key for the open box, as the window's key handler gives it (REQ-0017-06): TRUE if the box took it. */

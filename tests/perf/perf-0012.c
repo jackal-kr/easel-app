@@ -48,14 +48,18 @@ prepared_window (const char *config_dir, int w, int h, gboolean fit)
   return win;
 }
 
-/* A gradient from an eighth of the way in, its end dragged across the picture. */
+static const char *const type_names[] = { "Linear", "Radial", "Reflected" };
+
+/* A gradient of the given type (0032) from an eighth of the way in, its end dragged across the picture. */
 static void
-measure_drag (const char *config_dir, int w, int h, gboolean fit)
+measure_drag (const char *config_dir, int w, int h, gboolean fit, EaselGradientType type)
 {
   enum { N = 30 };
   double ms[N], cx, cy, before;
   EaselWindow *win = prepared_window (config_dir, w, h, fit);
   EaselCanvas *canvas = easel_window_get_canvas (win);
+
+  easel_canvas_set_gradient_type (canvas, type);
 
   before = peak_mb ();
   at (win, w / 8, h / 8, &cx, &cy);
@@ -71,8 +75,8 @@ measure_drag (const char *config_dir, int w, int h, gboolean fit)
     }
   easel_canvas_release (canvas, 1);
   qsort (ms, N, sizeof ms[0], cmp_double);
-  g_print ("gradient dragged, %dx%d, %s (zoom %d%%): to painted frame median %.1f ms, worst %.1f ms (%d moves); "
-           "peak memory %.0f MB (was %.0f MB)\n", w, h, fit ? "fit" : "100%", easel_window_get_zoom (win), ms[N / 2],
+  g_print ("%s gradient dragged, %dx%d, %s (zoom %d%%): to painted frame median %.1f ms, worst %.1f ms (%d moves); "
+           "peak memory %.0f MB (was %.0f MB)\n", type_names[type], w, h, fit ? "fit" : "100%", easel_window_get_zoom (win), ms[N / 2],
            ms[N - 1], N, peak_mb (), before);
   easel_canvas_drop (canvas);
   gtk_window_destroy (GTK_WINDOW (win));
@@ -119,7 +123,13 @@ main (int argc, char **argv)
   g_application_register (G_APPLICATION (app), NULL, NULL);
   for (guint i = 0; i < G_N_ELEMENTS (sizes); i++)
     for (int fit = 0; fit <= 1; fit++)
-      measure_drag (config_dir, sizes[i][0], sizes[i][1], fit);
+      measure_drag (config_dir, sizes[i][0], sizes[i][1], fit, EASEL_GRADIENT_LINEAR);
+  /* 0032 AS-10: Radial and Reflected at 100 % on 1920 x 1080 and at the fit zoom on 8000 x 8000. */
+  for (int type = EASEL_GRADIENT_RADIAL; type <= EASEL_GRADIENT_REFLECTED; type++)
+    {
+      measure_drag (config_dir, 1920, 1080, FALSE, (EaselGradientType) type);
+      measure_drag (config_dir, 8000, 8000, TRUE, (EaselGradientType) type);
+    }
   measure_apply (config_dir, 8000, 8000);
   g_object_unref (app);
   return 0;

@@ -939,177 +939,190 @@ msgstr ""
 msgid "Transparent: only the text"
 msgstr ""
 
-#: src/ui/window.c:268 src/ui/window.c:914
+#. Gradient's types, in the status bar's preset part as the sizes are (REQ-0032-13).
+#: src/ui/tool-options.c:488 src/ui/tool-options.c:687
+msgid "Linear"
+msgstr ""
+
+#: src/ui/tool-options.c:489 src/ui/tool-options.c:688
+msgid "Radial"
+msgstr ""
+
+#: src/ui/tool-options.c:490 src/ui/tool-options.c:689
+msgid "Reflected"
+msgstr ""
+
+#: src/ui/window.c:278 src/ui/window.c:924
 msgid "Untitled"
 msgstr ""
 
-#: src/ui/window.c:269
+#: src/ui/window.c:279
 #, c-format
 msgid "• %s – Easel"
 msgstr ""
 
-#: src/ui/window.c:269
+#: src/ui/window.c:279
 #, c-format
 msgid "%s – Easel"
 msgstr ""
 
-#: src/ui/window.c:474 src/ui/window.c:2223 src/ui/window.c:3396
+#: src/ui/window.c:484 src/ui/window.c:2446 src/ui/window.c:3619
 msgid "Close"
 msgstr ""
 
-#: src/ui/window.c:498 src/ui/window.c:552
+#: src/ui/window.c:508 src/ui/window.c:562
 #, c-format
 msgid "Could Not Save “%s”"
 msgstr ""
 
-#: src/ui/window.c:499 src/ui/window.c:553
+#: src/ui/window.c:509 src/ui/window.c:563
 #, c-format
 msgid "“%s” could not be saved: %s"
 msgstr ""
 
-#: src/ui/window.c:516
+#: src/ui/window.c:526
 #, c-format
 msgid "Saved %s"
 msgstr ""
 
-#: src/ui/window.c:585
+#: src/ui/window.c:595
 #, c-format
 msgid "Replace “%s”?"
 msgstr ""
 
-#: src/ui/window.c:586
+#: src/ui/window.c:596
 msgid "A file with this name already exists."
 msgstr ""
 
-#: src/ui/window.c:588
+#: src/ui/window.c:598
 msgid "_Replace"
 msgstr ""
 
-#: src/ui/window.c:626
+#: src/ui/window.c:636
 msgid "Cannot Save This Kind of File"
 msgstr ""
 
-#: src/ui/window.c:626
+#: src/ui/window.c:636
 msgid "Pictures can be saved as PNG, JPEG, BMP, TIFF or WebP."
 msgstr ""
 
-#: src/ui/window.c:646 src/ui/window.c:821
+#: src/ui/window.c:656 src/ui/window.c:831
 msgid "Copy To"
 msgstr ""
 
-#: src/ui/window.c:646 src/ui/window.c:877
+#: src/ui/window.c:656 src/ui/window.c:887
 msgid "Save Picture As"
 msgstr ""
 
-#: src/ui/window.c:754
+#: src/ui/window.c:764
 msgid "By extension"
 msgstr ""
 
-#: src/ui/window.c:820 src/ui/window.c:876
+#: src/ui/window.c:830 src/ui/window.c:886
 msgid "Untitled.png"
 msgstr ""
 
-#: src/ui/window.c:915
+#: src/ui/window.c:925
 #, c-format
 msgid "“%s” has unsaved changes."
 msgstr ""
 
-#: src/ui/window.c:916
+#: src/ui/window.c:926
 msgid "Save Changes?"
 msgstr ""
 
-#: src/ui/window.c:919
+#: src/ui/window.c:929
 msgid "_Discard"
 msgstr ""
 
-#: src/ui/window.c:919 src/ui/window.ui:675
+#: src/ui/window.c:929 src/ui/window.ui:687
 msgid "_Save"
 msgstr ""
 
-#: src/ui/window.c:1090
+#: src/ui/window.c:1100
 #, c-format
 msgid "Opened %s"
 msgstr ""
 
-#: src/ui/window.c:1117
+#: src/ui/window.c:1127
 msgid "Could Not Create a New Picture"
 msgstr ""
 
-#: src/ui/window.c:1160
+#: src/ui/window.c:1170
 #, c-format
 msgid "Could Not Open “%s”"
 msgstr ""
 
-#: src/ui/window.c:1165 src/ui/window.c:4254
+#: src/ui/window.c:1175 src/ui/window.c:4540
 msgid "The file cannot be read."
 msgstr ""
 
-#: src/ui/window.c:1168 src/ui/window.c:4250
+#: src/ui/window.c:1178 src/ui/window.c:4536
 msgid "This is not a picture the app can open."
 msgstr ""
 
-#: src/ui/window.c:1171 src/ui/window.c:4244
+#: src/ui/window.c:1181 src/ui/window.c:4530
 msgid "The picture is bigger than 10000 pixels in width or height."
 msgstr ""
 
-#: src/ui/window.c:1301
+#: src/ui/window.c:1311
 msgid "Pictures"
 msgstr ""
 
-#: src/ui/window.c:1304
+#: src/ui/window.c:1314
 msgid "All Files"
 msgstr ""
 
-#: src/ui/window.c:1318
+#: src/ui/window.c:1328
 msgid "Open Picture"
 msgstr ""
 
-#: src/ui/window.c:1631
+#: src/ui/window.c:1649
 msgid ""
 "Draw with the foreground color. The secondary button uses the background "
 "color."
 msgstr ""
 
-#: src/ui/window.c:1633
+#: src/ui/window.c:1651
 msgid ""
 "Paint with the foreground color. The secondary button uses the background "
 "color."
 msgstr ""
 
-#: src/ui/window.c:1635
+#: src/ui/window.c:1653
 msgid ""
 "Spray with the foreground color. The secondary button uses the background "
 "color."
 msgstr ""
 
-#: src/ui/window.c:1637
+#: src/ui/window.c:1655
 msgid ""
 "Erase to transparency. The secondary button erases only the foreground color."
 msgstr ""
 
-#: src/ui/window.c:1638
+#: src/ui/window.c:1656
 msgid ""
 "Erase to the background color. The secondary button changes only the "
 "foreground color."
 msgstr ""
 
-#: src/ui/window.c:1640
+#: src/ui/window.c:1658
 msgid "Changes the magnification."
 msgstr ""
 
-#: src/ui/window.c:1642
+#: src/ui/window.c:1660
 msgid "Draws a straight line with the selected line width."
 msgstr ""
 
-#: src/ui/window.c:1644
+#: src/ui/window.c:1662
 msgid "Draws a rectangle with the selected fill style."
 msgstr ""
 
-#: src/ui/window.c:1646
+#: src/ui/window.c:1664
 msgid "Draws a rounded rectangle with the selected fill style."
 msgstr ""
 
-#: src/ui/window.c:1648
+#: src/ui/window.c:1666
 msgid "Draws an ellipse with the selected fill style."
 msgstr ""
 

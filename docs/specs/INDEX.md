@@ -35,6 +35,11 @@ Vertical slices first (a thin end-to-end feature), breadth later.
 | 0028 | phase1-acceptance | Fifteen journeys across the features, each one automated case and one manual step, ending in the saved file read back | Implemented 2026-11-06. The phase gate's acceptance spec (outline approved by JOD, 2026-11-02); cairo in the normal suite, Vulkan once at the gate, journeys 1 and 4 at scale 2, no mutants of their own, 2 minutes |
 | 0029 | tool-cursors | Twelve drawn cursors over the canvas, black with a white outline, at the desktop's cursor size (Pan keeps the theme's hand); smooth 1.5 px toolbox icons for the outline tools, Fill and Gradient | Phase 2, item A of `docs/phase2-plan.md`. Decided by JOD, 2026-11-06, from contact sheets: all five cursors, the theme's look, the desktop cursor size; the cursors shown on a sheet before code |
 | 0030 | brush-options | Size presets of Brush, Airbrush, Eraser and the line widths drawn at real size with their number, in two columns; the chosen one in the status bar; a toolbox the user can widen, which names them one per row | Phase 2, item B of `docs/phase2-plan.md`. Implemented 2026-11-08 (the options' look to be redesigned next, JOD); accepted 2026-11-07; JOD chose option C of `docs/reference/0030/brush-panel-mockup.png` |
+| 0031 | view-below-100 | Below 100 % each screen pixel shows the picture pixel under its center, the same for the picture, its previews and the pointer; a gradient or a moved selection costs the screen's size, two frames at Fit to Window on 8000 × 8000 | Phase 2, from `docs/graphics-path-audit.md` (2026-11-08); before Gradient types. JOD: sharp, not smoothed; the later Smooth option may change it |
+| 0032 | gradient-types | Gradient gains Linear, Radial and Reflected as one well of the options panel, each type drawn in its cell; a waiting gradient takes a new type at once | Phase 2, item C of `docs/phase2-plan.md`, after 0031. JOD, 2026-11-08: to transparent only, the three types, the cells drawn and approved on a sheet |
+| 0033 | curve-bent-on-line | Curve bends where the user drags a point of the line; each bent point stays, two at most, the curve reshaped until a click away finishes it; replaces XP's way | Phase 2, item E of `docs/phase2-plan.md`. JOD, 2026-11-07 and 2026-11-09 |
+| 0034 | black-and-white | Image › Black and White… turns the picture or the selection to black and white by Threshold, Ordered dither or Error diffusion, chosen in a dialog; one undo step, alpha kept | Phase 2, item D of `docs/phase2-plan.md`. JOD, 2026-11-09 |
+| 0035 | remove-background | Image › Remove Background finds the subject on the machine and makes the rest transparent, on the selection or the picture, hard edges, a cancellable progress dialog, one undo step | Phase 2, item F of `docs/phase2-plan.md`; an ADR chooses the model before the Plan. JOD, 2026-11-07 and 2026-11-09 |
 
 ### Phase 2: Modern extras (optional, starts only after the core XP scope is delivered)
 | Feature | One line |
@@ -50,7 +55,6 @@ Vertical slices first (a thin end-to-end feature), breadth later.
 | Curve bent on the line | A bend made by dragging a point of the line, finished by a click outside it; replaces XP's way (E, JOD 2026-11-07) |
 | Remove background | One command, as Windows 11 Paint: the subject found on the machine, the rest made transparent; an ADR for the model first (F) |
 | 10-pixel key move without a gap | Ctrl+Shift with an arrow (REQ-0013-10) moves without leaving the blank strip of a plain move (From JOD's use) |
-| Graphics path audit | The drawing path below 100 % and of previews looked at as a whole, before Gradient types (From 0025; the roadmap note on Gradient) |
 
 ## Roadmap notes
 - The Phase 2 block is a plan, not a commitment of numbers: a row gets its number when its spec is written.

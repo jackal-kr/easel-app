@@ -1,5 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 
+#include <math.h>
+
 #include "magnifier.h"
 #include "tool-options.h"
 #include "i18n.h"
@@ -23,7 +25,7 @@ struct _EaselToolOptions
 
   GtkWidget *line;           /* the separator above the presets */
   GtkWidget *stack;          /* one page per group, and an empty page: as wide as its widest page (REQ-0008-07) */
-  GtkWidget *groups[8];      /* Brush, Airbrush, Eraser, Magnifier, Line, the shapes, Select, Text: a vertical box each */
+  GtkWidget *groups[9];      /* Brush, Airbrush, Eraser, Magnifier, Line, the shapes, Select, Text, Gradient: a vertical box each */
   GtkToggleButton *brush[EASEL_BRUSH_N_PRESETS];
   GtkToggleButton *airbrush[EASEL_AIRBRUSH_N_PRESETS];
   GtkToggleButton *eraser[EASEL_ERASER_N_SIZES];
@@ -37,6 +39,7 @@ struct _EaselToolOptions
   GtkToggleButton *select_modes[2];
   GtkToggleButton *text_modes[2];
   GtkToggleButton *magnifier[EASEL_MAGNIFIER_N_LEVELS];
+  GtkToggleButton *gradient[3];                       /* Linear, Radial, Reflected (REQ-0032-01) */
   int brush_index, airbrush_index, eraser_index;
   gboolean transparent;
   gboolean select_transparent;   /* the selection's own mode (REQ-0013-02) */
@@ -124,6 +127,52 @@ make_cell (GtkWidget *button)
 {
   gtk_widget_add_css_class (button, "flat");
   gtk_widget_add_css_class (button, "cell");
+}
+
+/* A gradient type's cell (REQ-0032-01): a 16 x 16 square of whole logical pixels in the text color made opaque, the fade drawn
+   as a density of opaque pixels by a 4 x 4 ordered pattern (level 16 all, 0 none), so that only opaque and transparent pixels
+   are drawn at any scale (REQ-0030-07). */
+static const int gradient_order[4][4] = { { 0, 8, 2, 10 }, { 12, 4, 14, 6 }, { 3, 11, 1, 9 }, { 15, 7, 13, 5 } };
+
+static void
+draw_gradient_type (GtkDrawingArea *area, cairo_t *cr, int width, int height, gpointer data)
+{
+  int type = GPOINTER_TO_INT (data), x0 = (width - 16) / 2, y0 = (height - 16) / 2;
+  GdkRGBA color;
+
+  gtk_widget_get_color (GTK_WIDGET (area), &color);
+  color.alpha = 1;
+  gdk_cairo_set_source_rgba (cr, &color);
+  for (int y = 0; y < 16; y++)
+    for (int x = 0; x < 16; x++)
+      {
+        double cx = x + 0.5 - 8, cy = y + 0.5 - 8;
+        double t = type == 0 ? x / 15.0 : type == 1 ? sqrt (cx * cx + cy * cy) / 8 : fabs (cx) / 7.5;
+        int level = (int) lround (16 * (1 - MIN (t, 1)));
+
+        if (gradient_order[y % 4][x % 4] < level)
+          cairo_rectangle (cr, x0 + x, y0 + y, 1, 1);
+      }
+  cairo_fill (cr);
+}
+
+static GtkToggleButton *
+add_gradient_button (EaselToolOptions *self, GtkGrid *grid, int type, const char *name, GtkToggleButton *group_first)
+{
+  GtkWidget *button = gtk_toggle_button_new (), *area = gtk_drawing_area_new ();
+
+  make_cell (button);
+  gtk_widget_set_tooltip_text (button, name);
+  gtk_accessible_update_property (GTK_ACCESSIBLE (button), GTK_ACCESSIBLE_PROPERTY_LABEL, name, -1);
+  gtk_drawing_area_set_content_width (GTK_DRAWING_AREA (area), 22);
+  gtk_drawing_area_set_content_height (GTK_DRAWING_AREA (area), 22);
+  gtk_drawing_area_set_draw_func (GTK_DRAWING_AREA (area), draw_gradient_type, GINT_TO_POINTER (type), NULL);
+  gtk_button_set_child (GTK_BUTTON (button), area);
+  if (group_first != NULL)
+    gtk_toggle_button_set_group (GTK_TOGGLE_BUTTON (button), group_first);
+  gtk_grid_attach (grid, button, type, 0, 1, 1);
+  g_signal_connect (button, "toggled", G_CALLBACK (on_toggled), self);
+  return GTK_TOGGLE_BUTTON (button);
 }
 
 static GtkToggleButton *
@@ -432,6 +481,16 @@ build_presets (EaselToolOptions *self)
       self->magnifier[i] = add_level_button (self, GTK_GRID (magnifier_grid), i, easel_magnifier_levels[i]);
     self->groups[3] = magnifier_grid;
   }
+  {
+    /* Gradient's types side by side in one well (REQ-0032-01). */
+    GtkWidget *gradient_grid = new_grid ();
+
+    self->gradient[0] = add_gradient_button (self, GTK_GRID (gradient_grid), 0, _ ("Linear"), NULL);
+    self->gradient[1] = add_gradient_button (self, GTK_GRID (gradient_grid), 1, _ ("Radial"), self->gradient[0]);
+    self->gradient[2] = add_gradient_button (self, GTK_GRID (gradient_grid), 2, _ ("Reflected"), self->gradient[0]);
+    gtk_toggle_button_set_active (self->gradient[0], TRUE);
+    self->groups[8] = gradient_grid;
+  }
   self->groups[0] = brush_grid;
   self->groups[1] = air_grid;
   self->groups[2] = eraser_box;
@@ -446,7 +505,7 @@ build_presets (EaselToolOptions *self)
   gtk_stack_set_hhomogeneous (GTK_STACK (self->stack), TRUE);
   gtk_stack_set_vhomogeneous (GTK_STACK (self->stack), FALSE);
   gtk_stack_set_transition_type (GTK_STACK (self->stack), GTK_STACK_TRANSITION_TYPE_NONE);
-  for (int i = 0; i < 8; i++)
+  for (int i = 0; i < 9; i++)
     gtk_stack_add_named (GTK_STACK (self->stack), self->groups[i], NULL);
   gtk_stack_add_named (GTK_STACK (self->stack), gtk_box_new (GTK_ORIENTATION_VERTICAL, 0), "none");
   gtk_box_append (GTK_BOX (self), self->stack);
@@ -518,7 +577,7 @@ easel_tool_options_show_tool (EaselToolOptions *self, EaselTool tool)
   int group = tool == EASEL_TOOL_BRUSH ? 0 : tool == EASEL_TOOL_AIRBRUSH ? 1 : tool == EASEL_TOOL_ERASER ? 2
               : tool == EASEL_TOOL_MAGNIFIER ? 3 : tool == EASEL_TOOL_LINE || tool == EASEL_TOOL_CURVE ? 4
               : easel_tool_draws_shape (tool) || tool == EASEL_TOOL_POLYGON ? 5 : easel_tool_selects (tool) ? 6
-              : tool == EASEL_TOOL_TEXT ? 7 : -1;
+              : tool == EASEL_TOOL_TEXT ? 7 : tool == EASEL_TOOL_GRADIENT ? 8 : -1;
 
   /* Nothing of the options shows for a tool without any: the empty page, and no line above it (REQ-0006-02). */
   if (group >= 0)
@@ -526,6 +585,12 @@ easel_tool_options_show_tool (EaselToolOptions *self, EaselTool tool)
   else
     gtk_stack_set_visible_child_name (GTK_STACK (self->stack), "none");
   gtk_widget_set_visible (self->line, group >= 0);
+}
+
+EaselGradientType
+easel_tool_options_get_gradient_type (EaselToolOptions *self)
+{
+  return (EaselGradientType) index_of (self->gradient, 3);
 }
 
 EaselFootprint
@@ -616,6 +681,14 @@ easel_tool_options_size_names (EaselTool tool)
     table = easel_airbrush_presets, n = EASEL_AIRBRUSH_N_PRESETS;
   else if (tool == EASEL_TOOL_ERASER)
     table = easel_eraser_presets, n = EASEL_ERASER_N_SIZES;
+  else if (tool == EASEL_TOOL_GRADIENT)
+    {
+      /* Gradient's types, in the status bar's preset part as the sizes are (REQ-0032-13). */
+      g_strv_builder_add (b, _ ("Linear"));
+      g_strv_builder_add (b, _ ("Radial"));
+      g_strv_builder_add (b, _ ("Reflected"));
+      return g_strv_builder_end (b);
+    }
   else
     return NULL;
   for (int i = 0; i < n; i++)
@@ -629,6 +702,8 @@ easel_tool_options_size_index (EaselToolOptions *self, EaselTool tool, int line_
   read_selection (self);
   if (easel_tool_uses_line_width (tool))
     return CLAMP (line_width, 1, 5) - 1;
+  if (tool == EASEL_TOOL_GRADIENT)
+    return (int) easel_tool_options_get_gradient_type (self);
   return tool == EASEL_TOOL_AIRBRUSH ? self->airbrush_index : tool == EASEL_TOOL_ERASER ? self->eraser_index : self->brush_index;
 }
 

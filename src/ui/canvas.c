@@ -128,6 +128,7 @@ struct _EaselCanvas
   gboolean pend_gradient;                       /* the pending shape is a gradient (0012): its start in pend_pts[0, 1], its end in [2, 3] */
   gboolean pend_unshown;                        /* the last frame could not get the memory to show the gradient (REQ-0012-09) */
   guint grad_button;                            /* the button that started the gradient: its color is the current foreground or background (REQ-0012-04) */
+  EaselGradientType grad_type;                  /* the type chosen in the panel, read at each use, so that a waiting or held gradient takes a new one at once (REQ-0032-08, -09) */
   gboolean guides_hidden;                       /* test hook: the markers and the guide line not drawn */
   /* The selection (0013): none, marked or floating, its rectangle in picture pixels; a rectangle being dragged out. */
   int sel_state;                                /* 0 none, 1 marked, 2 floating */
@@ -781,6 +782,16 @@ error_bell (EaselCanvas *self)
 {
   self->error_bells++;
   gtk_widget_error_bell (GTK_WIDGET (self));
+}
+
+void
+easel_canvas_set_gradient_type (EaselCanvas *self, EaselGradientType type)
+{
+  if (self->grad_type == type)
+    return;
+  self->grad_type = type;
+  if (self->pending && self->pend_gradient)
+    gtk_widget_queue_draw (GTK_WIDGET (self));
 }
 
 void
@@ -4168,14 +4179,15 @@ append_shape_preview (EaselCanvas *self, GtkSnapshot *snapshot)
   free (runs);
 }
 
-/* The pending gradient as it is shown and would be applied now, in the color of its button now (REQ-0012-04). */
+/* The pending gradient as it is shown and would be applied now, in the color of its button now (REQ-0012-04) and the type
+   chosen now (REQ-0032-08, -09). */
 static EaselGradient
 shown_gradient (EaselCanvas *self)
 {
   const int *p = self->pend_pts;
 
   return (EaselGradient) { p[0], p[1], p[2], p[3],
-                           self->grad_button == GDK_BUTTON_PRIMARY ? self->foreground : self->background };
+                           self->grad_button == GDK_BUTTON_PRIMARY ? self->foreground : self->background, self->grad_type };
 }
 
 /* A pending gradient as it will be applied (REQ-0012-07): each tile the view shows, laid over by the core function the apply

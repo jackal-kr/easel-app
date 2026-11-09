@@ -2794,9 +2794,9 @@ test: ui-0012
 file: src/ui/canvas.c
 test: ui-0012
 --- find
-                           self->grad_button == GDK_BUTTON_PRIMARY ? self->foreground : self->background };
+                           self->grad_button == GDK_BUTTON_PRIMARY ? self->foreground : self->background, self->grad_type };
 --- replace
-                           self->background };
+                           self->background, self->grad_type };
 
 === REQ-0012-04 a color change does not redraw a pending gradient
 file: src/ui/canvas.c
@@ -2810,9 +2810,9 @@ test: ui-0012
 file: src/ui/canvas.c
 test: ui-0012
 --- find
-                           self->grad_button == GDK_BUTTON_PRIMARY ? self->foreground : self->background };
+                           self->grad_button == GDK_BUTTON_PRIMARY ? self->foreground : self->background, self->grad_type };
 --- replace
-                           (self->grad_button == GDK_BUTTON_PRIMARY ? self->foreground : self->background) | 0xFF000000u };
+                           (self->grad_button == GDK_BUTTON_PRIMARY ? self->foreground : self->background) | 0xFF000000u, self->grad_type };
 
 === REQ-0012-08 a click or a press leaves a waiting gradient waiting instead of applying it
 file: src/ui/canvas.c
@@ -3000,6 +3000,84 @@ test: ui-0012
   if (!self->pending || !self->pend_gradient || (self->pend_held && self->moving < 0) || end < 0 || end > 1)
 --- replace
   if (!self->pending || !self->pend_gradient || (self->pend_held && self->moving < 0) || self->pend_unshown || end < 0 || end > 1)
+
+=== REQ-0032-05 the radial fit test is off by one (the tie rounded down)
+file: src/core/gradient.c
+test: core-gradient
+--- find
+  return lhs <= (uint64_t) length2 * (m * m);
+--- replace
+  return lhs < (uint64_t) length2 * (m * m);
+
+=== REQ-0032-05 Radial is drawn as Linear
+file: src/core/gradient.c
+test: core-gradient
+--- find
+  if (f->type == EASEL_GRADIENT_RADIAL)
+--- replace
+  if (0)
+
+=== REQ-0032-05 the radial correction does not raise the estimate (the double estimate taken as the answer)
+file: src/core/gradient.c
+test: core-gradient
+--- find
+  while (w < span && radial_fits (lhs, length2, span, w + 1))
+    w++;
+--- replace
+  w = estimate + 1 < 1 ? 0 : estimate + 1 >= span ? span : (unsigned) (estimate + 1);
+
+=== REQ-0032-05 the radial correction stops one short of the span
+file: src/core/gradient.c
+test: core-gradient
+--- find
+  while (w < span && radial_fits (lhs, length2, span, w + 1))
+--- replace
+  while (w + 1 < span && radial_fits (lhs, length2, span, w + 1))
+
+=== REQ-0032-05 the radial estimate starts above the answer (no step down exists to correct it)
+file: src/core/gradient.c
+test: core-gradient
+--- find
+  double estimate = span * (1.0 - ratio) + 0.5 - 1;
+--- replace
+  double estimate = span * (1.0 - ratio) + 0.5 + 1;
+
+=== REQ-0032-06 Reflected is not mirrored behind the start
+file: src/core/gradient.c
+test: core-gradient
+--- find
+  if (mirrored && d < 0)
+    d = -d;
+--- replace
+
+
+=== REQ-0032-08 the canvas ignores the chosen type: every gradient is Linear
+file: src/ui/canvas.c
+test: ui-0032
+--- find
+                           self->grad_button == GDK_BUTTON_PRIMARY ? self->foreground : self->background, self->grad_type };
+--- replace
+                           self->grad_button == GDK_BUTTON_PRIMARY ? self->foreground : self->background, EASEL_GRADIENT_LINEAR };
+
+=== REQ-0032-08 a waiting gradient is not redrawn when the type changes
+file: src/ui/canvas.c
+test: ui-0032
+--- find
+  self->grad_type = type;
+  if (self->pending && self->pend_gradient)
+    gtk_widget_queue_draw (GTK_WIDGET (self));
+--- replace
+  self->grad_type = type;
+
+=== REQ-0032-13 the status bar does not show Gradient's type
+file: src/ui/tool-options.c
+test: ui-0032
+--- find
+  else if (tool == EASEL_TOOL_GRADIENT)
+    {
+--- replace
+  else if (tool == EASEL_TOOL_GRADIENT && FALSE)
+    {
 
 === REQ-0013-01 Select comes after the Eraser
 file: src/ui/window.ui
@@ -7341,9 +7419,9 @@ test: ui-0017
 file: src/ui/tool-options.c
 test: ui-0017
 --- find
-              : tool == EASEL_TOOL_TEXT ? 7 : -1;
+              : tool == EASEL_TOOL_TEXT ? 7 : tool == EASEL_TOOL_GRADIENT ? 8 : -1;
 --- replace
-              : -1;
+              : tool == EASEL_TOOL_GRADIENT ? 8 : -1;
 
 # ---- making a text box (0017 T008) ----
 

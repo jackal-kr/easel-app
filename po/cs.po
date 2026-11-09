@@ -1213,3 +1213,13 @@ msgstr "Easel je jednoduchý kreslicí program pro rychlé obrázky a úpravy, v
 
 msgid "It has the classic tools, exact pixels, undo, selections you can move and stretch, text boxes and printing."
 msgstr "Má klasické nástroje, přesné pixely, vracení zpět, výběry, které lze posouvat a roztahovat, textové rámečky a tisk."
+
+msgid "Linear"
+msgstr "Lineární"
+
+msgid "Radial"
+msgstr "Kruhový"
+
+msgid "Reflected"
+msgstr "Zrcadlený"
+

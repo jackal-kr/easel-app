@@ -9569,7 +9569,7 @@ as1_gradient_toolbox_hints (void)
       else
         g_assert_cmpfloat_with_epsilon (r.origin.y, before.origin.y, 1.0);
     }
-  /* Gradient: chosen alone, the hint, the crosshair, no options. */
+  /* Gradient: chosen alone, the hint, the crosshair, its types (0032: before, no options). */
   g_signal_emit_by_name (buttons[5], "clicked");
   wait_for_layout (win);
   g_assert_cmpint (easel_window_get_tool (win), ==, EASEL_TOOL_GRADIENT);
@@ -9591,7 +9591,8 @@ as1_gradient_toolbox_hints (void)
     easel_canvas_pointer_at (canvas, 10, 10);
     g_assert_cmpstr (canvas_cursor_kind (canvas), ==, "crosshair");
   }
-  assert_no_options_shown (win);
+  g_assert_nonnull (find_mapped_by_tooltip (GTK_WIDGET (win), "Linear"));          /* the types' well, not an empty panel */
+  g_assert_nonnull (find_mapped_by_tooltip (GTK_WIDGET (win), "Radial"));
   /* Numpad + and - do nothing with Gradient: the line width and the zoom stay; Ctrl+Numpad + still zooms. */
   width = int_state (win, "line-width");
   zoom = easel_window_get_zoom (win);
@@ -34802,7 +34803,7 @@ as7_edge_interrupted_and_clamped (void)
 static void
 panel_shot_dump (void)
 {
-  static const char *const tools[] = { "brush", "airbrush", "eraser", "magnifier", "line", "rectangle", "select", "text" };
+  static const char *const tools[] = { "brush", "airbrush", "eraser", "magnifier", "line", "rectangle", "select", "text", "gradient" };
   const char *dir = g_getenv ("EASEL_PANEL_SHOT");
   EaselWindow *win = start_window ();
 
@@ -35501,6 +35502,417 @@ as7_view_memory_refused (void)
 #define WHITE 0xFFFFFFFFu
 #define BLACK 0xFF000000u
 
+/* A type's cell clicked (REQ-0032-01), asserted chosen. */
+static void
+choose_gradient_type (EaselWindow *win, const char *name)
+{
+  GtkWidget *cell = find_mapped_by_tooltip (GTK_WIDGET (win), name);
+
+  g_assert_nonnull (cell);
+  gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (cell), TRUE);
+  g_assert_true (gtk_toggle_button_get_active (GTK_TOGGLE_BUTTON (cell)));
+}
+
+/* AS-1 (REQ-0032-01, -02): Gradient's options are one well of three cells, Linear, Radial, Reflected, named by their tooltips,
+   Linear alone chosen at the start; the toolbox keeps its width. */
+static void
+as1_gradient_types_panel (void)
+{
+  static const char *const names[] = { "Linear", "Radial", "Reflected" };
+  EaselWindow *win = start_window ();
+  GtkWidget *cells[3], *well;
+  int toolbox_w;
+
+  wait_for_layout (win);
+  use_tool (win, "pencil");
+  wait_for_layout (win);
+  toolbox_w = gtk_widget_get_width (gtk_widget_get_parent (GTK_WIDGET (easel_window_get_tool_options (win))));
+  use_tool (win, "gradient");
+  wait_for_layout (win);
+  for (int i = 0; i < 3; i++)
+    {
+      cells[i] = find_mapped_by_tooltip (GTK_WIDGET (win), names[i]);
+      g_assert_nonnull (cells[i]);
+      g_assert_true (GTK_IS_TOGGLE_BUTTON (cells[i]));
+      assert_label (cells[i], names[i]);
+      g_assert_cmpint (gtk_toggle_button_get_active (GTK_TOGGLE_BUTTON (cells[i])), ==, i == 0);
+    }
+  well = gtk_widget_get_parent (cells[0]);
+  g_assert_true (gtk_widget_has_css_class (well, "options-well"));
+  g_assert_true (gtk_widget_get_parent (cells[1]) == well && gtk_widget_get_parent (cells[2]) == well);
+  g_assert_cmpint (gtk_widget_get_width (gtk_widget_get_parent (GTK_WIDGET (easel_window_get_tool_options (win)))), ==, toolbox_w);
+  /* REQ-0032-13: the type in the status bar; REQ-0032-03: a choice kept for the run, no step, no mark, nothing written. */
+  {
+    EaselStatusBar *bar = easel_window_get_status_bar (win);
+    g_autofree char *before = settings_text ();
+    g_autofree char *after = NULL;
+
+    g_assert_cmpstr (easel_status_bar_get_text (bar, EASEL_STATUS_PRESET), ==, "Linear");
+    choose_gradient_type (win, "Radial");
+    g_assert_true (gtk_toggle_button_get_active (GTK_TOGGLE_BUTTON (cells[1])));
+    g_assert_false (gtk_toggle_button_get_active (GTK_TOGGLE_BUTTON (cells[0])));
+    g_assert_cmpstr (easel_status_bar_get_text (bar, EASEL_STATUS_PRESET), ==, "Radial");
+    g_assert_false (easel_window_get_modified (win));
+    g_assert_false (action_enabled (win, "undo"));
+    use_tool (win, "pencil");
+    wait_for_layout (win);
+    g_assert_cmpstr (easel_status_bar_get_text (bar, EASEL_STATUS_PRESET), ==, "");        /* no part with Pencil */
+    use_tool (win, "gradient");
+    wait_for_layout (win);
+    g_assert_true (gtk_toggle_button_get_active (GTK_TOGGLE_BUTTON (cells[1])));
+    g_assert_cmpstr (easel_status_bar_get_text (bar, EASEL_STATUS_PRESET), ==, "Radial");
+    /* With a gradient waiting, Enter is the window's: it applies the gradient and does not change the type. */
+    shape_press_move (win, 1, 10, 10, 30, 10);
+    shape_release (win, 1);
+    g_assert_true (easel_canvas_is_pending (easel_window_get_canvas (win)));
+    gtk_widget_grab_focus (cells[2]);
+    g_assert_true (enter_taken (win, GDK_KEY_Return));
+    g_assert_false (easel_canvas_is_pending (easel_window_get_canvas (win)));
+    g_assert_true (gtk_toggle_button_get_active (GTK_TOGGLE_BUTTON (cells[1])));
+    after = settings_text ();
+    g_assert_cmpstr (after, ==, before);
+  }
+  close_windows ();
+  /* A new window starts with Linear. */
+  {
+    EaselWindow *again = start_window ();
+
+    wait_for_layout (again);
+    use_tool (again, "gradient");
+    wait_for_layout (again);
+    g_assert_true (gtk_toggle_button_get_active (GTK_TOGGLE_BUTTON (find_mapped_by_tooltip (GTK_WIDGET (again), "Linear"))));
+    close_windows ();
+  }
+}
+
+/* The core's picture for a gradient of color and the given type laid over a w x h picture of color under. */
+static EaselImage *
+typed_gradient_over (int w, int h, uint32_t under, int x0, int y0, int x1, int y1, uint32_t color, EaselGradientType type)
+{
+  EaselImage *want = easel_image_new (w, h, under);
+  EaselGradient g = { x0, y0, x1, y1, color, type };
+
+  g_assert_nonnull (want);
+  g_assert_cmpint (easel_gradient_apply (want, NULL, &g, NULL), !=, EASEL_GRADIENT_NO_MEMORY);
+  return want;
+}
+
+/* The device pixels of the picture's part of two renders differ in how many places (the guides are hidden). */
+static int
+picture_renders_differ (EaselWindow *win, const uint32_t *a, const uint32_t *b, int w, int h, int cx, int cy)
+{
+  const EaselImage *img = easel_window_get_picture (win);
+  double l = easel_window_get_zoom (win) / 100.0;
+  int pw = (int) (img->width * l), ph = (int) (img->height * l), n = 0;
+
+  for (int y = MAX (cy, 0); y < MIN (cy + ph, h); y++)
+    for (int x = MAX (cx, 0); x < MIN (cx + pw, w); x++)
+      n += a[y * w + x] != b[y * w + x];
+  return n;
+}
+
+static const char *const gradient_type_names[3] = { "Linear", "Radial", "Reflected" };
+
+/* JOD's path for each type (0032 AS-2, AS-3, AS-7; the videos of 2026-11-08 and 2026-11-09): the type's cell clicked, a press, a drag, a release
+   and Enter. While it waits the picture is unchanged and the window shows exactly the pixels Enter then writes, at 100 %, 50 % and
+   200 %; the written picture is the core's for that type, black over white: Radial a disc round the press (the same at the same
+   distance in four directions, white past the radius), Reflected a band mirrored on the press point, Linear black behind the press; each fades black to transparent over white. */
+static void
+as2_types_user_path (void)
+{
+  static const int zooms[] = { 100, 50, 200 };
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  const EaselImage *img;
+
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFFFF\n");
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  img = easel_window_get_picture (win);
+  gradient_with_black (win);
+  g_assert_cmphex (easel_window_get_background (win), ==, WHITE);
+  for (int t = 0; t < 3; t++)
+    for (guint z = 0; z < G_N_ELEMENTS (zooms); z++)
+      {
+        g_autoptr (EaselImage) want = typed_gradient_over (300, 200, WHITE, 101, 101, 161, 131, BLACK, (EaselGradientType) t);
+        g_autofree uint32_t *shown = NULL, *put = NULL;
+        int w, h, cx, cy, w2, h2, cx2, cy2;
+
+        choose_gradient_type (win, gradient_type_names[t]);
+        easel_canvas_set_zoom (canvas, zooms[z]);
+        g_assert_cmpint (easel_window_get_zoom (win), ==, zooms[z]);
+        wait_for_layout (win);
+        shape_press_move (win, 1, 101, 101, 161, 131);        /* odd pixels: each is under a device pixel's center at 50 % (0031) */
+        shape_release (win, 1);
+        g_assert_true (easel_canvas_is_pending (canvas));
+        g_assert_cmpint (count_color (img, WHITE), ==, 300 * 200);
+        wait_for_layout (win);
+        shown = render_pixels (win, &w, &h, &cx, &cy);
+        press_enter (win, GDK_KEY_Return);
+        wait_for_layout (win);
+        put = render_pixels (win, &w2, &h2, &cx2, &cy2);
+        g_assert_cmpint (w, ==, w2);
+        g_assert_cmpint (cx, ==, cx2);
+        g_test_message ("%s at %d %%: %d device pixels differ", gradient_type_names[t], zooms[z],
+                        picture_renders_differ (win, shown, put, w, h, cx, cy));
+        g_assert_cmpint (picture_renders_differ (win, shown, put, w, h, cx, cy), ==, 0);
+        assert_same_picture (img, want);
+        g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+        g_assert_cmpint (count_color (img, WHITE), ==, 300 * 200);
+      }
+  /* The shapes, on the core's pictures (a drag of 60 x 30 from (100, 100)). */
+  {
+    g_autoptr (EaselImage) disc = typed_gradient_over (300, 200, WHITE, 100, 100, 160, 130, BLACK, EASEL_GRADIENT_RADIAL);
+    g_autoptr (EaselImage) band = typed_gradient_over (300, 200, WHITE, 100, 100, 160, 130, BLACK, EASEL_GRADIENT_REFLECTED);
+    g_autoptr (EaselImage) ramp = typed_gradient_over (300, 200, WHITE, 100, 100, 160, 130, BLACK, EASEL_GRADIENT_LINEAR);
+
+    g_assert_cmphex (easel_image_get (disc, 100, 100), ==, BLACK);
+    for (int d = 5; d < 60; d += 9)
+      {
+        uint32_t right = easel_image_get (disc, 100 + d, 100);
+
+        g_assert_cmphex (easel_image_get (disc, 100 - d, 100), ==, right);
+        g_assert_cmphex (easel_image_get (disc, 100, 100 + d), ==, right);
+        g_assert_cmphex (easel_image_get (disc, 100, 100 - d), ==, right);
+        g_assert_cmphex (right, !=, WHITE);
+        g_assert_cmphex (easel_image_get (band, 100 + 2 * d / 3, 100 + d / 3), ==, easel_image_get (band, 100 - 2 * d / 3, 100 - d / 3));
+      }
+    g_assert_cmphex (easel_image_get (disc, 100 + 68, 100), ==, WHITE);          /* past the radius, about 67.1 */
+    g_assert_cmphex (easel_image_get (band, 40, 70), ==, WHITE);                 /* as far behind as the end is ahead */
+    g_assert_cmphex (easel_image_get (ramp, 40, 70), ==, BLACK);
+    g_assert_cmphex (easel_image_get (band, 100, 100), ==, BLACK);
+  }
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\n");
+}
+
+/* AS-6 (REQ-0032-08, -10): a waiting gradient takes another type at once, unapplied; the same type again changes nothing;
+   without the preview's memory it waits unshown with no dialog. */
+static void
+as6_type_change_waiting (void)
+{
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  const EaselImage *img;
+
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFFFF\n");
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  img = easel_window_get_picture (win);
+  gradient_with_black (win);
+  shape_press_move (win, 1, 10, 5, 15, 5);
+  shape_release (win, 1);
+  for (int t = 1; t <= 3; t++)
+    {
+      int k = t % 3;                                            /* Radial, Reflected, then Linear again */
+      g_autoptr (EaselImage) want = typed_gradient_over (300, 200, WHITE, 10, 5, 15, 5, BLACK, (EaselGradientType) k);
+      g_autofree uint32_t *shown = NULL;
+      int w, h, cx, cy, differing = 0;
+
+      choose_gradient_type (win, gradient_type_names[k]);
+      wait_for_layout (win);
+      g_assert_true (easel_canvas_is_pending (canvas));
+      g_assert_cmpint (count_color (img, WHITE), ==, 300 * 200);
+      shown = render_pixels (win, &w, &h, &cx, &cy);
+      for (int y = 0; y < 11; y++)
+        for (int x = 0; x < 21; x++)
+          differing += shown[(cy + y) * w + cx + x] != easel_image_get (want, x, y);
+      g_assert_cmpint (differing, ==, 0);
+    }
+  choose_gradient_type (win, "Radial");
+  choose_gradient_type (win, "Radial");                        /* the same again: nothing */
+  g_assert_true (easel_canvas_is_pending (canvas));
+  easel_canvas_set_preview_memory_limit (canvas, 16);
+  choose_gradient_type (win, "Reflected");
+  wait_for_layout (win);
+  g_assert_null (open_alert (win));
+  g_assert_true (easel_canvas_is_pending (canvas));
+  easel_canvas_set_preview_memory_limit (canvas, SIZE_MAX);
+  press_enter (win, GDK_KEY_Return);
+  {
+    g_autoptr (EaselImage) want = typed_gradient_over (300, 200, WHITE, 10, 5, 15, 5, BLACK, EASEL_GRADIENT_REFLECTED);
+
+    assert_same_picture (img, want);
+  }
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\n");
+}
+
+/* AS-9 (REQ-0032-09): a type chosen while the drag is held is taken at once and kept by the release; one chosen while an end's
+   marker is held is kept when Esc puts the end back. The keyboard path to the panel (Tab, Space) is GTK's; here the cell is
+   chosen as that Space would choose it. */
+static void
+as9_type_change_held (void)
+{
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  const EaselImage *img;
+
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFFFF\n");
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  img = easel_window_get_picture (win);
+  gradient_with_black (win);
+  {
+    g_autoptr (EaselImage) linear = typed_gradient_over (300, 200, WHITE, 10, 5, 30, 5, BLACK, EASEL_GRADIENT_LINEAR);
+    g_autofree uint32_t *shown = NULL;
+    int w, h, cx, cy, differing = 0;
+
+    choose_gradient_type (win, "Radial");
+    shape_press_move (win, 1, 10, 5, 30, 5);
+    g_assert_true (easel_canvas_is_stroking (canvas));
+    choose_gradient_type (win, "Linear");
+    wait_for_layout (win);
+    g_assert_true (easel_canvas_is_stroking (canvas));
+    shown = render_pixels (win, &w, &h, &cx, &cy);
+    for (int y = 0; y < 11; y++)
+      for (int x = 0; x < 40; x++)
+        differing += shown[(cy + y) * w + cx + x] != easel_image_get (linear, x, y);
+    g_assert_cmpint (differing, ==, 0);
+    shape_release (win, 1);
+    press_enter (win, GDK_KEY_Return);
+    assert_same_picture (img, linear);
+    g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  }
+  {
+    g_autoptr (EaselImage) linear = typed_gradient_over (300, 200, WHITE, 10, 5, 30, 5, BLACK, EASEL_GRADIENT_LINEAR);
+
+    choose_gradient_type (win, "Radial");
+    shape_press_move (win, 1, 10, 5, 30, 5);
+    shape_release (win, 1);
+    g_assert_true (easel_canvas_is_pending (canvas));
+    shape_press_move (win, 1, 30, 5, 30, 40);                 /* the end's marker held and moved */
+    g_assert_true (easel_canvas_is_stroking (canvas));
+    choose_gradient_type (win, "Linear");
+    press_key (win, GDK_KEY_Escape, 0);                       /* the move cancelled: the end back at (30, 5) */
+    shape_release (win, 1);
+    g_assert_true (easel_canvas_is_pending (canvas));
+    g_assert_true (gtk_toggle_button_get_active (GTK_TOGGLE_BUTTON (find_mapped_by_tooltip (GTK_WIDGET (win), "Linear"))));
+    press_enter (win, GDK_KEY_Return);
+    assert_same_picture (img, linear);
+  }
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\n");
+}
+
+/* 0032 AS-11 (REQ-0032-07, -11): JOD's path for each type over the yellow start-up picture: a press and a drag (shown live while
+   held), the release (waiting, a mark on each end), a palette click recoloring it at once with the picture unchanged, Enter
+   writing what was shown; a second drag across the first, applied, laid over it (they stack); a third dropped with Esc
+   leaving the picture as it was; two Undos back to yellow. */
+static void
+as11_types_recolor_stack (void)
+{
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  const EaselImage *img;
+  EaselPaletteBar *bar;
+
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  img = easel_window_get_picture (win);
+  bar = easel_window_get_palette_bar (win);
+
+  for (int t = 0; t < 3; t++)
+    {
+      EaselGradientType type = (EaselGradientType) t;
+      g_autoptr (EaselImage) black = typed_gradient_over (300, 200, YELLOW, 8, 8, 20, 12, BLACK, type);
+      g_autoptr (EaselImage) red = typed_gradient_over (300, 200, YELLOW, 8, 8, 20, 12, 0xFFFF0000u, type);
+      g_autoptr (EaselImage) both = typed_gradient_over (300, 200, YELLOW, 8, 8, 20, 12, 0xFFFF0000u, type);
+      EaselGradient second = { 24, 6, 14, 10, 0xFFFF0000u, type };
+      graphene_rect_t m0, m1;
+
+      g_assert_cmpint (easel_gradient_apply (both, NULL, &second, NULL), ==, EASEL_GRADIENT_DONE);
+      g_assert_cmpint (count_color (img, YELLOW), ==, 300 * 200);
+      easel_palette_bar_press (bar, 1, 1, 1);                           /* black again (swatch 1) */
+      gradient_with_black (win);
+      choose_gradient_type (win, gradient_type_names[t]);
+      shape_press_move (win, 1, 8, 8, 20, 12);
+      g_assert_true (easel_canvas_is_stroking (canvas));
+      assert_shown (win, black);                                       /* live while the button is held */
+      shape_release (win, 1);
+      g_assert_true (easel_canvas_is_pending (canvas));
+      g_assert_true (easel_canvas_get_marker_rect (canvas, 0, &m0) && easel_canvas_get_marker_rect (canvas, 1, &m1));
+      g_assert_cmpfloat_with_epsilon (m0.origin.x + m0.size.width / 2, 8.5, 0.5);
+      g_assert_cmpfloat_with_epsilon (m0.origin.y + m0.size.height / 2, 8.5, 0.5);
+      g_assert_cmpfloat_with_epsilon (m1.origin.x + m1.size.width / 2, 20.5, 0.5);
+      g_assert_cmpfloat_with_epsilon (m1.origin.y + m1.size.height / 2, 12.5, 0.5);
+      assert_shown (win, black);
+      easel_palette_bar_press (bar, 17, 1, 1);                          /* red as the foreground while it waits */
+      g_assert_cmphex (easel_window_get_foreground (win), ==, 0xFFFF0000u);
+      assert_shown_as_is (win, red);
+      g_assert_true (easel_canvas_is_pending (canvas));
+      g_assert_cmpint (count_color (img, YELLOW), ==, 300 * 200);
+      press_enter (win, GDK_KEY_Return);
+      assert_same_picture (img, red);
+      shape_press_move (win, 1, 24, 6, 14, 10);
+      shape_release (win, 1);
+      assert_shown (win, both);
+      press_enter (win, GDK_KEY_Return);
+      assert_same_picture (img, both);
+      g_assert_cmphex (easel_image_get (img, 16, 8), !=, easel_image_get (red, 16, 8));     /* the overlap shows both */
+      shape_press_move (win, 1, 2, 2, 30, 15);
+      shape_release (win, 1);
+      g_assert_true (easel_canvas_is_pending (canvas));
+      press_key (win, GDK_KEY_Escape, 0);
+      g_assert_false (easel_canvas_is_pending (canvas));
+      assert_same_picture (img, both);
+      assert_shown (win, both);
+      g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+      g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+      g_assert_false (action_enabled (win, "undo"));
+      g_assert_cmpint (count_color (img, YELLOW), ==, 300 * 200);
+    }
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\n");
+}
+
+/* AS-7 at scale 2 (REQ-0032-11): the user path of each type, the preview equal to the put-down at 100 %, 50 % and 200 %. */
+static void
+as7_types_scale2 (void)
+{
+  if (!session_of_scale_2 ())
+    return;
+  g_assert_cmpfloat (easel_canvas_get_scale (easel_window_get_canvas (start_window ())), ==, 2);
+  close_windows ();
+  as2_types_user_path ();
+}
+
+/* AS-8 (REQ-0032-07): for each type the secondary button's gradient is in the background color (red here), and Esc drops a
+   waiting one. */
+static void
+as8_types_keep_0012_rules (void)
+{
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  const EaselImage *img;
+
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFFFF\n");
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  img = easel_window_get_picture (win);
+  gradient_with_black (win);
+  easel_canvas_set_colors (canvas, BLACK, 0xFFFF0000u);
+  for (int t = 0; t < 3; t++)
+    {
+      g_autoptr (EaselImage) want = typed_gradient_over (300, 200, WHITE, 50, 50, 90, 70, 0xFFFF0000u, (EaselGradientType) t);
+
+      choose_gradient_type (win, gradient_type_names[t]);
+      shape_press_move (win, 3, 50, 50, 90, 70);
+      shape_release (win, 3);
+      press_enter (win, GDK_KEY_Return);
+      assert_same_picture (img, want);
+      g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+      shape_press_move (win, 1, 50, 50, 90, 70);
+      shape_release (win, 1);
+      g_assert_true (easel_canvas_is_pending (canvas));
+      press_key (win, GDK_KEY_Escape, 0);
+      g_assert_false (easel_canvas_is_pending (canvas));
+      g_assert_cmpint (count_color (img, WHITE), ==, 300 * 200);
+    }
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\n");
+}
 
 /* The contact sheet's input (T003 of 0029): every drawn cursor at sizes 24 and 48, scales 1 and 2, written as
    NAME-SIZE-xSCALE-HOTX-HOTY.png into the folder EASEL_CURSOR_SHEET names. Registered only when it is set. */
@@ -36020,6 +36432,13 @@ main (int argc, char **argv)
   g_test_add_func ("/0031/as4_pointer_below", as4_pointer_below);
   g_test_add_func ("/0031/as7_view_memory_refused", as7_view_memory_refused);
   g_test_add_func ("/0031-scale2/as5_view_below_100_scale2", as5_view_below_100_scale2);
+  g_test_add_func ("/0032/as1_gradient_types_panel", as1_gradient_types_panel);
+  g_test_add_func ("/0032/as2_types_user_path", as2_types_user_path);
+  g_test_add_func ("/0032/as6_type_change_waiting", as6_type_change_waiting);
+  g_test_add_func ("/0032/as8_types_keep_0012_rules", as8_types_keep_0012_rules);
+  g_test_add_func ("/0032/as9_type_change_held", as9_type_change_held);
+  g_test_add_func ("/0032/as11_types_recolor_stack", as11_types_recolor_stack);
+  g_test_add_func ("/0032-scale2/as7_types_scale2", as7_types_scale2);
   g_test_add_func ("/0030/as1_brush_two_columns", as1_brush_two_columns);
   if (g_getenv ("EASEL_PANEL_SHOT") != NULL)
     g_test_add_func ("/0030-shot/dump", panel_shot_dump);

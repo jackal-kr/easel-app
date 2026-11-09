@@ -4,6 +4,8 @@
 
 #include <gtk/gtk.h>
 
+#include "gradient.h"
+
 #include "footprint.h"
 #include "tool.h"
 
@@ -42,6 +44,8 @@ int easel_tool_options_size_index (EaselToolOptions *self, EaselTool tool, int l
 
 /* The Magnifier's selected level in percent: 100, 200, 400, 600, 800 or 1600 (REQ-0007-02); kept for the session. */
 
+/* Gradient's chosen type, Linear at each start and kept for the session (REQ-0032-01, -03). */
+EaselGradientType easel_tool_options_get_gradient_type (EaselToolOptions *self);
 /* While a stroke is in progress, choosing a preset is ignored (REQ-0006-03). */
 void easel_tool_options_set_busy (EaselToolOptions *self, gboolean busy);
 

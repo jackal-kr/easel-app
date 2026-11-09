@@ -1213,3 +1213,13 @@ msgstr "Easel to prosty program do rysowania szybkich obrazów i poprawek, w sty
 
 msgid "It has the classic tools, exact pixels, undo, selections you can move and stretch, text boxes and printing."
 msgstr "Ma klasyczne narzędzia, dokładne piksele, cofanie, zaznaczenia, które można przesuwać i rozciągać, pola tekstowe i drukowanie."
+
+msgid "Linear"
+msgstr "Liniowy"
+
+msgid "Radial"
+msgstr "Radialny"
+
+msgid "Reflected"
+msgstr "Odbity"
+

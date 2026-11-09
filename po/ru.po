@@ -1213,3 +1213,13 @@ msgstr "Easel — простая программа для быстрых рис
 
 msgid "It has the classic tools, exact pixels, undo, selections you can move and stretch, text boxes and printing."
 msgstr "В ней есть классические инструменты, точные пиксели, отмена, выделения, которые можно двигать и растягивать, текстовые рамки и печать."
+
+msgid "Linear"
+msgstr "Линейный"
+
+msgid "Radial"
+msgstr "Радиальный"
+
+msgid "Reflected"
+msgstr "Отражённый"
+

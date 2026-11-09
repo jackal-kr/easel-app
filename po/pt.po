@@ -1203,3 +1203,13 @@ msgstr "O Easel é um programa de desenho simples para imagens rápidas e retoqu
 
 msgid "It has the classic tools, exact pixels, undo, selections you can move and stretch, text boxes and printing."
 msgstr "Tem as ferramentas clássicas, pixels exatos, desfazer, seleções que se movem e esticam, caixas de texto e impressão."
+
+msgid "Linear"
+msgstr "Linear"
+
+msgid "Radial"
+msgstr "Radial"
+
+msgid "Reflected"
+msgstr "Refletido"
+

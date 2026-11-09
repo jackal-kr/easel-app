@@ -1203,3 +1203,13 @@ msgstr "Az Easel egyszerű rajzprogram gyors képekhez és javításokhoz, a Win
 
 msgid "It has the classic tools, exact pixels, undo, selections you can move and stretch, text boxes and printing."
 msgstr "Klasszikus eszközei, pontos képpontjai, visszavonása, mozgatható és nyújtható kijelölései, szövegkeretei és nyomtatása vannak."
+
+msgid "Linear"
+msgstr "Lineáris"
+
+msgid "Radial"
+msgstr "Sugaras"
+
+msgid "Reflected"
+msgstr "Tükrözött"
+
