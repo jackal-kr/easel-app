@@ -146,6 +146,61 @@ as5_plural_rules (void)
   CHECK (easel_plural_form ("xx", 2) == 1);
 }
 
+/* REQ-0023-06 for the languages with three forms, at 0, 1, 2, 5, 11 to 14, 21, 22 and 25 (computed from the requirement's words, not
+   from the code), and Romanian's few up to 19 and not at 20, also past 100. */
+static void
+as5_plural_three_forms (void)
+{
+  static const unsigned long counts[] = { 0, 1, 2, 5, 11, 12, 13, 14, 21, 22, 25 };
+  static const struct { const char *lang; int forms[11]; } table[] = {
+    { "ru", { 2, 0, 1, 2, 2, 2, 2, 2, 0, 1, 2 } },
+    { "uk", { 2, 0, 1, 2, 2, 2, 2, 2, 0, 1, 2 } },
+    { "pl", { 2, 0, 1, 2, 2, 2, 2, 2, 2, 1, 2 } },
+    { "cs", { 2, 0, 1, 2, 2, 2, 2, 2, 2, 2, 2 } },
+  };
+  static const unsigned long ro_counts[] = { 19, 20, 119, 120 };
+  static const int ro_forms[] = { 1, 2, 1, 2 };
+
+  for (size_t t = 0; t < sizeof table / sizeof table[0]; t++)
+    for (size_t c = 0; c < sizeof counts / sizeof counts[0]; c++)
+      CHECK (easel_plural_form (table[t].lang, counts[c]) == table[t].forms[c]);
+  for (size_t c = 0; c < 4; c++)
+    CHECK (easel_plural_form ("ro", ro_counts[c]) == ro_forms[c]);
+}
+
+/* REQ-0023-02, -10: an empty translation shows the English; a plural with fewer forms than the language's rule takes its first form;
+   a file whose string runs past its end, or lacks its ending zero, is refused (REQ-0023-05). */
+static void
+as3_empty_short_and_cut (void)
+{
+  static const Entry more[] = {
+    E ("", "Content-Type: text/plain; charset=UTF-8\n"),
+    E ("A dog\0%d dogs", "Собака\0%d собаки"),
+    E ("Empty", ""),
+    E ("Open", "Открыть"),
+  };
+  unsigned char *mo;
+  size_t len;
+  uint32_t *w;
+  EaselCatalog *cat;
+
+  mo = build_mo (more, 4, &len);
+  cat = easel_catalog_new (mo, len);
+  CHECK (cat != NULL);
+  CHECK (strcmp (easel_catalog_get (cat, "Empty"), "Empty") == 0);
+  CHECK (strcmp (easel_catalog_get (cat, "Open"), "Открыть") == 0);
+  CHECK (strcmp (easel_catalog_get_plural (cat, "A dog", "%d dogs", 2, "ru"), "%d собаки") == 0);
+  CHECK (strcmp (easel_catalog_get_plural (cat, "A dog", "%d dogs", 5, "ru"), "Собака") == 0);   /* form 2 missing: the first */
+  easel_catalog_free (cat);
+  w = (uint32_t *) mo;
+  w[7 + 2 * 3] = (uint32_t) (len - w[7 + 2 * 3 + 1]);                        /* "Open" as long as the rest of the file */
+  CHECK (easel_catalog_new (mo, len) == NULL);
+  w[7 + 2 * 3] = 4;
+  mo[w[7 + 2 * 3 + 1] + 4] = 'x';                                           /* its ending zero gone */
+  CHECK (easel_catalog_new (mo, len) == NULL);
+  free (mo);
+}
+
 /* AS-1, AS-2 (REQ-0023-02, -03): the setting, then the first preferred language the app has, by its language part. */
 static void
 as1_resolve (void)
@@ -241,6 +296,8 @@ main (void)
   RUN (as3_lookup);
   RUN (as3_refuses_a_bad_file);
   RUN (as5_plural_rules);
+  RUN (as5_plural_three_forms);
+  RUN (as3_empty_short_and_cut);
   RUN (as12_template_text);
   RUN (as1_resolve);
   RUN (as4_key);
