@@ -1116,7 +1116,7 @@ msgid "Show Thumbnail"
 msgstr "Zobrazit náhled"
 
 msgid "Cu_t"
-msgstr "_Vyjmout"
+msgstr "V_yjmout"
 
 msgid "_Copy"
 msgstr "_Kopírovat"
@@ -1124,16 +1124,16 @@ msgstr "_Kopírovat"
 msgid "_Paste"
 msgstr "V_ložit"
 
-msgid "_Clear Selection"
+msgid "C_lear Selection"
 msgstr "Vy_mazat výběr"
 
 msgid "Select _All"
-msgstr "Vybrat _vše"
+msgstr "Vybr_at vše"
 
-msgid "Copy _To…"
+msgid "Cop_y To…"
 msgstr "Kopírovat _do…"
 
-msgid "Paste as Plain _Text"
+msgid "Pa_ste as Plain Text"
 msgstr "Vložit jako prostý _text"
 
 msgid "Paste _From…"
@@ -1163,8 +1163,8 @@ msgstr "_Tisk…"
 msgid "_Edit"
 msgstr "Ú_pravy"
 
-msgid "_Preferences"
-msgstr "Před_volby"
+msgid "P_references"
+msgstr "Př_edvolby"
 
 msgid "_Keyboard Shortcuts"
 msgstr "_Klávesové zkratky"
@@ -1172,11 +1172,11 @@ msgstr "_Klávesové zkratky"
 msgid "_Help"
 msgstr "Nápo_věda"
 
-msgid "_About Easel"
+msgid "A_bout Easel"
 msgstr "O _aplikaci Easel"
 
 msgid "_Quit"
-msgstr "_Ukončit"
+msgstr "Ukonč_it"
 
 msgid "Pictures"
 msgstr "Obrázky"
@@ -1261,3 +1261,24 @@ msgstr "Nelze převést obrázek"
 
 msgid "Could Not Convert the Selection"
 msgstr "Nelze převést výběr"
+
+msgid "R_emove Background"
+msgstr "Odstranit _pozadí"
+
+msgid "Remove Background (Not in This Copy)"
+msgstr "Odstranit pozadí (není v této kopii)"
+
+msgid "Removing the Background"
+msgstr "Odstraňuje se pozadí"
+
+msgid "Nothing to Remove"
+msgstr "Není co odstranit"
+
+msgid "No background was found to remove."
+msgstr "Nebylo nalezeno žádné pozadí k odstranění."
+
+msgid "Could Not Remove the Background"
+msgstr "Pozadí nelze odstranit"
+
+msgid "Background removal is not available."
+msgstr "Odstranění pozadí není k dispozici."

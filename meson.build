@@ -23,6 +23,13 @@ add_project_arguments(cc.get_supported_arguments([
 gtk_dep = dependency('gtk4', version: '>= 4.16')
 adw_dep = dependency('libadwaita-1', version: '>= 1.8')
 
+# Remove background (REQ-0035-10): optional; the model is installed only when a path is given.
+onnx_dep = dependency('libonnxruntime', required: get_option('background_removal'))
+background_model_dir = get_option('datadir') / 'easel' / 'models'
+if onnx_dep.found() and get_option('background_model') != ''
+  install_data(get_option('background_model'), install_dir: background_model_dir, rename: 'subject-finder.onnx')
+endif
+
 subdir('po')
 subdir('data')
 subdir('src')

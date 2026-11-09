@@ -1101,7 +1101,7 @@ msgid "Rotate _270°"
 msgstr "Rotește cu _270°"
 
 msgid "Stretch and _Skew…"
-msgstr "Întinde și în_clină…"
+msgstr "Întin_de și înclină…"
 
 msgid "_Invert Colors"
 msgstr "_Inversează culorile"
@@ -1116,7 +1116,7 @@ msgid "Show Thumbnail"
 msgstr "Arată miniatura"
 
 msgid "Cu_t"
-msgstr "_Taie"
+msgstr "Tai_e"
 
 msgid "_Copy"
 msgstr "_Copiază"
@@ -1124,20 +1124,20 @@ msgstr "_Copiază"
 msgid "_Paste"
 msgstr "_Lipește"
 
-msgid "_Clear Selection"
+msgid "C_lear Selection"
 msgstr "_Golește selecția"
 
 msgid "Select _All"
-msgstr "Selectează _tot"
+msgstr "Selecte_ază tot"
 
-msgid "Copy _To…"
-msgstr "Copiază î_n…"
+msgid "Cop_y To…"
+msgstr "C_opiază în…"
 
-msgid "Paste as Plain _Text"
+msgid "Pa_ste as Plain Text"
 msgstr "Lipește ca _text simplu"
 
 msgid "Paste _From…"
-msgstr "Lipește _din…"
+msgstr "Lipe_ște din…"
 
 msgid "Zoom _In"
 msgstr "_Mărește"
@@ -1163,17 +1163,17 @@ msgstr "_Tipărește…"
 msgid "_Edit"
 msgstr "_Editare"
 
-msgid "_Preferences"
+msgid "P_references"
 msgstr "_Preferințe"
 
 msgid "_Keyboard Shortcuts"
-msgstr "Scurtături de la _tastatură"
+msgstr "Scurtături de _la tastatură"
 
 msgid "_Help"
 msgstr "A_jutor"
 
-msgid "_About Easel"
-msgstr "_Despre Easel"
+msgid "A_bout Easel"
+msgstr "Desp_re Easel"
 
 msgid "_Quit"
 msgstr "_Ieșire"
@@ -1224,7 +1224,7 @@ msgid "Reflected"
 msgstr "Reflectat"
 
 msgid "_Black and White…"
-msgstr "_Alb-negru…"
+msgstr "Al_b-negru…"
 
 msgid "Black and White"
 msgstr "Alb-negru"
@@ -1261,3 +1261,24 @@ msgstr "Nu s-a putut converti imaginea"
 
 msgid "Could Not Convert the Selection"
 msgstr "Nu s-a putut converti selecția"
+
+msgid "R_emove Background"
+msgstr "Elimină _fundalul"
+
+msgid "Remove Background (Not in This Copy)"
+msgstr "Elimină fundalul (nu este în această copie)"
+
+msgid "Removing the Background"
+msgstr "Se elimină fundalul"
+
+msgid "Nothing to Remove"
+msgstr "Nimic de eliminat"
+
+msgid "No background was found to remove."
+msgstr "Nu a fost găsit niciun fundal de eliminat."
+
+msgid "Could Not Remove the Background"
+msgstr "Nu s-a putut elimina fundalul"
+
+msgid "Background removal is not available."
+msgstr "Eliminarea fundalului nu este disponibilă."

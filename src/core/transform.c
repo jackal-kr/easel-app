@@ -253,3 +253,51 @@ easel_image_transform (EaselImage *img, EaselHistory *h, EaselOp op, uint32_t ba
   }
   return EASEL_TRANSFORM_DONE;
 }
+
+EaselTransformResult
+easel_image_replace_pixels (EaselImage *img, EaselHistory *h, uint32_t *px, size_t max_bytes)
+{
+  size_t total = (size_t) img->width * (size_t) img->height, changed = 0, n = 0;
+  EaselChange *log;
+
+  for (size_t i = 0; i < total; i++)
+    changed += px[i] != img->px[i];
+  if (changed == 0)
+    {
+      free (px);
+      return EASEL_TRANSFORM_NOTHING;
+    }
+  if (changed > total / 3)
+    {
+      /* The old buffer goes whole into the step (REQ-0018-09), the new one becomes the picture. */
+      if (!easel_history_push_buffer (h, img->width, img->height, img->px))
+        {
+          free (px);
+          return EASEL_TRANSFORM_NO_MEMORY;
+        }
+      img->px = px;
+      img->dirty = (EaselRect) { 0, 0, img->width, img->height };
+      return EASEL_TRANSFORM_DONE;
+    }
+  if (changed * sizeof *log > max_bytes || (log = malloc (changed * sizeof *log)) == NULL)
+    {
+      free (px);
+      return EASEL_TRANSFORM_NO_MEMORY;
+    }
+  for (size_t i = 0; i < total; i++)
+    if (px[i] != img->px[i])
+      log[n++] = (EaselChange) { (uint32_t) i, img->px[i], px[i] };
+  free (px);
+  for (size_t i = 0; i < n; i++)
+    easel_image_set (img, (int) (log[i].index % (uint32_t) img->width), (int) (log[i].index / (uint32_t) img->width),
+                     log[i].new_value);
+  if (!easel_history_push (h, log, n))
+    {
+      for (size_t i = 0; i < n; i++)
+        easel_image_set (img, (int) (log[i].index % (uint32_t) img->width), (int) (log[i].index / (uint32_t) img->width),
+                         log[i].old_value);
+      free (log);
+      return EASEL_TRANSFORM_NO_MEMORY;
+    }
+  return EASEL_TRANSFORM_DONE;
+}

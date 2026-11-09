@@ -1094,7 +1094,7 @@ msgid "Stretch and _Skew…"
 msgstr "Étirer et _incliner…"
 
 msgid "_Invert Colors"
-msgstr "_Inverser les couleurs"
+msgstr "Inverser _les couleurs"
 
 msgid "_Clear Image"
 msgstr "_Effacer l'image"
@@ -1112,22 +1112,22 @@ msgid "_Copy"
 msgstr "_Copier"
 
 msgid "_Paste"
-msgstr "Co_ller"
+msgstr "C_oller"
 
-msgid "_Clear Selection"
+msgid "C_lear Selection"
 msgstr "_Effacer la sélection"
 
 msgid "Select _All"
 msgstr "_Tout sélectionner"
 
-msgid "Copy _To…"
+msgid "Cop_y To…"
 msgstr "Copier _vers…"
 
-msgid "Paste as Plain _Text"
+msgid "Pa_ste as Plain Text"
 msgstr "Coller en texte _brut"
 
 msgid "Paste _From…"
-msgstr "Coller _depuis…"
+msgstr "Co_ller depuis…"
 
 msgid "Zoom _In"
 msgstr "Zoom _avant"
@@ -1153,7 +1153,7 @@ msgstr "_Imprimer…"
 msgid "_Edit"
 msgstr "É_dition"
 
-msgid "_Preferences"
+msgid "P_references"
 msgstr "_Préférences"
 
 msgid "_Keyboard Shortcuts"
@@ -1162,8 +1162,8 @@ msgstr "Raccourcis _clavier"
 msgid "_Help"
 msgstr "_Aide"
 
-msgid "_About Easel"
-msgstr "À _propos d'Easel"
+msgid "A_bout Easel"
+msgstr "À p_ropos d'Easel"
 
 msgid "_Quit"
 msgstr "_Quitter"
@@ -1251,3 +1251,24 @@ msgstr "Impossible de convertir l'image"
 
 msgid "Could Not Convert the Selection"
 msgstr "Impossible de convertir la sélection"
+
+msgid "R_emove Background"
+msgstr "_Supprimer l'arrière-plan"
+
+msgid "Remove Background (Not in This Copy)"
+msgstr "Supprimer l'arrière-plan (absent de cette copie)"
+
+msgid "Removing the Background"
+msgstr "Suppression de l'arrière-plan"
+
+msgid "Nothing to Remove"
+msgstr "Rien à supprimer"
+
+msgid "No background was found to remove."
+msgstr "Aucun arrière-plan à supprimer n'a été trouvé."
+
+msgid "Could Not Remove the Background"
+msgstr "Impossible de supprimer l'arrière-plan"
+
+msgid "Background removal is not available."
+msgstr "La suppression de l'arrière-plan n'est pas disponible."

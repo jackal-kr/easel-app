@@ -1091,13 +1091,13 @@ msgid "Rotate _270°"
 msgstr "Girar _270°"
 
 msgid "Stretch and _Skew…"
-msgstr "Estirar e _inclinar…"
+msgstr "_Estirar e inclinar…"
 
 msgid "_Invert Colors"
 msgstr "_Invertir colores"
 
 msgid "_Clear Image"
-msgstr "_Vaciar la imagen"
+msgstr "V_aciar la imagen"
 
 msgid "Grid…"
 msgstr "Cuadrícula…"
@@ -1114,17 +1114,17 @@ msgstr "_Copiar"
 msgid "_Paste"
 msgstr "_Pegar"
 
-msgid "_Clear Selection"
-msgstr "_Vaciar la selección"
+msgid "C_lear Selection"
+msgstr "Vaciar _la selección"
 
 msgid "Select _All"
-msgstr "Seleccionar _todo"
+msgstr "_Seleccionar todo"
 
-msgid "Copy _To…"
-msgstr "Copiar _a…"
+msgid "Cop_y To…"
+msgstr "C_opiar a…"
 
-msgid "Paste as Plain _Text"
-msgstr "Pegar como _texto sin formato"
+msgid "Pa_ste as Plain Text"
+msgstr "Pegar como texto sin _formato"
 
 msgid "Paste _From…"
 msgstr "Pegar _desde…"
@@ -1153,7 +1153,7 @@ msgstr "_Imprimir…"
 msgid "_Edit"
 msgstr "_Editar"
 
-msgid "_Preferences"
+msgid "P_references"
 msgstr "_Preferencias"
 
 msgid "_Keyboard Shortcuts"
@@ -1162,8 +1162,8 @@ msgstr "Atajos de _teclado"
 msgid "_Help"
 msgstr "Ay_uda"
 
-msgid "_About Easel"
-msgstr "_Acerca de Easel"
+msgid "A_bout Easel"
+msgstr "Ace_rca de Easel"
 
 msgid "_Quit"
 msgstr "_Salir"
@@ -1251,3 +1251,24 @@ msgstr "No se pudo convertir la imagen"
 
 msgid "Could Not Convert the Selection"
 msgstr "No se pudo convertir la selección"
+
+msgid "R_emove Background"
+msgstr "_Quitar fondo"
+
+msgid "Remove Background (Not in This Copy)"
+msgstr "Quitar fondo (no está en esta copia)"
+
+msgid "Removing the Background"
+msgstr "Quitando el fondo"
+
+msgid "Nothing to Remove"
+msgstr "Nada que quitar"
+
+msgid "No background was found to remove."
+msgstr "No se encontró ningún fondo que quitar."
+
+msgid "Could Not Remove the Background"
+msgstr "No se pudo quitar el fondo"
+
+msgid "Background removal is not available."
+msgstr "Quitar el fondo no está disponible."

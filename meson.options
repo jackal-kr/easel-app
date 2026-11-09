@@ -1,0 +1,6 @@
+# Remove background (spec 0035, ADR-0006): the model's runtime (ONNX Runtime) and the model are optional; without them the app builds
+# and runs, and the item is greyed (REQ-0035-10).
+option('background_removal', type: 'feature', value: 'auto',
+  description: 'Remove Background with ONNX Runtime (libonnxruntime)')
+option('background_model', type: 'string', value: '',
+  description: 'The subject-finding model (.onnx) to install; empty installs none, so the item is greyed until one is in place')

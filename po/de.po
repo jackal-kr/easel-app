@@ -1106,24 +1106,24 @@ msgid "Show Thumbnail"
 msgstr "Miniatur anzeigen"
 
 msgid "Cu_t"
-msgstr "_Ausschneiden"
+msgstr "Auss_chneiden"
 
 msgid "_Copy"
 msgstr "_Kopieren"
 
 msgid "_Paste"
-msgstr "_Einfügen"
+msgstr "E_infügen"
 
-msgid "_Clear Selection"
+msgid "C_lear Selection"
 msgstr "Auswahl _leeren"
 
 msgid "Select _All"
 msgstr "_Alles auswählen"
 
-msgid "Copy _To…"
-msgstr "Kopieren _nach…"
+msgid "Cop_y To…"
+msgstr "K_opieren nach…"
 
-msgid "Paste as Plain _Text"
+msgid "Pa_ste as Plain Text"
 msgstr "Als _reinen Text einfügen"
 
 msgid "Paste _From…"
@@ -1145,15 +1145,15 @@ msgid "_Open…"
 msgstr "Ö_ffnen…"
 
 msgid "Save _As…"
-msgstr "Speichern _unter…"
+msgstr "S_peichern unter…"
 
 msgid "_Print…"
 msgstr "_Drucken…"
 
 msgid "_Edit"
-msgstr "_Bearbeiten"
+msgstr "Be_arbeiten"
 
-msgid "_Preferences"
+msgid "P_references"
 msgstr "_Einstellungen"
 
 msgid "_Keyboard Shortcuts"
@@ -1162,7 +1162,7 @@ msgstr "_Tastenkombinationen"
 msgid "_Help"
 msgstr "_Hilfe"
 
-msgid "_About Easel"
+msgid "A_bout Easel"
 msgstr "_Über Easel"
 
 msgid "_Quit"
@@ -1251,3 +1251,24 @@ msgstr "Bild konnte nicht umgewandelt werden"
 
 msgid "Could Not Convert the Selection"
 msgstr "Auswahl konnte nicht umgewandelt werden"
+
+msgid "R_emove Background"
+msgstr "Hintergrund _entfernen"
+
+msgid "Remove Background (Not in This Copy)"
+msgstr "Hintergrund entfernen (nicht in dieser Ausgabe)"
+
+msgid "Removing the Background"
+msgstr "Hintergrund wird entfernt"
+
+msgid "Nothing to Remove"
+msgstr "Nichts zu entfernen"
+
+msgid "No background was found to remove."
+msgstr "Es wurde kein Hintergrund zum Entfernen gefunden."
+
+msgid "Could Not Remove the Background"
+msgstr "Hintergrund konnte nicht entfernt werden"
+
+msgid "Background removal is not available."
+msgstr "Hintergrund entfernen ist nicht verfügbar."

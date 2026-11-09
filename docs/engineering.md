@@ -93,7 +93,9 @@ From feature 0002 (`src/core/history`):
   tests of the feature you touched after each task, the full `meson test -C build --print-errorlogs` (about 6.5 minutes) at each
   group boundary and at `/sdd-check`. The ui tests do not run in parallel (`is_parallel: false`): run in parallel, the
   ui windows failed `as5_zoom_keeps_center` with a stale layout in 2 of 3 runs. That is all that was shown; earlier
-  one-off failures of the ui tests (run as a single executable) are unexplained and not fixed.
+  one-off failures of the ui tests (run as a single executable) are unexplained and not fixed. A one-off crash is logged in
+  `docs/learning-log.md` with its message and its reruns; at its second sighting it is hunted before the task ends (open:
+  ui-0020's `object_already_finalized` of 2026-11-09).
   `meson test --test-args '-p /NNNN/case'` adds a second filter to meson's own `-p /NNNN`, so the case runs twice in one process (as17 passed the first time and failed the second at `gtk_window_destroy`, 2026-10-27); to run one case alone, run `test-window -p /NNNN/case` with the ui environment of `tests/meson.build` (`GDK_DEBUG=no-portals`, `GTK_A11Y=none`, `GSK_RENDERER=cairo`, `EASEL_TEST_DATA`) inside `tools/isolated.sh`: without `GDK_DEBUG=no-portals` the file chooser is the portal's and the cases that wait for it fail.
   Close every Easel window (and any other test or probe window of ours) before running the ui tests or `tools/mutate.sh` in the real session (not needed through `tools/isolated.sh`):
   with one open from a manual check, three ui cases failed in every run until it was closed (learning log, 2026-10-16).
@@ -198,6 +200,11 @@ lost release (REQ-0007-18) and ends the held gesture early (0015: a worst event 
 133 to 136 ms). An event worse than three times the median is hunted, with a breakpoint on the slow path, before its row is written,
 not recorded as unexplained. A memory row says what its "before" is (the process's peak, a high-water mark shared by the cases of one
 run).
+
+A frame benchmark is read only with its window visible (a covered window gets no frame callbacks on Wayland), and the count of
+presented frames is read before any frame figure (0025). A benchmark of a share (removed, kept, killed) prints its counts beside the
+percentage, and a result that is perfect or arrives too easily is read twice: its rule broken on purpose, its output looked at (0019's
+381 of 381 kills against a failing test; 0035's 100 % on every picture, then a wrong model failing every one).
 
 Work another app waits for is timed where it waits: a clipboard provider's encode from the other app's request to the last byte, not
 only the action that set it up (0016: a 3178 x 3099 copy's PNG took 2.2 s at the request and a browser gave up; 0.11 s at the fast

@@ -1097,7 +1097,7 @@ msgid "_Invert Colors"
 msgstr "Színek _invertálása"
 
 msgid "_Clear Image"
-msgstr "Kép _törlése"
+msgstr "Ké_p törlése"
 
 msgid "Grid…"
 msgstr "Rács…"
@@ -1114,16 +1114,16 @@ msgstr "_Másolás"
 msgid "_Paste"
 msgstr "_Beillesztés"
 
-msgid "_Clear Selection"
-msgstr "Kijelölés _törlése"
+msgid "C_lear Selection"
+msgstr "Ki_jelölés törlése"
 
 msgid "Select _All"
 msgstr "Ö_sszes kijelölése"
 
-msgid "Copy _To…"
-msgstr "Másolás _ide…"
+msgid "Cop_y To…"
+msgstr "Más_olás ide…"
 
-msgid "Paste as Plain _Text"
+msgid "Pa_ste as Plain Text"
 msgstr "Beillesztés _egyszerű szövegként"
 
 msgid "Paste _From…"
@@ -1136,13 +1136,13 @@ msgid "Zoom _Out"
 msgstr "Ki_csinyítés"
 
 msgid "_Normal Size"
-msgstr "_Normál méret"
+msgstr "Normál _méret"
 
 msgid "_New"
 msgstr "Ú_j"
 
 msgid "_Open…"
-msgstr "_Megnyitás…"
+msgstr "M_egnyitás…"
 
 msgid "Save _As…"
 msgstr "Mentés más_ként…"
@@ -1153,20 +1153,20 @@ msgstr "Nyomta_tás…"
 msgid "_Edit"
 msgstr "_Szerkesztés"
 
-msgid "_Preferences"
+msgid "P_references"
 msgstr "_Beállítások"
 
 msgid "_Keyboard Shortcuts"
-msgstr "_Gyorsbillentyűk"
+msgstr "G_yorsbillentyűk"
 
 msgid "_Help"
 msgstr "Sú_gó"
 
-msgid "_About Easel"
+msgid "A_bout Easel"
 msgstr "Az Easel _névjegye"
 
 msgid "_Quit"
-msgstr "_Kilépés"
+msgstr "Ki_lépés"
 
 msgid "Pictures"
 msgstr "Képek"
@@ -1214,7 +1214,7 @@ msgid "Reflected"
 msgstr "Tükrözött"
 
 msgid "_Black and White…"
-msgstr "Fe_kete-fehér…"
+msgstr "F_ekete-fehér…"
 
 msgid "Black and White"
 msgstr "Fekete-fehér"
@@ -1251,3 +1251,24 @@ msgstr "Nem sikerült átalakítani a képet"
 
 msgid "Could Not Convert the Selection"
 msgstr "Nem sikerült átalakítani a kijelölést"
+
+msgid "R_emove Background"
+msgstr "_Háttér eltávolítása"
+
+msgid "Remove Background (Not in This Copy)"
+msgstr "Háttér eltávolítása (ebben a példányban nincs)"
+
+msgid "Removing the Background"
+msgstr "Háttér eltávolítása folyamatban"
+
+msgid "Nothing to Remove"
+msgstr "Nincs mit eltávolítani"
+
+msgid "No background was found to remove."
+msgstr "Nem található eltávolítható háttér."
+
+msgid "Could Not Remove the Background"
+msgstr "Nem sikerült eltávolítani a hátteret"
+
+msgid "Background removal is not available."
+msgstr "A háttér eltávolítása nem érhető el."

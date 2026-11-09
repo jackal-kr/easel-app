@@ -474,6 +474,16 @@
         <attribute name="label" translatable="yes">_Black and White…</attribute>
         <attribute name="action">win.black-white</attribute>
       </item>
+      <item>
+        <attribute name="label" translatable="yes">R_emove Background</attribute>
+        <attribute name="action">win.remove-background</attribute>
+        <attribute name="hidden-when">action-missing</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">Remove Background (Not in This Copy)</attribute>
+        <attribute name="action">win.remove-background-off</attribute>
+        <attribute name="hidden-when">action-missing</attribute>
+      </item>
     </section>
     <section>
       <item>
@@ -552,7 +562,7 @@
     </section>
     <section>
       <item>
-        <attribute name="label" translatable="yes">_Clear Selection</attribute>
+        <attribute name="label" translatable="yes">C_lear Selection</attribute>
         <attribute name="action">win.clear-selection</attribute>
       </item>
       <item>
@@ -560,7 +570,7 @@
         <attribute name="action">win.select-all</attribute>
       </item>
       <item>
-        <attribute name="label" translatable="yes">Copy _To…</attribute>
+        <attribute name="label" translatable="yes">Cop_y To…</attribute>
         <attribute name="action">win.copy-to</attribute>
       </item>
     </section>
@@ -609,6 +619,16 @@
         <attribute name="label" translatable="yes">_Black and White…</attribute>
         <attribute name="action">win.black-white</attribute>
       </item>
+      <item>
+        <attribute name="label" translatable="yes">R_emove Background</attribute>
+        <attribute name="action">win.remove-background</attribute>
+        <attribute name="hidden-when">action-missing</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">Remove Background (Not in This Copy)</attribute>
+        <attribute name="action">win.remove-background-off</attribute>
+        <attribute name="hidden-when">action-missing</attribute>
+      </item>
     </section>
   </menu>
   <menu id="text_menu">
@@ -626,7 +646,7 @@
         <attribute name="action">win.paste</attribute>
       </item>
       <item>
-        <attribute name="label" translatable="yes">Paste as Plain _Text</attribute>
+        <attribute name="label" translatable="yes">Pa_ste as Plain Text</attribute>
         <attribute name="action">win.paste-plain</attribute>
       </item>
     </section>
@@ -719,14 +739,14 @@
             <attribute name="action">win.select-all</attribute>
           </item>
           <item>
-            <attribute name="label" translatable="yes">_Clear Selection</attribute>
+            <attribute name="label" translatable="yes">C_lear Selection</attribute>
             <attribute name="action">win.clear-selection</attribute>
             <attribute name="accel">Delete</attribute>
           </item>
         </section>
       </submenu>
       <item>
-        <attribute name="label" translatable="yes">Copy _To…</attribute>
+        <attribute name="label" translatable="yes">Cop_y To…</attribute>
         <attribute name="action">win.copy-to</attribute>
       </item>
       <item>
@@ -736,7 +756,7 @@
     </section>
     <section>
       <item>
-        <attribute name="label" translatable="yes">_Preferences</attribute>
+        <attribute name="label" translatable="yes">P_references</attribute>
         <attribute name="action">win.preferences</attribute>
       </item>
     </section>
@@ -750,7 +770,7 @@
         <attribute name="action">win.help</attribute>
       </item>
       <item>
-        <attribute name="label" translatable="yes">_About Easel</attribute>
+        <attribute name="label" translatable="yes">A_bout Easel</attribute>
         <attribute name="action">win.about</attribute>
       </item>
     </section>

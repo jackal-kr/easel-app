@@ -25,6 +25,25 @@ cmd_status() {
       "$(grep -cE '^- REQ-[0-9]{4}-[0-9]{2}' "$s")" "$(grep -cE '^- AS-[0-9]+' "$s")" \
       "$(grep -cE '^- \[x\] T[0-9]+' "$s")/$(grep -cE '^- \[[ x]\] T[0-9]+' "$s")"
   done
+  retro_due
+}
+
+# The retro cadence (docs/how-we-work.md): a retro at least every three features. A retro writes a line "DATE | retro | ..." in the
+# learning log; the features named in the log's lines after the last such line are the ones not yet looked back on.
+retro_due() {
+  local log=docs/learning-log.md since
+  [ -f "$log" ] || return 0
+  since=$(awk -F' [|] ' '$2 == "retro" { n = NR } END { print n + 0 }' "$log")
+  local features
+  features=$(awk -F' [|] ' -v from="$since" 'NR > from && $1 ~ /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/ && $2 != "retro" { print $2 }' "$log" \
+    | tr ',' '\n' | grep -oE '[0-9]{4}' | sort -u | tr '\n' ' ')
+  local n; n=$(wc -w <<< "$features")
+  echo
+  if [ "$n" -ge 3 ]; then
+    echo "retro due: the log has lines of $n features since the last retro: $features"
+  else
+    echo "retro: $n feature(s) since the last one${features:+: $features}"
+  fi
 }
 
 # Every REQ needs a scenario that mentions it; every scenario needs "Verified by:"; no two scenarios of a spec share a number (AS-1 and AS-1b differ);

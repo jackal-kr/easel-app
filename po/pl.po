@@ -1101,13 +1101,13 @@ msgid "Rotate _270°"
 msgstr "Obróć o _270°"
 
 msgid "Stretch and _Skew…"
-msgstr "Rozciągnij i po_chyl…"
+msgstr "Rozciągnij _i pochyl…"
 
 msgid "_Invert Colors"
-msgstr "_Odwróć kolory"
+msgstr "Odw_róć kolory"
 
 msgid "_Clear Image"
-msgstr "_Wyczyść obraz"
+msgstr "W_yczyść obraz"
 
 msgid "Grid…"
 msgstr "Siatka…"
@@ -1122,22 +1122,22 @@ msgid "_Copy"
 msgstr "_Kopiuj"
 
 msgid "_Paste"
-msgstr "W_klej"
+msgstr "Wk_lej"
 
-msgid "_Clear Selection"
+msgid "C_lear Selection"
 msgstr "Wy_czyść zaznaczenie"
 
 msgid "Select _All"
-msgstr "Zaznacz _wszystko"
+msgstr "Z_aznacz wszystko"
 
-msgid "Copy _To…"
-msgstr "Kopiuj _do…"
+msgid "Cop_y To…"
+msgstr "Kopiu_j do…"
 
-msgid "Paste as Plain _Text"
+msgid "Pa_ste as Plain Text"
 msgstr "Wklej jako zwykły _tekst"
 
 msgid "Paste _From…"
-msgstr "Wklej _z…"
+msgstr "W_klej z…"
 
 msgid "Zoom _In"
 msgstr "Po_większ"
@@ -1163,7 +1163,7 @@ msgstr "_Drukuj…"
 msgid "_Edit"
 msgstr "_Edycja"
 
-msgid "_Preferences"
+msgid "P_references"
 msgstr "_Preferencje"
 
 msgid "_Keyboard Shortcuts"
@@ -1172,11 +1172,11 @@ msgstr "_Skróty klawiszowe"
 msgid "_Help"
 msgstr "Po_moc"
 
-msgid "_About Easel"
-msgstr "_O Easel"
+msgid "A_bout Easel"
+msgstr "O Ease_l"
 
 msgid "_Quit"
-msgstr "_Zakończ"
+msgstr "Zakoń_cz"
 
 msgid "Pictures"
 msgstr "Obrazy"
@@ -1261,3 +1261,24 @@ msgstr "Nie można przekształcić obrazu"
 
 msgid "Could Not Convert the Selection"
 msgstr "Nie można przekształcić zaznaczenia"
+
+msgid "R_emove Background"
+msgstr "_Usuń tło"
+
+msgid "Remove Background (Not in This Copy)"
+msgstr "Usuń tło (brak w tej kopii)"
+
+msgid "Removing the Background"
+msgstr "Usuwanie tła"
+
+msgid "Nothing to Remove"
+msgstr "Nic do usunięcia"
+
+msgid "No background was found to remove."
+msgstr "Nie znaleziono tła do usunięcia."
+
+msgid "Could Not Remove the Background"
+msgstr "Nie można usunąć tła"
+
+msgid "Background removal is not available."
+msgstr "Usuwanie tła jest niedostępne."

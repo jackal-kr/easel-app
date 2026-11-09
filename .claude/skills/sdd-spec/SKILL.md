@@ -34,10 +34,21 @@ Input: feature number or name from `docs/specs/INDEX.md`.
    A reference to a spec that is not built yet uses the feature name, not its number, because roadmap numbers move.
    A scenario that needs something to be missing (a font, a file, a device) names one no system can have, not a real one.
    If this feature changes a requirement of an implemented spec, add a pointer note to that requirement.
+   A change to an implemented behavior read from a video or a screenshot is shown to JOD as a still frame with the reading written
+   under it, and confirmed, before any spec changes (0012/0032: a misread screencast cost a core change and eleven translations, then a revert).
+   A label the feature adds to a set shown together (a menu, a row of buttons, a dialog's responses) has a mnemonic no other label of
+   that set uses, in every language; the set's test checks it (0027, 0035).
+   A requirement that says "exact" bounds every quantity it computes with, and the Plan checks that range (0033).
+   A drag that shapes something says which part of the shape follows the pointer (a point on it, its peak, its end), shown to JOD on a picture (0033).
+   A command specified "as another does" is checked for every rule the other met only by its nature, such as being per pixel (0034).
+   A feature that needs a large or optional dependency says what the app does without it; a learned model is judged on inputs whose
+   truth is known by construction, away from the edges, and its budgets are set by JOD in an ADR (0035).
+   A look is judged in the app's own layout at real size before it is accepted, not on a sheet blown up (0029); a scenario that
+   names a window or area size is checked against the sizes the window can reach (0025).
 4. Take behavior from XP Paint knowledge, jspaint (behavior, not code), JOD's descriptions and `docs/reference`; never from the
    source code of an existing implementation. If behavior is unknown or has several reasonable answers, do not decide:
-   add `- [NEEDS CLARIFICATION: question and the options you see]`. A number in a requirement that comes from arithmetic is
-   computed with a script, not estimated. A rule copied from the reference behavior is tried on the simplest picture a user makes (one color, one pixel) before it is accepted. A direction on the pixel grid is said as larger or smaller x or y, never above or below, and a statement that two things are the same is checked with the script that makes the numbers, in both directions.
+   add `- [NEEDS CLARIFICATION: question and the options you see]`. A number in a requirement, a scenario or an edge case that comes
+   from arithmetic is computed with a script for every value it names, not estimated or argued (0031, 0032). A rule copied from the reference behavior is tried on the simplest picture a user makes (one color, one pixel) before it is accepted. A direction on the pixel grid is said as larger or smaller x or y, never above or below, and a statement that two things are the same is checked with the script that makes the numbers, in both directions.
 5. Run the `spec-reviewer` agent once and merge its findings.
 6. For a menu, dialog or bar, and for anything drawn on the canvas (an outline, a preview, a marker), ask the user for a reference
    screenshot or mock-up before drafting (for a drawing, at a high zoom), and when a widget choice

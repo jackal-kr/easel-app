@@ -722,7 +722,7 @@ msgid "_Discard"
 msgstr "_Descartar"
 
 msgid "_Save"
-msgstr "_Salvar"
+msgstr "Sa_lvar"
 
 #, c-format
 msgid "Opened %s"
@@ -1091,13 +1091,13 @@ msgid "Rotate _270°"
 msgstr "Girar _270°"
 
 msgid "Stretch and _Skew…"
-msgstr "Esticar e _inclinar…"
+msgstr "E_sticar e inclinar…"
 
 msgid "_Invert Colors"
 msgstr "_Inverter cores"
 
 msgid "_Clear Image"
-msgstr "_Limpar a imagem"
+msgstr "Limpar _a imagem"
 
 msgid "Grid…"
 msgstr "Grade…"
@@ -1106,7 +1106,7 @@ msgid "Show Thumbnail"
 msgstr "Mostrar miniatura"
 
 msgid "Cu_t"
-msgstr "Re_cortar"
+msgstr "Rec_ortar"
 
 msgid "_Copy"
 msgstr "_Copiar"
@@ -1114,20 +1114,20 @@ msgstr "_Copiar"
 msgid "_Paste"
 msgstr "Co_lar"
 
-msgid "_Clear Selection"
-msgstr "_Limpar a seleção"
+msgid "C_lear Selection"
+msgstr "Limpar _a seleção"
 
 msgid "Select _All"
 msgstr "Selecionar _tudo"
 
-msgid "Copy _To…"
+msgid "Cop_y To…"
 msgstr "Copiar _para…"
 
-msgid "Paste as Plain _Text"
-msgstr "Colar como _texto simples"
+msgid "Pa_ste as Plain Text"
+msgstr "Colar como texto _simples"
 
 msgid "Paste _From…"
-msgstr "Colar _de…"
+msgstr "_Colar de…"
 
 msgid "Zoom _In"
 msgstr "A_umentar zoom"
@@ -1153,8 +1153,8 @@ msgstr "_Imprimir…"
 msgid "_Edit"
 msgstr "_Editar"
 
-msgid "_Preferences"
-msgstr "_Preferências"
+msgid "P_references"
+msgstr "P_referências"
 
 msgid "_Keyboard Shortcuts"
 msgstr "Atalhos de _teclado"
@@ -1162,8 +1162,8 @@ msgstr "Atalhos de _teclado"
 msgid "_Help"
 msgstr "Aj_uda"
 
-msgid "_About Easel"
-msgstr "_Sobre o Easel"
+msgid "A_bout Easel"
+msgstr "So_bre o Easel"
 
 msgid "_Quit"
 msgstr "_Sair"
@@ -1214,7 +1214,7 @@ msgid "Reflected"
 msgstr "Refletido"
 
 msgid "_Black and White…"
-msgstr "_Preto e branco…"
+msgstr "Preto e _branco…"
 
 msgid "Black and White"
 msgstr "Preto e branco"
@@ -1251,3 +1251,24 @@ msgstr "Não foi possível converter a imagem"
 
 msgid "Could Not Convert the Selection"
 msgstr "Não foi possível converter a seleção"
+
+msgid "R_emove Background"
+msgstr "_Remover fundo"
+
+msgid "Remove Background (Not in This Copy)"
+msgstr "Remover fundo (não incluído nesta cópia)"
+
+msgid "Removing the Background"
+msgstr "A remover o fundo"
+
+msgid "Nothing to Remove"
+msgstr "Nada a remover"
+
+msgid "No background was found to remove."
+msgstr "Não foi encontrado fundo para remover."
+
+msgid "Could Not Remove the Background"
+msgstr "Não foi possível remover o fundo"
+
+msgid "Background removal is not available."
+msgstr "A remoção do fundo não está disponível."

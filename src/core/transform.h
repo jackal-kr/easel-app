@@ -65,3 +65,9 @@ typedef enum
    allocation (the new pixels, the log) above max_bytes, or that cannot be had, is NO_MEMORY with the picture and the history as
    they were. After a quarter turn the picture has its new size and its whole area is dirty. */
 EaselTransformResult easel_image_transform (EaselImage *img, EaselHistory *h, EaselOp op, uint32_t background, size_t max_bytes);
+
+/* The picture's pixels replaced by px (a malloc'd buffer of the picture's size, which this always takes: kept as the picture or freed)
+   as one undo step, the cheaper of REQ-0018-09's two kinds: a log of the changed pixels while they are at most a third of the picture,
+   else the old buffer kept whole (Black and White, Remove background). NOTHING when no pixel differs; NO_MEMORY, the picture and
+   the history as they were, when the log would pass max_bytes or an allocation cannot be had. */
+EaselTransformResult easel_image_replace_pixels (EaselImage *img, EaselHistory *h, uint32_t *px, size_t max_bytes);

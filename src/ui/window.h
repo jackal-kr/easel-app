@@ -123,6 +123,11 @@ void easel_window_set_rich_text_limit (EaselWindow *self, gsize bytes);
 /* Tests only (REQ-0018-10): an allocation of an Image command (the new pixels, the log of its step) above `bytes` fails as when its
    memory cannot be had. G_MAXSIZE, the start, is off: the production path is unchanged. */
 void easel_window_set_transform_limit (EaselWindow *self, gsize bytes);
+/* Remove background's work is in progress (REQ-0035-04): the window takes no input but through its dialog. */
+gboolean easel_window_is_removing_background (EaselWindow *self);
+/* Ctrl+wheel over a card over the canvas area (over: the thumbnail card, the font card or a part of it; x, y in its coordinates):
+   the canvas's zoom at the point under it; FALSE when it did not zoom (REQ-0036-01). What the cards' scroll controllers call. */
+gboolean easel_window_card_wheel (EaselWindow *self, GtkWidget *over, GdkModifierType state, double notches, double x, double y);
 /* The zoom as the View menu's row shows it, for example "100%" (REQ-0004-01). */
 const char *easel_window_get_zoom_text (EaselWindow *self);
 

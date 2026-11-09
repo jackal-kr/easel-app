@@ -1317,7 +1317,7 @@ test: core-view
 file: src/ui/window.c
 test: ui-0008
 --- find
-  if (view_actions_allowed (self) && easel_view_preset_index (g_variant_get_int32 (parameter)) >= 0)
+  if (zoom_allowed (self) && easel_view_preset_index (g_variant_get_int32 (parameter)) >= 0)
 --- replace
   if (easel_view_preset_index (g_variant_get_int32 (parameter)) >= 0)
 
@@ -1802,15 +1802,15 @@ test: core-figure-apply
 file: src/ui/canvas.c
 test: ui-0010
 --- find
-  if (!(state & GDK_CONTROL_MASK) || self->tool != EASEL_TOOL_PAN)
-    return GDK_EVENT_PROPAGATE;
-  notches = easel_view_take_notches (&self->notch_acc, notches_dy);
+  if (!(state & GDK_CONTROL_MASK) || easel_canvas_is_holding (self))
+    {
+      self->notch_acc = 0;                     /* a touchpad's partial notch is dropped */
 --- replace
   if ((state & GDK_CONTROL_MASK) && easel_view_zoom_step (self->zoom, 3) != self->zoom)
     zoom_around (self, easel_view_zoom_step (self->zoom, 3), view_x, view_y);
-  if (!(state & GDK_CONTROL_MASK) || self->tool != EASEL_TOOL_PAN)
-    return GDK_EVENT_PROPAGATE;
-  notches = easel_view_take_notches (&self->notch_acc, notches_dy);
+  if (!(state & GDK_CONTROL_MASK) || easel_canvas_is_holding (self))
+    {
+      self->notch_acc = 0;                     /* a touchpad's partial notch is dropped */
 
 === REQ-0011-02 Curve shows the fill styles
 file: src/ui/tool-options.c
@@ -9723,6 +9723,16 @@ test: ui-0018
         <attribute name="label" translatable="yes">_Black and White…</attribute>
         <attribute name="action">win.black-white</attribute>
       </item>
+      <item>
+        <attribute name="label" translatable="yes">R_emove Background</attribute>
+        <attribute name="action">win.remove-background</attribute>
+        <attribute name="hidden-when">action-missing</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">Remove Background (Not in This Copy)</attribute>
+        <attribute name="action">win.remove-background-off</attribute>
+        <attribute name="hidden-when">action-missing</attribute>
+      </item>
     </section>
     <section>
       <item>
@@ -9733,6 +9743,16 @@ test: ui-0018
       <item>
         <attribute name="label" translatable="yes">_Black and White…</attribute>
         <attribute name="action">win.black-white</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">R_emove Background</attribute>
+        <attribute name="action">win.remove-background</attribute>
+        <attribute name="hidden-when">action-missing</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">Remove Background (Not in This Copy)</attribute>
+        <attribute name="action">win.remove-background-off</attribute>
+        <attribute name="hidden-when">action-missing</attribute>
       </item>
     </section>
     <section>
@@ -9986,6 +10006,16 @@ test: ui-0018
         <attribute name="label" translatable="yes">_Black and White…</attribute>
         <attribute name="action">win.black-white</attribute>
       </item>
+      <item>
+        <attribute name="label" translatable="yes">R_emove Background</attribute>
+        <attribute name="action">win.remove-background</attribute>
+        <attribute name="hidden-when">action-missing</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">Remove Background (Not in This Copy)</attribute>
+        <attribute name="action">win.remove-background-off</attribute>
+        <attribute name="hidden-when">action-missing</attribute>
+      </item>
     </section>
   </menu>
   <menu id="text_menu">
@@ -9993,6 +10023,16 @@ test: ui-0018
       <item>
         <attribute name="label" translatable="yes">_Black and White…</attribute>
         <attribute name="action">win.black-white</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">R_emove Background</attribute>
+        <attribute name="action">win.remove-background</attribute>
+        <attribute name="hidden-when">action-missing</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">Remove Background (Not in This Copy)</attribute>
+        <attribute name="action">win.remove-background-off</attribute>
+        <attribute name="hidden-when">action-missing</attribute>
       </item>
     </section>
   </menu>
@@ -12327,16 +12367,16 @@ test: core-black-white
             {
 
 === REQ-0034-03 the whole picture's step is always a log
-file: src/core/black-white.c
-test: core-black-white
+file: src/core/transform.c
+test: core-black-white core-remove-bg
 --- find
   if (changed > total / 3)
 --- replace
   if (changed > total)
 
 === REQ-0034-03 a conversion that changes nothing adds a step
-file: src/core/black-white.c
-test: core-black-white
+file: src/core/transform.c
+test: core-black-white core-remove-bg
 --- find
   if (changed == 0)
     {
@@ -12414,3 +12454,170 @@ test: ui-0034
 --- replace
   adw_dialog_present (easel_black_white_dialog_new (selection, black_white_applied, self), GTK_WIDGET (self));
 
+
+# ---- Remove background (0035): the pixel rules around the model ----
+
+=== REQ-0035-03 a removed pixel loses its color
+file: src/core/remove-bg.c
+test: core-remove-bg
+--- find
+              px[i] &= 0x00FFFFFFu;                 /* removed: alpha 0, the color kept (REQ-0035-03) */
+--- replace
+              px[i] = 0;
+
+=== REQ-0035-02 a pixel outside the selection's shape is removed
+file: src/core/remove-bg.c
+test: core-remove-bg
+--- find
+          if (!looked_at (mask, i) || (px[i] >> 24) == 0)
+            continue;
+--- replace
+          if ((px[i] >> 24) == 0)
+            continue;
+
+=== REQ-0035-03 more than the background is removed
+file: src/core/remove-bg.c
+test: core-remove-bg
+--- find
+          if (v < 0.5f)
+--- replace
+          if (v < 0.7f)
+
+=== REQ-0035-05 a flat answer removes everything
+file: src/core/remove-bg.c
+test: core-remove-bg
+--- find
+  if (!(hi > lo))
+    return 0;                                     /* one value: nothing told apart, everything is subject */
+--- replace
+  if (!(hi > lo))
+    hi = lo + 1;                                  /* every value 0 after the stretch: all removed */
+
+=== REQ-0035-02 the whole picture's result is not one undo step
+file: src/core/remove-bg.c
+test: core-remove-bg
+--- find
+  return easel_image_replace_pixels (img, history, px, max_bytes);
+--- replace
+  memcpy (img->px, px, total * sizeof *px);
+  free (px);
+  return EASEL_TRANSFORM_DONE;
+
+=== REQ-0035-05 a selection with nothing removed is changed anyway
+file: src/core/remove-bg.c
+test: core-remove-bg
+--- find
+  if (easel_rbg_apply (px, f->mask, f->w, f->h, found, side) == 0)
+--- replace
+  if (easel_rbg_apply (px, f->mask, f->w, f->h, found, side) == (size_t) -1)
+
+# ---- wheel zoom in every tool (0036) ----
+
+=== REQ-0036-02 Pan's drag is not a hold: Ctrl+wheel zooms during it
+file: src/ui/canvas.c
+test: ui-0036
+--- find
+  return easel_canvas_is_stroking (self) || self->panning || self->resizing != EASEL_HANDLE_NONE || self->cancelled_button != 0
+--- replace
+  return easel_canvas_is_stroking (self) || self->resizing != EASEL_HANDLE_NONE || self->cancelled_button != 0
+
+=== REQ-0036-02 a held Fill or Magnifier press is not a hold
+file: src/ui/canvas.c
+test: ui-0036
+--- find
+         || self->action_button != 0 || easel_canvas_is_key_held (self);
+}
+--- replace
+         || easel_canvas_is_key_held (self);
+}
+
+=== REQ-0036-02 a resize drag is not a hold
+file: src/ui/canvas.c
+test: ui-0036
+--- find
+  return easel_canvas_is_stroking (self) || self->panning || self->resizing != EASEL_HANDLE_NONE || self->cancelled_button != 0
+--- replace
+  return easel_canvas_is_stroking (self) || self->panning || self->cancelled_button != 0
+
+=== REQ-0036-02 a lost release leaves Pan's drag held, so nothing zooms again
+file: src/ui/canvas.c
+test: ui-0036
+--- find
+      self->panning = FALSE;                     /* Pan's drag ends too, so that zooming is not held off for good (REQ-0036-02) */
+--- replace
+      (void) 0;
+
+=== REQ-0036-02 Ctrl+wheel zooms while something is held
+file: src/ui/canvas.c
+test: ui-0036 ui-0010
+--- find
+  if (!(state & GDK_CONTROL_MASK) || easel_canvas_is_holding (self))
+--- replace
+  if (!(state & GDK_CONTROL_MASK))
+
+=== REQ-0036-02 the zoom commands work while Pan's drag is held
+file: src/ui/window.c
+test: ui-0036
+--- find
+  return view_actions_allowed (self) && !easel_canvas_is_holding (self->canvas);
+--- replace
+  return view_actions_allowed (self);
+
+=== REQ-0036-02 the pinch's count does not start again at the release
+file: src/ui/canvas.c
+test: ui-0036
+--- find
+      self->pinch_base = scale;
+      return;
+--- replace
+      return;
+
+=== REQ-0036-01 Ctrl+wheel zooms only in Pan again
+file: src/ui/canvas.c
+test: ui-0036
+--- find
+  if (self->img == NULL || easel_canvas_is_holding (self))
+    return;
+  zoom = easel_view_zoom_step (self->zoom, notches);
+--- replace
+  if (self->img == NULL || easel_canvas_is_holding (self) || self->tool != EASEL_TOOL_PAN)
+    return;
+  zoom = easel_view_zoom_step (self->zoom, notches);
+
+=== REQ-0036-01 Ctrl+wheel zooms while a dialog, a menu or a popover is open
+file: src/ui/canvas.c
+test: ui-0036
+--- find
+  if (!zoom_gate_open (self))
+    {
+      self->notch_acc = 0;                     /* a dialog, a menu or a popover is open: nothing (REQ-0036-01) */
+--- replace
+  if (FALSE)
+    {
+      self->notch_acc = 0;                     /* a dialog, a menu or a popover is open: nothing (REQ-0036-01) */
+
+=== REQ-0036-01 the wheel zooms under an open dialog
+file: src/ui/window.c
+test: ui-0036
+--- find
+  return self->picture != NULL && !dialog_is_open (self) && !menu_is_open (self)
+--- replace
+  return self->picture != NULL && !menu_is_open (self)
+
+=== REQ-0036-01 the wheel zooms while the font card's family list is open
+file: src/ui/window.c
+test: ui-0036
+--- find
+  return self->picture != NULL && !dialog_is_open (self) && !menu_is_open (self)
+         && !easel_font_card_family_is_open (self->font_card);
+--- replace
+  return self->picture != NULL && !dialog_is_open (self) && !menu_is_open (self)
+         && TRUE;
+
+=== REQ-0036-04 a zoom before the last one's scroll is applied starts from the old view
+file: src/ui/canvas.c
+test: ui-0036
+--- find
+  gboolean waiting = self->anchor_pending && !self->anchor_focus;
+--- replace
+  gboolean waiting = FALSE;

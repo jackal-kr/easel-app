@@ -14,6 +14,10 @@
 #include "thumbnail-card.h"
 #include "stretch-skew-dialog.h"
 #include "black-white-dialog.h"
+#include "remove-bg.h"
+#if HAVE_BACKGROUND_REMOVAL
+#include "finder.h"
+#endif
 #include "stretch-skew.h"
 #include "grid-dialog.h"
 #include "magnifier.h"
@@ -60,6 +64,13 @@ struct _EaselWindow
   EaselSettings chosen;                         /* what Preferences shows: as read at start, as changed there (REQ-0020-02) */
   AdwDialog *preferences;                       /* Preferences while it is open */
   AdwDialog *extra_dialog;                      /* Keyboard Shortcuts, About Easel, Help's or a print's error, or Black and White, while it is open */
+  /* Remove background (0035): the model's path, the finder (loaded at the first use, closed at finalize), the work in progress. */
+  char *finder_path;
+  gpointer finder;
+  gboolean removing;
+  struct RbgJob *rbg_job;
+  guint rbg_timer, rbg_pulse;
+  AdwDialog *rbg_progress;
   EaselPageSetup page_setup;                    /* kept until the app quits (REQ-0026-04) */
   gboolean print_dialog_open;
   gboolean put_down_failed;                     /* a shape's or a gradient's, whose dialog is on its way */
@@ -164,6 +175,7 @@ static void show_open_error (EaselWindow *self, GFile *file, EaselOpenResult res
 static gboolean dialog_is_open (EaselWindow *self);
 static void show_memory_error (EaselWindow *self, const char *heading, int width, int height);
 static gboolean view_actions_allowed (EaselWindow *self);
+static gboolean zoom_allowed (EaselWindow *self);
 static void scroll_view_as_scroller (EaselWindow *self, GtkEventControllerScroll *controller, double dx, double dy);
 
 static gboolean widget_within (GtkWidget *w, GtkWidget *panel);
@@ -1008,6 +1020,8 @@ quit_now (EaselWindow *self)
 /* An emission hook, since the handler libadwaita connects at the window's start stops a close request while a dialog is open, ahead of any handler of ours.
    Preferences closes, what is not kept dropped (REQ-0027-11), so do Keyboard Shortcuts, About Easel and Help's error (REQ-0021-03), and the quit goes on;
    a failure of Help not yet shown is dropped (REQ-0021-04). */
+static void rbg_cancel (EaselWindow *self);
+
 static gboolean
 close_request_hook (GSignalInvocationHint *hint, guint n_values, const GValue *values, gpointer data)
 {
@@ -1023,6 +1037,7 @@ close_request_hook (GSignalInvocationHint *hint, guint n_values, const GValue *v
         adw_dialog_force_close (self->preferences);
       if (self->extra_dialog != NULL)
         adw_dialog_force_close (self->extra_dialog);
+      rbg_cancel (self);                          /* Remove background's work stops, nothing applied (REQ-0035-04) */
       self->help_dropped = TRUE;
       g_clear_handle_id (&self->help_error_timer, g_source_remove);
     }
@@ -1420,7 +1435,7 @@ static gboolean
 dialog_is_open (EaselWindow *self)
 {
   return self->prompt_open || self->save_dialog_open || self->open_dialog_open || self->loading || self->reading_clipboard
-         || self->chooser_open || self->print_dialog_open
+         || self->chooser_open || self->print_dialog_open || self->removing
          || adw_application_window_get_visible_dialog (ADW_APPLICATION_WINDOW (self)) != NULL;
 }
 
@@ -1429,7 +1444,7 @@ dialog_is_open (EaselWindow *self)
 static void
 on_visible_dialog_changed (EaselWindow *self)
 {
-  easel_canvas_set_input_blocked (self->canvas, self->chooser_open || self->loading
+  easel_canvas_set_input_blocked (self->canvas, self->chooser_open || self->loading || self->removing
                                   || adw_application_window_get_visible_dialog (ADW_APPLICATION_WINDOW (self)) != NULL);
 }
 
@@ -1973,6 +1988,27 @@ view_actions_allowed (EaselWindow *self)
          && !easel_canvas_is_resizing (self->canvas) && !easel_canvas_is_waiting_for_release (self->canvas);
 }
 
+static gboolean menu_is_open (EaselWindow *self);
+
+/* The canvas's question before the wheel or the pinch zooms (REQ-0036-01): not before the picture exists, nor while a dialog, a
+   menu or a popover is open (the font card's family list among them). */
+static gboolean
+wheel_zoom_gate (gpointer data)
+{
+  EaselWindow *self = data;
+
+  return self->picture != NULL && !dialog_is_open (self) && !menu_is_open (self)
+         && !easel_font_card_family_is_open (self->font_card);
+}
+
+/* The zoom commands besides: nothing zooms while anything is held on the canvas (REQ-0036-02), Pan's drag, a selection or handle drag
+   and a held key press included. */
+static gboolean
+zoom_allowed (EaselWindow *self)
+{
+  return view_actions_allowed (self) && !easel_canvas_is_holding (self->canvas);
+}
+
 /* ---- the thumbnail (0021) ---- */
 
 /* With no button held a drag whose release got lost ends as last shown (REQ-0021-10); a focused field of the font card applies its value, as at a press
@@ -2005,23 +2041,65 @@ thumbnail_point_in_area (EaselWindow *self, double x, double y)
 }
 
 /* The wheel, Shift+wheel and Ctrl+wheel act as over the canvas at that point (REQ-0021-09): the card is the scrolled window's sibling, so the wheel would not reach it. */
+/* Ctrl+wheel over a card that floats over the canvas area (the thumbnail, the font card and its size field): the canvas's own wheel,
+   at the canvas area's point under the pointer (REQ-0036-01). The cards are the scrolled window's siblings in the overlay, so the
+   canvas's controller never sees their events. TRUE when it zoomed; x and y in over's coordinates, notches as the canvas counts them. */
+gboolean
+easel_window_card_wheel (EaselWindow *self, GtkWidget *over, GdkModifierType state, double notches, double x, double y)
+{
+  graphene_point_t p = GRAPHENE_POINT_INIT (0, 0);
+
+  if (!(state & GDK_CONTROL_MASK))
+    return FALSE;
+  if (!gtk_widget_compute_point (over, GTK_WIDGET (self->scroller), &GRAPHENE_POINT_INIT ((float) x, (float) y), &p))
+    return FALSE;
+  return easel_canvas_wheel (self->canvas, state, notches, p.x, p.y) == GDK_EVENT_STOP;
+}
+
+/* The event's position in the controller's widget, and the wheel's notches. */
+static void
+scroll_point (GtkEventControllerScroll *controller, double dy, double *x, double *y, double *notches)
+{
+  GtkWidget *w = gtk_event_controller_get_widget (GTK_EVENT_CONTROLLER (controller));
+  GdkEvent *event = gtk_event_controller_get_current_event (GTK_EVENT_CONTROLLER (controller));
+  GtkNative *native = gtk_widget_get_native (w);
+  double ex = 0, ey = 0, nx = 0, ny = 0;
+  graphene_point_t p = GRAPHENE_POINT_INIT (0, 0);
+
+  *notches = gtk_event_controller_scroll_get_unit (controller) == GDK_SCROLL_UNIT_SURFACE ? dy / EASEL_CANVAS_PIXELS_PER_NOTCH : dy;
+  if (event != NULL && native != NULL && gdk_event_get_position (event, &ex, &ey))
+    {
+      gtk_native_get_surface_transform (native, &nx, &ny);
+      if (!gtk_widget_compute_point (GTK_WIDGET (native), w, &GRAPHENE_POINT_INIT ((float) (ex - nx), (float) (ey - ny)), &p))
+        p = GRAPHENE_POINT_INIT (0, 0);
+    }
+  *x = p.x;
+  *y = p.y;
+}
+
+/* Over the whole font card, before its parts: Ctrl+wheel zooms (REQ-0036-01); anything else goes on to them. */
+static gboolean
+on_card_scroll (GtkEventControllerScroll *controller, double dx, double dy, EaselWindow *self)
+{
+  GdkModifierType state = gtk_event_controller_get_current_event_state (GTK_EVENT_CONTROLLER (controller));
+  double x, y, notches;
+
+  if (!(state & GDK_CONTROL_MASK))
+    return GDK_EVENT_PROPAGATE;
+  scroll_point (controller, dy, &x, &y, &notches);
+  if (easel_window_card_wheel (self, gtk_event_controller_get_widget (GTK_EVENT_CONTROLLER (controller)), state, notches, x, y))
+    return GDK_EVENT_STOP;
+  return GDK_EVENT_PROPAGATE;
+}
+
 static gboolean
 on_thumbnail_scroll (GtkEventControllerScroll *controller, double dx, double dy, EaselWindow *self)
 {
   GdkModifierType state = gtk_event_controller_get_current_event_state (GTK_EVENT_CONTROLLER (controller));
-  GdkEvent *event = gtk_event_controller_get_current_event (GTK_EVENT_CONTROLLER (controller));
-  double x = 0, y = 0, nx = 0, ny = 0;
-  GtkNative *native = gtk_widget_get_native (GTK_WIDGET (self));
-  graphene_point_t p = GRAPHENE_POINT_INIT (0, 0);
-  double notches = gtk_event_controller_scroll_get_unit (controller) == GDK_SCROLL_UNIT_SURFACE ? dy / EASEL_CANVAS_PIXELS_PER_NOTCH : dy;
+  double x, y, notches;
 
-  if (event != NULL && gdk_event_get_position (event, &x, &y))
-    {
-      gtk_native_get_surface_transform (native, &nx, &ny);
-      if (!gtk_widget_compute_point (GTK_WIDGET (native), GTK_WIDGET (self->scroller), &GRAPHENE_POINT_INIT ((float) (x - nx), (float) (y - ny)), &p))
-        p = GRAPHENE_POINT_INIT (0, 0);
-    }
-  if (easel_canvas_wheel (self->canvas, state, notches, p.x, p.y) == GDK_EVENT_STOP)
+  scroll_point (controller, dy, &x, &y, &notches);
+  if (easel_window_card_wheel (self, gtk_event_controller_get_widget (GTK_EVENT_CONTROLLER (controller)), state, notches, x, y))
     return GDK_EVENT_STOP;
   scroll_view_as_scroller (self, controller, dx, dy);
   return GDK_EVENT_STOP;
@@ -2239,7 +2317,7 @@ zoom_in_activated (GSimpleAction *action, GVariant *parameter, gpointer user_dat
 {
   EaselWindow *self = user_data;
 
-  if (view_actions_allowed (self))
+  if (zoom_allowed (self))
     easel_canvas_set_zoom (self->canvas, easel_view_zoom_step (easel_canvas_get_zoom (self->canvas), 1));
 }
 
@@ -2248,7 +2326,7 @@ zoom_out_activated (GSimpleAction *action, GVariant *parameter, gpointer user_da
 {
   EaselWindow *self = user_data;
 
-  if (view_actions_allowed (self))
+  if (zoom_allowed (self))
     easel_canvas_set_zoom (self->canvas, easel_view_zoom_step (easel_canvas_get_zoom (self->canvas), -1));
 }
 
@@ -2257,7 +2335,7 @@ zoom_normal_activated (GSimpleAction *action, GVariant *parameter, gpointer user
 {
   EaselWindow *self = user_data;
 
-  if (view_actions_allowed (self))
+  if (zoom_allowed (self))
     easel_canvas_set_zoom (self->canvas, 100);
 }
 
@@ -2266,7 +2344,7 @@ zoom_large_activated (GSimpleAction *action, GVariant *parameter, gpointer user_
 {
   EaselWindow *self = user_data;
 
-  if (view_actions_allowed (self))
+  if (zoom_allowed (self))
     easel_canvas_set_zoom (self->canvas, 400);
 }
 
@@ -2275,7 +2353,7 @@ zoom_fit_activated (GSimpleAction *action, GVariant *parameter, gpointer user_da
 {
   EaselWindow *self = user_data;
 
-  if (view_actions_allowed (self))
+  if (zoom_allowed (self))
     easel_canvas_fit_to_window (self->canvas);
 }
 
@@ -2374,7 +2452,7 @@ zoom_to_activated (GSimpleAction *action, GVariant *parameter, gpointer user_dat
 {
   EaselWindow *self = user_data;
 
-  if (view_actions_allowed (self) && easel_view_preset_index (g_variant_get_int32 (parameter)) >= 0)
+  if (zoom_allowed (self) && easel_view_preset_index (g_variant_get_int32 (parameter)) >= 0)
     easel_canvas_set_zoom (self->canvas, g_variant_get_int32 (parameter));
 }
 
@@ -3786,6 +3864,304 @@ black_white_activated (GSimpleAction *action, GVariant *parameter, gpointer user
   present_extra_dialog (self, easel_black_white_dialog_new (selection, black_white_applied, self));
 }
 
+/* ---- Remove background (0035) ---- */
+
+#define RBG_THREADS 4                    /* fixed, so that the result does not depend on the machine's load (ADR-0006) */
+
+typedef enum { RBG_DONE, RBG_CANCELLED, RBG_FAILED, RBG_NO_MEMORY } RbgOutcome;
+
+/* One run: what it acts on (a copy), the model's answer, and how it ended. The worker owns it until it returns. */
+struct RbgJob
+{
+  EaselWindow *win;                      /* a reference, held until the end */
+  gboolean selection;
+  uint32_t *px;
+  uint8_t *mask;
+  int w, h, side;
+  float *found;
+  RbgOutcome outcome;
+  int cancel;                            /* asked to stop (any thread) */
+  size_t limit;                          /* the memory limit when it was chosen: the copy and the model's buffers count together */
+};
+
+static void
+rbg_job_free (struct RbgJob *job)
+{
+  free (job->px);
+  free (job->mask);
+  free (job->found);
+  g_object_unref (job->win);
+  g_free (job);
+}
+
+/* A message the quit closes as Cancel, then goes on (REQ-0035-06, as REQ-0021-03). */
+static void
+rbg_message (EaselWindow *self, const char *heading, const char *body)
+{
+  AdwDialog *dialog = adw_alert_dialog_new (heading, body);
+
+  adw_alert_dialog_add_response (ADW_ALERT_DIALOG (dialog), "close", _ ("Close"));
+  present_extra_dialog (self, dialog);
+}
+
+#if HAVE_BACKGROUND_REMOVAL
+/* The worker thread: the finder loaded at the first use, the input made, the model run (REQ-0035-03). */
+static void
+rbg_work (GTask *task, gpointer source, gpointer data, GCancellable *cancellable)
+{
+  struct RbgJob *job = data;
+  EaselWindow *self = job->win;
+  /* The finder is made here, at the first use, and read by rbg_cancel on the main thread: both go through atomics. */
+  EaselFinder *finder = __atomic_load_n (&self->finder, __ATOMIC_ACQUIRE);
+  size_t ours, model;
+  float *input;
+
+  if (finder == NULL)
+    {
+      finder = easel_finder_open (self->finder_path, RBG_THREADS, NULL);
+      __atomic_store_n (&self->finder, finder, __ATOMIC_RELEASE);
+    }
+  if (__atomic_load_n (&job->cancel, __ATOMIC_SEQ_CST))
+    {
+      job->outcome = RBG_CANCELLED;       /* a cancel during the loading wins over what the loading gave */
+      return;
+    }
+  if (finder == NULL)
+    {
+      job->outcome = RBG_FAILED;
+      return;
+    }
+  job->side = easel_finder_side (finder);
+  /* The model's input and answer, 16 bytes a pixel of its square, are held with the copy: the three count together (REQ-0035-06). */
+  ours = (size_t) job->w * (size_t) job->h * (sizeof *job->px + (job->mask != NULL));
+  model = (size_t) 4 * job->side * job->side * sizeof *input;
+  if (ours > job->limit || model > job->limit - ours)
+    {
+      job->outcome = RBG_NO_MEMORY;
+      return;
+    }
+  input = malloc ((size_t) 3 * job->side * job->side * sizeof *input);
+  job->found = malloc ((size_t) job->side * job->side * sizeof *job->found);
+  if (input == NULL || job->found == NULL)
+    {
+      free (input);
+      job->outcome = RBG_NO_MEMORY;
+      return;
+    }
+  easel_rbg_input (job->px, job->mask, job->w, job->h, job->side, input);
+  easel_finder_rearm (finder);
+  if (__atomic_load_n (&job->cancel, __ATOMIC_SEQ_CST))
+    job->outcome = RBG_CANCELLED;
+  else
+    switch (easel_finder_run (finder, input, job->found))
+      {
+      case EASEL_FINDER_DONE:
+        job->outcome = __atomic_load_n (&job->cancel, __ATOMIC_SEQ_CST) ? RBG_CANCELLED : RBG_DONE;
+        break;
+      case EASEL_FINDER_CANCELLED:
+        job->outcome = RBG_CANCELLED;
+        break;
+      default:
+        job->outcome = RBG_FAILED;
+      }
+  free (input);
+}
+#endif
+
+/* Stops the work in progress, if any, from the main thread: nothing of it is applied (REQ-0035-04). */
+static void
+rbg_cancel (EaselWindow *self)
+{
+  if (self->rbg_job == NULL)
+    return;
+  __atomic_store_n (&self->rbg_job->cancel, 1, __ATOMIC_SEQ_CST);
+#if HAVE_BACKGROUND_REMOVAL
+  {
+    EaselFinder *finder = __atomic_load_n (&self->finder, __ATOMIC_ACQUIRE);
+
+    if (finder != NULL)
+      easel_finder_cancel (finder);
+  }
+#endif
+}
+
+static void
+on_rbg_progress_closed (EaselWindow *self)
+{
+  self->rbg_progress = NULL;
+  g_clear_handle_id (&self->rbg_pulse, g_source_remove);
+  rbg_cancel (self);                     /* Cancel, Esc, or a quit closing it: a closing after the end does nothing */
+}
+
+static gboolean
+on_rbg_pulse (gpointer data)
+{
+  gtk_progress_bar_pulse (GTK_PROGRESS_BAR (data));
+  return G_SOURCE_CONTINUE;
+}
+
+/* After 0.5 s of work, the progress dialog (REQ-0035-04): its heading, a pulsing bar (one run has no share known) and Cancel. */
+static gboolean
+rbg_show_progress (gpointer data)
+{
+  EaselWindow *self = data;
+  AdwDialog *dialog = adw_alert_dialog_new (_ ("Removing the Background"), NULL);
+  GtkWidget *bar = gtk_progress_bar_new ();
+
+  self->rbg_timer = 0;
+  adw_alert_dialog_set_extra_child (ADW_ALERT_DIALOG (dialog), bar);
+  adw_alert_dialog_add_response (ADW_ALERT_DIALOG (dialog), "cancel", _ ("_Cancel"));
+  adw_alert_dialog_set_close_response (ADW_ALERT_DIALOG (dialog), "cancel");
+  self->rbg_pulse = g_timeout_add_full (G_PRIORITY_DEFAULT, 100, on_rbg_pulse, g_object_ref (bar), g_object_unref);
+  g_signal_connect_object (dialog, "closed", G_CALLBACK (on_rbg_progress_closed), self, G_CONNECT_SWAPPED);
+  self->rbg_progress = dialog;
+  present_extra_dialog (self, dialog);
+  return G_SOURCE_REMOVE;
+}
+
+/* The one function every end of the work goes through, on the main thread: the dialog closed, the input given back, then the result
+   applied (REQ-0035-02), or "Nothing to Remove" (REQ-0035-05), or the failure's dialog (REQ-0035-06), or nothing (cancelled). */
+static void
+remove_background_applied (GObject *source, GAsyncResult *result, gpointer data)
+{
+  struct RbgJob *job = data;
+  EaselWindow *self = job->win;
+  AdwDialog *progress = self->rbg_progress;
+
+  self->rbg_job = NULL;
+  self->removing = FALSE;
+  g_clear_handle_id (&self->rbg_timer, g_source_remove);
+  g_clear_handle_id (&self->rbg_pulse, g_source_remove);
+  if (progress != NULL)
+    {
+      self->rbg_progress = NULL;
+      g_signal_handlers_disconnect_by_func (progress, on_rbg_progress_closed, self);
+      adw_dialog_force_close (progress);
+    }
+  on_visible_dialog_changed (self);
+  if (!gtk_widget_get_visible (GTK_WIDGET (self)))
+    ;                                     /* the window was closed meanwhile: nothing to show, nothing to apply */
+  else if (job->outcome == RBG_FAILED)
+    rbg_message (self, _ ("Could Not Remove the Background"), _ ("Background removal is not available."));
+  else if (job->outcome == RBG_NO_MEMORY)
+    rbg_message (self, _ ("Could Not Remove the Background"), _ ("There is not enough memory for this change."));
+  else if (job->outcome == RBG_DONE)
+    {
+      if (job->selection)
+        {
+          EaselSelectionResult r = easel_canvas_remove_background_selection (self->canvas, job->found, job->side);
+
+          if (r == EASEL_SELECTION_NOTHING)
+            rbg_message (self, _ ("Nothing to Remove"), _ ("No background was found to remove."));
+          sync_history_ui (self);
+        }
+      else
+        {
+          EaselTransformResult r = easel_image_remove_background (self->picture, self->history, job->found, job->side,
+                                                                  self->transform_limit);
+
+          if (r == EASEL_TRANSFORM_NOTHING)
+            rbg_message (self, _ ("Nothing to Remove"), _ ("No background was found to remove."));
+          else if (r == EASEL_TRANSFORM_NO_MEMORY)
+            rbg_message (self, _ ("Could Not Remove the Background"), _ ("There is not enough memory for this change."));
+          else
+            {
+              easel_canvas_update (self->canvas);
+              sync_history_ui (self);
+            }
+        }
+    }
+  rbg_job_free (job);
+}
+
+/* The item (REQ-0035-01, -02): what waits is put down, the pixels it acts on copied, the early answer given at once (REQ-0035-05),
+   else the work started in a worker thread with the window's input held (REQ-0035-04). */
+static void
+remove_background_activated (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+  EaselWindow *self = user_data;
+  struct RbgJob *job;
+  int x, y, w, h;
+  gboolean floating;
+  GTask *task;
+
+  if (!view_actions_allowed (self) || easel_canvas_is_panning (self->canvas) || card_field_focus (self) != NULL)
+    return;
+  if (!easel_canvas_get_selection (self->canvas, &x, &y, &w, &h, &floating) && !put_down_for_action (self, FALSE))
+    return;
+  job = g_new0 (struct RbgJob, 1);
+  job->win = g_object_ref (self);
+  job->limit = self->transform_limit;
+  job->selection = easel_canvas_selection_copy (self->canvas, self->transform_limit, &job->px, &job->mask, &job->w, &job->h);
+  if (!job->selection)
+    {
+      size_t n = (size_t) self->picture->width * (size_t) self->picture->height;
+
+      job->w = self->picture->width;
+      job->h = self->picture->height;
+      if (n * sizeof *job->px <= self->transform_limit && (job->px = malloc (n * sizeof *job->px)) != NULL)
+        memcpy (job->px, self->picture->px, n * sizeof *job->px);
+    }
+  if (job->px == NULL)
+    {
+      rbg_message (self, _ ("Could Not Remove the Background"), _ ("There is not enough memory for this change."));
+      rbg_job_free (job);
+      return;
+    }
+  if (easel_rbg_trivial (job->px, job->mask, job->w, job->h))
+    {
+      rbg_message (self, _ ("Nothing to Remove"), _ ("No background was found to remove."));
+      rbg_job_free (job);
+      return;
+    }
+  self->removing = TRUE;
+  self->rbg_job = job;
+  on_visible_dialog_changed (self);
+  self->rbg_timer = g_timeout_add (500, rbg_show_progress, self);
+  task = g_task_new (NULL, NULL, remove_background_applied, job);
+#if HAVE_BACKGROUND_REMOVAL
+  g_task_set_task_data (task, job, NULL);
+  g_task_run_in_thread (task, rbg_work);
+#else
+  job->outcome = RBG_FAILED;
+  g_task_return_boolean (task, TRUE);
+#endif
+  g_object_unref (task);
+}
+
+gboolean
+easel_window_is_removing_background (EaselWindow *self)
+{
+  return self->removing;
+}
+
+/* The command is there when the app was built with the model's runtime and the model is installed at start, or, for a build run
+   where it was built, is at the path it was configured with (the test hook EASEL_TEST_FINDER names another); otherwise the item is shown greyed with its reason, through an action that is never enabled
+   (REQ-0035-10). */
+static void
+add_remove_background_action (EaselWindow *self)
+{
+  const char *hook = g_getenv ("EASEL_TEST_FINDER");
+  gboolean available;
+  GSimpleAction *action;
+
+  self->finder_path = g_strdup (hook != NULL ? hook : BACKGROUND_MODEL);
+  /* Not installed (a build run from its folder): the model the build was configured with, when there is one. */
+  if (hook == NULL && !g_file_test (self->finder_path, G_FILE_TEST_IS_REGULAR) && BACKGROUND_MODEL_CONFIGURED[0] != '\0')
+    {
+      g_free (self->finder_path);
+      self->finder_path = g_strdup (BACKGROUND_MODEL_CONFIGURED);
+    }
+  available = HAVE_BACKGROUND_REMOVAL && g_file_test (self->finder_path, G_FILE_TEST_IS_REGULAR);
+  action = g_simple_action_new (available ? "remove-background" : "remove-background-off", NULL);
+  if (available)
+    g_signal_connect (action, "activate", G_CALLBACK (remove_background_activated), self);
+  else
+    g_simple_action_set_enabled (action, FALSE);
+  g_action_map_add_action (G_ACTION_MAP (self), G_ACTION (action));
+  g_object_unref (action);
+}
+
 static void
 invert_activated (GSimpleAction *action, GVariant *parameter, gpointer user_data)
 {
@@ -3888,8 +4264,8 @@ scroll_view_as_scroller (EaselWindow *self, GtkEventControllerScroll *controller
 
 /* The wheel over the card's size field: with the focus in the field, the field's own (a step of the size, REQ-0017-25); without it,
    the view's, as anywhere over the canvas area. The card is the scrolled window's sibling in the overlay, so the wheel would not reach
-   it: the window scrolls the view as GTK's scrolled window does (Shift for across). With a box open the tool is Text, where Ctrl+wheel
-   does not zoom (REQ-0001-17), so a scroll is all the canvas area would do. */
+   it: the window scrolls the view as GTK's scrolled window does (Shift for across). Ctrl+wheel never gets here: the card's own
+   controller zooms first (REQ-0036-01). */
 static gboolean
 on_card_size_scroll (GtkEventControllerScroll *controller, double dx, double dy, EaselWindow *self)
 {
@@ -4267,6 +4643,8 @@ show_selection_error (gpointer data)
     show_save_error (self, _ ("Could Not Stretch or Skew the Selection"), _ ("There is not enough memory for this change."));
   else if (kind == 8)
     show_save_error (self, _ ("Could Not Convert the Selection"), _ ("There is not enough memory for this change."));
+  else if (kind == 9)
+    show_save_error (self, _ ("Could Not Remove the Background"), _ ("There is not enough memory for this change."));
   else
     show_save_error (self, _ ("Could Not Move the Selection"), _ ("There is not enough memory to move this selection."));
   g_object_unref (self);
@@ -5290,6 +5668,10 @@ easel_window_finalize (GObject *object)
   easel_image_free (self->picture);
   easel_history_free (self->history);
   g_free (self->path);
+  g_free (self->finder_path);
+#if HAVE_BACKGROUND_REMOVAL
+  easel_finder_close (self->finder);       /* a work in progress holds the window, so none runs here */
+#endif
   easel_page_setup_clear (&self->page_setup);
   g_free (self->print_export);
   if (self->announced != NULL)
@@ -5419,6 +5801,7 @@ easel_window_init (EaselWindow *self)
     g_error ("Out of memory creating the undo history");
 
   g_action_map_add_action_entries (G_ACTION_MAP (self), win_actions, G_N_ELEMENTS (win_actions), self);
+  add_remove_background_action (self);
   g_simple_action_set_enabled (G_SIMPLE_ACTION (g_action_map_lookup_action (G_ACTION_MAP (self), "clear-selection")), FALSE);
   easel_window_set_clipboard (self, NULL);
   add_zoom_submenu (self);
@@ -5428,6 +5811,15 @@ easel_window_init (EaselWindow *self)
   gtk_popover_menu_add_child (GTK_POPOVER_MENU (gtk_menu_button_get_popover (self->view_button)), make_zoom_row (self),
                               "zoom");
   easel_font_card_set_canvas (self->font_card, self->canvas);
+  easel_canvas_set_zoom_gate (self->canvas, wheel_zoom_gate, self);
+  {
+    /* Over the whole card, before its parts: Ctrl+wheel zooms, also over the size field whatever has the focus (REQ-0036-01) */
+    GtkEventController *wheel = gtk_event_controller_scroll_new (GTK_EVENT_CONTROLLER_SCROLL_BOTH_AXES);
+
+    gtk_event_controller_set_propagation_phase (wheel, GTK_PHASE_CAPTURE);
+    g_signal_connect_object (wheel, "scroll", G_CALLBACK (on_card_scroll), self, G_CONNECT_DEFAULT);
+    gtk_widget_add_controller (GTK_WIDGET (self->font_card), wheel);
+  }
   {
     /* Before the size field's own wheel: without the focus in it, the wheel goes to the view (REQ-0017-25) */
     GtkEventController *wheel = gtk_event_controller_scroll_new (GTK_EVENT_CONTROLLER_SCROLL_BOTH_AXES);

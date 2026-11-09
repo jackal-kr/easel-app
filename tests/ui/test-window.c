@@ -224,10 +224,10 @@ as13_zoom_keeps_point_under_pointer (void)
   easel_canvas_zoom_at (canvas, -20, 0, 0);
   g_assert_cmpint (easel_window_get_zoom (win), ==, 10);
 
-  /* Only Pan zooms (REQ-0001-17). */
+  /* With any tool (REQ-0036-01; before 0036 only Pan zoomed, REQ-0001-17, and a notch with Pencil left 10 %). */
   g_action_group_activate_action (G_ACTION_GROUP (win), "tool", g_variant_new_string ("pencil"));
   easel_canvas_zoom_at (canvas, 1, 0, 0);
-  g_assert_cmpint (easel_window_get_zoom (win), ==, 10);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 25);
   close_windows ();
   write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
 }
@@ -1929,7 +1929,7 @@ as6_fit_to_window (void)
   write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
 }
 
-/* REQ-0004-08: the pinch moves a level per 1.5x of the gesture, in Pan mode only. */
+/* REQ-0004-08: the pinch moves a level per 1.5x of the gesture (with every tool since 0036, REQ-0036-01). */
 static void
 as7_pinch_in_window (void)
 {
@@ -1949,7 +1949,7 @@ as7_pinch_in_window (void)
   g_assert_cmpint (easel_window_get_zoom (win), ==, 200);
   easel_canvas_pinch_end (canvas);
 
-  /* A new pinch starts again at scale 1, and any other tool ignores it. */
+  /* A new pinch starts again at scale 1; another tool zooms the same way (REQ-0036-01; before 0036 Pencil ignored it and 100 % stayed). */
   easel_canvas_pinch_begin (canvas);
   easel_canvas_pinch (canvas, 0.6, 100, 100);
   g_assert_cmpint (easel_window_get_zoom (win), ==, 100);
@@ -1957,7 +1957,7 @@ as7_pinch_in_window (void)
   use_pencil (win);
   easel_canvas_pinch_begin (canvas);
   easel_canvas_pinch (canvas, 3.0, 100, 100);
-  g_assert_cmpint (easel_window_get_zoom (win), ==, 100);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 200);                  /* one level an event, as in Pan */
   easel_canvas_pinch_end (canvas);
   close_windows ();
 }
@@ -4066,8 +4066,8 @@ as9_spray_one_step_and_cancel (void)
 /* The primary menu's first section (REQ-0026-01). */
 #define FILE_SECTION "_New|win.new; _Open…|win.open; _Save|win.save; Save _As…|win.save-as; _Print…|win.print"
 /* The primary menu's last three sections (REQ-0020-01, REQ-0021-01). */
-#define PREFERENCES_SECTION "_Preferences|win.preferences"
-#define EXTRAS_SECTION "_Keyboard Shortcuts|win.shortcuts; _Help|win.help; _About Easel|win.about"
+#define PREFERENCES_SECTION "P_references|win.preferences"
+#define EXTRAS_SECTION "_Keyboard Shortcuts|win.shortcuts; _Help|win.help; A_bout Easel|win.about"
 #define QUIT_SECTION "_Quit|app.quit"
 
 /* REQ-0005-01: the Open button before Save, and the main menu with its shortcuts. */
@@ -12473,7 +12473,7 @@ as10_select_all_edit_menu (void)
   edit = g_menu_model_get_item_link (edit_section, 0, G_MENU_LINK_SUBMENU);
   g_assert_nonnull (edit);
   items = describe_section (edit, 1);                                         /* 0016: Cut, Copy, Paste are its first section */
-  g_assert_cmpstr (items, ==, "Select _All|win.select-all; _Clear Selection|win.clear-selection");
+  g_assert_cmpstr (items, ==, "Select _All|win.select-all; C_lear Selection|win.clear-selection");
   {
     g_autoptr (GMenuModel) second = g_menu_model_get_item_link (edit, 1, G_MENU_LINK_SECTION);
 
@@ -12552,7 +12552,7 @@ as11_context_menu (void)
 
     g_assert_nonnull (model);
     items = describe_section (model, 1);                     /* 0016: Cut, Copy and Paste come first (REQ-0016-01) */
-    g_assert_cmpstr (items, ==, "_Clear Selection|win.clear-selection; Select _All|win.select-all; Copy _To…|win.copy-to");
+    g_assert_cmpstr (items, ==, "C_lear Selection|win.clear-selection; Select _All|win.select-all; Cop_y To…|win.copy-to");
   }
   /* On a marked selection: the menu, nothing else. */
   shape_press_move (win, 1, 1, 1, 5, 4);
@@ -17090,15 +17090,15 @@ as1_clipboard_menus (void)
   g_autoptr (GBytes) png = small_png ();
   static const char *paths[] = { "/tmp/a.png", NULL };
 
-  g_assert_cmpstr (primary, ==, "_Edit|(null); Copy _To…|win.copy-to; Paste _From…|win.paste-from");
+  g_assert_cmpstr (primary, ==, "_Edit|(null); Cop_y To…|win.copy-to; Paste _From…|win.paste-from");
   g_assert_nonnull (edit);
   g_assert_cmpint (g_menu_model_get_n_items (edit), ==, 2);
   e0 = describe_section (edit, 0);
   e1 = describe_section (edit, 1);
   g_assert_cmpstr (e0, ==, "Cu_t|win.cut; _Copy|win.copy; _Paste|win.paste");
-  g_assert_cmpstr (e1, ==, "Select _All|win.select-all; _Clear Selection|win.clear-selection");
+  g_assert_cmpstr (e1, ==, "Select _All|win.select-all; C_lear Selection|win.clear-selection");
   g_assert_cmpstr (s0, ==, "Cu_t|win.cut; _Copy|win.copy; _Paste|win.paste");
-  g_assert_cmpstr (s1, ==, "_Clear Selection|win.clear-selection; Select _All|win.select-all; Copy _To…|win.copy-to");
+  g_assert_cmpstr (s1, ==, "C_lear Selection|win.clear-selection; Select _All|win.select-all; Cop_y To…|win.copy-to");
   g_assert_true (has_accel ("win.cut", GDK_KEY_x, GDK_CONTROL_MASK));
   g_assert_true (has_accel ("win.copy", GDK_KEY_c, GDK_CONTROL_MASK));
   g_assert_true (has_accel ("win.paste", GDK_KEY_v, GDK_CONTROL_MASK));
@@ -23220,7 +23220,7 @@ as1_image_menus (void)
   i1 = describe_section (im, 1);
   i2 = describe_section (im, 2);
   g_assert_cmpstr (i0, ==, "_Flip|(null); _Rotate|(null); Stretch and _Skew…|win.stretch-skew");       /* its item: REQ-0019-01 */
-  g_assert_cmpstr (i1, ==, "_Invert Colors|win.invert; _Black and White…|win.black-white");   /* 0034 (before: Invert Colors alone) */
+  g_assert_cmpstr (i1, ==, "_Invert Colors|win.invert; _Black and White…|win.black-white; R_emove Background|win.remove-background; Remove Background (Not in This Copy)|win.remove-background-off");   /* 0034, 0035 (before: Invert Colors alone, then without Remove Background) */
   g_assert_cmpstr (i2, ==, "Attributes…|win.attributes; _Clear Image|win.clear-image");
   section0 = g_menu_model_get_item_link (im, 0, G_MENU_LINK_SECTION);
   flip = g_menu_model_get_item_link (section0, 0, G_MENU_LINK_SUBMENU);
@@ -23844,7 +23844,7 @@ as1_selection_menu (void)
   s2 = describe_section (sel, 2);
   /* 0034 adds Black and White after Invert Colors (before: the section ended with Invert Colors). */
   g_assert_cmpstr (s2, ==, "_Flip|(null); _Rotate|(null); Stretch and _Skew…|win.stretch-skew; _Invert Colors|win.invert; "
-                           "_Black and White…|win.black-white");
+                           "_Black and White…|win.black-white; R_emove Background|win.remove-background; Remove Background (Not in This Copy)|win.remove-background-off");   /* 0035 adds Remove Background (before: ended with Black and White) */
   section = g_menu_model_get_item_link (sel, 2, G_MENU_LINK_SECTION);
   flip = g_menu_model_get_item_link (section, 0, G_MENU_LINK_SUBMENU);
   rotate = g_menu_model_get_item_link (section, 1, G_MENU_LINK_SUBMENU);
@@ -31394,14 +31394,16 @@ english_word_in (const char *text)
   return NULL;
 }
 
-/* The Preferences item of each language, from the requirement and not from the catalog under test. */
+/* The Preferences item of each language, from the requirement and not from the catalog under test (the mnemonics of cs, en, it, pt
+   and uk moved in 0035's check, F1, so that no two labels of a menu page share one; before: Před_volby, _Preferences, _Preferenze,
+   _Preferências, Пара_метри). */
 static const char *
 preferences_item_of (const char *code)
 {
   static const char *const items[][2] = {
-    { "cs", "Před_volby" }, { "de", "_Einstellungen" }, { "en", "_Preferences" }, { "es", "_Preferencias" },
-    { "fr", "_Préférences" }, { "hu", "_Beállítások" }, { "it", "_Preferenze" }, { "pl", "_Preferencje" },
-    { "pt", "_Preferências" }, { "ro", "_Preferințe" }, { "ru", "Пара_метры" }, { "uk", "Пара_метри" },
+    { "cs", "Př_edvolby" }, { "de", "_Einstellungen" }, { "en", "P_references" }, { "es", "_Preferencias" },
+    { "fr", "_Préférences" }, { "hu", "_Beállítások" }, { "it", "P_referenze" }, { "pl", "_Preferencje" },
+    { "pt", "P_referências" }, { "ro", "_Preferințe" }, { "ru", "Пара_метры" }, { "uk", "П_араметри" },
   };
 
   for (gsize i = 0; i < G_N_ELEMENTS (items); i++)
@@ -33528,7 +33530,7 @@ journey_15_another_language (void)
   wait_for_layout (win);
   collect_shown_text (GTK_WIDGET (win), shown);
   for (guint i = 0; i < shown->len; i++)
-    found |= strcmp (shown->pdata[i], "Пара_метри") == 0;
+    found |= strcmp (shown->pdata[i], "П_араметри") == 0;
   g_assert_true (found);
   journey1_draw (win, want);
   assert_same_picture (easel_window_get_picture (win), want);
@@ -33755,6 +33757,79 @@ as14_mnemonics_differ (void)
   gunichar ok = mnemonic_of (_ ("_OK")), cancel = mnemonic_of (_ ("_Cancel")), apply = mnemonic_of (_ ("_Apply"));
 
   g_assert_true (ok != cancel && ok != apply && cancel != apply);
+}
+
+/* The mnemonics of one page of a menu (its sections together: a popover shows them as one list), each submenu's page checked on its
+   own; an item hidden because its action is missing is not shown and does not count. A clash fails with both labels. */
+static void
+assert_page_mnemonics (EaselWindow *win, GMenuModel *page, const char *where, GString *clashes)
+{
+  g_autoptr (GHashTable) seen = g_hash_table_new_full (g_direct_hash, g_direct_equal, NULL, g_free);
+  g_autoptr (GPtrArray) parts = g_ptr_array_new ();
+
+  g_ptr_array_add (parts, page);
+  for (guint p = 0; p < parts->len; p++)
+    {
+      GMenuModel *m = parts->pdata[p];
+
+      for (int i = 0; i < g_menu_model_get_n_items (m); i++)
+        {
+          g_autoptr (GMenuModel) section = g_menu_model_get_item_link (m, i, G_MENU_LINK_SECTION);
+          g_autoptr (GMenuModel) submenu = g_menu_model_get_item_link (m, i, G_MENU_LINK_SUBMENU);
+          g_autofree char *label = NULL, *action = NULL, *hidden = NULL;
+          const char *under;
+
+          if (section != NULL)
+            {
+              g_ptr_array_add (parts, g_steal_pointer (&section));       /* freed with the page below */
+              continue;
+            }
+          if (!g_menu_model_get_item_attribute (m, i, G_MENU_ATTRIBUTE_LABEL, "s", &label))
+            continue;
+          if (g_menu_model_get_item_attribute (m, i, G_MENU_ATTRIBUTE_ACTION, "s", &action)
+              && g_menu_model_get_item_attribute (m, i, "hidden-when", "s", &hidden) && strcmp (hidden, "action-missing") == 0
+              && g_str_has_prefix (action, "win.") && !g_action_group_has_action (G_ACTION_GROUP (win), action + 4))
+            continue;
+          if (submenu != NULL)
+            {
+              g_autofree char *inner = g_strdup_printf ("%s > %s", where, label);
+
+              assert_page_mnemonics (win, submenu, inner, clashes);
+            }
+          if ((under = strchr (label, '_')) != NULL && under[1] != '\0')
+            {
+              gunichar key = g_unichar_tolower (g_utf8_get_char (under + 1));
+              const char *other = g_hash_table_lookup (seen, GUINT_TO_POINTER (key));
+
+              if (other != NULL)
+                g_string_append_printf (clashes, "\n  %s, %s: \"%s\" and \"%s\"", easel_i18n_language (), where, other, label);
+              else
+                g_hash_table_insert (seen, GUINT_TO_POINTER (key), g_strdup (label));
+            }
+        }
+    }
+  for (guint p = 1; p < parts->len; p++)
+    g_object_unref (parts->pdata[p]);
+}
+
+/* REQ-0035-01, and every menu (retro of 2026-11-09, after 0027's and 0035's clashes): no two labels of one menu page share a
+   mnemonic, in every language. */
+static void
+as14_menu_mnemonics_differ (void)
+{
+  EaselWindow *win = window_with ("[new-picture]\nwidth=60\nheight=40\n");
+  g_autoptr (GString) clashes = g_string_new (NULL);
+
+  assert_page_mnemonics (win, menu_of (easel_window_get_main_menu_button (win)), "main menu", clashes);
+  assert_page_mnemonics (win, menu_of (easel_window_get_image_button (win)), "Image", clashes);
+  assert_page_mnemonics (win, menu_of (easel_window_get_view_button (win)), "View", clashes);
+  assert_page_mnemonics (win, gtk_popover_menu_get_menu_model (easel_window_get_selection_menu (win)), "selection menu", clashes);
+  assert_page_mnemonics (win, gtk_popover_menu_get_menu_model (easel_window_get_text_menu (win)), "text menu", clashes);
+  assert_page_mnemonics (win, gtk_popover_menu_get_menu_model (easel_window_get_canvas_menu (win)), "canvas menu", clashes);
+  if (clashes->len > 0)
+    g_error ("labels of one menu page share a mnemonic:%s", clashes->str);
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
 }
 
 /* AS-12 (REQ-0023-01): under a language written in another alphabet, no shown text has an English word. Run under ru and uk only. */
@@ -36370,9 +36445,9 @@ bw_as1_menus_and_dialog (void)
   AdwAlertDialog *d;
   static const char *const titles[3] = { "Threshold", "Ordered dither", "Error diffusion" };
 
-  g_assert_cmpstr (i1, ==, "_Invert Colors|win.invert; _Black and White…|win.black-white");
+  g_assert_cmpstr (i1, ==, "_Invert Colors|win.invert; _Black and White…|win.black-white; R_emove Background|win.remove-background; Remove Background (Not in This Copy)|win.remove-background-off");   /* 0035 adds Remove Background (before: ended with Black and White) */
   g_assert_cmpstr (s2, ==, "_Flip|(null); _Rotate|(null); Stretch and _Skew…|win.stretch-skew; _Invert Colors|win.invert; "
-                           "_Black and White…|win.black-white");
+                           "_Black and White…|win.black-white; R_emove Background|win.remove-background; Remove Background (Not in This Copy)|win.remove-background-off");   /* 0035 adds Remove Background (before: ended with Black and White) */
   {
     g_auto (GStrv) accels = gtk_application_get_accels_for_action (GTK_APPLICATION (g_application_get_default ()), "win.black-white");
 
@@ -36637,6 +36712,1128 @@ bw_as10_quit (void)
       g_assert_cmpint (memcmp (img->px, before, 40 * 30 * 4), ==, 0);
       close_windows ();
     }
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* ---- 0035: Remove background ---- */
+
+/* The attribute of the item that runs action in a section of model, or NULL. */
+static char *
+item_attribute (GMenuModel *section, const char *action, const char *name)
+{
+  for (int i = 0; i < g_menu_model_get_n_items (section); i++)
+    {
+      g_autofree char *a = NULL;
+      char *value = NULL;
+
+      if (g_menu_model_get_item_attribute (section, i, G_MENU_ATTRIBUTE_ACTION, "s", &a) && g_strcmp0 (a, action) == 0
+          && g_menu_model_get_item_attribute (section, i, name, "s", &value))
+        return value;
+    }
+  return NULL;
+}
+
+/* 0035 AS-8 (REQ-0035-10): without the model's runtime or the model, the item is in both menus, in its place, greyed, its label
+   "Remove Background (Not in This Copy)"; with them it is "Remove Background" and available. Each menu holds both items, each hidden
+   when its action is missing, and exactly one of the two actions exists. */
+static void
+rbg_as8_unavailable (void)
+{
+  EaselWindow *win = start_window ();
+  GMenuModel *im = menu_of (easel_window_get_image_button (win));
+  GMenuModel *sel = gtk_popover_menu_get_menu_model (easel_window_get_selection_menu (win));
+  g_autoptr (GMenuModel) image_section = g_menu_model_get_item_link (im, 1, G_MENU_LINK_SECTION);
+  g_autoptr (GMenuModel) sel_section = g_menu_model_get_item_link (sel, 2, G_MENU_LINK_SECTION);
+  gboolean on = g_action_group_has_action (G_ACTION_GROUP (win), "remove-background");
+  gboolean off = g_action_group_has_action (G_ACTION_GROUP (win), "remove-background-off");
+
+  g_test_message ("this build: %s", on ? "with Remove Background" : "without it");
+  g_assert_true (on != off);
+  if (off)
+    g_assert_false (g_action_group_get_action_enabled (G_ACTION_GROUP (win), "remove-background-off"));
+  for (int m = 0; m < 2; m++)
+    {
+      GMenuModel *s = m == 0 ? image_section : sel_section;
+      g_autofree char *on_label = item_attribute (s, "win.remove-background", G_MENU_ATTRIBUTE_LABEL);
+      g_autofree char *off_label = item_attribute (s, "win.remove-background-off", G_MENU_ATTRIBUTE_LABEL);
+      g_autofree char *on_hidden = item_attribute (s, "win.remove-background", "hidden-when");
+      g_autofree char *off_hidden = item_attribute (s, "win.remove-background-off", "hidden-when");
+      int n = g_menu_model_get_n_items (s);
+      g_autofree char *last = NULL, *before = NULL;
+
+      g_assert_cmpstr (on_label, ==, "R_emove Background");
+      g_assert_cmpstr (off_label, ==, "Remove Background (Not in This Copy)");
+      g_assert_cmpstr (on_hidden, ==, "action-missing");
+      g_assert_cmpstr (off_hidden, ==, "action-missing");
+      /* in their place: right after Black and White… */
+      g_assert_true (g_menu_model_get_item_attribute (s, n - 3, G_MENU_ATTRIBUTE_ACTION, "s", &before));
+      g_assert_cmpstr (before, ==, "win.black-white");
+      g_assert_true (g_menu_model_get_item_attribute (s, n - 1, G_MENU_ATTRIBUTE_ACTION, "s", &last));
+      g_assert_cmpstr (last, ==, "win.remove-background-off");
+    }
+  close_windows ();
+}
+
+/* A window whose Remove Background runs the fake model `name` of tests/data/finder (the test hook EASEL_TEST_FINDER), on an 80 x 60
+   picture: the left 40 columns red, the rest blue. The fake answers with the red plane, so red is subject and blue background.
+   NULL, the case skipped, in a build without the model's runtime. */
+static EaselWindow *
+rbg_window (const char *name)
+{
+  g_autofree char *model = g_build_filename (g_getenv ("EASEL_TEST_DATA") != NULL ? g_getenv ("EASEL_TEST_DATA") : "tests/data",
+                                             "finder", name, NULL);
+  EaselWindow *win;
+  EaselImage *img;
+
+  g_setenv ("EASEL_TEST_FINDER", model, TRUE);
+  win = window_with ("[new-picture]\nwidth=80\nheight=60\nbackground=#0000FF\n");
+  g_unsetenv ("EASEL_TEST_FINDER");
+  if (!g_action_group_has_action (G_ACTION_GROUP (win), "remove-background"))
+    {
+      close_windows ();
+      write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+      g_test_skip ("this build has no model's runtime (REQ-0035-10)");
+      return NULL;
+    }
+  img = (EaselImage *) easel_window_get_picture (win);
+  for (int y = 0; y < 60; y++)
+    for (int x = 0; x < 40; x++)
+      img->px[y * 80 + x] = 0xFFFF0000u;
+  img->dirty = (EaselRect) { 0, 0, 80, 60 };
+  easel_canvas_update (easel_window_get_canvas (win));
+  return win;
+}
+
+static void
+rbg_done (void)
+{
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* Runs Remove Background and waits (at most 10 s) until its work has ended: no progress dialog, input given back. */
+static void
+rbg_run (EaselWindow *win)
+{
+  gint64 deadline = g_get_monotonic_time () + 10 * G_USEC_PER_SEC;
+
+  g_action_group_activate_action (G_ACTION_GROUP (win), "remove-background", NULL);
+  while (easel_window_is_removing_background (win) && g_get_monotonic_time () < deadline)
+    g_main_context_iteration (NULL, FALSE);
+  g_assert_false (easel_window_is_removing_background (win));
+  wait_for_layout (win);
+}
+
+/* The heading of the dialog on top, or NULL. */
+static const char *
+top_heading (EaselWindow *win)
+{
+  AdwDialog *d = visible_dialog (win);
+
+  return d != NULL && ADW_IS_ALERT_DIALOG (d) ? adw_alert_dialog_get_heading (ADW_ALERT_DIALOG (d)) : NULL;
+}
+
+/* 0035 AS-2's pixels with the fake model, AS-3 (REQ-0035-02, -03, -07): the whole picture: the blue half removed (alpha 0, color
+   kept), the red half exactly as it was, one step, Undo gives it back; a marked selection across the middle: only its pixels may
+   change, it floats; a stretched floating one: made on what is shown; a pending curve is put down first. */
+static void
+rbg_as3_whole_and_selections (void)
+{
+  EaselWindow *win = rbg_window ("fake-finder.onnx");
+  EaselCanvas *canvas;
+  const EaselImage *img;
+  g_autofree guint32 *before = NULL;
+
+  if (win == NULL)
+    return;
+  canvas = easel_window_get_canvas (win);
+  img = easel_window_get_picture (win);
+  before = g_memdup2 (img->px, 80 * 60 * 4);
+  rbg_run (win);
+  g_assert_null (top_heading (win));
+  for (int y = 0; y < 60; y++)
+    {
+      g_assert_cmphex (easel_image_get (img, 5, y), ==, 0xFFFF0000u);
+      g_assert_cmphex (easel_image_get (img, 70, y), ==, 0x000000FFu);     /* removed: alpha 0, blue kept */
+    }
+  g_assert_true (action_enabled (win, "undo"));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_cmpint (memcmp (img->px, before, 80 * 60 * 4), ==, 0);
+  g_assert_false (action_enabled (win, "undo"));
+
+  /* A marked selection from (30, 10) to (59, 49): only its pixels change, and it floats. */
+  use_tool (win, "select");
+  drag_selection (win, 30, 10, 59, 49);
+  rbg_run (win);
+  g_assert_true (easel_canvas_is_pending (canvas));
+  g_assert_true (easel_canvas_put_down (canvas));
+  g_assert_cmphex (easel_image_get (img, 55, 30), ==, 0x000000FFu);
+  g_assert_cmphex (easel_image_get (img, 35, 30), ==, 0xFFFF0000u);
+  g_assert_cmphex (easel_image_get (img, 70, 30), ==, 0xFF0000FFu);       /* outside the selection: as it was */
+  g_assert_cmphex (easel_image_get (img, 55, 5), ==, 0xFF0000FFu);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_cmpint (memcmp (img->px, before, 80 * 60 * 4), ==, 0);
+
+  /* A pending curve is put down first, and stays put down. */
+  use_tool (win, "curve");
+  shape_press_move (win, 1, 2, 2, 20, 2);
+  shape_release (win, 1);
+  g_assert_true (easel_canvas_is_pending (canvas));
+  rbg_run (win);
+  g_assert_false (easel_canvas_is_pending (canvas));
+  g_assert_cmphex (easel_image_get (img, 10, 2), !=, 0xFFFF0000u);         /* the curve's pixel */
+  rbg_done ();
+}
+
+/* 0035 AS-4 (REQ-0035-04): the slow fake: the progress dialog after 0.5 s with its heading and Cancel, not before; Cancel ends the
+   work within 0.5 s with nothing changed and no step; Esc the same; Ctrl+Q stops it and the Save prompt shows, also when it comes
+   before the dialog. */
+static void
+rbg_as4_progress_and_cancel (void)
+{
+  for (int way = 0; way < 4; way++)
+    {
+      EaselWindow *win = rbg_window ("slow-finder.onnx");
+      const EaselImage *img;
+      g_autofree guint32 *before = NULL;
+      gint64 deadline, asked;
+
+      if (win == NULL)
+        return;
+      img = easel_window_get_picture (win);
+      if (way >= 2)
+        {
+          use_tool (win, "pencil");
+          easel_canvas_press (easel_window_get_canvas (win), 1, 75.5, 55.5);
+          easel_canvas_release (easel_window_get_canvas (win), 1);
+        }
+      before = g_memdup2 (img->px, 80 * 60 * 4);
+      g_action_group_activate_action (G_ACTION_GROUP (win), "remove-background", NULL);
+      g_assert_true (easel_window_is_removing_background (win));
+      if (way == 3)
+        {
+          /* Ctrl+Q before the dialog shows: the work stops all the same. */
+          asked = g_get_monotonic_time ();
+          g_action_group_activate_action (G_ACTION_GROUP (g_application_get_default ()), "quit", NULL);
+          goto ended;
+        }
+      deadline = g_get_monotonic_time () + G_USEC_PER_SEC * 3 / 10;
+      while (g_get_monotonic_time () < deadline)
+        g_main_context_iteration (NULL, FALSE);
+      g_assert_null (top_heading (win));                                   /* not before 0.5 s */
+      deadline = g_get_monotonic_time () + 3 * G_USEC_PER_SEC;
+      while (top_heading (win) == NULL && g_get_monotonic_time () < deadline)
+        g_main_context_iteration (NULL, FALSE);
+      g_assert_cmpstr (top_heading (win), ==, "Removing the Background");
+      g_assert_true (easel_window_is_removing_background (win));
+      asked = g_get_monotonic_time ();
+      if (way == 0)
+        respond (win, "cancel");
+      else if (way == 1)
+        g_assert_true (key_taken (win, GDK_KEY_Escape, 0) || (adw_dialog_close (visible_dialog (win)), TRUE));
+      else
+        g_action_group_activate_action (G_ACTION_GROUP (g_application_get_default ()), "quit", NULL);
+ended:
+      deadline = g_get_monotonic_time () + 2 * G_USEC_PER_SEC;
+      while (easel_window_is_removing_background (win) && g_get_monotonic_time () < deadline)
+        g_main_context_iteration (NULL, FALSE);
+      g_test_message ("way %d: the work ended %.3f s after the cancel", way, (g_get_monotonic_time () - asked) / 1e6);
+      g_assert_false (easel_window_is_removing_background (win));
+      g_assert_cmpint (g_get_monotonic_time () - asked, <, G_USEC_PER_SEC / 2);
+      g_assert_cmpint (memcmp (img->px, before, 80 * 60 * 4), ==, 0);
+      if (way < 2)
+        {
+          wait_for_dialogs (win, 0);
+          g_assert_false (action_enabled (win, "undo"));
+        }
+      else
+        {
+          wait_for_dialogs (win, 1);
+          g_assert_cmpstr (top_heading (win), ==, "Save Changes?");
+        }
+      rbg_done ();
+    }
+}
+
+/* 0035 AS-5 (REQ-0035-05): one color, a picture 15 wide, and an answer that tells nothing apart give "Nothing to Remove", nothing
+   changed, no step; a marked selection stays marked. */
+static void
+rbg_as5_nothing (void)
+{
+  EaselWindow *win = rbg_window ("fake-finder.onnx");
+  EaselCanvas *canvas;
+  EaselImage *img;
+
+  if (win == NULL)
+    return;
+  canvas = easel_window_get_canvas (win);
+  img = (EaselImage *) easel_window_get_picture (win);
+  for (int k = 0; k < 3; k++)
+    {
+      g_autofree guint32 *before = NULL;
+
+      for (int i = 0; i < 80 * 60; i++)
+        img->px[i] = k == 0 ? 0xFF00FF00u : k == 1 ? (i % 80 < 15 ? 0xFFFF0000u : 0xFF0000FFu) : (0xFFFF0000u | (guint32) (i % 7));
+      easel_canvas_update (canvas);
+      before = g_memdup2 (img->px, 80 * 60 * 4);
+      if (k >= 1)
+        {
+          use_tool (win, "select");
+          if (k == 1)
+            drag_selection (win, 0, 0, 14, 59);                            /* 15 wide: the early answer */
+          else
+            drag_selection (win, 10, 10, 49, 49);                          /* the model asked: its answer is flat */
+        }
+      rbg_run (win);
+      wait_for_dialogs (win, 1);
+      g_assert_cmpstr (top_heading (win), ==, "Nothing to Remove");
+      g_assert_cmpstr (adw_alert_dialog_get_body (ADW_ALERT_DIALOG (visible_dialog (win))), ==, "No background was found to remove.");
+      respond (win, "close");
+      g_assert_cmpint (memcmp (img->px, before, 80 * 60 * 4), ==, 0);
+      g_assert_false (action_enabled (win, "undo"));
+      if (k >= 1)
+        {
+          int x, y, w, h;
+          gboolean floating = TRUE;
+
+          g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+          g_assert_false (floating);                                       /* marked still */
+          easel_canvas_deselect (canvas);
+        }
+    }
+  rbg_done ();
+}
+
+/* 0035 AS-6 (REQ-0035-06): without the memory, and with a model that cannot be loaded: the dialog and nothing changed; Ctrl+Q with
+   the dialog open closes it and goes on. */
+static void
+rbg_as6_failures (void)
+{
+  EaselWindow *win = rbg_window ("fake-finder.onnx");
+  const EaselImage *img;
+  g_autofree guint32 *before = NULL;
+  g_autofree char *broken = NULL;
+  int fd;
+
+  if (win == NULL)
+    return;
+  img = easel_window_get_picture (win);
+  before = g_memdup2 (img->px, 80 * 60 * 4);
+  easel_window_set_transform_limit (win, 100);
+  rbg_run (win);
+  easel_window_set_transform_limit (win, G_MAXSIZE);
+  wait_for_dialogs (win, 1);
+  g_assert_cmpstr (top_heading (win), ==, "Could Not Remove the Background");
+  g_assert_cmpstr (adw_alert_dialog_get_body (ADW_ALERT_DIALOG (visible_dialog (win))), ==, "There is not enough memory for this change.");
+  respond (win, "close");
+  g_assert_cmpint (memcmp (img->px, before, 80 * 60 * 4), ==, 0);
+  rbg_done ();
+  /* A model that is there but cannot be loaded. */
+  fd = g_file_open_tmp ("easel-broken-XXXXXX.onnx", &broken, NULL);
+  g_assert_cmpint (fd, >=, 0);
+  g_assert_cmpint (write (fd, "not a model", 11), ==, 11);
+  close (fd);
+  g_setenv ("EASEL_TEST_FINDER", broken, TRUE);
+  win = window_with ("[new-picture]\nwidth=80\nheight=60\n");
+  g_unsetenv ("EASEL_TEST_FINDER");
+  use_tool (win, "pencil");
+  easel_canvas_press (easel_window_get_canvas (win), 1, 5.5, 5.5);
+  easel_canvas_release (easel_window_get_canvas (win), 1);
+  rbg_run (win);
+  wait_for_dialogs (win, 1);
+  g_assert_cmpstr (top_heading (win), ==, "Could Not Remove the Background");
+  g_assert_cmpstr (adw_alert_dialog_get_body (ADW_ALERT_DIALOG (visible_dialog (win))), ==, "Background removal is not available.");
+  g_action_group_activate_action (G_ACTION_GROUP (g_application_get_default ()), "quit", NULL);
+  wait_for_dialogs (win, 1);
+  g_assert_cmpstr (top_heading (win), ==, "Save Changes?");
+  g_unlink (broken);
+  rbg_done ();
+}
+
+/* 0035 AS-3 (REQ-0035-02, Check F2): a floating selection is acted on as shown: one inverted (cyan where red was, yellow where blue
+   was: the fake keeps yellow, its red plane full, and removes cyan), one stretched from 8 x 8 to 16 x 16, and a free-form one, whose
+   pixels outside its shape stay. Each floats, and one Undo after its put-down gives the picture back. */
+static void
+rbg_f2_floating_shown (void)
+{
+  EaselWindow *win = rbg_window ("fake-finder.onnx");
+  EaselCanvas *canvas;
+  const EaselImage *img;
+  g_autofree guint32 *before = NULL;
+  int x, y, w, h, mw, mh;
+  gboolean floating;
+  g_autofree guint8 *shape = NULL;
+
+  if (win == NULL)
+    return;
+  canvas = easel_window_get_canvas (win);
+  img = easel_window_get_picture (win);
+  before = g_memdup2 (img->px, 80 * 60 * 4);
+
+  /* Inverted, so floating: what is shown is cyan and yellow, not the picture's red and blue. */
+  use_tool (win, "select");
+  drag_selection (win, 30, 10, 59, 49);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "invert", NULL);
+  g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating) && floating);
+  rbg_run (win);
+  g_assert_null (top_heading (win));
+  g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating) && floating);
+  g_assert_true (easel_canvas_put_down (canvas));
+  g_assert_cmphex (easel_image_get (img, 33, 30), ==, 0x0000FFFFu);       /* cyan, removed: alpha 0, its color kept */
+  g_assert_cmphex (easel_image_get (img, 55, 30), ==, 0xFFFFFF00u);       /* yellow, kept */
+  g_assert_cmphex (easel_image_get (img, 20, 30), ==, 0xFFFF0000u);       /* outside: as it was */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_cmpint (memcmp (img->px, before, 80 * 60 * 4), ==, 0);
+
+  /* Stretched: 8 x 8 (four red columns, four blue) to 16 x 16; acted on at its shown size. */
+  drag_selection (win, 36, 10, 43, 17);
+  g_assert_true (easel_canvas_stretch_skew_selection (canvas, 16, 16, 0, 0));
+  g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating) && floating);
+  g_assert_true (x == 36 && y == 10 && w == 16 && h == 16);
+  rbg_run (win);
+  g_assert_null (top_heading (win));
+  g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating) && floating);
+  g_assert_true (w == 16 && h == 16);
+  g_assert_true (easel_canvas_put_down (canvas));
+  for (int j = 0; j < 16; j++)
+    for (int i = 0; i < 16; i++)
+      {
+        if (i == 7 || i == 8)
+          continue;                                                        /* the subject's edge */
+        g_assert_cmphex (easel_image_get (img, 36 + i, 10 + j), ==, i < 8 ? 0xFFFF0000u : 0x000000FFu);
+      }
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_cmpint (memcmp (img->px, before, 80 * 60 * 4), ==, 0);
+
+  /* Free-form: the triangle through the corners (30, 10), (50, 10), (30, 30) across the red edge at x = 40 (its box 20 x 20: at least
+     16, so the model is asked). */
+  use_free_select (win);
+  trace_press (win, 30, 10);
+  corner_to (win, 50, 10);
+  corner_to (win, 30, 30);
+  shape_release (win, 1);
+  g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating) && !floating);
+  shape = g_memdup2 (easel_canvas_get_selection_mask (canvas, &mw, &mh), (gsize) w * h);
+  g_assert_true (mw == w && mh == h);
+  rbg_run (win);
+  g_assert_cmpstr (top_heading (win), ==, NULL);
+  g_assert_true (w >= 16 && h >= 16);
+  g_assert_true (easel_canvas_put_down (canvas));
+  for (int j = 0; j < h; j++)
+    for (int i = 0; i < w; i++)
+      {
+        int px = x + i, py = y + j;
+        guint32 was = before[py * 80 + px];
+
+        if (!shape[j * w + i])
+          g_assert_cmphex (easel_image_get (img, px, py), ==, was);       /* outside the shape: as it was */
+        else if (px <= 38)
+          g_assert_cmphex (easel_image_get (img, px, py), ==, was);       /* red: kept */
+        else if (px >= 41)
+          g_assert_cmphex (easel_image_get (img, px, py), ==, was & 0x00FFFFFFu);  /* blue: removed */
+      }
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_cmpint (memcmp (img->px, before, 80 * 60 * 4), ==, 0);
+  rbg_done ();
+}
+
+/* Waits (at most 3 s) for the progress dialog of a run just chosen. */
+static void
+rbg_wait_progress (EaselWindow *win)
+{
+  gint64 deadline = g_get_monotonic_time () + 3 * G_USEC_PER_SEC;
+
+  while (top_heading (win) == NULL && g_get_monotonic_time () < deadline)
+    g_main_context_iteration (NULL, FALSE);
+  g_assert_cmpstr (top_heading (win), ==, "Removing the Background");
+}
+
+/* Waits (at most 2 s) for the work to end, and returns how long it took after `asked`, in microseconds. */
+static gint64
+rbg_wait_end (EaselWindow *win, gint64 asked)
+{
+  gint64 deadline = g_get_monotonic_time () + 2 * G_USEC_PER_SEC;
+
+  while (easel_window_is_removing_background (win) && g_get_monotonic_time () < deadline)
+    g_main_context_iteration (NULL, FALSE);
+  g_assert_false (easel_window_is_removing_background (win));
+  return g_get_monotonic_time () - asked;
+}
+
+/* 0035 AS-4 (REQ-0035-04, Check F3): Cancel with a marked selection leaves it marked, where it was; Ctrl+W during a run stops it within
+   0.5 s with nothing changed, the Save prompt shows, and its Cancel leaves the window and the picture as before. */
+static void
+rbg_f3_cancel_marked_and_close (void)
+{
+  for (int way = 0; way < 2; way++)
+    {
+      EaselWindow *win = rbg_window ("slow-finder.onnx");
+      EaselCanvas *canvas;
+      const EaselImage *img;
+      g_autofree guint32 *before = NULL;
+      int x, y, w, h;
+      gboolean floating;
+      gint64 asked;
+
+      if (win == NULL)
+        return;
+      canvas = easel_window_get_canvas (win);
+      img = easel_window_get_picture (win);
+      if (way == 0)
+        {
+          use_tool (win, "select");
+          drag_selection (win, 30, 10, 59, 49);
+        }
+      else
+        {
+          use_tool (win, "pencil");
+          easel_canvas_press (canvas, 1, 75.5, 55.5);
+          easel_canvas_release (canvas, 1);
+          g_assert_true (easel_window_get_modified (win));
+        }
+      before = g_memdup2 (img->px, 80 * 60 * 4);
+      g_action_group_activate_action (G_ACTION_GROUP (win), "remove-background", NULL);
+      rbg_wait_progress (win);
+      asked = g_get_monotonic_time ();
+      if (way == 0)
+        respond (win, "cancel");
+      else
+        g_action_group_activate_action (G_ACTION_GROUP (win), "close", NULL);
+      g_assert_cmpint (rbg_wait_end (win, asked), <, G_USEC_PER_SEC / 2);
+      g_assert_cmpint (memcmp (img->px, before, 80 * 60 * 4), ==, 0);
+      if (way == 0)
+        {
+          wait_for_dialogs (win, 0);
+          g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+          g_assert_false (floating);                                       /* marked again: it was never lifted */
+          g_assert_true (selection_is (win, 30, 10, 30, 40));
+          g_assert_false (action_enabled (win, "undo"));
+        }
+      else
+        {
+          wait_for_dialogs (win, 1);
+          g_assert_cmpstr (top_heading (win), ==, "Save Changes?");
+          respond (win, "cancel");
+          wait_for_dialogs (win, 0);
+          g_assert_true (gtk_widget_get_visible (GTK_WIDGET (win)));
+          g_assert_cmpint (memcmp (img->px, before, 80 * 60 * 4), ==, 0);
+          g_assert_true (easel_window_get_modified (win));
+          g_assert_false (easel_window_is_removing_background (win));
+        }
+      rbg_done ();
+    }
+}
+
+/* 0035 AS-6 and AS-5 (REQ-0035-05, -06, Check F3): a model that loads and then fails in its run (tests/data/finder/fail-finder.onnx):
+   "Background removal is not available.", the picture and its history as they were; a picture whose every pixel is fully transparent
+   (in several colors, so not one color): "Nothing to Remove". */
+static void
+rbg_f3_failed_run_and_transparent (void)
+{
+  EaselWindow *win = rbg_window ("fail-finder.onnx");
+  EaselCanvas *canvas;
+  EaselImage *img;
+  g_autofree guint32 *before = NULL;
+
+  if (win == NULL)
+    return;
+  canvas = easel_window_get_canvas (win);
+  img = (EaselImage *) easel_window_get_picture (win);
+  use_tool (win, "pencil");
+  easel_canvas_press (canvas, 1, 75.5, 55.5);
+  easel_canvas_release (canvas, 1);
+  before = g_memdup2 (img->px, 80 * 60 * 4);
+  rbg_run (win);
+  wait_for_dialogs (win, 1);
+  g_assert_cmpstr (top_heading (win), ==, "Could Not Remove the Background");
+  g_assert_cmpstr (adw_alert_dialog_get_body (ADW_ALERT_DIALOG (visible_dialog (win))), ==, "Background removal is not available.");
+  respond (win, "close");
+  g_assert_cmpint (memcmp (img->px, before, 80 * 60 * 4), ==, 0);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);               /* the pencil's step, and only it */
+  g_assert_cmphex (easel_image_get (img, 75, 55), ==, 0xFF0000FFu);
+  g_assert_false (action_enabled (win, "undo"));
+  rbg_done ();
+
+  win = rbg_window ("fake-finder.onnx");
+  img = (EaselImage *) easel_window_get_picture (win);
+  for (int i = 0; i < 80 * 60; i++)
+    img->px[i] = 0x00FF0000u | (guint32) (i % 7);
+  easel_canvas_update (easel_window_get_canvas (win));
+  g_free (before);
+  before = g_memdup2 (img->px, 80 * 60 * 4);
+  rbg_run (win);
+  wait_for_dialogs (win, 1);
+  g_assert_cmpstr (top_heading (win), ==, "Nothing to Remove");
+  respond (win, "close");
+  g_assert_cmpint (memcmp (img->px, before, 80 * 60 * 4), ==, 0);
+  g_assert_false (action_enabled (win, "undo"));
+  rbg_done ();
+}
+
+/* 0035 Check F4 (REQ-0035-04, -06): a window closed while its run is under way shows nothing when the run ends, even when the run
+   fails (a model that cannot be loaded): no dialog is put on the closed window, and no window is left. */
+static void
+rbg_f4_closed_window (void)
+{
+  g_autofree char *broken = NULL;
+  EaselWindow *win;
+  GtkWidget *weak;
+  gint64 deadline;
+  int fd;
+
+  fd = g_file_open_tmp ("easel-broken-XXXXXX.onnx", &broken, NULL);
+  g_assert_cmpint (fd, >=, 0);
+  g_assert_cmpint (write (fd, "not a model", 11), ==, 11);
+  close (fd);
+  g_setenv ("EASEL_TEST_FINDER", broken, TRUE);
+  win = window_with ("[new-picture]\nwidth=80\nheight=60\n");
+  g_unsetenv ("EASEL_TEST_FINDER");
+  if (!g_action_group_has_action (G_ACTION_GROUP (win), "remove-background"))
+    {
+      g_unlink (broken);
+      rbg_done ();
+      g_test_skip ("this build has no model's runtime (REQ-0035-10)");
+      return;
+    }
+  {
+    EaselImage *img = (EaselImage *) easel_window_get_picture (win);
+
+    for (int i = 0; i < 80 * 60; i++)
+      img->px[i] = i % 80 < 40 ? 0xFFFF0000u : 0xFF0000FFu;
+  }
+  weak = GTK_WIDGET (win);
+  g_object_add_weak_pointer (G_OBJECT (win), (gpointer *) &weak);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "remove-background", NULL);
+  g_assert_true (easel_window_is_removing_background (win));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "close", NULL);           /* not modified: it closes at once */
+  deadline = g_get_monotonic_time () + 5 * G_USEC_PER_SEC;
+  while (weak != NULL && g_get_monotonic_time () < deadline)
+    g_main_context_iteration (NULL, FALSE);
+  g_assert_null (weak);                                                      /* the run ended and gave the window back */
+  for (int i = 0; i < 20; i++)
+    g_main_context_iteration (NULL, FALSE);
+  {
+    g_autoptr (GList) tops = gtk_window_list_toplevels ();
+
+    for (GList *l = tops; l != NULL; l = l->next)
+      g_assert_false (gtk_widget_get_visible (l->data));                     /* no dialog on a window that is gone */
+  }
+  g_unlink (broken);
+  rbg_done ();
+}
+
+/* 0035 Check F5 (REQ-0035-06): the model's own input and answer (16 bytes a pixel of its square: 64 KB for the fake's 64) count
+   against the memory limit: with a limit that holds the picture's copy (19200 bytes) and the step, but not them, the memory dialog
+   shows and nothing changes. */
+static void
+rbg_f5_model_buffers (void)
+{
+  EaselWindow *win = rbg_window ("fake-finder.onnx");
+  const EaselImage *img;
+  g_autofree guint32 *before = NULL;
+
+  if (win == NULL)
+    return;
+  img = easel_window_get_picture (win);
+  before = g_memdup2 (img->px, 80 * 60 * 4);
+  easel_window_set_transform_limit (win, 60000);
+  rbg_run (win);
+  easel_window_set_transform_limit (win, G_MAXSIZE);
+  wait_for_dialogs (win, 1);
+  g_assert_cmpstr (top_heading (win), ==, "Could Not Remove the Background");
+  g_assert_cmpstr (adw_alert_dialog_get_body (ADW_ALERT_DIALOG (visible_dialog (win))), ==, "There is not enough memory for this change.");
+  respond (win, "close");
+  g_assert_cmpint (memcmp (img->px, before, 80 * 60 * 4), ==, 0);
+  g_assert_false (action_enabled (win, "undo"));
+  rbg_done ();
+}
+
+/* ---- 0036: wheel zoom in every tool ---- */
+
+/* One notch of Ctrl+wheel (dy -1: up, larger) at a point of the canvas area, as the scroll controller passes it, then a frame. */
+static gboolean
+wz_wheel (EaselWindow *win, GdkModifierType state, double notches, double vx, double vy)
+{
+  gboolean r = easel_canvas_wheel (easel_window_get_canvas (win), state, notches, vx, vy);
+
+  wait_for_layout (win);
+  return r;
+}
+
+/* Checks that a notch up and a notch down with the pointer at (vx, vy) zoom 100 -> 200 -> 100 % with the picture point there kept. */
+static void
+wz_notch_keeps_point (EaselWindow *win, double vx, double vy)
+{
+  double x0, y0, x1, y1;
+
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 100);
+  picture_point_at (win, vx, vy, &x0, &y0);
+  g_assert_true (wz_wheel (win, GDK_CONTROL_MASK, -1, vx, vy) == GDK_EVENT_STOP);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 200);
+  picture_point_at (win, vx, vy, &x1, &y1);
+  g_assert_cmpfloat_with_epsilon (x1, x0, 1.0);
+  g_assert_cmpfloat_with_epsilon (y1, y0, 1.0);
+  wz_wheel (win, GDK_CONTROL_MASK, 1, vx, vy);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 100);
+}
+
+/* 0036 AS-1 (REQ-0036-01): Ctrl+wheel with Pencil, Select with a floating selection, an open box and a waiting curve, each as in Pan:
+   a level a notch, the point under the pointer kept, nothing else changed; Ctrl+Shift; the ends; the margin and a handle; a
+   touchpad's partial notches; the pinch with Pencil. */
+static void
+wz_as1_every_tool (void)
+{
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  const EaselImage *img;
+  g_autofree guint32 *before = NULL;
+  double x0, y0, x1, y1;
+
+  write_settings ("[new-picture]\nwidth=2000\nheight=2000\nbackground=#FFFF00\n");
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  img = easel_window_get_picture (win);
+  wait_for_layout (win);
+
+  use_pencil (win);
+  g_assert_cmpint (easel_window_get_tool (win), ==, EASEL_TOOL_PENCIL);
+  before = g_memdup2 (img->px, (gsize) img->width * img->height * 4);
+  wz_notch_keeps_point (win, 140.5, 90.5);
+  g_assert_cmpint (memcmp (img->px, before, (gsize) img->width * img->height * 4), ==, 0);
+  /* Ctrl+Shift+wheel zooms as Ctrl+wheel does. */
+  wz_wheel (win, GDK_CONTROL_MASK | GDK_SHIFT_MASK, -1, 140.5, 90.5);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 200);
+  wz_wheel (win, GDK_CONTROL_MASK, 1, 140.5, 90.5);
+
+  /* A floating selection stays floating. */
+  use_tool (win, "select");
+  drag_selection (win, 10, 10, 60, 40);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "invert", NULL);
+  g_assert_true (easel_canvas_is_pending (canvas));
+  wz_notch_keeps_point (win, 140.5, 90.5);
+  g_assert_true (easel_canvas_is_pending (canvas));
+  g_assert_true (easel_canvas_put_down (canvas));
+
+  /* An open box stays open. */
+  use_tool (win, "text");
+  shape_press_move (win, 1, 10, 10, 110, 50);
+  shape_release (win, 1);
+  g_assert_false (no_box (win));
+  wz_notch_keeps_point (win, 140.5, 90.5);
+  g_assert_false (no_box (win));
+  use_pencil (win);
+
+  /* A waiting curve keeps waiting. */
+  use_tool (win, "curve");
+  shape_press_move (win, 1, 20, 20, 80, 20);
+  shape_release (win, 1);
+  g_assert_true (easel_canvas_is_pending (canvas));
+  wz_notch_keeps_point (win, 140.5, 90.5);
+  g_assert_true (easel_canvas_is_pending (canvas));
+  press_key (win, GDK_KEY_Escape, 0);
+
+  /* The ends: 1600 % up and 10 % down do nothing more. */
+  use_pencil (win);
+  easel_canvas_set_zoom (canvas, 1600);
+  wz_wheel (win, GDK_CONTROL_MASK, -1, 140.5, 90.5);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 1600);
+  easel_canvas_set_zoom (canvas, 10);
+  wz_wheel (win, GDK_CONTROL_MASK, 1, 140.5, 90.5);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 10);
+  easel_canvas_set_zoom (canvas, 100);
+  wait_for_layout (win);
+
+  /* A touchpad: 0.6 of a notch twice is one level. */
+  wz_wheel (win, GDK_CONTROL_MASK, -0.6, 140.5, 90.5);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 100);
+  wz_wheel (win, GDK_CONTROL_MASK, -0.6, 140.5, 90.5);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 200);
+  easel_canvas_set_zoom (canvas, 100);
+  wait_for_layout (win);
+
+  /* The pinch with Pencil: one level at 1.5, around its center. */
+  picture_point_at (win, 200.5, 150.5, &x0, &y0);
+  easel_canvas_pinch_begin (canvas);
+  easel_canvas_pinch (canvas, 1.5, 200.5, 150.5);
+  easel_canvas_pinch_end (canvas);
+  wait_for_layout (win);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 200);
+  picture_point_at (win, 200.5, 150.5, &x1, &y1);
+  g_assert_cmpfloat_with_epsilon (x1, x0, 1.0);
+  g_assert_cmpfloat_with_epsilon (y1, y0, 1.0);
+  close_windows ();
+
+  /* The margin and a resize handle of a small picture, with Pencil. */
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+  win = start_window ();
+  use_pencil (win);
+  wait_for_layout (win);
+  wz_wheel (win, GDK_CONTROL_MASK, -1, 3.5, 3.5);                         /* the margin */
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 200);
+  easel_canvas_set_zoom (easel_window_get_canvas (win), 100);
+  wait_for_layout (win);
+  {
+    double hx, hy;
+
+    canvas_point (win, 300 + 1.5, 200 + 1.5, &hx, &hy);                    /* the corner handle, just past the picture */
+    g_assert_true (easel_canvas_handle_at (easel_window_get_canvas (win), hx, hy) != EASEL_HANDLE_NONE);
+    {
+      graphene_rect_t r = bounds_in (GTK_WIDGET (easel_window_get_canvas (win)),
+                                     gtk_widget_get_ancestor (GTK_WIDGET (easel_window_get_canvas (win)), GTK_TYPE_SCROLLED_WINDOW));
+
+      wz_wheel (win, GDK_CONTROL_MASK, -1, hx + r.origin.x, hy + r.origin.y);
+    }
+    g_assert_cmpint (easel_window_get_zoom (win), ==, 200);
+  }
+  close_windows ();
+}
+
+/* 0036 AS-2 (REQ-0036-01): Ctrl+wheel over the thumbnail card zooms around the canvas point under the pointer; over the font card and its
+   size field, with and without the field's focus, it zooms and leaves the field's text and focus; the wheel without Ctrl is not a
+   zoom there (the field steps the size, as before). */
+static void
+wz_as2_cards (void)
+{
+  EaselWindow *win;
+  GtkWidget *scroller, *thumb, *card, *size;
+  graphene_point_t p;
+  double x0, y0, x1, y1;
+  g_autofree char *text = NULL;
+
+  write_settings ("[new-picture]\nwidth=2000\nheight=2000\nbackground=#FFFF00\n");
+  win = start_window ();
+  scroller = gtk_widget_get_ancestor (GTK_WIDGET (easel_window_get_canvas (win)), GTK_TYPE_SCROLLED_WINDOW);
+  use_pencil (win);
+  easel_canvas_set_zoom (easel_window_get_canvas (win), 200);                /* the thumbnail shows above 100 % (REQ-0021-06) */
+  g_action_group_change_action_state (G_ACTION_GROUP (win), "thumbnail", g_variant_new_boolean (TRUE));
+  wait_for_layout (win);
+  thumb = easel_window_get_thumbnail_card (win);
+  g_assert_true (gtk_widget_get_mapped (thumb));
+  g_assert_true (gtk_widget_compute_point (thumb, scroller, &GRAPHENE_POINT_INIT (20, 20), &p));
+  picture_point_at (win, p.x, p.y, &x0, &y0);
+  g_assert_true (easel_window_card_wheel (win, thumb, GDK_CONTROL_MASK, -1, 20, 20));
+  wait_for_layout (win);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 300);
+  picture_point_at (win, p.x, p.y, &x1, &y1);
+  g_assert_cmpfloat_with_epsilon (x1, x0, 1.0);
+  g_assert_cmpfloat_with_epsilon (y1, y0, 1.0);
+  g_action_group_change_action_state (G_ACTION_GROUP (win), "thumbnail", g_variant_new_boolean (FALSE));
+  easel_canvas_set_zoom (easel_window_get_canvas (win), 100);
+  wait_for_layout (win);
+
+  /* The font card, over its body and over its size field, without and with the field's focus. */
+  use_tool (win, "text");
+  shape_press_move (win, 1, 10, 10, 110, 50);
+  shape_release (win, 1);
+  wait_for_layout (win);
+  card = GTK_WIDGET (easel_window_get_font_card (win));
+  size = GTK_WIDGET (easel_font_card_get_size (EASEL_FONT_CARD (card)));
+  g_assert_true (gtk_widget_get_mapped (card));
+  g_assert_true (easel_window_card_wheel (win, card, GDK_CONTROL_MASK, -1, 4, 4));
+  wait_for_layout (win);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 200);
+  g_assert_true (easel_window_card_wheel (win, size, GDK_CONTROL_MASK, 1, 4, 4));
+  wait_for_layout (win);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 100);
+  gtk_widget_grab_focus (size);
+  text = g_strdup (gtk_editable_get_text (GTK_EDITABLE (size)));
+  g_assert_true (easel_window_card_wheel (win, size, GDK_CONTROL_MASK, -1, 4, 4));
+  wait_for_layout (win);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 200);
+  {
+    GtkWidget *focus = gtk_root_get_focus (GTK_ROOT (win));
+
+    g_assert_true (focus == size || (focus != NULL && gtk_widget_is_ancestor (focus, size)));
+  }
+  g_assert_cmpstr (gtk_editable_get_text (GTK_EDITABLE (size)), ==, text);
+  /* Without Ctrl: no zoom here; the field's own wheel steps the size (REQ-0017-25). */
+  g_assert_false (easel_window_card_wheel (win, size, 0, -1, 4, 4));
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 200);
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* Nothing zooms (REQ-0036-02): Ctrl+wheel is not handled (the view scrolls as without Ctrl), the zoom commands and the pinch change
+   nothing. */
+static void
+wz_no_zoom (EaselWindow *win, const char *what)
+{
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+
+  g_test_message ("held: %s", what);
+  g_assert_true (easel_canvas_is_holding (canvas));
+  g_assert_true (easel_canvas_wheel (canvas, GDK_CONTROL_MASK, -1, 100.5, 80.5) == GDK_EVENT_PROPAGATE);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-in", NULL);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-fit", NULL);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-to", g_variant_new_int32 (400));
+  easel_canvas_pinch_begin (canvas);
+  easel_canvas_pinch (canvas, 1.6, 100.5, 80.5);
+  easel_canvas_pinch_end (canvas);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 100);
+}
+
+/* 0036 AS-3 (REQ-0036-02): while a stroke, a line drag, a selection move, a text box drawn, Pan's drag, a resize drag, a held Space
+   press or a Fill press is held, nothing zooms; after the release Ctrl+wheel does; the pinch counts again from the release; a lost release of a
+   stroke and of Pan's drag ends them; Flip during Pan's drag acts as before. */
+static void
+wz_as3_held (void)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  double cx, cy, hx, hy;
+
+  wait_for_layout (win);
+  for (int k = 0; k < 8; k++)
+    {
+      switch (k)
+        {
+        case 0:
+          use_pencil (win);
+          canvas_point (win, 20.5, 20.5, &cx, &cy);
+          easel_canvas_press (canvas, 1, cx, cy);
+          wz_no_zoom (win, "a stroke");
+          easel_canvas_release (canvas, 1);
+          break;
+        case 1:
+          use_tool (win, "line");
+          shape_press_move (win, 1, 10, 10, 50, 30);
+          wz_no_zoom (win, "a line drag");
+          shape_release (win, 1);
+          break;
+        case 2:
+          use_tool (win, "select");
+          drag_selection (win, 10, 10, 40, 30);
+          shape_press_move (win, 1, 20, 20, 60, 50);
+          wz_no_zoom (win, "a selection move");
+          shape_release (win, 1);
+          easel_canvas_put_down (canvas);
+          break;
+        case 3:
+          use_tool (win, "text");
+          shape_press_move (win, 1, 10, 10, 110, 50);
+          wz_no_zoom (win, "a text box drawn");
+          shape_release (win, 1);
+          use_pencil (win);
+          break;
+        case 4:
+          use_tool (win, "pan");
+          easel_canvas_press (canvas, 1, 100.5, 80.5);
+          easel_canvas_motion (canvas, 110.5, 85.5);
+          wz_no_zoom (win, "Pan's drag");
+          easel_canvas_release (canvas, 1);
+          break;
+        case 5:
+          use_pencil (win);
+          canvas_point (win, 300 + 1.5, 200 + 1.5, &hx, &hy);
+          g_assert_true (easel_canvas_handle_at (canvas, hx, hy) != EASEL_HANDLE_NONE);
+          easel_canvas_press (canvas, 1, hx, hy);
+          wz_no_zoom (win, "a resize drag");
+          easel_canvas_release (canvas, 1);
+          g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+          break;
+        case 6:
+          use_pencil (win);
+          gtk_widget_grab_focus (GTK_WIDGET (canvas));
+          press_key (win, GDK_KEY_Tab, 0);
+          gtk_widget_grab_focus (GTK_WIDGET (canvas));
+          g_assert_true (key_taken (win, GDK_KEY_space, 0));
+          g_assert_true (easel_canvas_is_key_held (canvas));
+          wz_no_zoom (win, "a held Space press");
+          key_released (win, GDK_KEY_space);
+          g_assert_true (key_taken (win, GDK_KEY_space, 0));                 /* Space again finishes the press (REQ-0022-06) */
+          key_released (win, GDK_KEY_space);
+          g_assert_false (easel_canvas_is_key_held (canvas));
+          g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+          break;
+        case 7:
+          use_tool (win, "fill");
+          canvas_point (win, 20.5, 20.5, &cx, &cy);
+          easel_canvas_press (canvas, 1, cx, cy);
+          wz_no_zoom (win, "a Fill press");
+          easel_canvas_release (canvas, 1);
+          g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+          use_pencil (win);
+          break;
+        }
+      wait_for_layout (win);
+      g_assert_false (easel_canvas_is_holding (canvas));
+      g_assert_true (easel_canvas_wheel (canvas, GDK_CONTROL_MASK, -1, 100.5, 80.5) == GDK_EVENT_STOP);
+      wait_for_layout (win);
+      g_assert_cmpint (easel_window_get_zoom (win), ==, 200);
+      easel_canvas_set_zoom (canvas, 100);
+      wait_for_layout (win);
+    }
+
+  /* The pinch: 1.3 before the press, 1.6 during the stroke (no zoom), then 1.5 times more after the release: one level. */
+  use_pencil (win);
+  easel_canvas_pinch_begin (canvas);
+  easel_canvas_pinch (canvas, 1.3, 100.5, 80.5);
+  canvas_point (win, 20.5, 20.5, &cx, &cy);
+  easel_canvas_press (canvas, 1, cx, cy);
+  easel_canvas_pinch (canvas, 1.6, 100.5, 80.5);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 100);
+  easel_canvas_release (canvas, 1);
+  easel_canvas_pinch (canvas, 2.3, 100.5, 80.5);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 100);                   /* 2.3 / 1.6 is under 1.5 */
+  easel_canvas_pinch (canvas, 2.4, 100.5, 80.5);
+  easel_canvas_pinch_end (canvas);
+  wait_for_layout (win);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 200);
+  easel_canvas_set_zoom (canvas, 100);
+  wait_for_layout (win);
+
+  /* A lost release (REQ-0007-18) ends a stroke and Pan's drag: then Ctrl+wheel zooms. */
+  easel_canvas_press (canvas, 1, cx, cy);
+  g_assert_true (easel_canvas_is_holding (canvas));
+  easel_canvas_buttons_released (canvas);
+  g_assert_false (easel_canvas_is_holding (canvas));
+  use_tool (win, "pan");
+  easel_canvas_press (canvas, 1, 100.5, 80.5);
+  g_assert_true (easel_canvas_is_holding (canvas));
+  easel_canvas_buttons_released (canvas);
+  g_assert_false (easel_canvas_is_holding (canvas));
+  g_assert_true (easel_canvas_wheel (canvas, GDK_CONTROL_MASK, -1, 100.5, 80.5) == GDK_EVENT_STOP);
+  wait_for_layout (win);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 200);
+  easel_canvas_set_zoom (canvas, 100);
+  wait_for_layout (win);
+
+  /* Flip Horizontal during Pan's drag does what it did before 0036 (nothing, until the drag ends: REQ-0004-03 is unchanged for it). */
+  {
+    EaselImage *img = (EaselImage *) easel_window_get_picture (win);
+
+    img->px[0] = 0xFFFF0000u;                                              /* a mark at (0, 0) the flip moves to (299, 0) */
+    easel_canvas_update (canvas);
+    easel_canvas_press (canvas, 1, 100.5, 80.5);
+    g_assert_true (easel_canvas_is_panning (canvas));
+    g_action_group_activate_action (G_ACTION_GROUP (win), "flip-horizontal", NULL);
+    g_assert_cmphex (easel_image_get (img, 0, 0), ==, 0xFFFF0000u);         /* as before 0036: the Image actions wait for Pan's drag */
+    easel_canvas_release (canvas, 1);
+    g_action_group_activate_action (G_ACTION_GROUP (win), "flip-horizontal", NULL);
+    g_assert_cmphex (easel_image_get (img, img->width - 1, 0), ==, 0xFFFF0000u);
+  }
+  close_windows ();
+}
+
+/* Ctrl+wheel and the pinch, as the controllers call them, change nothing now (REQ-0036-01's last clause). */
+static void
+wz_gated (EaselWindow *win, const char *what)
+{
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+
+  g_test_message ("open: %s", what);
+  easel_canvas_wheel (canvas, GDK_CONTROL_MASK, -1, 100.5, 80.5);
+  easel_canvas_pinch_begin (canvas);
+  easel_canvas_pinch (canvas, 1.6, 100.5, 80.5);
+  easel_canvas_pinch_end (canvas);
+  wait_for_layout (win);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 100);
+}
+
+/* 0036 AS-1's last clause (REQ-0036-01): with the View menu, a dialog or the font card's family popover open, Ctrl+wheel and the pinch
+   do nothing; closed again, they zoom. */
+static void
+wz_as1_open (void)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  GtkPopover *view = gtk_menu_button_get_popover (easel_window_get_view_button (win));
+
+  use_pencil (win);
+  wait_for_layout (win);
+  gtk_menu_button_popup (easel_window_get_view_button (win));
+  wait_for_layout (win);
+  g_assert_true (gtk_widget_get_visible (GTK_WIDGET (view)));
+  wz_gated (win, "the View menu");
+  gtk_popover_popdown (view);
+  wait_for_layout (win);
+
+  g_action_group_activate_action (G_ACTION_GROUP (win), "attributes", NULL);
+  wait_for_dialogs (win, 1);
+  wz_gated (win, "the Attributes dialog");
+  respond (win, "cancel");
+  wait_for_dialogs (win, 0);
+
+  use_tool (win, "text");
+  shape_press_move (win, 1, 10, 10, 110, 50);
+  shape_release (win, 1);
+  easel_font_card_open_family (easel_window_get_font_card (win));
+  wait_for_layout (win);
+  g_assert_true (easel_font_card_family_is_open (easel_window_get_font_card (win)));
+  wz_gated (win, "the family popover");
+  easel_font_card_cancel_family (easel_window_get_font_card (win));
+  wait_for_layout (win);
+
+  g_assert_true (easel_canvas_wheel (canvas, GDK_CONTROL_MASK, -1, 100.5, 80.5) == GDK_EVENT_STOP);
+  wait_for_layout (win);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 200);
+  close_windows ();
+}
+
+/* Sets the view so that pixel (4000, 4000) is at the area's center at 100 %, and returns that point's view place. */
+static void
+wz_center_4000 (EaselWindow *win, double *vx, double *vy)
+{
+  View view = view_of (win);
+
+  easel_canvas_set_zoom (easel_window_get_canvas (win), 100);
+  wait_for_layout (win);
+  *vx = gtk_adjustment_get_page_size (view.h) / 2;
+  *vy = gtk_adjustment_get_page_size (view.v) / 2;
+  gtk_adjustment_set_value (view.h, 4000.5 + EASEL_VIEW_MARGIN - *vx);
+  gtk_adjustment_set_value (view.v, 4000.5 + EASEL_VIEW_MARGIN - *vy);
+  wait_for_layout (win);
+}
+
+/* How far apart two picture points lie on the screen now, in device pixels (P7.2: at z % one picture pixel is z / 100 device pixels). */
+static double
+wz_device_apart (EaselWindow *win, double ax, double bx)
+{
+  return fabs (ax - bx) * easel_window_get_zoom (win) / 100.0;
+}
+
+/* 0036 AS-5 (REQ-0036-04): on an 8000 x 8000 picture in a 1390 x 853 area, two notches up at once, and two up then three down at once,
+   leave the picture point that was under the pointer still under it within one device pixel (at 50 % two picture pixels); Zoom In
+   twice at once keeps the point at the area's center within one device pixel. */
+static void
+wz_as5_fast (void)
+{
+  static const int up2[] = { -1, -1 }, up2down3[] = { -1, -1, 1, 1, 1 };
+  EaselWindow *win;
+  double vx, vy, x0, y0, x, y, cx0, cy0, cx, cy;
+
+  write_settings ("[new-picture]\nwidth=8000\nheight=8000\nbackground=#FFFF00\n");
+  win = start_window ();
+  set_area (win, 1390, 853);
+  use_pencil (win);
+  for (int k = 0; k < 2; k++)
+    {
+      const int *seq = k == 0 ? up2 : up2down3;
+      int n = k == 0 ? 2 : 5, want = k == 0 ? 300 : 50;
+
+      wz_center_4000 (win, &vx, &vy);
+      picture_point_at (win, vx, vy, &x0, &y0);
+      for (int i = 0; i < n; i++)
+        easel_canvas_wheel (easel_window_get_canvas (win), GDK_CONTROL_MASK, seq[i], vx, vy);   /* all before one redraw */
+      wait_for_layout (win);
+      g_assert_cmpint (easel_window_get_zoom (win), ==, want);
+      picture_point_at (win, vx, vy, &x, &y);
+      g_test_message ("%d notches at once: %.3f, %.3f from %.3f, %.3f, %.2f and %.2f device pixels apart", n, x, y, x0, y0,
+                      wz_device_apart (win, x, x0), wz_device_apart (win, y, y0));
+      g_assert_cmpfloat (wz_device_apart (win, x, x0), <=, 1.0 + 1e-6);
+      g_assert_cmpfloat (wz_device_apart (win, y, y0), <=, 1.0 + 1e-6);
+    }
+
+  /* Zoom In twice at once, the pointer elsewhere (a command keeps the area's center). */
+  view_center (win, &cx0, &cy0);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-in", NULL);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-in", NULL);
+  wait_for_layout (win);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 200);
+  view_center (win, &cx, &cy);
+  g_assert_cmpfloat (wz_device_apart (win, cx, cx0), <=, 1.0 + 1e-6);
+  g_assert_cmpfloat (wz_device_apart (win, cy, cy0), <=, 1.0 + 1e-6);
+  close_windows ();
   write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
 }
 
@@ -37224,6 +38421,21 @@ main (int argc, char **argv)
   g_test_add_func ("/0034/as9_stretched", bw_as9_stretched);
   g_test_add_func ("/0034/as7_memory", bw_as7_memory);
   g_test_add_func ("/0034/as10_quit", bw_as10_quit);
+  g_test_add_func ("/0035/as8_unavailable", rbg_as8_unavailable);
+  g_test_add_func ("/0035/as3_whole_and_selections", rbg_as3_whole_and_selections);
+  g_test_add_func ("/0035/as4_progress_and_cancel", rbg_as4_progress_and_cancel);
+  g_test_add_func ("/0035/as5_nothing", rbg_as5_nothing);
+  g_test_add_func ("/0035/as6_failures", rbg_as6_failures);
+  g_test_add_func ("/0035/f2_floating_shown", rbg_f2_floating_shown);
+  g_test_add_func ("/0035/f3_cancel_marked_and_close", rbg_f3_cancel_marked_and_close);
+  g_test_add_func ("/0035/f3_failed_run_and_transparent", rbg_f3_failed_run_and_transparent);
+  g_test_add_func ("/0035/f4_closed_window", rbg_f4_closed_window);
+  g_test_add_func ("/0035/f5_model_buffers", rbg_f5_model_buffers);
+  g_test_add_func ("/0036/as1_every_tool", wz_as1_every_tool);
+  g_test_add_func ("/0036/as2_cards", wz_as2_cards);
+  g_test_add_func ("/0036/as3_held", wz_as3_held);
+  g_test_add_func ("/0036/as1_open", wz_as1_open);
+  g_test_add_func ("/0036/as5_fast", wz_as5_fast);
   g_test_add_func ("/0033-scale2/as6_on_or_off_scale2", curve_as6_scale2);
   g_test_add_func ("/0032-scale2/as7_types_scale2", as7_types_scale2);
   g_test_add_func ("/0030/as1_brush_two_columns", as1_brush_two_columns);
@@ -37255,6 +38467,7 @@ main (int argc, char **argv)
   g_test_add_func ("/0023-long/as11_alerts", as11_alerts);
   g_test_add_func ("/0023-long/as11_picture_tab", as11_picture_tab);
   g_test_add_func ("/0023-lang/as14_mnemonics_differ", as14_mnemonics_differ);
+  g_test_add_func ("/0023-lang/as14_menu_mnemonics_differ", as14_menu_mnemonics_differ);
   g_test_add_func ("/0023-lang/as12_no_english", as12_no_english);
   g_test_add_func ("/0023-lang/as5_sheets", as5_sheets);
   g_test_add_func ("/0023-lang/as9_help_page", as9_help_page);

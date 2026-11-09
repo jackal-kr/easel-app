@@ -245,12 +245,28 @@ gboolean easel_canvas_transform_selection (EaselCanvas *self, EaselOp op);
    and becomes its image (easel_selection_black_white), and it floats. FALSE, nothing done, without a selection. If the lift cannot get
    its memory the dialog of REQ-0013-19; if the conversion cannot, "selection-failed" kind 8 and the selection as it was. */
 gboolean easel_canvas_black_white_selection (EaselCanvas *self, EaselBw how);
+/* Remove background on the selection (REQ-0035-02): a copy of what it acts on, without changing anything: a marked selection's
+   pixels in the picture, or a floating one's as shown, with its shape (NULL for a rectangle). FALSE without a selection; TRUE with
+   *px NULL when 5 bytes a pixel would pass max_bytes or cannot be had. */
+gboolean easel_canvas_selection_copy (EaselCanvas *self, size_t max_bytes, uint32_t **px, uint8_t **mask, int *w, int *h);
+/* The model's answer applied to the selection: a marked one is lifted first (REQ-0013-19's dialog if it cannot be), the result made
+   on what is shown becomes its image and it floats; NOTHING leaves it as it was (marked again if this lifted it); NO_MEMORY shows
+   "selection-failed" kind 9 with the selection as before. */
+EaselSelectionResult easel_canvas_remove_background_selection (EaselCanvas *self, const float *found, int side);
 /* Stretch and Skew on the selection (REQ-0019-12): to W x H at its place, then the amounts, and it floats. FALSE, nothing done, without a
    selection. No change at all leaves it as it is, marked or floating (REQ-0019-13). If the lift cannot get its memory the dialog of
    REQ-0013-19 comes; if the rest cannot, "selection-failed" kind 7, with the selection as it was (marked again if this lifted it). */
 gboolean easel_canvas_stretch_skew_selection (EaselCanvas *self, int W, int H, int amount_h, int amount_v);
 /* Whether a Pan drag is held (REQ-0018-01: the Image commands wait for it, as for a stroke). */
 gboolean easel_canvas_is_panning (EaselCanvas *self);
+/* Something is held on the canvas (REQ-0036-02): a mouse button pressed in the canvas area and not yet released, whatever the tool
+   does with it, or a keyboard press held. Nothing zooms then. */
+gboolean easel_canvas_is_holding (EaselCanvas *self);
+
+/* What the window says about zooming by the wheel or the pinch now (REQ-0036-01): FALSE while a dialog, a menu or a popover is open,
+   or before the picture exists. Without a gate, both may zoom. */
+typedef gboolean (*EaselZoomGate) (gpointer data);
+void easel_canvas_set_zoom_gate (EaselCanvas *self, EaselZoomGate gate, gpointer data);
 
 /* Cancels a stroke in progress, restoring the picture, and ignores the rest of that mouse press (REQ-0002-09). */
 void easel_canvas_cancel_stroke (EaselCanvas *self);

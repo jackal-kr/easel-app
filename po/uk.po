@@ -1107,7 +1107,7 @@ msgid "_Invert Colors"
 msgstr "_Обернути кольори"
 
 msgid "_Clear Image"
-msgstr "_Очистити зображення"
+msgstr "Оч_истити зображення"
 
 msgid "Grid…"
 msgstr "Сітка…"
@@ -1116,7 +1116,7 @@ msgid "Show Thumbnail"
 msgstr "Показати мініатюру"
 
 msgid "Cu_t"
-msgstr "Вир_ізати"
+msgstr "Ви_різати"
 
 msgid "_Copy"
 msgstr "_Копіювати"
@@ -1124,20 +1124,20 @@ msgstr "_Копіювати"
 msgid "_Paste"
 msgstr "Вст_авити"
 
-msgid "_Clear Selection"
+msgid "C_lear Selection"
 msgstr "О_чистити виділення"
 
 msgid "Select _All"
-msgstr "Виділити _все"
+msgstr "Виді_лити все"
 
-msgid "Copy _To…"
-msgstr "Копіювати _до…"
+msgid "Cop_y To…"
+msgstr "Ко_піювати до…"
 
-msgid "Paste as Plain _Text"
+msgid "Pa_ste as Plain Text"
 msgstr "Вставити як простий _текст"
 
 msgid "Paste _From…"
-msgstr "Вставити _з…"
+msgstr "Вс_тавити з…"
 
 msgid "Zoom _In"
 msgstr "З_більшити"
@@ -1149,7 +1149,7 @@ msgid "_Normal Size"
 msgstr "З_вичайний розмір"
 
 msgid "_New"
-msgstr "Ст_ворити"
+msgstr "_Створити"
 
 msgid "_Open…"
 msgstr "_Відкрити…"
@@ -1163,8 +1163,8 @@ msgstr "_Друк…"
 msgid "_Edit"
 msgstr "З_міни"
 
-msgid "_Preferences"
-msgstr "Пара_метри"
+msgid "P_references"
+msgstr "П_араметри"
 
 msgid "_Keyboard Shortcuts"
 msgstr "_Клавіатурні скорочення"
@@ -1172,7 +1172,7 @@ msgstr "_Клавіатурні скорочення"
 msgid "_Help"
 msgstr "Дов_ідка"
 
-msgid "_About Easel"
+msgid "A_bout Easel"
 msgstr "Про _Easel"
 
 msgid "_Quit"
@@ -1224,7 +1224,7 @@ msgid "Reflected"
 msgstr "Віддзеркалений"
 
 msgid "_Black and White…"
-msgstr "_Чорно-біле…"
+msgstr "Чорно-_біле…"
 
 msgid "Black and White"
 msgstr "Чорно-біле"
@@ -1261,3 +1261,24 @@ msgstr "Не вдалося перетворити зображення"
 
 msgid "Could Not Convert the Selection"
 msgstr "Не вдалося перетворити виділення"
+
+msgid "R_emove Background"
+msgstr "Вилучити _тло"
+
+msgid "Remove Background (Not in This Copy)"
+msgstr "Вилучити тло (немає в цій копії)"
+
+msgid "Removing the Background"
+msgstr "Вилучення тла"
+
+msgid "Nothing to Remove"
+msgstr "Нічого вилучати"
+
+msgid "No background was found to remove."
+msgstr "Тло для вилучення не знайдено."
+
+msgid "Could Not Remove the Background"
+msgstr "Не вдалося вилучити тло"
+
+msgid "Background removal is not available."
+msgstr "Вилучення тла недоступне."

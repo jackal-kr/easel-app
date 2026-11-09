@@ -1091,7 +1091,7 @@ msgid "Rotate _270°"
 msgstr "Ruota di _270°"
 
 msgid "Stretch and _Skew…"
-msgstr "Allunga e _inclina…"
+msgstr "_Allunga e inclina…"
 
 msgid "_Invert Colors"
 msgstr "In_verti i colori"
@@ -1109,22 +1109,22 @@ msgid "Cu_t"
 msgstr "_Taglia"
 
 msgid "_Copy"
-msgstr "_Copia"
+msgstr "Co_pia"
 
 msgid "_Paste"
 msgstr "_Incolla"
 
-msgid "_Clear Selection"
-msgstr "Svuota la _selezione"
+msgid "C_lear Selection"
+msgstr "Svuota _la selezione"
 
 msgid "Select _All"
-msgstr "Seleziona _tutto"
+msgstr "_Seleziona tutto"
 
-msgid "Copy _To…"
-msgstr "Copia _in…"
+msgid "Cop_y To…"
+msgstr "C_opia in…"
 
-msgid "Paste as Plain _Text"
-msgstr "Incolla come _testo semplice"
+msgid "Pa_ste as Plain Text"
+msgstr "Incolla _come testo semplice"
 
 msgid "Paste _From…"
 msgstr "Incolla _da…"
@@ -1133,7 +1133,7 @@ msgid "Zoom _In"
 msgstr "In_grandisci"
 
 msgid "Zoom _Out"
-msgstr "Ri_duci"
+msgstr "_Riduci"
 
 msgid "_Normal Size"
 msgstr "Dimensione _normale"
@@ -1153,8 +1153,8 @@ msgstr "Stam_pa…"
 msgid "_Edit"
 msgstr "_Modifica"
 
-msgid "_Preferences"
-msgstr "_Preferenze"
+msgid "P_references"
+msgstr "P_referenze"
 
 msgid "_Keyboard Shortcuts"
 msgstr "Scorciatoie da _tastiera"
@@ -1162,8 +1162,8 @@ msgstr "Scorciatoie da _tastiera"
 msgid "_Help"
 msgstr "A_iuto"
 
-msgid "_About Easel"
-msgstr "I_nformazioni su Easel"
+msgid "A_bout Easel"
+msgstr "In_formazioni su Easel"
 
 msgid "_Quit"
 msgstr "_Esci"
@@ -1251,3 +1251,24 @@ msgstr "Impossibile convertire l'immagine"
 
 msgid "Could Not Convert the Selection"
 msgstr "Impossibile convertire la selezione"
+
+msgid "R_emove Background"
+msgstr "Ri_muovi lo sfondo"
+
+msgid "Remove Background (Not in This Copy)"
+msgstr "Rimuovi lo sfondo (non in questa copia)"
+
+msgid "Removing the Background"
+msgstr "Rimozione dello sfondo"
+
+msgid "Nothing to Remove"
+msgstr "Niente da rimuovere"
+
+msgid "No background was found to remove."
+msgstr "Non è stato trovato alcuno sfondo da rimuovere."
+
+msgid "Could Not Remove the Background"
+msgstr "Impossibile rimuovere lo sfondo"
+
+msgid "Background removal is not available."
+msgstr "La rimozione dello sfondo non è disponibile."

@@ -130,6 +130,11 @@ EaselSelectionResult easel_selection_skew (EaselFloat *f, int amount_h, int amou
    keep theirs. NO_MEMORY, with the float as it was, past max_bytes (each allocation) or if one cannot be had. */
 EaselSelectionResult easel_selection_black_white (EaselFloat *f, EaselBw how, size_t max_bytes);
 
+/* The float's image, made whole, replaced by px (its shown size, copied), its shape kept, as Black and White does (Remove background,
+   REQ-0035-02): px becomes the image as lifted, the orientation starting again; the hole and the copies made before keep theirs.
+   NO_MEMORY, the float as it was, past max_bytes or if an allocation cannot be had. */
+EaselSelectionResult easel_selection_replace_image (EaselFloat *f, const uint32_t *px, size_t max_bytes);
+
 /* The same two stretches with an orientation given (REQ-0018-11): the float's orientation becomes `orient`, the shown image being the
    lifted pixels scaled to W x H before it and then oriented; the plain ones keep the float's own. */
 EaselSelectionResult easel_selection_stretch_oriented (EaselFloat *f, int x, int y, int W, int H, EaselOrient orient, size_t max_bytes);

@@ -3,7 +3,7 @@ core_wrap = {
   'stretch-skew': ['-Wl,--wrap=malloc', '-Wl,--wrap=calloc', '-Wl,--wrap=realloc'],
   'settings-edit': ['-Wl,--wrap=malloc'],
 }
-foreach name : ['cursor', 'stretch-skew', 'settings-edit', 'window-extras', 'print-layout', 'catalog', 'figure', 'figure-apply', 'figure-curve', 'figure-polygon', 'figure-step', 'curve-bend', 'black-white', 'gradient', 'selection', 'fill', 'footprint', 'format', 'grid', 'history', 'image', 'lasso', 'lattice', 'magnifier', 'number', 'palette', 'resize', 'settings', 'spray', 'stroke', 'rich-text', 'text-buffer', 'text-put', 'transform', 'view']
+foreach name : ['cursor', 'stretch-skew', 'settings-edit', 'window-extras', 'print-layout', 'catalog', 'figure', 'figure-apply', 'figure-curve', 'figure-polygon', 'figure-step', 'curve-bend', 'black-white', 'remove-bg', 'gradient', 'selection', 'fill', 'footprint', 'format', 'grid', 'history', 'image', 'lasso', 'lattice', 'magnifier', 'number', 'palette', 'resize', 'settings', 'spray', 'stroke', 'rich-text', 'text-buffer', 'text-put', 'transform', 'view']
   test('core-' + name,
     executable('test-' + name, 'core/test-' + name + '.c', dependencies: easel_core_dep,
                link_args: core_wrap.get(name, [])),
@@ -80,6 +80,8 @@ test('ui-0032-scale2', test_window, args: ['-p', '/0032-scale2'], env: ui_env, s
 test('ui-0033', test_window, args: ['-p', '/0033'], env: ui_env, suite: 'ui', timeout: 300, is_parallel: false)
 test('ui-0033-scale2', test_window, args: ['-p', '/0033-scale2'], env: ui_env, suite: 'ui', timeout: 180, is_parallel: false)
 test('ui-0034', test_window, args: ['-p', '/0034'], env: ui_a11y_env, suite: 'ui', timeout: 300, is_parallel: false)
+test('ui-0035', test_window, args: ['-p', '/0035'], env: ui_env, suite: 'ui', timeout: 300, is_parallel: false)
+test('ui-0036', test_window, args: ['-p', '/0036'], env: ui_env, suite: 'ui', timeout: 300, is_parallel: false)
 journey_uk_env = environment()
 journey_uk_env.set('GSK_RENDERER', 'cairo')
 journey_uk_env.set('GTK_A11Y', 'none')
@@ -227,3 +229,18 @@ suite_de_env = ui_env
 suite_de_env.set('LANGUAGE', 'de')
 test('ui-0023-suite-in-english', test_window, args: ['-p', '/0020'], env: suite_de_env, suite: 'ui', timeout: 600, is_parallel: false)
 
+# The finder over ONNX Runtime, with the fake models (spec 0035, T004): only in a build with it.
+if onnx_dep.found()
+  test('ml-finder',
+    executable('test-finder', 'ml/test-finder.c', dependencies: [easel_ml_dep], include_directories: include_directories('core')),
+    env: {'EASEL_TEST_DATA': meson.current_source_dir() / 'data'},
+    suite: 'ml',
+  )
+endif
+
+# The real model (spec 0035, T006): AS-2's test set, a second process's pixels and the budgets; a benchmark, never in the suite.
+if onnx_dep.found()
+  benchmark('perf-0035', executable('perf-0035', 'perf/perf-0035.c', dependencies: easel_ui_dep,
+    c_args: '-DTEST_SET="' + meson.project_source_root() / 'docs' / 'reference' / '0035' / 'test-set' + '"'),
+    env: perf_env, timeout: 900)
+endif

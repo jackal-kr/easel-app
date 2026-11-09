@@ -5,7 +5,7 @@ belongs to (see `docs/specs/INDEX.md`). Behavior only.
 
 ## Navigation and view
 - Pan mode: a tool in the toolbox and the default mode when the app starts, so a picture can be opened, panned and zoomed to understand it before editing. It is a safe view mode: a drag never changes the picture. While it is active, dragging with the left mouse button pans the canvas (no modifier needed), without modifying the image or affecting undo history. With Ctrl held, the mouse wheel zooms the picture in and out (this works only in Pan mode). Right-click opens a menu (Paste, Paste From, Select All, zoom, Clear Image). No other tool pans.
-- Zoom from 10 % to 1600 % (1600 %, beyond XP's 800 %: JOD, 2026-10-27; Fit to Window stops at 800 %); Ctrl + mouse wheel zooms, only in Pan mode; Fit to Window; Ctrl+PageUp / Ctrl+PageDown switch between large and normal size.
+- Zoom from 10 % to 1600 % (1600 %, beyond XP's 800 %: JOD, 2026-10-27; Fit to Window stops at 800 %); Ctrl + mouse wheel zooms with every tool (0036; before, only in Pan mode); Fit to Window; Ctrl+PageUp / Ctrl+PageDown switch between large and normal size.
 - Grid dialog: user-set cell size and an optional axonometric grid; the pixel grid appears when zoomed in far enough (the threshold is set in the spec; XP shows it from 4x); Ctrl+G toggles it.
 
 ## Tools
@@ -40,7 +40,7 @@ belongs to (see `docs/specs/INDEX.md`). Behavior only.
 ## Phase 2 (after the core scope)
 Optional; it starts only after the core XP scope is delivered.
 - Crop to selection: the picture is cropped to the current selection in one command.
-- Zoom: a zoom slider in the status bar; Ctrl+wheel zooms with every tool, not only in Pan mode.
+- Zoom: Ctrl+wheel zooms with every tool, not only in Pan mode (0036; a status bar slider was tried and dropped by JOD, 2026-11-09).
 - Invert selection: selects everything outside the current selection.
 - Smooth text: a switch in the Text tool's options draws text with antialiasing; its default is set in Preferences and is off
   out of the box.

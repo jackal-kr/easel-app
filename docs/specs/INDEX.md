@@ -40,12 +40,12 @@ Vertical slices first (a thin end-to-end feature), breadth later.
 | 0033 | curve-bent-on-line | Curve bends where the user drags a point of the line; each bent point stays, two at most, the curve reshaped until a click away finishes it; replaces XP's way | Phase 2, item E of `docs/phase2-plan.md`. JOD, 2026-11-07 and 2026-11-09 |
 | 0034 | black-and-white | Image › Black and White… turns the picture or the selection to black and white by Threshold, Ordered dither or Error diffusion, chosen in a dialog; one undo step, alpha kept | Phase 2, item D of `docs/phase2-plan.md`. JOD, 2026-11-09 |
 | 0035 | remove-background | Image › Remove Background finds the subject on the machine and makes the rest transparent, on the selection or the picture, hard edges, a cancellable progress dialog, one undo step | Phase 2, item F of `docs/phase2-plan.md`; an ADR chooses the model before the Plan. JOD, 2026-11-07 and 2026-11-09 |
+| 0036 | wheel-zoom | Ctrl+wheel and the pinch zoom with every tool as in Pan, not while anything is held | Phase 2 row; JOD, 2026-11-09: the status bar slider was built and dropped ("too much"), the wheel zoom kept |
 
 ### Phase 2: Modern extras (optional, starts only after the core XP scope is delivered)
 | Feature | One line |
 |---|---|
 | Crop to selection | Crops the picture to the current selection in one command |
-| Zoom slider and wheel zoom in every tool | A zoom slider in the status bar (its range 10 to 1600 %), and Ctrl+wheel zooms with any tool, not only in Pan mode |
 | Invert selection | Selects everything outside the current selection |
 | Smooth text option | An opt-in switch that draws text with antialiasing; off by default |
 | Smooth shapes and brushes option | One opt-in switch that draws lines, curves, shapes and brush strokes with antialiasing; off by default |

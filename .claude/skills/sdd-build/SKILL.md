@@ -62,10 +62,17 @@ Precondition: `Status: accepted` in the spec. Otherwise stop and say so.
      red by taking the code out or breaking it, and that run is reported (0018 T006: a symmetric oracle passed with the mirror missing);
    - a change to a shared hot loop reruns the benchmark of every feature that uses it, against a build of the last commit (a git worktree),
      the two builds' runs interleaved (`docs/engineering.md`, Performance budgets);
+   - a task that adds a rule under `src/core` adds its mutants in the same task; a task that moves or renames code a mutant quotes runs
+     `tools/mutate.sh --lint` before it is done (0029, and 0035 T003: eight mutants found stale only at the gate);
+   - a test seam (a hook, an environment variable, a fake) gets at least one test that goes around it through the user's path, or the
+     Plan names the manual check that does (0023: the language hook hid a wrong plural rule);
+   - a call that starts another process or opens a launcher gets its two-line probe in the task that adds it (0021: "Could Not Open Help" at M1);
+   - a layout that holds translated text is checked over every real language, the long test language being a guard, not a proof (0023);
    - a mutant is run against the test that can observe its change; one with no visible effect in the window is pointed at the core test and noted as equivalent for the ui;
    - a survivor is one line in the Check section ("survivor, accepted, reason") and becomes a task only if it shows a user-visible bug;
    - decide routine things yourself and record them; ask JOD only for product decisions or irreversible ones;
-   - tick the task and report in one line, and fill its `Result:` line in the spec: the test that failed first and its
+   - tick the task and report in one line, and fill its `Result:` line in the spec, written from the test file, never from the task's
+     "done when" (0035 T005 claimed floating, stretched and free-form cases its ui test did not have): the cases by name, the test that failed first and its
      message, or `characterization: <why there was no red run>` (a test that passes on its first run is reported as that),
      and for a manual step one line of what JOD saw;
 4. **Spec gap rule.** A wording fix to an accepted spec that changes no behavior goes to JOD first, like any other change of the spec. If you need to decide something the spec does not say, stop. Propose wording, get JOD's yes, update the spec,

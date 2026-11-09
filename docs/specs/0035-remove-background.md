@@ -1,6 +1,6 @@
 # 0035 Remove background
 
-Status: accepted
+Status: implemented
 Reviewed: spec-reviewer, 2026-11-09
 Depends on: 0005, 0013, 0018, 0021, 0023, 0024, 0034
 
@@ -31,12 +31,13 @@ shown (only its shape's for a free-form one, the rest of its box not looked at).
 - REQ-0035-05 If no pixel would change (no subject is found, everything is judged subject, or the background is already transparent), the app shall show a dialog with the heading "Nothing to Remove" and the body "No background was found to remove.", change nothing, add no step and no modified mark; a marked selection it lifted is marked again (unlike REQ-0034-03, since nothing happened and the dialog says so; JOD, 2026-11-09). Pixels that all have one color (all four channels the same), or that are narrower or shorter than 16 pixels, give this dialog at once, without the subject being looked for.
 
 ### Failures
-- REQ-0035-06 If the memory it needs cannot be had, at whatever point of the work, the app shall show the heading "Could Not Remove the Background" with the body "There is not enough memory for this change." and change nothing of the removal (what was put down stays put down; a selection as before the command, marked again if the command lifted it). If the model that finds the subject is missing from the installation, cannot be loaded or fails while it runs, the same heading with the body "Background removal is not available." and nothing changed in the same way. Ctrl+Q, Ctrl+W or a close request while one of these dialogs or REQ-0035-05's is open closes it, then goes on as REQ-0001-34 and REQ-0001-35 say (as REQ-0021-03).
+- REQ-0035-06 If the memory it needs cannot be had, at whatever point of the work, the app shall show the heading "Could Not Remove the Background" with the body "There is not enough memory for this change." and change nothing of the removal (what was put down stays put down; a selection as before the command, marked again if the command lifted it). If the model that finds the subject is there at start but cannot be loaded or fails while it runs (one missing at start: REQ-0035-10), the same heading with the body "Background removal is not available." and nothing changed in the same way. Ctrl+Q, Ctrl+W or a close request while one of these dialogs or REQ-0035-05's is open closes it, then goes on as REQ-0001-34 and REQ-0001-35 say (as REQ-0021-03).
 
 ### The pixel contract and cost
 - REQ-0035-07 (P7, with an exception to P7.4 in the model's ADR and the constitution.) Kept pixels are exactly as they were and removed ones keep their color with alpha 0 (P7.1); a floating selection shows its result one to one (P7.3). The same pixels give the same result every time on the same machine with the same build, in any process; between machines the result may differ along the subject's edge (JOD's expectation: a few pixels), with no bound promised or tested.
 - REQ-0035-08 It shall work with no network (the Flatpak has none, REQ-0024-10).
 - REQ-0035-09 Its time, from the choice of the command to the result painted, the first run after the app starts (the model's loading) and a later run each, for an 8000 × 8000 and a 1920 × 1080 picture, and the memory it needs beyond the picture and its undo step, shall be within the budgets JOD accepts in the model's ADR, added to `docs/engineering.md`'s budgets (ADR-0006, 2026-11-09: 2 s for 1920 × 1080, 3 s for 8000 × 8000, 2 GB of memory).
+- REQ-0035-10 (JOD, 2026-11-09, at the Plan; adds to REQ-0035-01.) The app shall build and run without the model's runtime or the model (a build that leaves them out, or an installation where the model is missing at start): Remove Background is then still in both menus, in its place, not available (greyed), its label "Remove Background (Not in This Copy)", and every other part of the app works as before. Before: REQ-0035-01 had the item always available, a missing model being only REQ-0035-06's error when chosen; now that error is for a model that is there at start and cannot be loaded or fails while it runs.
 
 ## Scenarios
 - AS-1 (REQ-0035-01) Given a picture, When the user opens the Image menu, Then Remove Background follows Black and White… with no shortcut; the selection menu has it after its Black and White…; while a button is held in the canvas it does nothing; its strings show in German | Verified by: automated (ui)
@@ -44,7 +45,8 @@ shown (only its shape's for a free-form one, the rest of its box not looked at).
 - AS-3 (REQ-0035-02, REQ-0035-07) Given a test-set picture and a marked rectangle selection of its left half, When Remove Background, Then only pixels inside the selection may change, the selection floats with the result shown one to one, and one Undo after its put-down gives the picture back; Given a free-form selection, Then only its shape's pixels may change and what lies outside the shape does not change the result; Given a floating selection stretched to twice its size, Then the result is made on what is shown; Given a pending curve, Then it is put down first and stays so | Verified by: automated (ui)
 - AS-4 (REQ-0035-04) Given an 8000 × 8000 test picture, When Remove Background, Then the progress dialog shows with its heading, bar and Cancel; When Cancel is pressed, Then within 0.5 s it closes, the picture is unchanged and no step is added; the same with Esc; with a marked selection, it is marked again; Given a modified picture and the dialog showing, When Ctrl+Q, Then the work stops with nothing changed and the Save prompt shows; Cancel there leaves the picture as before; the same with Ctrl+W | Verified by: automated (ui)
 - AS-5 (REQ-0035-05) Given a 300 × 200 picture of one color, one fully transparent, and one 15 pixels wide, When Remove Background, Then "Nothing to Remove" shows at once, nothing changes and no step or mark is added; with a marked selection of the one-color picture, it is marked again; Given a test picture whose background was already removed, Then the same dialog | Verified by: automated (ui)
-- AS-6 (REQ-0035-06) Given memory made too small, When Remove Background on the whole picture, on a marked selection and on a floating one, Then the dialog "Could Not Remove the Background" with the memory body shows and nothing of the removal changes (the marked one marked again, the floating one as it was); Given the model missing from the installation, Then the same heading with "Background removal is not available."; Ctrl+Q with that dialog open closes it and goes on | Verified by: automated (ui)
+- AS-6 (REQ-0035-06) Given memory made too small, When Remove Background on the whole picture, on a marked selection and on a floating one, Then the dialog "Could Not Remove the Background" with the memory body shows and nothing of the removal changes (the marked one marked again, the floating one as it was); Given a model file that cannot be loaded, Then the same heading with "Background removal is not available."; Ctrl+Q with that dialog open closes it and goes on | Verified by: automated (ui)
+- AS-8 (REQ-0035-10) Given a build without the model's runtime, Then it builds with no warning, all its other tests pass, and Remove Background shows greyed in both menus as "Remove Background (Not in This Copy)"; Given the runtime built in but the model file missing at start, Then the same | Verified by: automated (build, ui)
 - AS-7 (REQ-0035-08, REQ-0035-09) Given an 8000 × 8000 and a 1920 × 1080 test picture, When Remove Background runs (a first run after start and a later one), Then its time and memory are within the ADR's budgets; in the Flatpak, with no network | Verified by: automated (perf, in the real session) + manual (the Flatpak, at the packaging release)
 
 ## Edge cases
@@ -54,6 +56,7 @@ shown (only its shape's for a free-form one, the rest of its box not looked at).
 - Saving afterwards: PNG, TIFF and WebP keep the transparency, JPEG and BMP flatten it on white (REQ-0005-11), nothing new.
 - The selection moved partly outside the picture: the selection as shown is looked at, its off-picture part too.
 - Remove Background twice: the second removes nothing more and gives REQ-0035-05.
+- Cancel while the model loads, the first run after start (JOD, 2026-11-09, at the check): the loading cannot be stopped, so the work ends when it has loaded, 0.2 s on the dev machine and up to 1 s in the Flatpak (T001's probe); nothing is applied, as for any Cancel. Before: REQ-0035-04's "within 0.5 s" read as if for every moment of the work; now that half second holds once the model is loaded, and this one wait is a documented limit.
 
 ## Out of scope
 - Settings or a slider (tolerance, softness), soft edges (decided: hard), choosing the subject by a click, replacing the background with a color or a picture, a model downloaded later, a bound on the difference between machines.
@@ -62,18 +65,134 @@ shown (only its shape's for a free-form one, the rest of its box not looked at).
 None. Settled by JOD on 2026-11-07 (Windows 11 Paint's one command, the selection's area only, one undo step) and 2026-11-09 (hard edges; a progress dialog with Cancel; one message, "Nothing to Remove", a marked selection marked again; every main subject kept; a free-form selection judged by its shape; same pixels on one machine, an exception to P7.4 between machines; the budgets set in the model's ADR). Decided in the review (routine): the dialog only after 0.5 s and Cancel within 0.5 s; one color or under 16 pixels gives the message at once; the test set built from cut-out subjects so that its masks are exact, counted 4 pixels away from the edges; what was put down stays put down.
 
 ## Plan
-(added by /sdd-build after the spec is accepted: approach, files, key interfaces, scenario-to-test map, risks)
+**Approach.** Three layers, as ADR-0006 places them. The pixel rules are pure core code (`src/core/remove-bg.{c,h}`): the input the
+model is given (the pixels looked at, scaled to the model's square, transparent and not-looked-at places a neutral gray), the mask it
+returns thresholded at a half and scaled back, the early answers of REQ-0035-05 (one color, under 16 pixels), and the result applied
+(only pixels looked at, alpha 0, color kept) as one step for the whole picture (Black and White's two kinds of step) or as a float's
+new image (`replace_image`, as Black and White). The model runs in `src/ml/finder.{c,h}` over the ONNX Runtime C API, given floats
+and returning floats, with a fixed thread count, a run that can be ended from another thread (Cancel within 0.5 s) and errors as
+values; nothing else links ONNX Runtime. The window copies the pixels, runs the finder in one worker thread, shows the progress dialog
+if the work passes 0.5 s, and applies the result on the main thread in `remove_background_applied`, the one function every result,
+Cancel and failure goes through. A Meson option makes the runtime and the model optional; without them the item is greyed with its
+label (REQ-0035-10). Tests use a tiny fake model; the real model's test is a benchmark, run at the check, not in the suite.
+
+**Files** (as built). `meson.options` (`background_removal`: feature, auto; `background_model`: the .onnx to install, as
+`subject-finder.onnx`); `src/core/remove-bg.{c,h}`; `src/core/transform.{c,h}` and `src/core/selection.{c,h}` (the step and the
+float's new image shared with Black and White); `src/ml/finder.{c,h}` (the new layer, a static library in `src/meson.build`);
+`src/ui/window.c` (the command, the worker, the progress dialog: small, so not a file of its own), `src/ui/window.ui` (two items in
+each menu), `src/ui/canvas.{c,h}` (the selection's part); `po/*`; `tests/core/test-remove-bg.c`, `tests/ml/test-finder.c` (built
+only with the option), `tests/data/finder/` (`fake-finder.onnx`, 228 bytes, the red plane as the answer; `slow-finder.onnx`, about
+1.6 s a run, for Cancel; `make-fake-finders.py`), `tests/ui/test-window.c` (`/0035`), `tests/perf/perf-0035.c` (the real model:
+AS-2's test set, a second process's pixels, the budgets; built only with the option), `tests/mutants.txt` (the core rules; `src/ml`
+is outside the list); `docs/reference/0035/` (the test set, its maker script and its licenses; the letter to the DIS authors). No
+`flatpak/` file: T001's result is in this Plan and in 0024's note.
+
+**Interfaces** (as built).
+- core: `easel_rbg_input (const uint32_t *px, const uint8_t *mask, int w, int h, int side, float *out)` (3 x side x side, 0 to 1;
+  the model's normalization is the finder's), `bool easel_rbg_trivial (px, mask, w, h)` (REQ-0035-05's early answer), `size_t
+  easel_rbg_apply (uint32_t *px, const uint8_t *mask, int w, int h, const float *found, int side)` (the stretch, the scaling, the
+  threshold, alpha 0; returns the pixels changed), `EaselTransformResult easel_image_remove_background (img, history, found, side,
+  max_bytes)`, `EaselSelectionResult easel_selection_remove_background (f, found, side, max_bytes)`; shared with Black and White:
+  `easel_image_replace_pixels (img, history, px, max_bytes)` and `easel_selection_replace_image (f, px, max_bytes)`.
+- ml: `EaselFinder *easel_finder_open (const char *model_path, int threads, char **error)`, `int easel_finder_side (f)`,
+  `EaselFinderResult easel_finder_run (f, const float *in, float *out)` (DONE, CANCELLED, FAILED), `easel_finder_cancel (f)` (any
+  thread; it holds until `easel_finder_rearm (f)`, which the worker calls before it checks its own request), `easel_finder_close (f)`.
+- ui: `win.remove-background`, or `win.remove-background-off` (never enabled) without the runtime or the model; the worker as a
+  `GTask` with the copied pixels; `remove_background_applied`, the one completion; `easel_canvas_selection_copy` (a marked selection
+  copied without lifting) and `easel_canvas_remove_background_selection`; `easel_window_is_removing_background`; the test hook
+  `EASEL_TEST_FINDER` (the model to use: the fake, the slow fake for Cancel, or a missing file); a build run where it was built, not
+  installed, falls back to the model it was configured with (`BACKGROUND_MODEL_CONFIGURED` in the build's own `config.h`, never in
+  the repository; T009); the existing transform and lift
+  limits for the 2 GB rule.
+
+**What grows.** While it works: the copy of the pixels looked at (4 bytes a pixel), the model's input and output (16 bytes a pixel of
+its square, 16 MB at 1024), the runtime's own working memory (about 1.4 GB measured); then the step (Black and White's: a log of 12
+bytes a changed pixel, or the old buffer). The copy and the model's input and answer are held at once, so they are counted together
+against the memory limit (Check F5); the step's own allocations are checked as Black and White's are; the runtime's is bounded by its
+model and measured (R2).
+
+**Readers of what changes.** The Image and selection menus (0018's `as1_image_menus` and selection menu case, 0034's
+`as1_menus_and_dialog`); 0023's strings; `replace_image`'s callers (Skew, Black and White).
+
+**Scenario to test.** AS-1, AS-3 to AS-6, AS-8: ui `/0035` with the fake model (and a build without the option for AS-8). The
+core rules: core `test-remove-bg`. AS-2, AS-7: `perf-0035` with the real model, in the real session at the check (the test set's
+95 % rule, a second process's pixels, the 2 s, 3 s and 2 GB budgets). M1: JOD's own photos.
+
+**T001's probe (2026-11-09).** The GNOME 51 platform and SDK carry no ONNX Runtime, and Flathub has no runtime or extension for it.
+The official Linux release of ONNX Runtime 1.23.2 (MIT; the same version as Ubuntu 26.04's) is an 8.3 MB archive, 22 MB unpacked;
+a C program built in the GNOME 51 SDK against it loaded IS-Net and ran it in the sandbox: load 0.3 to 1.0 s, a run of 1.7 to 3.6 s
+with 4 threads and 2.8 s with 1, and the same output (sum 76.770043) in three processes and with 1 and 4 threads. Decision: the
+Flatpak takes that archive as a module (no build from source); whether Flathub accepts a prebuilt library, or wants it built,
+is the packaging release's (0024's note), with the fallback of a Flatpak built without the option (the item greyed). The deb links
+Ubuntu's `libonnxruntime1.23`.
+
+**T006's measurements (2026-11-09, this machine, the real session, IS-Net general-use, 4 threads; load 1.0 to 5.0).** The test set
+(`docs/reference/0035/test-set`, made by `make-test-set.py` beside it): six 960 x 720 pictures with seven subjects (a dog, cats and a
+dog's head cut where its photo ended, two pairs) from Commons cut-outs, CC0, CC BY and CC BY-SA, laid on plain, vertical and radial
+backgrounds; a line drawing first chosen was dropped (its white fill was transparent). AS-2, two runs: in every picture 100 % of
+the counted background removed and 100 % of the counted subject kept (e.g. 01: 491194 of 491194 and 181893 of 181893), no other
+change, Undo exact, and the same pixels in a second process. Time, the choice to the painted result, three rounds each in a new
+process: 1920 x 1080 first run 1281, 3000, 1861 ms, later runs 897 to 1421 ms; 8000 x 8000 first 1461 to 1970 ms, later 1230 to
+1782 ms. The 3000 ms run disagreed: run again fifteen times in a row, alone, it was 1149 to 1383 ms (the machine's load rising, no
+timer of 3 s in the code). Memory, the process's peak growth over the run (picture loaded before; its step included): first run
+1031 to 1171 MB, later 0 to 840 MB. All within 2 s, 3 s and 2 GB. R5's "public-domain or CC0" was too narrow for five subjects: AS-2
+asks for openly licensed ones, and CC BY and CC BY-SA cut-outs are used with their attribution in `LICENSES.md` (routine).
+
+**Constitution.** P7.4's exception is ADR-0006; the core stays libc only (`src/ml` is a layer of its own); one worker thread and the
+runtime's fixed threads, measured (P5, ADR-0006).
+
+**Risks.**
+- R1 ONNX Runtime in the Flatpak: no runtime or SDK extension may offer it; building it is long. T001 probes it before anything
+  depends on it; fallback, the Flatpak builds without the option (the item greyed) until the packaging release decides (0024's note).
+- R2 The runtime's memory is outside our limits: measured in T006 against the 2 GB budget; a refusal inside the runtime is a FAILED
+  run (REQ-0035-06's "not available" body), tested with the fake model by a test hook that fails the run.
+- R3 Ending a run from another thread within 0.5 s: ONNX Runtime's run options can be told to terminate; T004 probes the time on the
+  real model before the ui relies on it; fallback, the result is dropped when it comes and the dialog closes at once.
+- R4 The determinism of REQ-0035-07 with a fixed thread count across processes: T006 runs the model twice in two processes.
+- R5 The test set needs openly licensed subjects with exact masks: T006 gathers them (public-domain or CC0 cut-outs), their
+  licenses kept beside them; if fewer than five can be had, JOD is told before AS-2 is weakened.
 
 ## Tasks
-(added by /sdd-build after the plan is agreed: `- [ ] T001 title (REQ-..., AS-...) - done when ...`)
-(filled in when the task is ticked, a line under it: `  Result: ...`. A code task: the test that failed first and its message,
-or `characterization: <why there was no red run>`. A manual step: one line of what JOD saw.)
+- [x] T001 Probe the Flatpak build of ONNX Runtime (R1) - done when the Plan records whether the GNOME runtime, its SDK or an extension offers it, and if not, a test build of it as a Flatpak module (its time and its size), with the decision: build it, or build the Flatpak without the option for now
+  Result: the Plan's "T001's probe": no runtime or extension offers it; the official 1.23.2 archive (8.3 MB) runs IS-Net in the GNOME 51 sandbox with the same output in three processes; the Flatpak takes it as a module, Flathub's view at the packaging release, the fallback a Flatpak without the option.
+- [x] T002 The optional build and the greyed item (REQ-0035-10; AS-8) - done when `background_removal` (auto) and `background_model` exist, a build without them is warning-free with every other test green, and the item shows greyed with "Remove Background (Not in This Copy)" in both menus (ui test, red first)
+  Result: ui `/0035/as8_unavailable` failed first (`on != off`: neither action existed), then green on this machine's build, where `background_removal` (auto) finds no libonnxruntime: the item is in both menus after Black and White…, greyed as "Remove Background (Not in This Copy)". Each menu holds both items with `hidden-when` `action-missing` (a menu item's label cannot change at run time), and the window adds exactly one of the two actions. The build is warning-free; 0018's and 0034's menu cases updated with old/new; the two strings in all eleven languages. The case "runtime built in, model missing at start" waits for ONNX Runtime on this machine (T004).
+- [x] T003 The pixel rules in the core (REQ-0035-02's step, -03's application, -05's early answer, -07's exact pixels) - done when `test-remove-bg` checks the input (scaling, the shape, transparent places), the threshold and the scaling back, the early answers, the application (alpha 0, color kept, only pixels looked at), the whole picture's step and the float's image, with the memory held against the memory counted, red first
+  Result: red by link (`undefined reference to 'easel_rbg_input'` and the four others), then `test-remove-bg` 5 of 5. Black and White's step moved into `easel_image_replace_pixels` (transform) and a float's given image into `easel_selection_replace_image` (selection), both shared: `test-black-white`, ui-0034 and ui-0019 green. Hand breaks, each red: masked places black, an already transparent pixel counted, no stretching by the answer's range, the 16-pixel limit at 15 and at 17 (after a test of mine was strengthened: its 15-pixel cases were one color, so the one-color rule answered first). One equivalent: without the flat-answer guard 0/0 gives NaN, never below one half, so nothing is removed either way. The memory held equals the memory counted for the whole picture's step.
+- [x] T004 The finder over ONNX Runtime, with the fake model (REQ-0035-03, -06, -07; R3) - done when `test-finder` opens the fake model, runs it to the expected mask, fails cleanly on a missing and a broken file, and ends a run from another thread; the real model's end-of-run time is probed and recorded (R3), red first
+  Result: red by link (`undefined reference to 'easel_finder_open'` and the three others), then `ml-finder` 3 of 3 in a build with ONNX Runtime (the official 1.23.2 archive through a development `.pc` in the scratch folder; this machine has no `libonnxruntime-dev`, which the deb's build will need): the fake answers its red plane twice the same, a missing and a broken file give NULL and a message, a run of the slow fake (1.6 s) is CANCELLED 0.001 s after the cancel and the next run runs. A first slow fake ran 0.04 s, too fast to cancel in the middle: made heavier (200 7 x 7 convolutions at 1024). R3 probed on IS-Net (4 threads, 0.84 s warm): cancels at 20, 50 and 80 % ended 0.030, 0.008 and 0.001 s later. ONNX Runtime's header trips `-Wstrict-prototypes`: silenced around its include only. T002's other case: with the runtime built in and no model installed, ui-0035 shows the greyed item ("this build: without it"). The fake models (228 and 8627 bytes) and their maker are kept in `tests/data/finder/`.
+- [x] T005 The command, the worker and the dialogs (REQ-0035-01, -02, -04 to -06; AS-1, AS-3 to AS-6) - done when ui `/0035` (with the fake model and the delay hook) covers the menus, the put-downs, the whole picture, marked, floating, stretched and free-form selections, the progress dialog after 0.5 s, Cancel, Esc, Ctrl+Q and Ctrl+W within 0.5 s, "Nothing to Remove" and its early answers, the failures (memory, the 2 GB limit by the test hook, a failing run), red first; 0018's and 0034's menu cases updated with old/new; the strings in all eleven languages
+  Result: red by build (`implicit declaration of function 'easel_window_is_removing_background'`), then ui `/0035` 5 of 5 with ONNX Runtime and the fake models (the test hook `EASEL_TEST_FINDER` names the model), and in this machine's build without it `as8_unavailable` runs and the rest skip. Cancel, Esc and Ctrl+Q end the slow fake's work 0.002 to 0.027 s after them. Three hand breaks first survived and showed weak tests of mine, then each was red: the dialog shown at once (the test did not let the main loop run before checking: it now runs 0.3 s first), a quit not stopping the work (only a quit before the dialog shows reaches that line; the dialog's own close cancels otherwise: a case added), "Nothing to Remove" leaving a lifted selection floating (my case was the early answer, which never lifts: a selection whose model answer is flat added). A race settled in the finder first: a run no longer clears a cancel, `easel_finder_rearm` does, and the worker rearms, then checks its own request, then runs. The marked selection is copied without lifting and lifted only when the answer changes something. The progress dialog, "Nothing to Remove" and the failures are the window's extra dialogs, so a quit closes them (REQ-0035-06). The seven strings in all eleven languages; 0018's, 0034's and 0023's suites green. The progress dialog lives in `window.c`, not in a file of its own as the Plan said (it is small).
+- [x] T006 The real model: the test set and the budgets (REQ-0035-03, -07 to -09; AS-2, AS-7; R2, R4, R5) - done when `docs/reference/0035/` holds at least five composited pictures with exact masks and their licenses, and `perf-0035` (a benchmark, not in the suite) shows each picture within AS-2's 95 % rule, the same pixels in a second process, and the 2 s, 3 s and 2 GB budgets, the numbers in the Plan
+  Result: characterization: the benchmark measures the model, which existed before it (no red run is possible for a measurement); its rules were made to show their counts after a first all-100 % run looked too good, and the results kept and looked at over a checkerboard: the subjects whole, the backgrounds gone. Its break: run with the fake model (the red plane as the answer), every picture FAILs (background removed 0 to 99.99 %, subject kept 14 to 98 %). AS-2 passes on all six pictures, the same pixels in a second process, the budgets met (the Plan's "T006's measurements").
+- [x] T007 JOD's photos (M1) - done when JOD has tried Remove Background on his own photos (whole picture and a selection, Cancel on a big one) and the Result says what he saw
+  Result: JOD, 2026-11-09, in the build with ONNX Runtime and IS-Net on his own photos: the whole picture, a rectangle and a free-form selection, Cancel on a big one during the progress dialog, and "Nothing to Remove" on one color, all as the spec says ("all works"). His normal build, without the runtime, shows the item greyed as "Remove Background (Not in This Copy)" (REQ-0035-10).
+- [x] T008 Gate - done when the full suite and the scale-2 runs pass through `tools/isolated.sh`, a build without the option passes too, the core rules' mutants are in `tests/mutants.txt`, `tools/mutate.sh --core` has run once (any survivor reported), and the Plan's names match the code
+  Result (2026-11-09): through `tools/isolated.sh`, the build without ONNX Runtime 126 of 126, scale-2 runs 5 of 5, the build with it (`build-ml`, the official 1.23.2 archive) 127 of 127 (`ml-finder` and all of `/0035`). Six mutants for the core rules added; eight older ones made stale by this feature (two menu finds that now meet the new items, four of 0018 whose lines my function repeated, two of 0034 whose step moved into `transform.c`) brought up to date, lint 1317, 0 stale. `--core`: `473 mutants: 467 killed, 0 killed by crash (test gap), 0 inconclusive (no snapshot or skipped), 5 survived, 0 errors, 1 accepted in 178 s`: the four 0023's (accepted at its check) and mine, "a flat answer removes everything", which as written was the equivalent I had noted at T003 (no guard: 0/0 is NaN, nothing removed); rewritten so a flat answer removes every pixel, rerun with the other five: `6 mutants: 6 killed`. The Plan's names as built.
+
+- [x] T009 The check's findings (JOD's verdicts, 2026-11-09; REQ-0035-01 to -06; AS-1, AS-3 to AS-6) - done when F1: Remove Background's mnemonic differs from every other label of its menu in en, cs, de, it and uk, and the older clashes of every menu in every language are fixed, with a ui test over every menu's mnemonics in every language (red first); F2: ui cases for a floating, a stretched floating and a free-form selection; F3: ui cases for Cancel with a marked selection, Ctrl+W during a run, a run that fails partway (picture and history unchanged) and a fully transparent picture, the other missing clauses listed in `docs/phase2-plan.md`; F4: no dialog on a closed window and the finder pointer safe across threads, tested where possible; F5: the model's own buffers counted against the memory limit; F6: the edge case below (old/new); then the full suite, `/0035` and scale 2 green, and `--core` again if a core file changed
+  Result (2026-11-09): F1: ui `/0023-lang/as14_menu_mnemonics_differ` (new; every page of the six menus, each submenu its own page, an item hidden by its missing action left out) failed first in all twelve languages with 118 clashes, 9 of them 0035's; a script then chose letters (the current one kept where free, GTK's own for Cut, Copy, Paste and Select All, a word's first letter and a–z first, the fewest labels changed); green in all twelve languages in both builds. English: R_emove Background, C_lear Selection (XP's), Cop_y To…, Pa_ste as Plain Text, A_bout Easel, P_references; the other languages' changes are listed in `docs/reference/translations-to-review.md`; 0023's and 0028's start tests name the Preferences item of each language and were brought to the new letters (old ones in their comment). F2: ui `/0035/f2_floating_shown`, an inverted floating selection, one stretched from 8 x 8 to 16 x 16 and a free-form one (its first triangle was 10 x 10, under REQ-0035-05's 16 pixels, and got "Nothing to Remove": made 20 x 20): characterization, proven by two breaks, each red: a floating selection copied from the picture (B1) and a free-form one lifted without its shape (B2). F3: `/0035/f3_cancel_marked_and_close` (Cancel with a marked selection; Ctrl+W during a run, the Save prompt and its Cancel) and `/0035/f3_failed_run_and_transparent` (a model that loads and fails in its run, `tests/data/finder/fail-finder.onnx`, 286 bytes, from `make-fake-finders.py`; a fully transparent picture): characterization, proven by breaks: a cancelled run applied (B3) and a failed run showing nothing (B5) were red; Ctrl+W without the close hook's cancel (B4) stayed green, since the progress dialog closes with the window and its close cancels; the clauses still without a case are in `docs/phase2-plan.md` (F). F4: a probe (a print in `rbg_message`) showed a failed load after the window closed still made and presented a dialog, into the closed window's own host; fixed (nothing shown or applied on a closed window, a cancel during loading wins over its result, the finder pointer read and written through atomics); `/0035/f4_closed_window` checks that no window is left, and could not see the old dialog (it went with the window): characterization, no red run possible. F5: `/0035/f5_model_buffers` red first (no dialog under a limit of 60000 bytes), green once the copy and the model's input and answer count together; the Plan's "What grows" says so. F6: the edge case "Cancel while the model loads", old/new. Also: a build run from its folder looked for the model only where it is installed, so JOD's `build` showed the item greyed with the option on; it now falls back to the model it was configured with (`as8_unavailable` says "with Remove Background" in that build with no hook, "without it" in a build without ONNX Runtime). JOD's `build` is configured against ONNX Runtime 1.23.2 in his home folder, its archive's SHA-256 checked first (`~/.local/opt/easel-dev-env.sh`, outside the repository); a fresh build without it compiles warning-free with ui-0035 and core-remove-bg green. Builds warning-free; full suites below in Check.
 
 ## Check
-(written by /sdd-check as its last step, about ten lines)
-- Date and commit: YYYY-MM-DD, `abc1234`
-- Tests: `meson test` N of N pass (the cases of this feature: M)
-- Mutants: K killed, C killed by crash (test gap), S survived, as `tools/mutate.sh` reports (seconds)
-- Warnings: 0
-- Scenarios: each AS with its test, marked C for a characterization with how it was proven (the mutant or the manual break that killed it)
-- Findings, each with how it was settled (fixed in T0NN, decided by the owner, left open and why)
+- Date and commit: 2026-11-09, on `987542b` with this feature uncommitted (`/sdd-check 0035`, then T009 for its findings).
+- Tests (through `tools/isolated.sh`): the build without ONNX Runtime 126 of 126; the build with it (the official 1.23.2 archive) 127 of 127, with `ml-finder` and all ten `/0035` cases; scale-2 runs 5 of 5. After T009's first full run, 7 language-start runs failed on the Preferences label they name per language (cs, it, pt, uk), which F1 had moved; brought to the new letters, those 7 passed, then the full runs above.
+- Mutants: `--core`: `473 mutants: 467 killed, 0 killed by crash (test gap), 0 inconclusive (no snapshot or skipped), 5 survived, 0 errors, 1 accepted in 178 s`; one survivor rewritten (below), then 0035's six: `6 mutants: 6 killed`. T009 changed no file under `src/core`, so `--core` was not run again. Lint 1317, 0 stale.
+- Warnings: 0 in both builds.
+- Budgets and versions: AS-2 and the 2 s, 3 s and 2 GB budgets were measured with ONNX Runtime 1.23.2 (the C library the app links, T006); ADR-0006's comparison used ONNX Runtime 1.31.1 (Python). IS-Net general-use, 4 threads.
+- Scenarios: AS-1 `/0035/as8_unavailable` (menus, both builds), 0018's and 0034's menu cases, `/0023-lang/as14_menu_mnemonics_differ` and 0023's catalog checks (the strings in every language); its held-button clause has no case (phase2-plan F). AS-2 `perf-0035` (C: a benchmark, broken by the fake model) and M1 (T007). AS-3 `/0035/as3_whole_and_selections`, `/0035/f2_floating_shown` (C, B1, B2), core `test-remove-bg`. AS-4 `/0035/as4_progress_and_cancel`, `/0035/f3_cancel_marked_and_close` (C, B3). AS-5 `/0035/as5_nothing`, `/0035/f3_failed_run_and_transparent` (C). AS-6 `/0035/as6_failures`, `/0035/f3_failed_run_and_transparent` (C, B5), `/0035/f5_model_buffers`. AS-7 `perf-0035` (C) + the Flatpak at the packaging release. AS-8 `/0035/as8_unavailable` in both builds.
+- Results: T001 to T005, T007 to T009 have theirs; T006 is a characterization (a measurement: no red run possible; its benchmark proven by a run with the fake model failing every picture); T009's F2, F3 and F4 cases are characterizations, proven by the breaks named in its Result except F4's (the old dialog went with the closed window: not observable).
+- Findings, each settled (JOD's verdicts, 2026-11-09):
+  - F1 (user-visible) Remove Background's mnemonic clashed in en, cs, de, it and uk, and 109 older clashes (of 118 counted per menu page) were in every menu and language: fixed in T009 with a test over every menu in every language.
+  - F2 T005's Result claimed ui cases for floating, stretched and free-form selections that `/0035` did not have: added in T009 (T005's text left as it was).
+  - F3 Clauses without a case: Cancel with a marked selection, Ctrl+W during a run, a run that fails partway, a fully transparent picture added in T009; the rest listed in `docs/phase2-plan.md` (F).
+  - F4 A failure after the window closed made a dialog for the closed window; the finder pointer crossed threads without atomics: both fixed in T009.
+  - F5 The model's own buffers were not counted against the memory limit: counted with the copy, in T009.
+  - F6 Cancel cannot stop the model's loading (0.2 s here, up to 1 s in the Flatpak): accepted by JOD as a documented limit, in Edge cases (old/new).
+- Survivors:
+  - survivor, accepted, REQ-0023-06 "Romanian's few stops before 19": 0023's, accepted at its check.
+  - survivor, accepted, REQ-0023-02 "An empty translation shows as nothing, not the English": 0023's, accepted at its check.
+  - survivor, accepted, REQ-0023-06 "A file with fewer forms than the rule runs off its end": 0023's, accepted at its check.
+  - survivor, accepted, REQ-0023-05 "A cut file is read past its end": 0023's, accepted at its check.
+  - survivor, rewritten, REQ-0035-05 "a flat answer removes everything": as first written it was the equivalent noted at T003 (no guard: 0/0 is NaN, nothing removed); rewritten so a flat answer removes every pixel, killed.
+  - survivor, accepted, B4 "Ctrl+W does not stop the work" (a hand break, not in the list): equivalent once the progress dialog shows, since the window's close closes the dialog and the dialog's close cancels; the close hook's own cancel matters only before the dialog shows, where `as4`'s quit-before-the-dialog case (through the same hook) was red at T005.
+- Verdict: clean after T009; proposed `Status: implemented`.

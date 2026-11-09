@@ -14,6 +14,7 @@
 #include "lasso.h"
 #include "lattice.h"
 #include "line.h"
+#include "remove-bg.h"
 #include "selection.h"
 #include "settings.h"
 #include "grid.h"
@@ -252,6 +253,8 @@ struct _EaselCanvas
   double pan_x, pan_y;    /* canvas point under the pointer when the pan began */
   double notch_acc;       /* touchpad scrolling not yet a whole notch */
   double pinch_base;      /* the pinch's scale at the last level change, 1 when it begins */
+  EaselZoomGate zoom_gate; /* the window's word on the wheel's and the pinch's zoom (REQ-0036-01) */
+  gpointer zoom_gate_data;
   gboolean anchor_pending;
   double anchor_h, anchor_v;  /* scroll offsets to apply once the new zoom is allocated */
   gboolean anchor_focus;      /* instead: the picture point focus_x, focus_y goes to the center of the view as allocated */
@@ -2592,6 +2595,96 @@ easel_canvas_stretch_skew_selection (EaselCanvas *self, int W, int H, int amount
   g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);
   gtk_widget_queue_draw (GTK_WIDGET (self));
   return TRUE;
+}
+
+gboolean
+easel_canvas_selection_copy (EaselCanvas *self, size_t max_bytes, uint32_t **px, uint8_t **mask, int *w, int *h)
+{
+  const uint32_t *src;
+  const uint8_t *shape;
+  size_t n;
+
+  *px = NULL;
+  *mask = NULL;
+  if (self->sel_state == 0 || self->img == NULL)
+    return FALSE;
+  if (self->sel_state == 2)
+    {
+      easel_selection_complete (&self->sel_float);
+      *w = self->sel_float.w;
+      *h = self->sel_float.h;
+      src = self->sel_float.px;
+      shape = self->sel_float.mask;
+    }
+  else
+    {
+      *w = self->sel_w;
+      *h = self->sel_h;
+      src = NULL;
+      shape = self->sel_mask;
+    }
+  n = (size_t) *w * (size_t) *h;
+  if (n * 5 > max_bytes || (*px = malloc (n * sizeof **px)) == NULL)
+    return TRUE;                                          /* no memory: *px is NULL */
+  if (shape != NULL && (*mask = malloc (n)) == NULL)
+    {
+      g_clear_pointer (px, free);
+      return TRUE;
+    }
+  if (src != NULL)
+    memcpy (*px, src, n * sizeof **px);
+  else
+    for (int y = 0; y < *h; y++)
+      memcpy (*px + (size_t) y * *w, self->img->px + (size_t) (self->sel_y + y) * self->img->width + self->sel_x,
+              (size_t) *w * sizeof **px);
+  if (shape != NULL)
+    memcpy (*mask, shape, n);
+  return TRUE;
+}
+
+EaselSelectionResult
+easel_canvas_remove_background_selection (EaselCanvas *self, const float *found, int side)
+{
+  gboolean lifted_here = FALSE;
+  EaselSelectionResult r;
+
+  if (self->sel_state == 0 || self->img == NULL)
+    return EASEL_SELECTION_NOTHING;
+  if (self->sel_state == 1)
+    {
+      if (easel_selection_lift (&self->sel_float, self->img, self->sel_x, self->sel_y, self->sel_w, self->sel_h, self->sel_mask,
+                                FALSE, hole_color (self), self->sel_lift_max) != EASEL_SELECTION_DONE)
+        {
+          g_signal_emit (self, signals[SIGNAL_SELECTION_FAILED], 0, 0);      /* REQ-0013-19's dialog; it stays marked */
+          return EASEL_SELECTION_NO_MEMORY;
+        }
+      self->sel_state = 2;
+      lifted_here = TRUE;
+      g_signal_emit (self, signals[SIGNAL_PENDING_CHANGED], 0);
+    }
+  r = easel_selection_remove_background (&self->sel_float, found, side, self->sel_lift_max);
+  if (r == EASEL_SELECTION_NOTHING)
+    {
+      if (lifted_here)
+        {
+          drop_float (self);                                  /* nothing to remove: marked again (REQ-0035-05) */
+          self->sel_state = 1;
+          g_signal_emit (self, signals[SIGNAL_PENDING_CHANGED], 0);
+        }
+      return r;
+    }
+  if (r != EASEL_SELECTION_DONE)
+    {
+      transform_refused (self, lifted_here, 9);
+      return r;
+    }
+  easel_path_free (&self->sel_path0);                         /* what is shown became its image, as after Black and White */
+  self->sel_w = self->sel_float.w;                         /* the size as shown (REQ-0035-02), */
+  self->sel_h = self->sel_float.h;                         /* which it already had */
+  self->sel_epoch++;
+  g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);
+  gtk_widget_queue_draw (GTK_WIDGET (self));
+  return r;
 }
 
 gboolean
@@ -5365,6 +5458,26 @@ easel_canvas_is_panning (EaselCanvas *self)
   return self->panning;
 }
 
+void
+easel_canvas_set_zoom_gate (EaselCanvas *self, EaselZoomGate gate, gpointer data)
+{
+  self->zoom_gate = gate;
+  self->zoom_gate_data = data;
+}
+
+static gboolean
+zoom_gate_open (EaselCanvas *self)
+{
+  return self->zoom_gate == NULL || self->zoom_gate (self->zoom_gate_data);
+}
+
+gboolean
+easel_canvas_is_holding (EaselCanvas *self)
+{
+  return easel_canvas_is_stroking (self) || self->panning || self->resizing != EASEL_HANDLE_NONE || self->cancelled_button != 0
+         || self->action_button != 0 || easel_canvas_is_key_held (self);
+}
+
 static GtkAdjustment *
 adjustment (EaselCanvas *self, GtkOrientation orientation)
 {
@@ -5837,6 +5950,11 @@ easel_canvas_buttons_released (EaselCanvas *self)
     easel_canvas_end_stroke (self);
   if (self->resizing != EASEL_HANDLE_NONE)
     easel_canvas_release (self, self->resize_button);
+  if (self->panning)
+    {
+      self->panning = FALSE;                     /* Pan's drag ends too, so that zooming is not held off for good (REQ-0036-02) */
+      update_cursor (self);
+    }
   self->cancelled_button = 0;
 }
 
@@ -6791,12 +6909,14 @@ zoom_around (EaselCanvas *self, int zoom, double view_x, double view_y)
   GtkAdjustment *h = adjustment (self, GTK_ORIENTATION_HORIZONTAL);
   GtkAdjustment *v = adjustment (self, GTK_ORIENTATION_VERTICAL);
   double scale = easel_canvas_get_scale (self);
+  /* A zoom whose scroll still waits for the allocation (several notches or commands before a redraw): the view is where that scroll
+     will put it, not where the adjustments, still at the zoom before, say (REQ-0036-04). */
+  gboolean waiting = self->anchor_pending && !self->anchor_focus;
+  double sh = waiting ? self->anchor_h : gtk_adjustment_get_value (h), sv = waiting ? self->anchor_v : gtk_adjustment_get_value (v);
 
   commit_zoom (self, zoom,
-               easel_view_anchor (gtk_adjustment_get_value (h), view_x, self->zoom, zoom, self->img->width, scale,
-                                  gtk_adjustment_get_page_size (h)),
-               easel_view_anchor (gtk_adjustment_get_value (v), view_y, self->zoom, zoom, self->img->height, scale,
-                                  gtk_adjustment_get_page_size (v)));
+               easel_view_anchor (sh, view_x, self->zoom, zoom, self->img->width, scale, gtk_adjustment_get_page_size (h)),
+               easel_view_anchor (sv, view_y, self->zoom, zoom, self->img->height, scale, gtk_adjustment_get_page_size (v)));
 }
 
 void
@@ -6849,7 +6969,7 @@ easel_canvas_zoom_at (EaselCanvas *self, int notches, double view_x, double view
 {
   int zoom;
 
-  if (self->img == NULL || self->tool != EASEL_TOOL_PAN)
+  if (self->img == NULL || easel_canvas_is_holding (self))
     return;
   zoom = easel_view_zoom_step (self->zoom, notches);
   if (zoom == self->zoom)
@@ -6968,9 +7088,15 @@ easel_canvas_pinch (EaselCanvas *self, double scale, double view_x, double view_
 {
   int step;
 
-  /* Like Ctrl+wheel, the pinch zooms only in Pan mode (REQ-0001-17, REQ-0004-08). */
-  if (self->img == NULL || self->tool != EASEL_TOOL_PAN || self->pinch_base <= 0)
+  /* With every tool, as Ctrl+wheel (REQ-0036-01); while something is held nothing zooms, and the count starts again from the scale
+     at the release (REQ-0036-02). */
+  if (self->img == NULL || self->pinch_base <= 0 || !zoom_gate_open (self))
     return;
+  if (easel_canvas_is_holding (self))
+    {
+      self->pinch_base = scale;
+      return;
+    }
   step = easel_view_pinch (&self->pinch_base, scale, self->zoom);
   if (step != 0)
     easel_canvas_zoom_at (self, step, view_x, view_y);
@@ -7002,10 +7128,18 @@ easel_canvas_wheel (EaselCanvas *self, GdkModifierType state, double notches_dy,
 {
   int notches;
 
-  /* Without Ctrl, or with Ctrl in another tool, the wheel scrolls as usual (REQ-0001-15, REQ-0001-17), also during a shape
-     drag, whose end then moves at the next pointer motion (REQ-0010-21). */
-  if (!(state & GDK_CONTROL_MASK) || self->tool != EASEL_TOOL_PAN)
-    return GDK_EVENT_PROPAGATE;
+  /* Without Ctrl, or while something is held, the wheel scrolls as usual (REQ-0001-15, REQ-0036-02), also during a shape drag, whose
+     end then moves at the next pointer motion (REQ-0010-21); with Ctrl it zooms with every tool (REQ-0036-01). */
+  if (!(state & GDK_CONTROL_MASK) || easel_canvas_is_holding (self))
+    {
+      self->notch_acc = 0;                     /* a touchpad's partial notch is dropped */
+      return GDK_EVENT_PROPAGATE;
+    }
+  if (!zoom_gate_open (self))
+    {
+      self->notch_acc = 0;                     /* a dialog, a menu or a popover is open: nothing (REQ-0036-01) */
+      return GDK_EVENT_STOP;
+    }
   notches = easel_view_take_notches (&self->notch_acc, notches_dy);
   if (notches != 0)
     easel_canvas_zoom_at (self, notches, view_x, view_y);

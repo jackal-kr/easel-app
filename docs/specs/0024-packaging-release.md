@@ -50,6 +50,8 @@ Easel runs only from a build folder: it has no icon, no entry in the app grid, n
 - Under Flatpak the dialog may start where the desktop chooses, not in the picture's folder; the suggested name holds.
 - A new alpha means installing the new bundle again, as there is no repository.
 
+- (Note, Remove background, 2026-11-09, JOD.) Remove background's model (ADR-0006, IS-Net, 179 MB) and its runtime may ship as a separate download or a Flatpak extension, to keep the base app small; decided at this release, together with the permission for the weights (`docs/reference/0035/ask-dis-authors.md`). Without them the app builds and runs, the item greyed (REQ-0035-10).
+
 ## Out of scope
 - AppImage; Flathub; other architectures; a package repository or automatic updates; signing beyond the checksums; a website; a build in CI (`docs/engineering.md`).
 

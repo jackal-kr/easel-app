@@ -1089,7 +1089,7 @@ msgid "Flip _Vertical"
 msgstr "Отразить по _вертикали"
 
 msgid "_Rotate"
-msgstr "По_вернуть"
+msgstr "_Повернуть"
 
 msgid "Rotate _90°"
 msgstr "Повернуть на _90°"
@@ -1104,10 +1104,10 @@ msgid "Stretch and _Skew…"
 msgstr "Растянуть и _наклонить…"
 
 msgid "_Invert Colors"
-msgstr "_Обратить цвета"
+msgstr "Обратить _цвета"
 
 msgid "_Clear Image"
-msgstr "_Очистить изображение"
+msgstr "Очи_стить изображение"
 
 msgid "Grid…"
 msgstr "Сетка…"
@@ -1116,24 +1116,24 @@ msgid "Show Thumbnail"
 msgstr "Показать миниатюру"
 
 msgid "Cu_t"
-msgstr "Выр_езать"
+msgstr "В_ырезать"
 
 msgid "_Copy"
 msgstr "_Копировать"
 
 msgid "_Paste"
-msgstr "Вст_авить"
+msgstr "_Вставить"
 
-msgid "_Clear Selection"
-msgstr "_Очистить выделение"
+msgid "C_lear Selection"
+msgstr "Оч_истить выделение"
 
 msgid "Select _All"
-msgstr "Выделить _всё"
+msgstr "Вы_делить всё"
 
-msgid "Copy _To…"
-msgstr "Копировать _в…"
+msgid "Cop_y To…"
+msgstr "Копирова_ть в…"
 
-msgid "Paste as Plain _Text"
+msgid "Pa_ste as Plain Text"
 msgstr "Вставить как простой _текст"
 
 msgid "Paste _From…"
@@ -1163,16 +1163,16 @@ msgstr "_Печать…"
 msgid "_Edit"
 msgstr "П_равка"
 
-msgid "_Preferences"
+msgid "P_references"
 msgstr "Пара_метры"
 
 msgid "_Keyboard Shortcuts"
-msgstr "_Клавиатурные сокращения"
+msgstr "К_лавиатурные сокращения"
 
 msgid "_Help"
 msgstr "Спр_авка"
 
-msgid "_About Easel"
+msgid "A_bout Easel"
 msgstr "О _Easel"
 
 msgid "_Quit"
@@ -1261,3 +1261,24 @@ msgstr "Не удалось преобразовать изображение"
 
 msgid "Could Not Convert the Selection"
 msgstr "Не удалось преобразовать выделение"
+
+msgid "R_emove Background"
+msgstr "_Удалить фон"
+
+msgid "Remove Background (Not in This Copy)"
+msgstr "Удалить фон (нет в этой копии)"
+
+msgid "Removing the Background"
+msgstr "Удаление фона"
+
+msgid "Nothing to Remove"
+msgstr "Нечего удалять"
+
+msgid "No background was found to remove."
+msgstr "Фон для удаления не найден."
+
+msgid "Could Not Remove the Background"
+msgstr "Не удалось удалить фон"
+
+msgid "Background removal is not available."
+msgstr "Удаление фона недоступно."

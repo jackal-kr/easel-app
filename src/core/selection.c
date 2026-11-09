@@ -1235,6 +1235,27 @@ easel_selection_black_white (EaselFloat *f, EaselBw how, size_t max_bytes)
   return replace_image (f, f->w, f->h, max_bytes, make_black_white, &how);
 }
 
+/* Given pixels of the shown size, and the shape as it is (Remove background). */
+static bool
+make_given (const EaselFloat *f, uint32_t *npx, uint8_t *nmask, void *data)
+{
+  size_t n = (size_t) f->w * (size_t) f->h;
+
+  memcpy (npx, data, n * sizeof *npx);
+  if (f->mask != NULL)
+    memcpy (nmask, f->mask, n);
+  else
+    memset (nmask, 1, n);
+  return true;
+}
+
+EaselSelectionResult
+easel_selection_replace_image (EaselFloat *f, const uint32_t *px, size_t max_bytes)
+{
+  easel_selection_complete (f);
+  return replace_image (f, f->w, f->h, max_bytes, make_given, (void *) px);
+}
+
 EaselSelectionResult
 easel_selection_paste (EaselFloat *f, const EaselImage *pic, int x, int y, size_t max_bytes)
 {
