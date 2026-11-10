@@ -15,7 +15,7 @@ enum { ROBUST_K = 3, ROBUST_ROUNDS = 3, LINE_DARK_MARGIN = 25, LINE_BRIGHT_MARGI
 /* (c') The ring's color clusters (2026-11-10): at most CL_K, each CL_SHARE % of the ring or more. */
 enum { CL_K = 6, CL_SHARE = 10 };
 /* (h) The stability check (2026-11-10): above STAB_FROM the kept share of the copy is taken at STAB_LOW and at the automatic
-   tolerance, and only if it more than halves, at each of STAB_STEPS in turn. */
+   tolerance, and only if it more than halves, at each of STAB_STEPS in turn, while they keep half of STAB_LOW's. */
 enum { STAB_FROM = 7, STAB_LOW = 4 };
 static const int STAB_STEPS[] = { 7, 10, 14 };
 /* The fringe (REQ-0035-03 g): how far from the blend's line a mixed pixel may lie, as a part of the line's length; the step in color
@@ -715,12 +715,11 @@ easel_rbg_new (const uint32_t *px, const uint8_t *mask, int w, int h, size_t max
   if (r->line_ok && r->line_mad > (r->residual < 64 ? 64 : r->residual) * (r->residual < 64 ? 64 : r->residual))
     r->line_ok = false;
   /* (h) The stability check (REQ-0035-04): where the ring gives a high automatic tolerance, it may remove the subject with the
-     background (a busy or grainy border); the tolerance becomes the last step before the copy's kept share more than halves. */
+     background (a busy or grainy border); the tolerance becomes the largest step that keeps at least half of the copy's share at 4. */
   r->ring_tol = r->auto_tol;
   if (r->auto_tol > STAB_FROM)
     {
-      size_t low, top, prev;
-      int last = STAB_LOW, chosen = r->auto_tol;
+      size_t low, top;
 
       easel_rbg_label (r, STAB_LOW, NULL);
       low = kept_cells (r);
@@ -728,23 +727,17 @@ easel_rbg_new (const uint32_t *px, const uint8_t *mask, int w, int h, size_t max
       top = kept_cells (r);
       if (top * 2 < low)
         {
-          prev = low;
+          /* the largest step that keeps at least half of what STAB_LOW keeps (2026-11-10, T005: on JOD's selfie the share fell
+             0.76, 0.53, 0.35, 0.19 from 4 to 12, never halving in one step; before: the step before the first that halved it) */
+          int chosen = STAB_LOW;
+
           for (size_t i = 0; i < sizeof STAB_STEPS / sizeof STAB_STEPS[0] && STAB_STEPS[i] < r->auto_tol; i++)
             {
-              size_t k;
-
               easel_rbg_label (r, STAB_STEPS[i], NULL);
-              k = kept_cells (r);
-              if (k * 2 < prev)
-                {
-                  chosen = last;
-                  break;
-                }
-              prev = k;
-              last = STAB_STEPS[i];
+              if (kept_cells (r) * 2 < low)
+                break;
+              chosen = STAB_STEPS[i];
             }
-          if (chosen == r->auto_tol && top * 2 < prev)
-            chosen = last;
           r->auto_tol = chosen;
         }
     }

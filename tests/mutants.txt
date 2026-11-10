@@ -12881,15 +12881,13 @@ enum { STAB_FROM = 7, STAB_LOW = 4 };
 --- replace
 enum { STAB_FROM = 20, STAB_LOW = 4 };
 
-=== REQ-0035-04 the stability check picks the step before the collapse, not the collapsed one
+=== REQ-0035-04 the stability check keeps the steps that hold half of the share at 4
 file: src/core/remove-bg.c
 test: core-remove-bg
 --- find
-                  chosen = last;
-                  break;
+              chosen = STAB_STEPS[i];
 --- replace
-                  chosen = STAB_STEPS[i];
-                  break;
+              chosen = STAB_LOW;
 
 === REQ-0035-04 the stability check walks only when the kept share more than halved
 file: src/core/remove-bg.c
@@ -12899,13 +12897,13 @@ test: core-remove-bg
 --- replace
       if (top * 2 <= low * 2)
 
-=== REQ-0035-04 the stability check takes a collapse as more than half, not any drop
+=== REQ-0035-04 the stability check compares with half of the share at 4, not any drop
 file: src/core/remove-bg.c
 test: core-remove-bg
 --- find
-              if (k * 2 < prev)
+              if (kept_cells (r) * 2 < low)
 --- replace
-              if (k < prev)
+              if (kept_cells (r) < low)
 
 === REQ-0035-03 labels cut short by a cancel are made again, not reused
 file: src/core/remove-bg.c

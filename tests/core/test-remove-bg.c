@@ -327,6 +327,29 @@ stability (void)
   fprintf (stderr, "stability, held: from the ring %d, automatic %d\n", easel_rbg_ring_tolerance (r), easel_rbg_auto_tolerance (r));
   CHECK (easel_rbg_ring_tolerance (r) > 7 && easel_rbg_auto_tolerance (r) == easel_rbg_ring_tolerance (r));
   easel_rbg_free (r);
+  /* A gradual loss, as on JOD's selfie (2026-11-10, T005 of Remove Background: pieces): grain along the top and bottom edges sets a
+     high tolerance; on a plain backdrop four disks lie about 22, 34, 46 and 76 delta-E from it, so each step of 4, 7, 10, 14 loses one
+     (each keeps more than half of the step before, all of them together less than half of 4). The tolerance is the largest step
+     that keeps at least half of what 4 keeps: 7, which keeps three disks (not 14, which keeps one). */
+  for (int y = 0; y < 200; y++)
+    for (int x = 0; x < 300; x++)
+      {
+        uint32_t i = (uint32_t) (y * 300 + x), h = i * 2654435761u;
+
+        p[i] = y < 8 || y >= 192 ? 0xFF000000u | (uint32_t) (152 + (int) (h >> 26)) << 16 | (uint32_t) (152 + (int) (h >> 9 & 63)) << 8
+                                     | (uint32_t) (122 + (int) ((h * 2246822519u) >> 26))
+                                 : 0xFFB8B89Au;
+      }
+  disk (p, 300, 75, 60, 40, 0xFF7F7F6Bu);
+  disk (p, 300, 225, 60, 36, 0xFF616151u);
+  disk (p, 300, 75, 140, 33, 0xFF45453Au);
+  disk (p, 300, 225, 140, 36, 0xFF000000u);
+  r = easel_rbg_new (p, NULL, 300, 200, BIG);
+  fprintf (stderr, "stability, gradual: from the ring %d, automatic %d\n", easel_rbg_ring_tolerance (r), easel_rbg_auto_tolerance (r));
+  CHECK (easel_rbg_ring_tolerance (r) > 14 && easel_rbg_auto_tolerance (r) == 7);
+  easel_rbg_free (r);
+  run (p, NULL, 300, 200, AUTO, d);
+  CHECK (d[60 * 300 + 225] == 0xFF616151u && d[140 * 300 + 75] == 0xFF45453Au && d[140 * 300 + 225] == 0xFF000000u);
   free (p);
   free (d);
 }
