@@ -45,6 +45,17 @@ Input: feature number or name from `docs/specs/INDEX.md`.
    truth is known by construction, away from the edges, and its budgets are set by JOD in an ADR (0035).
    A look is judged in the app's own layout at real size before it is accepted, not on a sheet blown up (0029); a scenario that
    names a window or area size is checked against the sizes the window can reach (0025).
+   A rule about an input device is checked against what the app receives from that device (0036: a second finger, on a canvas that
+   reads mouse buttons only); a new control in a shared bar is shown to JOD as a mock-up in the real window before acceptance (0036).
+   Third-party data a feature ships (weights, fonts, palettes) has its licence, and its training data's, settled before the Plan (0035).
+   A number field is specified as the app's existing field, by reference, unless JOD asks otherwise (0035).
+   A rule that names "a region" or "a piece" is tried on the smallest picture with two regions of the same kind touching (0037).
+   An outcome the owner expects on a test picture is run on a prototype before it becomes a scenario (0038: the face a shirt stroke
+   could not reach); a rule that repeats an image step is tried once and repeated on the same pictures, the difference shown (0035).
+   An input the feature remembers and replays on a changed model (presses kept across a Tolerance) is checked at the model's extreme
+   settings (0037: at Tolerance 1 one press removed everything).
+   A rule that leaves a value the user cannot see (a color under alpha 0) is checked against every tool that reads that value (0035,
+   ADR-0008: Fill filled patches of a removed backdrop).
 4. Take behavior from XP Paint knowledge, jspaint (behavior, not code), JOD's descriptions and `docs/reference`; never from the
    source code of an existing implementation. If behavior is unknown or has several reasonable answers, do not decide:
    add `- [NEEDS CLARIFICATION: question and the options you see]`. A number in a requirement, a scenario or an edge case that comes

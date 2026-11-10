@@ -70,6 +70,14 @@ Precondition: `Status: accepted` in the spec. Otherwise stop and say so.
    - a test seam (a hook, an environment variable, a fake) gets at least one test that goes around it through the user's path, or the
      Plan names the manual check that does (0023: the language hook hid a wrong plural rule);
    - a call that starts another process or opens a launcher gets its two-line probe in the task that adds it (0021: "Could Not Open Help" at M1);
+   - a rule over a set of strings (mnemonics) gets its test before the strings change, and a translated string a test names is found
+     with grep before it changes (0035);
+   - a file the app finds at its install path also has a path for the uninstalled build, and a build's dependency path is meson's own
+     `pkg_config_path` (0035);
+   - a rule with a rounding in it gets one test value between two steps (0035: "2 per whole delta-E" against "1 per half");
+   - a method judged with a margin (shares away from an edge) also gets one test with no margin on a picture whose truth is exact (0035);
+   - a feature whose output another tool reads gets a ui test on the real path through that tool: the real button, then the next tool
+     (0035: OK kept nothing; Fill after a removal filled patches; both passed every core test);
    - a layout that holds translated text is checked over every real language, the long test language being a guard, not a proof (0023);
    - a mutant is run against the test that can observe its change; one with no visible effect in the window is pointed at the core test and noted as equivalent for the ui;
    - a survivor is one line in the Check section ("survivor, accepted, reason") and becomes a task only if it shows a user-visible bug;

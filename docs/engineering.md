@@ -177,6 +177,19 @@ From feature 0002 (`src/core/history`):
 - **Scrolling:** a ui test of anything drawn for the part in view scrolls and renders without asking the canvas to redraw (`wait_for_next_frame` queues one, which hides a missing redraw); `render_as_is` waits for the layout only.
 - **Timing:** assert the path that started the work, not a count of frames; an idle loses to a pending frame.
 - **Gates:** build warning-free, all tests green after each task; `tools/spec.sh lint` clean before a spec is accepted (`tools/spec.sh lint --names NNNN` additionally fails when a test named in that spec's scenario-to-test map is not registered in `tests/`; `/sdd-check` runs it, the plain lint does not, because a Plan names its tests before they are written).
+- **Tuning an image method** (retro 0035-0038, 2026-11-10):
+  - The pictures it is tuned on and the pictures it is judged on are separate sets; a locked set is run once, at the end, and is then
+    spent: it is never tuned on, and a new blind check needs new pictures (JOD's 24 photos, split 12 and 12).
+  - A threshold is re-tuned whenever the measure under it changes (the cube root's fix moved every delta-E), and a rule tuned on cached
+    measurements must not feed back into them: decouple the estimate, then measure again with the rule in place.
+  - A floor names what must be seen in the picture (the face kept), not a number; "the selfie at 12" passed as a number and lost the
+    face.
+  - A check meant for a collapse is also tried on a slow loss and compares with the start, not with the step before (the selfie's kept
+    share fell 0.76, 0.53, 0.35, 0.19, never halving in one step).
+  - A new background model is tried first on the pale subject and the line art (the white dog, the twins), with its guard from the start:
+    it judges only where it explains the border better than the smooth surface.
+  - An image feature is not implemented until the owner has used it on his own pictures in the app: JOD's clips found three bugs the
+    suite missed (the selfie opening at 12, a remembered press removing everything at Tolerance 1, Fill patching a removed backdrop).
 - **Later:** CI in a container or the Flatpak SDK (libadwaita >= 1.8 needed); screenshot checks only if they prove worth the upkeep.
 
 ## Performance budgets
