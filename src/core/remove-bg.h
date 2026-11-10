@@ -55,5 +55,7 @@ size_t easel_rbg_bytes (const EaselRbg *r);
 int64_t easel_rbg_residual (const EaselRbg *r);
 /* Test hook: the median (delta-E x 64) the automatic tolerance comes from: the surface's, or the clusters' where they judge. */
 int64_t easel_rbg_judged (const EaselRbg *r);
+/* Test hook: the automatic tolerance from the ring's median, before the stability check (REQ-0035-04). */
+int easel_rbg_ring_tolerance (const EaselRbg *r);
 int32_t easel_rbg_lab_f (const EaselRbg *r, int t);
 void easel_rbg_lab (const EaselRbg *r, int red, int green, int blue, int16_t out[3]);

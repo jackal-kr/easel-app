@@ -12795,3 +12795,45 @@ test: core-remove-bg
               r->auto_tol = auto_from (r->judged);
 --- replace
               r->auto_tol = auto_from (r->residual);
+
+=== REQ-0035-04 the stability check runs above 7
+file: src/core/remove-bg.c
+test: core-remove-bg
+--- find
+enum { STAB_FROM = 7, STAB_LOW = 4 };
+--- replace
+enum { STAB_FROM = 20, STAB_LOW = 4 };
+
+=== REQ-0035-04 the stability check picks the step before the collapse, not the collapsed one
+file: src/core/remove-bg.c
+test: core-remove-bg
+--- find
+                  chosen = last;
+                  break;
+--- replace
+                  chosen = STAB_STEPS[i];
+                  break;
+
+=== REQ-0035-04 the stability check walks only when the kept share more than halved
+file: src/core/remove-bg.c
+test: core-remove-bg
+--- find
+      if (top * 2 < low)
+--- replace
+      if (top * 2 <= low * 2)
+
+=== REQ-0035-04 the stability check takes a collapse as more than half, not any drop
+file: src/core/remove-bg.c
+test: core-remove-bg
+--- find
+              if (k * 2 < prev)
+--- replace
+              if (k < prev)
+
+=== REQ-0035-03 labels cut short by a cancel are made again, not reused
+file: src/core/remove-bg.c
+test: core-remove-bg
+--- find
+  if (r->labeled && r->tolerance == tolerance)
+--- replace
+  if (r->tolerance == tolerance)

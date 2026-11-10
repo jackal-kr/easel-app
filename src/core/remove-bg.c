@@ -14,6 +14,10 @@ enum { NONE = 0, BACK = 1, SUBJECT = 2, ABSENT = 3 };
 enum { ROBUST_K = 3, ROBUST_ROUNDS = 3, LINE_DARK_MARGIN = 25, LINE_BRIGHT_MARGIN = 400, LINE_MIN_CHROMA = 12 };
 /* (c') The ring's color clusters (2026-11-10): at most CL_K, each CL_SHARE % of the ring or more. */
 enum { CL_K = 6, CL_SHARE = 10 };
+/* (h) The stability check (2026-11-10): above STAB_FROM the kept share of the copy is taken at STAB_LOW and at the automatic
+   tolerance, and only if it more than halves, at each of STAB_STEPS in turn. */
+enum { STAB_FROM = 7, STAB_LOW = 4 };
+static const int STAB_STEPS[] = { 7, 10, 14 };
 /* The fringe (REQ-0035-03 g): how far from the blend's line a mixed pixel may lie, as a part of the line's length; the step in color
    below which the color inward has settled, in quarters of the tolerance; its rounds, and how far inward it looks, in pixels. Chosen on the eagle photo,
    the six test pictures and the five wallpapers (docs/reference/0035/fringe-sheet.png). */
@@ -46,7 +50,9 @@ struct EaselRbg
   int64_t judged;                  /* the median the automatic tolerance comes from: the surface's, or the clusters' where they judge */
   int64_t worst;                   /* the ring's 90th percentile distance to the background (delta-E x 64): the hint */
   int auto_tol;
+  int ring_tol;                    /* the automatic tolerance from the ring, before the stability check */
   int tolerance;                   /* the labels' */
+  bool labeled;                    /* the labels are complete for tolerance */
   uint8_t *marks;                  /* the fringe's pixels to remove in a round, a bit each */
   size_t bytes;
 };
@@ -530,6 +536,17 @@ easel_rbg_free (EaselRbg *r)
   free (r);
 }
 
+/* The copy's cells the labels keep (the stability check). */
+static size_t
+kept_cells (const EaselRbg *r)
+{
+  size_t k = 0;
+
+  for (size_t c = 0; c < r->n; c++)
+    k += r->label[c] == SUBJECT;
+  return k;
+}
+
 EaselRbg *
 easel_rbg_new (const uint32_t *px, const uint8_t *mask, int w, int h, size_t max_bytes)
 {
@@ -690,6 +707,40 @@ easel_rbg_new (const uint32_t *px, const uint8_t *mask, int w, int h, size_t max
      the surface fits better (a gradient between colors, line art on it) a subject of the backdrop's own colors would go with it. */
   if (r->line_ok && r->line_mad > (r->residual < 64 ? 64 : r->residual) * (r->residual < 64 ? 64 : r->residual))
     r->line_ok = false;
+  /* (h) The stability check (REQ-0035-04): where the ring gives a high automatic tolerance, it may remove the subject with the
+     background (a busy or grainy border); the tolerance becomes the last step before the copy's kept share more than halves. */
+  r->ring_tol = r->auto_tol;
+  if (r->auto_tol > STAB_FROM)
+    {
+      size_t low, top, prev;
+      int last = STAB_LOW, chosen = r->auto_tol;
+
+      easel_rbg_label (r, STAB_LOW, NULL);
+      low = kept_cells (r);
+      easel_rbg_label (r, r->auto_tol, NULL);
+      top = kept_cells (r);
+      if (top * 2 < low)
+        {
+          prev = low;
+          for (size_t i = 0; i < sizeof STAB_STEPS / sizeof STAB_STEPS[0] && STAB_STEPS[i] < r->auto_tol; i++)
+            {
+              size_t k;
+
+              easel_rbg_label (r, STAB_STEPS[i], NULL);
+              k = kept_cells (r);
+              if (k * 2 < prev)
+                {
+                  chosen = last;
+                  break;
+                }
+              prev = k;
+              last = STAB_STEPS[i];
+            }
+          if (chosen == r->auto_tol && top * 2 < prev)
+            chosen = last;
+          r->auto_tol = chosen;
+        }
+    }
   /* The hint (REQ-0035-04): the ring's 90th percentile distance to the background as judged (the surface, the line, the clusters). */
   {
     int stride = ring_stride (r), count = 0;
@@ -754,6 +805,12 @@ easel_rbg_lab (const EaselRbg *r, int red, int green, int blue, int16_t out[3])
   to_lab (r, red & 0xFF, green & 0xFF, blue & 0xFF, out);
 }
 
+int
+easel_rbg_ring_tolerance (const EaselRbg *r)
+{
+  return r->ring_tol;
+}
+
 int64_t
 easel_rbg_judged (const EaselRbg *r)
 {
@@ -797,6 +854,9 @@ easel_rbg_label (EaselRbg *r, int tolerance, const volatile int *cancel)
     tolerance = EASEL_RBG_TOLERANCE_MIN;
   if (tolerance > EASEL_RBG_TOLERANCE_MAX)
     tolerance = EASEL_RBG_TOLERANCE_MAX;
+  if (r->labeled && r->tolerance == tolerance)
+    return EASEL_RBG_DONE;                     /* the same labels again (the stability check's last) */
+  r->labeled = false;
   r->tolerance = tolerance;
   t2 = (int64_t) tolerance * 64 * tolerance * 64;
 
@@ -928,6 +988,7 @@ easel_rbg_label (EaselRbg *r, int tolerance, const volatile int *cancel)
               r->label[c] = other;
           }
     }
+  r->labeled = true;
   return EASEL_RBG_DONE;
 }
 

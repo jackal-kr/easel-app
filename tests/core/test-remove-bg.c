@@ -202,10 +202,10 @@ noisy_border (void)
   disk (p, 300, 150, 100, 50, RED);
   r = easel_rbg_new (p, NULL, 300, 200, BIG);
   m = easel_rbg_judged (r);                     /* the surface's median, or the clusters' where they judge (2026-11-10) */
-  fprintf (stderr, "noisy border: median %.2f delta-E (surface %.2f), automatic %d\n", m / 64.0, easel_rbg_residual (r) / 64.0,
-           easel_rbg_auto_tolerance (r));
+  fprintf (stderr, "noisy border: median %.2f delta-E (surface %.2f), from the ring %d, automatic %d\n", m / 64.0,
+           easel_rbg_residual (r) / 64.0, easel_rbg_ring_tolerance (r), easel_rbg_auto_tolerance (r));
   CHECK (m > 4 * 64 && m <= easel_rbg_residual (r));
-  CHECK (easel_rbg_auto_tolerance (r) == (int) (5 + 3 * (m - 195) / 64 > 20 ? 20 : 5 + 3 * (m - 195) / 64));
+  CHECK (easel_rbg_ring_tolerance (r) == (int) (5 + 3 * (m - 195) / 64 > 20 ? 20 : 5 + 3 * (m - 195) / 64));
   easel_rbg_free (r);
   free (p);
 }
@@ -286,6 +286,49 @@ complex_hint (void)
   CHECK (easel_rbg_complex (r));
   easel_rbg_free (r);
   free (p);
+}
+
+/* REQ-0035-04's stability check (2026-11-10): a pale disk on a coarse colour grain; at the automatic tolerance from the ring the kept
+   share of the copy collapses (the disk goes with the grain), so the automatic tolerance becomes the last step of 4, 7, 10, 14 before
+   the share more than halves, and the disk is kept. A picture whose kept share holds (a blue disk on a finer grain) keeps the ring's. */
+static void
+stability (void)
+{
+  uint32_t *p = picture (300, 200, 0), *d = picture (300, 200, 0);
+  EaselRbg *r;
+  int a;
+
+  for (uint32_t i = 0; i < 300 * 200; i++)
+    {
+      uint32_t h = i * 2654435761u;
+
+      p[i] = 0xFF000000u | (uint32_t) (120 + (int) (h >> 25)) << 16 | (uint32_t) (120 + (int) (h >> 9 & 127)) << 8
+             | (uint32_t) (90 + (int) ((h * 2246822519u) >> 25));
+    }
+  disk (p, 300, 150, 100, 50, 0xFFE6E6E1u);
+  r = easel_rbg_new (p, NULL, 300, 200, BIG);
+  a = easel_rbg_auto_tolerance (r);
+  fprintf (stderr, "stability: judged %.2f delta-E, automatic %d\n", easel_rbg_judged (r) / 64.0, a);
+  CHECK (easel_rbg_ring_tolerance (r) > 14);
+  CHECK (a == 7);                         /* the copy's kept share: about half at 4 and at 7, then it more than halves at 10 */
+  easel_rbg_free (r);
+  run (p, NULL, 300, 200, AUTO, d);
+  CHECK (d[100 * 300 + 150] == 0xFFE6E6E1u && d[100 * 300 + 110] == 0xFFE6E6E1u);
+  /* a finer grain and a blue disk far from it: the kept share holds, so the tolerance stays the ring's */
+  for (uint32_t i = 0; i < 300 * 200; i++)
+    {
+      uint32_t h = i * 2654435761u;
+
+      p[i] = 0xFF000000u | (uint32_t) (152 + (int) (h >> 26)) << 16 | (uint32_t) (152 + (int) (h >> 9 & 63)) << 8
+             | (uint32_t) (122 + (int) ((h * 2246822519u) >> 26));
+    }
+  disk (p, 300, 150, 100, 50, 0xFF0000FFu);
+  r = easel_rbg_new (p, NULL, 300, 200, BIG);
+  fprintf (stderr, "stability, held: from the ring %d, automatic %d\n", easel_rbg_ring_tolerance (r), easel_rbg_auto_tolerance (r));
+  CHECK (easel_rbg_ring_tolerance (r) > 7 && easel_rbg_auto_tolerance (r) == easel_rbg_ring_tolerance (r));
+  easel_rbg_free (r);
+  free (p);
+  free (d);
 }
 
 /* REQ-0035-04's automatic tolerance from the clusters where they judge (2026-11-10, the blind benchmark's rule 1): six vertical
@@ -636,7 +679,6 @@ large_shape (void)
   free (m);
 }
 
-
 static size_t
 heap_in_use (void)
 {
@@ -665,6 +707,17 @@ memory_and_cancel (void)
   CHECK (easel_rbg_label (r, 5, &stop) == EASEL_RBG_CANCELLED || easel_rbg_label (r, 5, NULL) == EASEL_RBG_DONE);
   CHECK (easel_rbg_label (r, 5, NULL) == EASEL_RBG_DONE);
   CHECK (easel_rbg_result (r, p, NULL, d, NULL, &stop) == EASEL_RBG_CANCELLED);
+  {
+    /* labels cut short by a cancel are made again for the same tolerance, not reused (2026-11-10, since a repeat is skipped) */
+    uint32_t *e = picture (600, 400, 0);
+
+    CHECK (easel_rbg_label (r, 6, &stop) == EASEL_RBG_CANCELLED);
+    CHECK (easel_rbg_label (r, 6, NULL) == EASEL_RBG_DONE);
+    CHECK (easel_rbg_result (r, p, NULL, d, NULL, NULL) == EASEL_RBG_DONE);
+    run (p, NULL, 600, 400, 6, e);
+    CHECK (memcmp (d, e, 600 * 400 * 4) == 0);
+    free (e);
+  }
   easel_rbg_free (r);
   free (p);
   free (d);
@@ -679,6 +732,7 @@ main (void)
   RUN (noisy_border);
   RUN (complex_hint);
   RUN (cluster_tolerance);
+  RUN (stability);
   RUN (green_backdrop);
   RUN (line_guards);
   RUN (two_colours);
