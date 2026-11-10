@@ -85,6 +85,10 @@ Order suggestion: A and B first, C after the graphics path audit, D with file in
 ## From JOD's use, 2026-11-04
 - Ctrl+Shift with an arrow (REQ-0013-10) leaves the hole of a plain move, a blank strip beside the selection at its first move. JOD wants it fixed, in phase 2: the 10-pixel key should not show that gap. The likely form is a moved copy, as Ctrl with a drag does (the original stays, no trail, still 10 pixels), which would leave the keyboard no plain 10-pixel move; settle it in a spec then.
 
+## From 0035's opening test (2026-11-10)
+- A marked selection should survive a cancelled quit: closing a modified picture, then Cancel on the Save prompt, loses the marking,
+  since the quit ends the selection first (REQ-0013-11, the whole app; found by 0035's AS-14).
+
 ## From 0027 (Preferences buttons)
 - No test of their own: Esc with a chooser, a popover or an error above Preferences; a quit with a color chooser open; a truly read-only settings file; a Tint change with a palette reset at OK; a palette file that cannot be removed; a missing settings folder; Style against a desktop theme that changes during the dialog.
 - The new strings in the eleven translations are unread, as the rest.
