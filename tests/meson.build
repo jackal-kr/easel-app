@@ -229,18 +229,5 @@ suite_de_env = ui_env
 suite_de_env.set('LANGUAGE', 'de')
 test('ui-0023-suite-in-english', test_window, args: ['-p', '/0020'], env: suite_de_env, suite: 'ui', timeout: 600, is_parallel: false)
 
-# The finder over ONNX Runtime, with the fake models (spec 0035, T004): only in a build with it.
-if onnx_dep.found()
-  test('ml-finder',
-    executable('test-finder', 'ml/test-finder.c', dependencies: [easel_ml_dep], include_directories: include_directories('core')),
-    env: {'EASEL_TEST_DATA': meson.current_source_dir() / 'data'},
-    suite: 'ml',
-  )
-endif
-
-# The real model (spec 0035, T006): AS-2's test set, a second process's pixels and the budgets; a benchmark, never in the suite.
-if onnx_dep.found()
-  benchmark('perf-0035', executable('perf-0035', 'perf/perf-0035.c', dependencies: easel_ui_dep,
-    c_args: '-DTEST_SET="' + meson.project_source_root() / 'docs' / 'reference' / '0035' / 'test-set' + '"'),
-    env: perf_env, timeout: 900)
-endif
+# Remove background (spec 0035, ADR-0007): one result at 8000 x 8000 against 1 s; a benchmark, never in the suite.
+benchmark('perf-0035', executable('perf-0035', 'perf/perf-0035.c', dependencies: easel_core_dep), env: perf_env, timeout: 300)

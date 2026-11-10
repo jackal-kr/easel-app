@@ -475,14 +475,8 @@
         <attribute name="action">win.black-white</attribute>
       </item>
       <item>
-        <attribute name="label" translatable="yes">R_emove Background</attribute>
+        <attribute name="label" translatable="yes">R_emove Background…</attribute>
         <attribute name="action">win.remove-background</attribute>
-        <attribute name="hidden-when">action-missing</attribute>
-      </item>
-      <item>
-        <attribute name="label" translatable="yes">Remove Background (Not in This Copy)</attribute>
-        <attribute name="action">win.remove-background-off</attribute>
-        <attribute name="hidden-when">action-missing</attribute>
       </item>
     </section>
     <section>
@@ -620,14 +614,8 @@
         <attribute name="action">win.black-white</attribute>
       </item>
       <item>
-        <attribute name="label" translatable="yes">R_emove Background</attribute>
+        <attribute name="label" translatable="yes">R_emove Background…</attribute>
         <attribute name="action">win.remove-background</attribute>
-        <attribute name="hidden-when">action-missing</attribute>
-      </item>
-      <item>
-        <attribute name="label" translatable="yes">Remove Background (Not in This Copy)</attribute>
-        <attribute name="action">win.remove-background-off</attribute>
-        <attribute name="hidden-when">action-missing</attribute>
       </item>
     </section>
   </menu>

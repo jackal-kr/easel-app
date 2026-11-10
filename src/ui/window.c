@@ -15,9 +15,7 @@
 #include "stretch-skew-dialog.h"
 #include "black-white-dialog.h"
 #include "remove-bg.h"
-#if HAVE_BACKGROUND_REMOVAL
-#include "finder.h"
-#endif
+#include "remove-bg-card.h"
 #include "stretch-skew.h"
 #include "grid-dialog.h"
 #include "magnifier.h"
@@ -64,11 +62,10 @@ struct _EaselWindow
   EaselSettings chosen;                         /* what Preferences shows: as read at start, as changed there (REQ-0020-02) */
   AdwDialog *preferences;                       /* Preferences while it is open */
   AdwDialog *extra_dialog;                      /* Keyboard Shortcuts, About Easel, Help's or a print's error, or Black and White, while it is open */
-  /* Remove background (0035): the model's path, the finder (loaded at the first use, closed at finalize), the work in progress. */
-  char *finder_path;
-  gpointer finder;
+  /* Remove background (0035): from its dialog's opening to the end of its work; the input held meanwhile; the progress dialog. */
+  struct RbgSession *rbg;
+  GtkWidget *rbg_card;                          /* Remove Background's card while it is open (REQ-0035-04) */
   gboolean removing;
-  struct RbgJob *rbg_job;
   guint rbg_timer, rbg_pulse;
   AdwDialog *rbg_progress;
   EaselPageSetup page_setup;                    /* kept until the app quits (REQ-0026-04) */
@@ -1037,7 +1034,9 @@ close_request_hook (GSignalInvocationHint *hint, guint n_values, const GValue *v
         adw_dialog_force_close (self->preferences);
       if (self->extra_dialog != NULL)
         adw_dialog_force_close (self->extra_dialog);
-      rbg_cancel (self);                          /* Remove background's work stops, nothing applied (REQ-0035-04) */
+      if (self->rbg_card != NULL)
+        easel_remove_bg_card_answer (self->rbg_card, FALSE);   /* Remove Background's card closes as Cancel (REQ-0035-12) */
+      rbg_cancel (self);                          /* Remove background: its work ends, nothing applied (REQ-0035-11) */
       self->help_dropped = TRUE;
       g_clear_handle_id (&self->help_error_timer, g_source_remove);
     }
@@ -1435,7 +1434,7 @@ static gboolean
 dialog_is_open (EaselWindow *self)
 {
   return self->prompt_open || self->save_dialog_open || self->open_dialog_open || self->loading || self->reading_clipboard
-         || self->chooser_open || self->print_dialog_open || self->removing
+         || self->chooser_open || self->print_dialog_open || self->removing || self->rbg_card != NULL
          || adw_application_window_get_visible_dialog (ADW_APPLICATION_WINDOW (self)) != NULL;
 }
 
@@ -1444,7 +1443,7 @@ dialog_is_open (EaselWindow *self)
 static void
 on_visible_dialog_changed (EaselWindow *self)
 {
-  easel_canvas_set_input_blocked (self->canvas, self->chooser_open || self->loading || self->removing
+  easel_canvas_set_input_blocked (self->canvas, self->chooser_open || self->loading || self->removing || self->rbg_card != NULL
                                   || adw_application_window_get_visible_dialog (ADW_APPLICATION_WINDOW (self)) != NULL);
 }
 
@@ -3864,125 +3863,134 @@ black_white_activated (GSimpleAction *action, GVariant *parameter, gpointer user
   present_extra_dialog (self, easel_black_white_dialog_new (selection, black_white_applied, self));
 }
 
-/* ---- Remove background (0035) ---- */
+/* ---- Remove background (0035, ADR-0007) ---- */
 
-#define RBG_THREADS 4                    /* fixed, so that the result does not depend on the machine's load (ADR-0006) */
-
-typedef enum { RBG_DONE, RBG_CANCELLED, RBG_FAILED, RBG_NO_MEMORY } RbgOutcome;
-
-/* One run: what it acts on (a copy), the model's answer, and how it ended. The worker owns it until it returns. */
-struct RbgJob
+/* One use of the command: what it acts on (the picture's pixels or the float's, as shown), their copy as before, the analysis, then the
+   work at OK. The window holds it from the dialog's opening; the worker owns it while it runs. */
+struct RbgSession
 {
   EaselWindow *win;                      /* a reference, held until the end */
-  gboolean selection;
-  uint32_t *px;
-  uint8_t *mask;
-  int w, h, side;
-  float *found;
-  RbgOutcome outcome;
+  gboolean selection, lifted_here;
+  uint32_t *live;                        /* where the preview is written: the picture's or the float's own pixels */
+  uint32_t *orig;                        /* those pixels as before the dialog */
+  uint8_t *mask;                         /* the float's shape (a copy), NULL for a rectangle or the picture */
+  int w, h;
+  EaselRbg *rbg;
+  int tolerance;                         /* the labels' tolerance */
+  int shown;                             /* the dialog's number */
+  guint idle;                            /* a preview due */
+  gboolean restored;                     /* put back as before: the work's end changes nothing */
+  uint32_t *dst;                         /* the result at OK */
+  size_t removed;
   int cancel;                            /* asked to stop (any thread) */
-  size_t limit;                          /* the memory limit when it was chosen: the copy and the model's buffers count together */
+  EaselRbgResult outcome;
+  int slow_ms;                           /* the test hook EASEL_TEST_RBG_SLOW_MS: the work made that much slower (AS-9) */
 };
 
 static void
-rbg_job_free (struct RbgJob *job)
+rbg_session_free (struct RbgSession *s)
 {
-  free (job->px);
-  free (job->mask);
-  free (job->found);
-  g_object_unref (job->win);
-  g_free (job);
+  g_clear_handle_id (&s->idle, g_source_remove);
+  easel_rbg_free (s->rbg);
+  free (s->orig);
+  free (s->mask);
+  free (s->dst);
+  g_object_unref (s->win);
+  g_free (s);
 }
 
-/* A message the quit closes as Cancel, then goes on (REQ-0035-06, as REQ-0021-03). */
+/* A message the quit closes as Cancel, then goes on (REQ-0035-06, REQ-0035-12). */
 static void
-rbg_message (EaselWindow *self, const char *heading, const char *body)
+rbg_message (EaselWindow *self)
 {
-  AdwDialog *dialog = adw_alert_dialog_new (heading, body);
+  AdwDialog *dialog = adw_alert_dialog_new (_ ("Could Not Remove the Background"), _ ("There is not enough memory for this change."));
 
   adw_alert_dialog_add_response (ADW_ALERT_DIALOG (dialog), "close", _ ("Close"));
   present_extra_dialog (self, dialog);
 }
 
-#if HAVE_BACKGROUND_REMOVAL
-/* The worker thread: the finder loaded at the first use, the input made, the model run (REQ-0035-03). */
+/* The pixels it acts on changed: shown again. */
+static void
+rbg_show (struct RbgSession *s)
+{
+  if (s->selection)
+    easel_canvas_rbg_float_changed (s->win->canvas);
+  else
+    {
+      s->win->picture->dirty = (EaselRect) { 0, 0, s->w, s->h };
+      easel_canvas_update (s->win->canvas);
+    }
+}
+
+/* Everything as before the dialog (REQ-0035-04's Cancel): the pixels, a selection the dialog lifted marked again. Once only. */
+static void
+rbg_restore (struct RbgSession *s)
+{
+  if (s->restored)
+    return;
+  s->restored = TRUE;
+  memcpy (s->live, s->orig, (size_t) s->w * (size_t) s->h * sizeof *s->orig);
+  rbg_show (s);
+  if (s->lifted_here)
+    easel_canvas_rbg_unlift (s->win->canvas);
+}
+
+/* The preview for the number shown (REQ-0035-04): the labels on the copy, each cell standing for its block. */
+static void
+rbg_preview (struct RbgSession *s)
+{
+  s->tolerance = s->shown;
+  easel_rbg_label (s->rbg, s->tolerance, NULL);
+  easel_rbg_preview (s->rbg, s->orig, s->mask, s->live, NULL);
+  rbg_show (s);
+}
+
+static gboolean
+on_rbg_idle (gpointer data)
+{
+  struct RbgSession *s = data;
+
+  s->idle = 0;
+  rbg_preview (s);
+  return G_SOURCE_REMOVE;
+}
+
+/* A change of the number: its preview when the main loop is next idle, so that a run of changes makes one. */
+static void
+on_rbg_changed (int tolerance, gpointer data)
+{
+  struct RbgSession *s = data;
+
+  s->shown = tolerance;
+  if (s->idle == 0)
+    s->idle = g_idle_add (on_rbg_idle, s);
+}
+
+/* The worker thread: the labels for the number shown, then the result at full size (REQ-0035-03). */
 static void
 rbg_work (GTask *task, gpointer source, gpointer data, GCancellable *cancellable)
 {
-  struct RbgJob *job = data;
-  EaselWindow *self = job->win;
-  /* The finder is made here, at the first use, and read by rbg_cancel on the main thread: both go through atomics. */
-  EaselFinder *finder = __atomic_load_n (&self->finder, __ATOMIC_ACQUIRE);
-  size_t ours, model;
-  float *input;
+  struct RbgSession *s = data;
 
-  if (finder == NULL)
-    {
-      finder = easel_finder_open (self->finder_path, RBG_THREADS, NULL);
-      __atomic_store_n (&self->finder, finder, __ATOMIC_RELEASE);
-    }
-  if (__atomic_load_n (&job->cancel, __ATOMIC_SEQ_CST))
-    {
-      job->outcome = RBG_CANCELLED;       /* a cancel during the loading wins over what the loading gave */
-      return;
-    }
-  if (finder == NULL)
-    {
-      job->outcome = RBG_FAILED;
-      return;
-    }
-  job->side = easel_finder_side (finder);
-  /* The model's input and answer, 16 bytes a pixel of its square, are held with the copy: the three count together (REQ-0035-06). */
-  ours = (size_t) job->w * (size_t) job->h * (sizeof *job->px + (job->mask != NULL));
-  model = (size_t) 4 * job->side * job->side * sizeof *input;
-  if (ours > job->limit || model > job->limit - ours)
-    {
-      job->outcome = RBG_NO_MEMORY;
-      return;
-    }
-  input = malloc ((size_t) 3 * job->side * job->side * sizeof *input);
-  job->found = malloc ((size_t) job->side * job->side * sizeof *job->found);
-  if (input == NULL || job->found == NULL)
-    {
-      free (input);
-      job->outcome = RBG_NO_MEMORY;
-      return;
-    }
-  easel_rbg_input (job->px, job->mask, job->w, job->h, job->side, input);
-  easel_finder_rearm (finder);
-  if (__atomic_load_n (&job->cancel, __ATOMIC_SEQ_CST))
-    job->outcome = RBG_CANCELLED;
-  else
-    switch (easel_finder_run (finder, input, job->found))
-      {
-      case EASEL_FINDER_DONE:
-        job->outcome = __atomic_load_n (&job->cancel, __ATOMIC_SEQ_CST) ? RBG_CANCELLED : RBG_DONE;
-        break;
-      case EASEL_FINDER_CANCELLED:
-        job->outcome = RBG_CANCELLED;
-        break;
-      default:
-        job->outcome = RBG_FAILED;
-      }
-  free (input);
+  for (int waited = 0; waited < s->slow_ms && !__atomic_load_n (&s->cancel, __ATOMIC_SEQ_CST); waited += 10)
+    g_usleep (10000);
+  s->outcome = easel_rbg_label (s->rbg, s->shown, &s->cancel);
+  if (s->outcome == EASEL_RBG_DONE)
+    s->outcome = easel_rbg_result (s->rbg, s->orig, s->mask, s->dst, &s->removed, &s->cancel);
+  if (__atomic_load_n (&s->cancel, __ATOMIC_SEQ_CST))
+    s->outcome = EASEL_RBG_CANCELLED;
+  g_task_return_boolean (task, TRUE);
 }
-#endif
 
-/* Stops the work in progress, if any, from the main thread: nothing of it is applied (REQ-0035-04). */
+/* Stops the work in progress, if any, from the main thread, or ends the dialog's preview: everything as before the dialog at once,
+   nothing of it applied (REQ-0035-11, -12). */
 static void
 rbg_cancel (EaselWindow *self)
 {
-  if (self->rbg_job == NULL)
-    return;
-  __atomic_store_n (&self->rbg_job->cancel, 1, __ATOMIC_SEQ_CST);
-#if HAVE_BACKGROUND_REMOVAL
-  {
-    EaselFinder *finder = __atomic_load_n (&self->finder, __ATOMIC_ACQUIRE);
-
-    if (finder != NULL)
-      easel_finder_cancel (finder);
-  }
-#endif
+  if (self->rbg == NULL)
+    return;                              /* while the dialog is open too: a quit puts the pixels back before it goes on */
+  __atomic_store_n (&self->rbg->cancel, 1, __ATOMIC_SEQ_CST);
+  rbg_restore (self->rbg);
 }
 
 static void
@@ -4000,7 +4008,7 @@ on_rbg_pulse (gpointer data)
   return G_SOURCE_CONTINUE;
 }
 
-/* After 0.5 s of work, the progress dialog (REQ-0035-04): its heading, a pulsing bar (one run has no share known) and Cancel. */
+/* After 0.5 s of work, the progress dialog (REQ-0035-11): its heading, a pulsing bar and Cancel. */
 static gboolean
 rbg_show_progress (gpointer data)
 {
@@ -4019,16 +4027,18 @@ rbg_show_progress (gpointer data)
   return G_SOURCE_REMOVE;
 }
 
-/* The one function every end of the work goes through, on the main thread: the dialog closed, the input given back, then the result
-   applied (REQ-0035-02), or "Nothing to Remove" (REQ-0035-05), or the failure's dialog (REQ-0035-06), or nothing (cancelled). */
+/* The one function every end of the work goes through, on the main thread: the progress dialog closed, the pixels put back as before,
+   then the result kept as one step (REQ-0035-02), or no step when nothing is removed (REQ-0035-05), or the memory's message
+   (REQ-0035-06), or nothing (cancelled, already put back). */
 static void
-remove_background_applied (GObject *source, GAsyncResult *result, gpointer data)
+rbg_finished (GObject *source, GAsyncResult *result, gpointer data)
 {
-  struct RbgJob *job = data;
-  EaselWindow *self = job->win;
+  struct RbgSession *s = data;
+  EaselWindow *self = s->win;
   AdwDialog *progress = self->rbg_progress;
+  gboolean cancelled = s->restored || s->outcome != EASEL_RBG_DONE;
 
-  self->rbg_job = NULL;
+  self->rbg = NULL;
   self->removing = FALSE;
   g_clear_handle_id (&self->rbg_timer, g_source_remove);
   g_clear_handle_id (&self->rbg_pulse, g_source_remove);
@@ -4039,94 +4049,149 @@ remove_background_applied (GObject *source, GAsyncResult *result, gpointer data)
       adw_dialog_force_close (progress);
     }
   on_visible_dialog_changed (self);
-  if (!gtk_widget_get_visible (GTK_WIDGET (self)))
-    ;                                     /* the window was closed meanwhile: nothing to show, nothing to apply */
-  else if (job->outcome == RBG_FAILED)
-    rbg_message (self, _ ("Could Not Remove the Background"), _ ("Background removal is not available."));
-  else if (job->outcome == RBG_NO_MEMORY)
-    rbg_message (self, _ ("Could Not Remove the Background"), _ ("There is not enough memory for this change."));
-  else if (job->outcome == RBG_DONE)
+  if (cancelled)
+    rbg_restore (s);
+  else
     {
-      if (job->selection)
+      s->restored = TRUE;                /* the pixels as before, then the result kept by the step's own path */
+      memcpy (s->live, s->orig, (size_t) s->w * (size_t) s->h * sizeof *s->orig);
+      if (s->removed == 0)
+        rbg_show (s);                    /* no step; a selection the dialog lifted stays floating (REQ-0035-05) */
+      else if (s->selection)
         {
-          EaselSelectionResult r = easel_canvas_remove_background_selection (self->canvas, job->found, job->side);
-
-          if (r == EASEL_SELECTION_NOTHING)
-            rbg_message (self, _ ("Nothing to Remove"), _ ("No background was found to remove."));
+          easel_canvas_rbg_float_replace (self->canvas, s->dst, s->lifted_here);
           sync_history_ui (self);
         }
       else
         {
-          EaselTransformResult r = easel_image_remove_background (self->picture, self->history, job->found, job->side,
-                                                                  self->transform_limit);
+          EaselTransformResult r = easel_image_replace_pixels (self->picture, self->history, s->dst, self->transform_limit);
 
-          if (r == EASEL_TRANSFORM_NOTHING)
-            rbg_message (self, _ ("Nothing to Remove"), _ ("No background was found to remove."));
-          else if (r == EASEL_TRANSFORM_NO_MEMORY)
-            rbg_message (self, _ ("Could Not Remove the Background"), _ ("There is not enough memory for this change."));
-          else
-            {
-              easel_canvas_update (self->canvas);
-              sync_history_ui (self);
-            }
+          s->dst = NULL;                 /* taken */
+          rbg_show (s);
+          if (r == EASEL_TRANSFORM_NO_MEMORY)
+            rbg_message (self);
+          sync_history_ui (self);
         }
     }
-  rbg_job_free (job);
+  rbg_session_free (s);
 }
 
-/* The item (REQ-0035-01, -02): what waits is put down, the pixels it acts on copied, the early answer given at once (REQ-0035-05),
-   else the work started in a worker thread with the window's input held (REQ-0035-04). */
+/* The dialog closed. Cancel: everything as before. OK: the work in a worker thread, the window's input held, the progress dialog
+   after 0.5 s (REQ-0035-11). */
+static void
+on_rbg_closed (gboolean ok, int tolerance, gpointer data)
+{
+  struct RbgSession *s = data;
+  EaselWindow *self = s->win;
+  size_t n = (size_t) s->w * (size_t) s->h, held = easel_rbg_bytes (s->rbg) + n * (sizeof *s->orig + (s->mask != NULL));
+  GTask *task;
+
+  g_clear_handle_id (&s->idle, g_source_remove);
+  s->shown = tolerance;
+  if (self->rbg_card != NULL)
+    {
+      gtk_overlay_remove_overlay (self->canvas_overlay, self->rbg_card);
+      self->rbg_card = NULL;
+      on_visible_dialog_changed (self);
+      gtk_widget_grab_focus (GTK_WIDGET (self->canvas));   /* the keys go back to the canvas */
+    }
+  if (!ok)
+    {
+      rbg_restore (s);
+      self->rbg = NULL;
+      rbg_session_free (s);
+      return;
+    }
+  if (held > self->transform_limit || n * sizeof *s->dst > self->transform_limit - held
+      || (s->dst = malloc (n * sizeof *s->dst)) == NULL)
+    {
+      rbg_restore (s);
+      self->rbg = NULL;
+      rbg_session_free (s);
+      rbg_message (self);
+      return;
+    }
+  self->removing = TRUE;
+  on_visible_dialog_changed (self);
+  self->rbg_timer = g_timeout_add (500, rbg_show_progress, self);
+  task = g_task_new (NULL, NULL, rbg_finished, s);
+  g_task_set_task_data (task, s, NULL);
+  g_task_run_in_thread (task, rbg_work);
+  g_object_unref (task);
+}
+
+/* The item (REQ-0035-01, -02, -04): what waits is put down, a marked selection lifted, the pixels as before copied, the analysis
+   made; then the dialog with the preview for the automatic tolerance; or the memory's message and nothing changed (REQ-0035-06). */
 static void
 remove_background_activated (GSimpleAction *action, GVariant *parameter, gpointer user_data)
 {
   EaselWindow *self = user_data;
-  struct RbgJob *job;
+  struct RbgSession *s;
   int x, y, w, h;
   gboolean floating;
-  GTask *task;
+  const uint8_t *shape = NULL;
+  const char *slow = g_getenv ("EASEL_TEST_RBG_SLOW_MS");
+  size_t n, held;
+  GtkWidget *card;
 
-  if (!view_actions_allowed (self) || easel_canvas_is_panning (self->canvas) || card_field_focus (self) != NULL)
+  if (!view_actions_allowed (self) || easel_canvas_is_panning (self->canvas) || card_field_focus (self) != NULL || self->rbg != NULL)
     return;
-  if (!easel_canvas_get_selection (self->canvas, &x, &y, &w, &h, &floating) && !put_down_for_action (self, FALSE))
-    return;
-  job = g_new0 (struct RbgJob, 1);
-  job->win = g_object_ref (self);
-  job->limit = self->transform_limit;
-  job->selection = easel_canvas_selection_copy (self->canvas, self->transform_limit, &job->px, &job->mask, &job->w, &job->h);
-  if (!job->selection)
+  s = g_new0 (struct RbgSession, 1);
+  s->win = g_object_ref (self);
+  s->slow_ms = slow != NULL ? atoi (slow) : 0;
+  s->selection = easel_canvas_get_selection (self->canvas, &x, &y, &w, &h, &floating);
+  if (s->selection)
     {
-      size_t n = (size_t) self->picture->width * (size_t) self->picture->height;
-
-      job->w = self->picture->width;
-      job->h = self->picture->height;
-      if (n * sizeof *job->px <= self->transform_limit && (job->px = malloc (n * sizeof *job->px)) != NULL)
-        memcpy (job->px, self->picture->px, n * sizeof *job->px);
+      s->live = easel_canvas_rbg_float (self->canvas, &s->lifted_here, &shape, &s->w, &s->h);
+      if (s->live == NULL)
+        {
+          rbg_session_free (s);          /* the lift's failure: its message shown, the selection marked (REQ-0035-06) */
+          return;
+        }
     }
-  if (job->px == NULL)
+  else
     {
-      rbg_message (self, _ ("Could Not Remove the Background"), _ ("There is not enough memory for this change."));
-      rbg_job_free (job);
+      if (!put_down_for_action (self, FALSE))
+        {
+          rbg_session_free (s);
+          return;
+        }
+      s->live = self->picture->px;
+      s->w = self->picture->width;
+      s->h = self->picture->height;
+    }
+  n = (size_t) s->w * (size_t) s->h;
+  held = n * (sizeof *s->orig + (shape != NULL));
+  if (held <= self->transform_limit && (s->orig = malloc (n * sizeof *s->orig)) != NULL
+      && (shape == NULL || (s->mask = malloc (n)) != NULL))
+    {
+      memcpy (s->orig, s->live, n * sizeof *s->orig);
+      if (shape != NULL)
+        memcpy (s->mask, shape, n);
+      s->rbg = easel_rbg_new (s->orig, s->mask, s->w, s->h, self->transform_limit - held);
+    }
+  if (s->rbg == NULL)
+    {
+      s->restored = TRUE;                /* nothing written yet */
+      if (s->lifted_here)
+        easel_canvas_rbg_unlift (self->canvas);
+      rbg_session_free (s);
+      rbg_message (self);
       return;
     }
-  if (easel_rbg_trivial (job->px, job->mask, job->w, job->h))
-    {
-      rbg_message (self, _ ("Nothing to Remove"), _ ("No background was found to remove."));
-      rbg_job_free (job);
-      return;
-    }
-  self->removing = TRUE;
-  self->rbg_job = job;
+  self->rbg = s;
+  s->shown = easel_rbg_auto_tolerance (s->rbg);
+  /* The card in the canvas area's bottom right corner, over the view, as the thumbnail is in its top right (REQ-0035-04). */
+  card = easel_remove_bg_card_new (s->shown, on_rbg_changed, on_rbg_closed, s);
+  gtk_widget_set_halign (card, GTK_ALIGN_END);
+  gtk_widget_set_valign (card, GTK_ALIGN_END);
+  gtk_widget_set_margin_end (card, 12);
+  gtk_widget_set_margin_bottom (card, 12);
+  self->rbg_card = card;
+  gtk_overlay_add_overlay (self->canvas_overlay, card);
   on_visible_dialog_changed (self);
-  self->rbg_timer = g_timeout_add (500, rbg_show_progress, self);
-  task = g_task_new (NULL, NULL, remove_background_applied, job);
-#if HAVE_BACKGROUND_REMOVAL
-  g_task_set_task_data (task, job, NULL);
-  g_task_run_in_thread (task, rbg_work);
-#else
-  job->outcome = RBG_FAILED;
-  g_task_return_boolean (task, TRUE);
-#endif
-  g_object_unref (task);
+  gtk_widget_grab_focus (GTK_WIDGET (easel_remove_bg_card_row (card)));
+  rbg_preview (s);
 }
 
 gboolean
@@ -4135,29 +4200,19 @@ easel_window_is_removing_background (EaselWindow *self)
   return self->removing;
 }
 
-/* The command is there when the app was built with the model's runtime and the model is installed at start, or, for a build run
-   where it was built, is at the path it was configured with (the test hook EASEL_TEST_FINDER names another); otherwise the item is shown greyed with its reason, through an action that is never enabled
-   (REQ-0035-10). */
+/* Remove Background's card while it is open, for the tests; NULL otherwise. */
+GtkWidget *
+easel_window_remove_background_card (EaselWindow *self)
+{
+  return self->rbg_card;
+}
+
 static void
 add_remove_background_action (EaselWindow *self)
 {
-  const char *hook = g_getenv ("EASEL_TEST_FINDER");
-  gboolean available;
-  GSimpleAction *action;
+  GSimpleAction *action = g_simple_action_new ("remove-background", NULL);
 
-  self->finder_path = g_strdup (hook != NULL ? hook : BACKGROUND_MODEL);
-  /* Not installed (a build run from its folder): the model the build was configured with, when there is one. */
-  if (hook == NULL && !g_file_test (self->finder_path, G_FILE_TEST_IS_REGULAR) && BACKGROUND_MODEL_CONFIGURED[0] != '\0')
-    {
-      g_free (self->finder_path);
-      self->finder_path = g_strdup (BACKGROUND_MODEL_CONFIGURED);
-    }
-  available = HAVE_BACKGROUND_REMOVAL && g_file_test (self->finder_path, G_FILE_TEST_IS_REGULAR);
-  action = g_simple_action_new (available ? "remove-background" : "remove-background-off", NULL);
-  if (available)
-    g_signal_connect (action, "activate", G_CALLBACK (remove_background_activated), self);
-  else
-    g_simple_action_set_enabled (action, FALSE);
+  g_signal_connect (action, "activate", G_CALLBACK (remove_background_activated), self);
   g_action_map_add_action (G_ACTION_MAP (self), G_ACTION (action));
   g_object_unref (action);
 }
@@ -4377,6 +4432,19 @@ on_key_pressed (EaselWindow *self, guint keyval, guint keycode, GdkModifierType 
   if (keyval == GDK_KEY_F1 && repeat && (state & GDK_CONTROL_MASK) == 0)
     return GDK_EVENT_STOP;
   self->key_down = keyval;
+  if (self->rbg_card != NULL)
+    {
+      /* Remove Background's card (REQ-0035-04): Esc is its Cancel; its field and buttons take their own keys; nothing else acts. */
+      if (keyval == GDK_KEY_Escape)
+        {
+          if (!repeat)
+            easel_remove_bg_card_answer (self->rbg_card, FALSE);
+          return GDK_EVENT_STOP;
+        }
+      return gtk_root_get_focus (GTK_ROOT (self)) != NULL
+                 && gtk_widget_is_ancestor (gtk_root_get_focus (GTK_ROOT (self)), self->rbg_card)
+               ? GDK_EVENT_PROPAGATE : GDK_EVENT_STOP;
+    }
   if (key_is_shortcuts (self, keyval, keycode, state))
     {
       g_action_group_activate_action (G_ACTION_GROUP (self), "shortcuts", NULL);
@@ -5668,10 +5736,6 @@ easel_window_finalize (GObject *object)
   easel_image_free (self->picture);
   easel_history_free (self->history);
   g_free (self->path);
-  g_free (self->finder_path);
-#if HAVE_BACKGROUND_REMOVAL
-  easel_finder_close (self->finder);       /* a work in progress holds the window, so none runs here */
-#endif
   easel_page_setup_clear (&self->page_setup);
   g_free (self->print_export);
   if (self->announced != NULL)

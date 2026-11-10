@@ -14,6 +14,7 @@
 #include "application.h"
 #include "canvas.h"
 #include "black-white.h"
+#include "remove-bg-card.h"
 #include "gradient.h"
 #include "selection.h"
 #include "magnifier.h"
@@ -473,6 +474,17 @@ find_button (GtkWidget *root, const char *label)
         return found;
     }
   return NULL;
+}
+
+/* Clicks the real button of an alert dialog's response, found by its label, as the user does: the dialog closes, then emits the
+   response (libadwaita's order; a test that emits the response itself runs them the other way round). */
+static void
+click_response (AdwAlertDialog *dialog, const char *response)
+{
+  GtkButton *button = find_button (GTK_WIDGET (dialog), adw_alert_dialog_get_response_label (dialog, response));
+
+  g_assert_nonnull (button);
+  g_signal_emit_by_name (button, "clicked");
 }
 
 /* Every toplevel except win: the in-process file chooser, when one is open. */
@@ -2600,8 +2612,7 @@ as12_grid_dialog (void)
   axon = GTK_CHECK_BUTTON (find_of_type (GTK_WIDGET (dialog), GTK_TYPE_CHECK_BUTTON));
   gtk_editable_set_text (entry, " 8 ");
   gtk_check_button_set_active (axon, TRUE);
-  g_signal_emit_by_name (dialog, "response", "apply");
-  adw_dialog_close (ADW_DIALOG (dialog));
+  click_response (dialog, "apply");
   wait_for_dialogs (win, 0);
   g_assert_cmpint (easel_canvas_get_grid_cell (canvas), ==, 8);
   g_assert_true (easel_canvas_get_grid_axonometric (canvas));
@@ -2633,8 +2644,7 @@ as12_grid_dialog (void)
   dialog = open_alert (win);
   entry = GTK_EDITABLE (find_of_type (GTK_WIDGET (dialog), ADW_TYPE_ENTRY_ROW));
   gtk_editable_set_text (entry, "4");
-  g_signal_emit_by_name (dialog, "response", "apply");
-  adw_dialog_close (ADW_DIALOG (dialog));
+  click_response (dialog, "apply");
   wait_for_dialogs (win, 0);
   g_assert_true (easel_canvas_get_grid_on (canvas));
   g_assert_cmpint (easel_canvas_get_grid_cell (canvas), ==, 4);
@@ -2829,8 +2839,7 @@ as20_attributes_dialog (void)
   open_attributes (win, &dialog, &width, &height);
   g_assert_cmpint (field_value (width), ==, 640);
   type_into (width, "20");
-  g_signal_emit_by_name (dialog, "response", "ok");
-  adw_dialog_close (ADW_DIALOG (dialog));
+  click_response (dialog, "ok");
   wait_for_dialogs (win, 0);
   assert_size (win, 20, 480);
 
@@ -2928,8 +2937,7 @@ as25_same_size_no_step (void)
 
   wait_for_layout (win);
   open_attributes (win, &dialog, &width, &height);
-  g_signal_emit_by_name (dialog, "response", "ok");
-  adw_dialog_close (ADW_DIALOG (dialog));
+  click_response (dialog, "ok");
   wait_for_dialogs (win, 0);
   g_assert_false (action_enabled (win, "undo"));
   g_assert_false (easel_window_get_modified (win));
@@ -3027,9 +3035,8 @@ as27_error_through_attributes (void)
   type_into (width, "10000");
   type_into (height, "10000");
   g_assert_true (limit_memory (&old, 200));
-  g_signal_emit_by_name (dialog, "response", "ok");
+  click_response (dialog, "ok");
   g_assert_cmpint (setrlimit (RLIMIT_AS, &old), ==, 0);
-  adw_dialog_close (ADW_DIALOG (dialog));
   wait_for_dialogs (win, 1);
   dialog = open_alert (win);
   g_assert_nonnull (dialog);
@@ -4121,8 +4128,7 @@ respond (EaselWindow *win, const char *response)
   AdwAlertDialog *dialog = open_alert (win);
 
   g_assert_nonnull (dialog);
-  g_signal_emit_by_name (dialog, "response", response);
-  adw_dialog_close (ADW_DIALOG (dialog));
+  click_response (dialog, response);
   wait_for_dialogs (win, 0);
 }
 
@@ -23220,7 +23226,7 @@ as1_image_menus (void)
   i1 = describe_section (im, 1);
   i2 = describe_section (im, 2);
   g_assert_cmpstr (i0, ==, "_Flip|(null); _Rotate|(null); Stretch and _Skew…|win.stretch-skew");       /* its item: REQ-0019-01 */
-  g_assert_cmpstr (i1, ==, "_Invert Colors|win.invert; _Black and White…|win.black-white; R_emove Background|win.remove-background; Remove Background (Not in This Copy)|win.remove-background-off");   /* 0034, 0035 (before: Invert Colors alone, then without Remove Background) */
+  g_assert_cmpstr (i1, ==, "_Invert Colors|win.invert; _Black and White…|win.black-white; R_emove Background…|win.remove-background");   /* 0034, 0035 (before: Invert Colors alone, then without Remove Background) */
   g_assert_cmpstr (i2, ==, "Attributes…|win.attributes; _Clear Image|win.clear-image");
   section0 = g_menu_model_get_item_link (im, 0, G_MENU_LINK_SECTION);
   flip = g_menu_model_get_item_link (section0, 0, G_MENU_LINK_SUBMENU);
@@ -23844,7 +23850,7 @@ as1_selection_menu (void)
   s2 = describe_section (sel, 2);
   /* 0034 adds Black and White after Invert Colors (before: the section ended with Invert Colors). */
   g_assert_cmpstr (s2, ==, "_Flip|(null); _Rotate|(null); Stretch and _Skew…|win.stretch-skew; _Invert Colors|win.invert; "
-                           "_Black and White…|win.black-white; R_emove Background|win.remove-background; Remove Background (Not in This Copy)|win.remove-background-off");   /* 0035 adds Remove Background (before: ended with Black and White) */
+                           "_Black and White…|win.black-white; R_emove Background…|win.remove-background");   /* 0035 adds Remove Background (before: ended with Black and White) */
   section = g_menu_model_get_item_link (sel, 2, G_MENU_LINK_SECTION);
   flip = g_menu_model_get_item_link (section, 0, G_MENU_LINK_SUBMENU);
   rotate = g_menu_model_get_item_link (section, 1, G_MENU_LINK_SUBMENU);
@@ -36411,8 +36417,7 @@ bw_convert (EaselWindow *win, EaselBw how)
   g_action_group_activate_action (G_ACTION_GROUP (win), "black-white", NULL);
   d = bw_dialog (win, choice);
   gtk_check_button_set_active (choice[how], TRUE);
-  g_signal_emit_by_name (d, "response", "convert");
-  adw_dialog_close (ADW_DIALOG (d));
+  click_response (d, "convert");
   wait_for_dialogs (win, 0);
 }
 
@@ -36445,9 +36450,9 @@ bw_as1_menus_and_dialog (void)
   AdwAlertDialog *d;
   static const char *const titles[3] = { "Threshold", "Ordered dither", "Error diffusion" };
 
-  g_assert_cmpstr (i1, ==, "_Invert Colors|win.invert; _Black and White…|win.black-white; R_emove Background|win.remove-background; Remove Background (Not in This Copy)|win.remove-background-off");   /* 0035 adds Remove Background (before: ended with Black and White) */
+  g_assert_cmpstr (i1, ==, "_Invert Colors|win.invert; _Black and White…|win.black-white; R_emove Background…|win.remove-background");   /* 0035 adds Remove Background (before: ended with Black and White) */
   g_assert_cmpstr (s2, ==, "_Flip|(null); _Rotate|(null); Stretch and _Skew…|win.stretch-skew; _Invert Colors|win.invert; "
-                           "_Black and White…|win.black-white; R_emove Background|win.remove-background; Remove Background (Not in This Copy)|win.remove-background-off");   /* 0035 adds Remove Background (before: ended with Black and White) */
+                           "_Black and White…|win.black-white; R_emove Background…|win.remove-background");   /* 0035 adds Remove Background (before: ended with Black and White) */
   {
     g_auto (GStrv) accels = gtk_application_get_accels_for_action (GTK_APPLICATION (g_application_get_default ()), "win.black-white");
 
@@ -36733,75 +36738,36 @@ item_attribute (GMenuModel *section, const char *action, const char *name)
   return NULL;
 }
 
-/* 0035 AS-8 (REQ-0035-10): without the model's runtime or the model, the item is in both menus, in its place, greyed, its label
-   "Remove Background (Not in This Copy)"; with them it is "Remove Background" and available. Each menu holds both items, each hidden
-   when its action is missing, and exactly one of the two actions exists. */
+/* 0035 AS-1 (REQ-0035-01): the item in both menus, right after Black and White… and last, no shortcut, available; no second item. */
 static void
-rbg_as8_unavailable (void)
+rbg_as1_menus (void)
 {
   EaselWindow *win = start_window ();
   GMenuModel *im = menu_of (easel_window_get_image_button (win));
   GMenuModel *sel = gtk_popover_menu_get_menu_model (easel_window_get_selection_menu (win));
   g_autoptr (GMenuModel) image_section = g_menu_model_get_item_link (im, 1, G_MENU_LINK_SECTION);
   g_autoptr (GMenuModel) sel_section = g_menu_model_get_item_link (sel, 2, G_MENU_LINK_SECTION);
-  gboolean on = g_action_group_has_action (G_ACTION_GROUP (win), "remove-background");
-  gboolean off = g_action_group_has_action (G_ACTION_GROUP (win), "remove-background-off");
 
-  g_test_message ("this build: %s", on ? "with Remove Background" : "without it");
-  g_assert_true (on != off);
-  if (off)
-    g_assert_false (g_action_group_get_action_enabled (G_ACTION_GROUP (win), "remove-background-off"));
+  g_assert_true (action_enabled (win, "remove-background"));
+  g_assert_false (g_action_group_has_action (G_ACTION_GROUP (win), "remove-background-off"));
   for (int m = 0; m < 2; m++)
     {
       GMenuModel *s = m == 0 ? image_section : sel_section;
-      g_autofree char *on_label = item_attribute (s, "win.remove-background", G_MENU_ATTRIBUTE_LABEL);
-      g_autofree char *off_label = item_attribute (s, "win.remove-background-off", G_MENU_ATTRIBUTE_LABEL);
-      g_autofree char *on_hidden = item_attribute (s, "win.remove-background", "hidden-when");
-      g_autofree char *off_hidden = item_attribute (s, "win.remove-background-off", "hidden-when");
+      g_autofree char *label = item_attribute (s, "win.remove-background", G_MENU_ATTRIBUTE_LABEL);
+      g_autofree char *hidden = item_attribute (s, "win.remove-background", "hidden-when");
+      g_autofree char *accel = item_attribute (s, "win.remove-background", "accel");
       int n = g_menu_model_get_n_items (s);
       g_autofree char *last = NULL, *before = NULL;
 
-      g_assert_cmpstr (on_label, ==, "R_emove Background");
-      g_assert_cmpstr (off_label, ==, "Remove Background (Not in This Copy)");
-      g_assert_cmpstr (on_hidden, ==, "action-missing");
-      g_assert_cmpstr (off_hidden, ==, "action-missing");
-      /* in their place: right after Black and White… */
-      g_assert_true (g_menu_model_get_item_attribute (s, n - 3, G_MENU_ATTRIBUTE_ACTION, "s", &before));
+      g_assert_cmpstr (label, ==, "R_emove Background…");
+      g_assert_null (hidden);
+      g_assert_null (accel);
+      g_assert_true (g_menu_model_get_item_attribute (s, n - 2, G_MENU_ATTRIBUTE_ACTION, "s", &before));
       g_assert_cmpstr (before, ==, "win.black-white");
       g_assert_true (g_menu_model_get_item_attribute (s, n - 1, G_MENU_ATTRIBUTE_ACTION, "s", &last));
-      g_assert_cmpstr (last, ==, "win.remove-background-off");
+      g_assert_cmpstr (last, ==, "win.remove-background");
     }
   close_windows ();
-}
-
-/* A window whose Remove Background runs the fake model `name` of tests/data/finder (the test hook EASEL_TEST_FINDER), on an 80 x 60
-   picture: the left 40 columns red, the rest blue. The fake answers with the red plane, so red is subject and blue background.
-   NULL, the case skipped, in a build without the model's runtime. */
-static EaselWindow *
-rbg_window (const char *name)
-{
-  g_autofree char *model = g_build_filename (g_getenv ("EASEL_TEST_DATA") != NULL ? g_getenv ("EASEL_TEST_DATA") : "tests/data",
-                                             "finder", name, NULL);
-  EaselWindow *win;
-  EaselImage *img;
-
-  g_setenv ("EASEL_TEST_FINDER", model, TRUE);
-  win = window_with ("[new-picture]\nwidth=80\nheight=60\nbackground=#0000FF\n");
-  g_unsetenv ("EASEL_TEST_FINDER");
-  if (!g_action_group_has_action (G_ACTION_GROUP (win), "remove-background"))
-    {
-      close_windows ();
-      write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
-      g_test_skip ("this build has no model's runtime (REQ-0035-10)");
-      return NULL;
-    }
-  img = (EaselImage *) easel_window_get_picture (win);
-  for (int y = 0; y < 60; y++)
-    for (int x = 0; x < 40; x++)
-      img->px[y * 80 + x] = 0xFFFF0000u;
-  img->dirty = (EaselRect) { 0, 0, 80, 60 };
-  easel_canvas_update (easel_window_get_canvas (win));
-  return win;
 }
 
 static void
@@ -36809,19 +36775,6 @@ rbg_done (void)
 {
   close_windows ();
   write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
-}
-
-/* Runs Remove Background and waits (at most 10 s) until its work has ended: no progress dialog, input given back. */
-static void
-rbg_run (EaselWindow *win)
-{
-  gint64 deadline = g_get_monotonic_time () + 10 * G_USEC_PER_SEC;
-
-  g_action_group_activate_action (G_ACTION_GROUP (win), "remove-background", NULL);
-  while (easel_window_is_removing_background (win) && g_get_monotonic_time () < deadline)
-    g_main_context_iteration (NULL, FALSE);
-  g_assert_false (easel_window_is_removing_background (win));
-  wait_for_layout (win);
 }
 
 /* The heading of the dialog on top, or NULL. */
@@ -36833,99 +36786,458 @@ top_heading (EaselWindow *win)
   return d != NULL && ADW_IS_ALERT_DIALOG (d) ? adw_alert_dialog_get_heading (ADW_ALERT_DIALOG (d)) : NULL;
 }
 
-/* 0035 AS-2's pixels with the fake model, AS-3 (REQ-0035-02, -03, -07): the whole picture: the blue half removed (alpha 0, color
-   kept), the red half exactly as it was, one step, Undo gives it back; a marked selection across the middle: only its pixels may
-   change, it floats; a stretched floating one: made on what is shown; a pending curve is put down first. */
-static void
-rbg_as3_whole_and_selections (void)
+/* An 80 x 60 white picture with a red rectangle from (20, 15) to (59, 44): the white is the background, the red the subject. */
+static EaselWindow *
+rbg_window (void)
 {
-  EaselWindow *win = rbg_window ("fake-finder.onnx");
-  EaselCanvas *canvas;
-  const EaselImage *img;
-  g_autofree guint32 *before = NULL;
+  EaselWindow *win = window_with ("[new-picture]\nwidth=80\nheight=60\nbackground=#FFFFFF\n");
+  EaselImage *img = (EaselImage *) easel_window_get_picture (win);
 
-  if (win == NULL)
-    return;
-  canvas = easel_window_get_canvas (win);
-  img = easel_window_get_picture (win);
-  before = g_memdup2 (img->px, 80 * 60 * 4);
-  rbg_run (win);
-  g_assert_null (top_heading (win));
-  for (int y = 0; y < 60; y++)
+  for (int y = 15; y < 45; y++)
+    for (int x = 20; x < 60; x++)
+      img->px[y * 80 + x] = 0xFFFF0000u;
+  img->dirty = (EaselRect) { 0, 0, 80, 60 };
+  easel_canvas_update (easel_window_get_canvas (win));
+  return win;
+}
+
+/* Opens Remove Background and returns its card, once it is laid out. */
+static GtkWidget *
+rbg_open (EaselWindow *win)
+{
+  GtkWidget *card;
+
+  g_action_group_activate_action (G_ACTION_GROUP (win), "remove-background", NULL);
+  wait_for_layout (win);
+  card = easel_window_remove_background_card (win);
+  g_assert_nonnull (card);
+  return card;
+}
+
+/* The label of text somewhere inside root, or NULL. */
+static GtkLabel *
+find_label (GtkWidget *root, const char *text)
+{
+  for (GtkWidget *child = gtk_widget_get_first_child (root); child; child = gtk_widget_get_next_sibling (child))
     {
-      g_assert_cmphex (easel_image_get (img, 5, y), ==, 0xFFFF0000u);
-      g_assert_cmphex (easel_image_get (img, 70, y), ==, 0x000000FFu);     /* removed: alpha 0, blue kept */
+      GtkLabel *found;
+
+      if (GTK_IS_LABEL (child) && g_strcmp0 (gtk_label_get_text (GTK_LABEL (child)), text) == 0)
+        return GTK_LABEL (child);
+      found = find_label (child, text);
+      if (found != NULL)
+        return found;
     }
-  g_assert_true (action_enabled (win, "undo"));
+  return NULL;
+}
+
+/* Runs the main loop until a preview due is made. */
+static void
+rbg_settle (EaselWindow *win)
+{
+  for (int i = 0; i < 20; i++)
+    g_main_context_iteration (NULL, FALSE);
+  wait_for_layout (win);
+}
+
+/* Answers the card by clicking its real OK or Cancel button, and waits (at most 10 s) until it has closed and its work ended. */
+static void
+rbg_answer (EaselWindow *win, const char *response)
+{
+  GtkWidget *card = easel_window_remove_background_card (win);
+  gint64 deadline = g_get_monotonic_time () + 10 * G_USEC_PER_SEC;
+
+  g_assert_nonnull (card);
+  g_signal_emit_by_name (find_button (card, g_str_equal (response, "ok") ? "_OK" : "_Cancel"), "clicked");   /* the real button */
+  while ((easel_window_is_removing_background (win) || easel_window_remove_background_card (win) != NULL)
+         && g_get_monotonic_time () < deadline)
+    g_main_context_iteration (NULL, FALSE);
+  g_assert_false (easel_window_is_removing_background (win));
+  wait_for_layout (win);
+}
+
+/* 0035 AS-4, AS-2's pixel rule (REQ-0035-04, -07): the dialog's strings and its number at the automatic 5; the preview already in the
+   picture with no step and no mark; Cancel puts it back; again with 20: the preview follows; OK: one step, exact, Undo gives it back;
+   the typing rules of the number. */
+static void
+rbg_as4_dialog (void)
+{
+  EaselWindow *win = rbg_window ();
+  const EaselImage *img = easel_window_get_picture (win);
+  g_autofree guint32 *before = g_memdup2 (img->px, 80 * 60 * 4);
+  GtkWidget *d = rbg_open (win);
+  AdwSpinRow *row = easel_remove_bg_card_row (d);
+  graphene_rect_t card, area;
+
+  g_assert_nonnull (find_label (d, "Remove Background"));
+  g_assert_nonnull (find_label (d, "Works best on a plain background."));
+  g_assert_cmpstr (adw_preferences_row_get_title (ADW_PREFERENCES_ROW (row)), ==, "Tolerance");
+  g_assert_nonnull (find_button (d, "_Cancel"));
+  g_assert_nonnull (find_button (d, "_OK"));
+  g_assert_null (visible_dialog (win));                                   /* a card, no dialog over the picture */
+  g_assert_true (gtk_widget_is_ancestor (gtk_root_get_focus (GTK_ROOT (win)), d));   /* the keys go to its field */
+  /* In the canvas area's bottom right corner, 12 logical pixels in from both edges. */
+  g_assert_true (gtk_widget_compute_bounds (d, gtk_widget_get_parent (d), &card));                 /* the canvas area's overlay */
+  g_assert_true (gtk_widget_compute_bounds (gtk_widget_get_parent (d), gtk_widget_get_parent (d), &area));
+  g_assert_cmpfloat_with_epsilon (area.size.width - (card.origin.x + card.size.width), 12, 0.5);
+  g_assert_cmpfloat_with_epsilon (area.size.height - (card.origin.y + card.size.height), 12, 0.5);
+  g_assert_cmpint ((int) adw_spin_row_get_value (row), ==, 5);
+  rbg_settle (win);
+  g_assert_cmphex (easel_image_get (img, 5, 5), ==, 0x00FFFFFFu);          /* the preview: removed, the color kept */
+  g_assert_cmphex (easel_image_get (img, 30, 30), ==, 0xFFFF0000u);
+  g_assert_false (action_enabled (win, "undo"));
+  g_assert_false (easel_window_get_modified (win));
+  rbg_answer (win, "cancel");
+  g_assert_cmpint (memcmp (img->px, before, 80 * 60 * 4), ==, 0);
+  g_assert_false (action_enabled (win, "undo"));
+  g_assert_false (easel_window_get_modified (win));
+
+  d = rbg_open (win);
+  row = easel_remove_bg_card_row (d);
+  static const struct { const char *typed; int then; } typing[] = {
+    { "140", 40 }, { "-5", 1 }, { "12", 12 }, { "12.5", 12 }, { "abc", 12 }, { "", 12 }, { "20", 20 }
+  };
+  for (size_t i = 0; i < G_N_ELEMENTS (typing); i++)
+    {
+      gtk_editable_set_text (GTK_EDITABLE (row), typing[i].typed);
+      adw_spin_row_update (row);
+      g_assert_cmpint ((int) adw_spin_row_get_value (row), ==, typing[i].then);
+    }
+  rbg_settle (win);
+  g_assert_cmphex (easel_image_get (img, 5, 5), ==, 0x00FFFFFFu);          /* the preview for 20 */
+  g_assert_cmphex (easel_image_get (img, 30, 30), ==, 0xFFFF0000u);
+  rbg_answer (win, "ok");
+  for (int i = 0; i < 80 * 60; i++)
+    g_assert_true (img->px[i] == before[i] || img->px[i] == (before[i] & 0x00FFFFFFu));
+  g_assert_cmphex (easel_image_get (img, 5, 5), ==, 0x00FFFFFFu);
+  g_assert_true (easel_window_get_modified (win));
   g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
   g_assert_cmpint (memcmp (img->px, before, 80 * 60 * 4), ==, 0);
   g_assert_false (action_enabled (win, "undo"));
+  rbg_done ();
+}
 
-  /* A marked selection from (30, 10) to (59, 49): only its pixels change, and it floats. */
+/* Waits (at most 10 s) until Remove Background's dialog has closed and its work ended. */
+static void
+rbg_wait_closed (EaselWindow *win)
+{
+  gint64 deadline = g_get_monotonic_time () + 10 * G_USEC_PER_SEC;
+
+  while ((easel_window_remove_background_card (win) != NULL || easel_window_is_removing_background (win)
+          || visible_dialog (win) != NULL) && g_get_monotonic_time () < deadline)
+    g_main_context_iteration (NULL, FALSE);
+  g_assert_null (easel_window_remove_background_card (win));
+  g_assert_false (easel_window_is_removing_background (win));
+  wait_for_layout (win);
+}
+
+/* 0035 AS-4 through the user's own path (REQ-0035-04, -02): the dialog's real OK button clicked, Enter in the number's field, OK
+   straight after a change of the number (its preview still due), and a picture over 2 000 000 pixels (the copy of blocks): each time,
+   once the dialog has closed, the white is transparent, the red as it was, one step, the title's modified mark, and Undo gives the
+   picture back; Cancel's real button and Esc put everything back. */
+static void
+rbg_as4_real_ok (void)
+{
+  for (int way = 0; way < 6; way++)
+    {
+      gboolean large = way == 3;
+      int W = large ? 2000 : 80, H = large ? 1100 : 60;
+      g_autofree char *settings = g_strdup_printf ("[new-picture]\nwidth=%d\nheight=%d\nbackground=#FFFFFF\n", W, H);
+      EaselWindow *win = window_with (settings);
+      EaselImage *img = (EaselImage *) easel_window_get_picture (win);
+      g_autofree guint32 *before = NULL;
+      GtkWidget *d;
+      AdwSpinRow *row;
+
+      for (int y = H / 4; y < H * 3 / 4; y++)
+        for (int x = W / 4; x < W * 3 / 4; x++)
+          img->px[(size_t) y * W + x] = 0xFFFF0000u;
+      img->dirty = (EaselRect) { 0, 0, W, H };
+      easel_canvas_update (easel_window_get_canvas (win));
+      before = g_memdup2 (img->px, (gsize) W * H * 4);
+      d = rbg_open (win);
+      row = easel_remove_bg_card_row (d);
+      rbg_settle (win);
+      g_test_message ("way %d", way);
+      if (way == 0 || way == 3)
+        g_signal_emit_by_name (find_button (d, "_OK"), "clicked");
+      else if (way == 1)
+        g_signal_emit_by_name (gtk_editable_get_delegate (GTK_EDITABLE (row)), "activate");
+      else if (way == 2)
+        {
+          adw_spin_row_set_value (row, 9);                                  /* its preview due, not yet made */
+          g_signal_emit_by_name (find_button (d, "_OK"), "clicked");
+        }
+      else if (way == 4)
+        g_signal_emit_by_name (find_button (d, "_Cancel"), "clicked");
+      else
+        g_assert_true (key_taken (win, GDK_KEY_Escape, 0));                 /* Esc is Cancel */
+      rbg_wait_closed (win);
+      if (way >= 4)
+        {
+          g_assert_cmpint (memcmp (img->px, before, (gsize) W * H * 4), ==, 0);
+          g_assert_false (action_enabled (win, "undo"));
+          g_assert_false (easel_window_get_modified (win));
+        }
+      else
+        {
+          g_assert_cmphex (easel_image_get (img, 2, 2), ==, 0x00FFFFFFu);
+          g_assert_cmphex (easel_image_get (img, W / 2, H / 2), ==, 0xFFFF0000u);
+          g_assert_true (easel_window_get_modified (win));
+          g_assert_cmpstr (gtk_window_get_title (GTK_WINDOW (win)), ==, "• Untitled – Easel");
+          g_assert_true (action_enabled (win, "undo"));
+          g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+          g_assert_cmpint (memcmp (img->px, before, (gsize) W * H * 4), ==, 0);
+          g_assert_false (action_enabled (win, "undo"));
+        }
+      rbg_done ();
+    }
+}
+
+/* 0035 AS-3 (REQ-0035-02, -07): a marked selection from (10, 5) to (69, 54), the red inside it: lifted at the opening; OK changes only its pixels and it
+   floats; Cancel marks it again; a stretched floating one: Cancel gives it back as it was; a pending curve is put down first and stays
+   so after Cancel. */
+static void
+rbg_as3_selections (void)
+{
+  EaselWindow *win = rbg_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  g_autofree guint32 *before = g_memdup2 (img->px, 80 * 60 * 4);
+  int x, y, w, h;
+  gboolean floating;
+
   use_tool (win, "select");
-  drag_selection (win, 30, 10, 59, 49);
-  rbg_run (win);
-  g_assert_true (easel_canvas_is_pending (canvas));
+  drag_selection (win, 10, 5, 69, 54);
+  rbg_open (win);
+  g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating) && floating);
+  rbg_answer (win, "cancel");
+  g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating) && !floating);   /* marked again */
+  g_assert_cmpint (memcmp (img->px, before, 80 * 60 * 4), ==, 0);
+  g_assert_false (action_enabled (win, "undo"));
+
+  rbg_open (win);
+  rbg_answer (win, "ok");
+  g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating) && floating);
   g_assert_true (easel_canvas_put_down (canvas));
-  g_assert_cmphex (easel_image_get (img, 55, 30), ==, 0x000000FFu);
-  g_assert_cmphex (easel_image_get (img, 35, 30), ==, 0xFFFF0000u);
-  g_assert_cmphex (easel_image_get (img, 70, 30), ==, 0xFF0000FFu);       /* outside the selection: as it was */
-  g_assert_cmphex (easel_image_get (img, 55, 5), ==, 0xFF0000FFu);
+  g_assert_cmphex (easel_image_get (img, 15, 30), ==, 0x00FFFFFFu);        /* white inside: removed */
+  g_assert_cmphex (easel_image_get (img, 30, 30), ==, 0xFFFF0000u);        /* red inside: kept */
+  g_assert_cmphex (easel_image_get (img, 75, 30), ==, 0xFFFFFFFFu);        /* outside: as it was */
+  g_assert_cmphex (easel_image_get (img, 30, 2), ==, 0xFFFFFFFFu);
   g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
   g_assert_cmpint (memcmp (img->px, before, 80 * 60 * 4), ==, 0);
 
-  /* A pending curve is put down first, and stays put down. */
+  /* A floating selection stretched to twice its size: Cancel gives it back as it was, shown the same. */
+  drag_selection (win, 10, 5, 69, 54);
+  g_assert_true (easel_canvas_stretch_skew_selection (canvas, 120, 100, 0, 0));
+  g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating) && floating && w == 120 && h == 100);
+  {
+    gboolean lifted;
+    const uint8_t *shape;
+    int fw, fh;
+    g_autofree guint32 *shown = g_memdup2 (easel_canvas_rbg_float (canvas, &lifted, &shape, &fw, &fh), 120 * 100 * 4);
+
+    g_assert_false (lifted);
+    rbg_open (win);
+    rbg_settle (win);
+    rbg_answer (win, "cancel");
+    g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating) && floating && w == 120 && h == 100);
+    g_assert_cmpint (memcmp (shown, easel_canvas_rbg_float (canvas, &lifted, &shape, &fw, &fh), 120 * 100 * 4), ==, 0);
+  }
+  g_assert_true (easel_canvas_put_down (canvas));
+
+  /* A pending curve is put down first, and stays put down after Cancel. */
   use_tool (win, "curve");
   shape_press_move (win, 1, 2, 2, 20, 2);
   shape_release (win, 1);
   g_assert_true (easel_canvas_is_pending (canvas));
-  rbg_run (win);
+  rbg_open (win);
   g_assert_false (easel_canvas_is_pending (canvas));
-  g_assert_cmphex (easel_image_get (img, 10, 2), !=, 0xFFFF0000u);         /* the curve's pixel */
+  rbg_answer (win, "cancel");
+  g_assert_false (easel_canvas_is_pending (canvas));
+  g_assert_cmphex (easel_image_get (img, 10, 2), !=, 0xFFFFFFFFu);         /* the curve's pixel */
   rbg_done ();
 }
 
-/* 0035 AS-4 (REQ-0035-04): the slow fake: the progress dialog after 0.5 s with its heading and Cancel, not before; Cancel ends the
-   work within 0.5 s with nothing changed and no step; Esc the same; Ctrl+Q stops it and the Save prompt shows, also when it comes
-   before the dialog. */
+/* 0035 AS-5 (REQ-0035-05): a fully transparent picture: OK changes nothing, no step, no mark; a marked selection with no background
+   in it stays floating as shown. */
 static void
-rbg_as4_progress_and_cancel (void)
+rbg_as5_nothing (void)
 {
-  for (int way = 0; way < 4; way++)
+  EaselWindow *win = rbg_window ();
+  EaselImage *img = (EaselImage *) easel_window_get_picture (win);
+
+  memset (img->px, 0, 80 * 60 * 4);
+  img->dirty = (EaselRect) { 0, 0, 80, 60 };
+  easel_canvas_update (easel_window_get_canvas (win));
+  rbg_open (win);
+  rbg_answer (win, "ok");
+  for (int i = 0; i < 80 * 60; i++)
+    g_assert_cmphex (img->px[i], ==, 0);
+  g_assert_false (action_enabled (win, "undo"));
+  g_assert_false (easel_window_get_modified (win));
+  rbg_done ();
+
+  /* A marked selection of fully transparent pixels: OK leaves it floating as shown, the picture as it was. */
+  win = rbg_window ();
+  img = (EaselImage *) easel_window_get_picture (win);
+  for (int y = 20; y < 40; y++)
+    for (int x = 25; x < 55; x++)
+      img->px[y * 80 + x] = 0x00FF0000u;
+  {
+    g_autofree guint32 *before = g_memdup2 (img->px, 80 * 60 * 4);
+    EaselCanvas *canvas = easel_window_get_canvas (win);
+    int x, y, w, h;
+    gboolean floating;
+
+    use_tool (win, "select");
+    drag_selection (win, 25, 20, 54, 39);
+    rbg_open (win);
+    rbg_answer (win, "ok");
+    g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating) && floating);
+    g_assert_true (easel_canvas_put_down (canvas));
+    g_assert_cmpint (memcmp (img->px, before, 80 * 60 * 4), ==, 0);
+  }
+  rbg_done ();
+}
+
+/* 0035 AS-6 (REQ-0035-06, -12): memory too small: the message and no dialog, the picture as it was, a marked selection marked again;
+   memory that fails at OK: the message, everything as before; a quit while the dialog is open closes it as Cancel and the Save prompt
+   shows, the picture as before the dialog. */
+static void
+rbg_as6_memory_and_quit (void)
+{
+  EaselWindow *win = rbg_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  g_autofree guint32 *before = g_memdup2 (img->px, 80 * 60 * 4);
+  int x, y, w, h;
+  gboolean floating;
+
+  for (int sel = 0; sel < 2; sel++)
     {
-      EaselWindow *win = rbg_window ("slow-finder.onnx");
-      const EaselImage *img;
+      if (sel == 1)
+        {
+          use_tool (win, "select");
+          drag_selection (win, 10, 5, 69, 54);
+        }
+      easel_window_set_transform_limit (win, 20000);
+      g_action_group_activate_action (G_ACTION_GROUP (win), "remove-background", NULL);
+      easel_window_set_transform_limit (win, G_MAXSIZE);
+      wait_for_dialogs (win, 1);
+      g_assert_null (easel_window_remove_background_card (win));
+      g_assert_cmpstr (top_heading (win), ==, "Could Not Remove the Background");
+      g_assert_cmpstr (adw_alert_dialog_get_body (ADW_ALERT_DIALOG (visible_dialog (win))), ==,
+                       "There is not enough memory for this change.");
+      respond (win, "close");
+      g_assert_cmpint (memcmp (img->px, before, 80 * 60 * 4), ==, 0);
+      g_assert_false (action_enabled (win, "undo"));
+      if (sel == 1)
+        g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating) && !floating);
+    }
+  g_assert_true (easel_canvas_put_down (canvas));
+
+  /* The result's memory refused at OK: the analysis holds what it needs, the result's 19 200 bytes do not fit. */
+  rbg_open (win);
+  easel_window_set_transform_limit (win, 80 * 60 * 4 + 80 * 60 * 4 / 2);
+  rbg_answer (win, "ok");
+  easel_window_set_transform_limit (win, G_MAXSIZE);
+  wait_for_dialogs (win, 1);
+  g_assert_cmpstr (top_heading (win), ==, "Could Not Remove the Background");
+  respond (win, "close");
+  g_assert_cmpint (memcmp (img->px, before, 80 * 60 * 4), ==, 0);
+  g_assert_false (action_enabled (win, "undo"));
+
+  /* A quit or a close while the dialog is open. */
+  for (int way = 0; way < 2; way++)
+    {
+      EaselWindow *w2 = rbg_window ();
+      const EaselImage *i2 = easel_window_get_picture (w2);
+      g_autofree guint32 *b2 = NULL;
+
+      use_tool (w2, "pencil");
+      easel_canvas_press (easel_window_get_canvas (w2), 1, 75.5, 55.5);
+      easel_canvas_release (easel_window_get_canvas (w2), 1);
+      b2 = g_memdup2 (i2->px, 80 * 60 * 4);
+      rbg_open (w2);
+      rbg_settle (w2);
+      if (way == 0)
+        g_action_group_activate_action (G_ACTION_GROUP (g_application_get_default ()), "quit", NULL);
+      else
+        g_action_group_activate_action (G_ACTION_GROUP (w2), "close", NULL);
+      wait_for_dialogs (w2, 1);
+      g_assert_null (easel_window_remove_background_card (w2));
+      g_assert_cmpstr (top_heading (w2), ==, "Save Changes?");
+      g_assert_cmpint (memcmp (i2->px, b2, 80 * 60 * 4), ==, 0);
+      close_windows ();
+    }
+  rbg_done ();
+}
+
+/* 0035 AS-8 (REQ-0035-10): every language's Help page, in its Image menu section, names Remove Background by its dialog's heading and
+   gives its limits (the paragraph that names it also names the Tolerance). */
+static void
+rbg_as8_help (void)
+{
+  static const struct { const char *lang, *name, *tolerance; } pages[] = {
+    { "en", "Remove Background", "Tolerance" }, { "cs", "Odstranit pozadí", "olerance" }, { "de", "Hintergrund entfernen", "Toleranz" },
+    { "es", "Quitar fondo", "olerancia" }, { "fr", "Supprimer l'arrière-plan", "olérance" }, { "hu", "Háttér eltávolítása", "űréshatár" },
+    { "it", "Rimuovi lo sfondo", "olleranza" }, { "pl", "Usuń tło", "olerancj" }, { "pt", "Remover fundo", "olerância" },
+    { "ro", "Elimină fundalul", "oleranța" }, { "ru", "Удалить фон", "опуск" }, { "uk", "Вилучити тло", "опуск" },
+  };
+
+  for (gsize i = 0; i < G_N_ELEMENTS (pages); i++)
+    {
+      g_autofree char *path = easel_help_page_for (pages[i].lang);
+      g_autofree char *text = NULL;
+      char *section, *next, *para, *end;
+
+      g_assert_true (g_file_get_contents (path, &text, NULL, NULL));
+      section = strstr (text, "<h2>");
+      for (int k = 1; section != NULL && k < 5; k++)          /* the fifth heading: the Image menu */
+        section = strstr (section + 4, "<h2>");
+      g_assert_nonnull (section);
+      next = strstr (section + 4, "<h2>");
+      para = strstr (section, pages[i].name);
+      g_assert_true (para != NULL && para < next);
+      end = strstr (para, "</p>");
+      *end = '\0';
+      g_assert_nonnull (strstr (para, pages[i].tolerance));
+    }
+}
+
+/* 0035 AS-9 (REQ-0035-11): the work made slow by the test hook: the progress dialog after 0.5 s, not before; Cancel and Esc end it
+   within 0.5 s with the picture as before the dialog and no step; Ctrl+Q stops it and the Save prompt shows. */
+static void
+rbg_as9_progress_and_cancel (void)
+{
+  for (int way = 0; way < 3; way++)
+    {
+      EaselWindow *win = rbg_window ();
+      const EaselImage *img = easel_window_get_picture (win);
       g_autofree guint32 *before = NULL;
       gint64 deadline, asked;
 
-      if (win == NULL)
-        return;
-      img = easel_window_get_picture (win);
-      if (way >= 2)
+      if (way == 2)
         {
           use_tool (win, "pencil");
           easel_canvas_press (easel_window_get_canvas (win), 1, 75.5, 55.5);
           easel_canvas_release (easel_window_get_canvas (win), 1);
         }
       before = g_memdup2 (img->px, 80 * 60 * 4);
-      g_action_group_activate_action (G_ACTION_GROUP (win), "remove-background", NULL);
+      g_setenv ("EASEL_TEST_RBG_SLOW_MS", "5000", TRUE);              /* read when the dialog opens */
+      rbg_open (win);
+      g_unsetenv ("EASEL_TEST_RBG_SLOW_MS");
+      g_signal_emit_by_name (find_button (easel_window_remove_background_card (win), "_OK"), "clicked");
       g_assert_true (easel_window_is_removing_background (win));
-      if (way == 3)
-        {
-          /* Ctrl+Q before the dialog shows: the work stops all the same. */
-          asked = g_get_monotonic_time ();
-          g_action_group_activate_action (G_ACTION_GROUP (g_application_get_default ()), "quit", NULL);
-          goto ended;
-        }
       deadline = g_get_monotonic_time () + G_USEC_PER_SEC * 3 / 10;
       while (g_get_monotonic_time () < deadline)
         g_main_context_iteration (NULL, FALSE);
-      g_assert_null (top_heading (win));                                   /* not before 0.5 s */
+      g_assert_cmpstr (top_heading (win), !=, "Removing the Background");          /* not before 0.5 s */
       deadline = g_get_monotonic_time () + 3 * G_USEC_PER_SEC;
-      while (top_heading (win) == NULL && g_get_monotonic_time () < deadline)
+      while (g_strcmp0 (top_heading (win), "Removing the Background") != 0 && g_get_monotonic_time () < deadline)
         g_main_context_iteration (NULL, FALSE);
       g_assert_cmpstr (top_heading (win), ==, "Removing the Background");
-      g_assert_true (easel_window_is_removing_background (win));
       asked = g_get_monotonic_time ();
       if (way == 0)
         respond (win, "cancel");
@@ -36933,7 +37245,6 @@ rbg_as4_progress_and_cancel (void)
         g_assert_true (key_taken (win, GDK_KEY_Escape, 0) || (adw_dialog_close (visible_dialog (win)), TRUE));
       else
         g_action_group_activate_action (G_ACTION_GROUP (g_application_get_default ()), "quit", NULL);
-ended:
       deadline = g_get_monotonic_time () + 2 * G_USEC_PER_SEC;
       while (easel_window_is_removing_background (win) && g_get_monotonic_time () < deadline)
         g_main_context_iteration (NULL, FALSE);
@@ -36953,399 +37264,6 @@ ended:
         }
       rbg_done ();
     }
-}
-
-/* 0035 AS-5 (REQ-0035-05): one color, a picture 15 wide, and an answer that tells nothing apart give "Nothing to Remove", nothing
-   changed, no step; a marked selection stays marked. */
-static void
-rbg_as5_nothing (void)
-{
-  EaselWindow *win = rbg_window ("fake-finder.onnx");
-  EaselCanvas *canvas;
-  EaselImage *img;
-
-  if (win == NULL)
-    return;
-  canvas = easel_window_get_canvas (win);
-  img = (EaselImage *) easel_window_get_picture (win);
-  for (int k = 0; k < 3; k++)
-    {
-      g_autofree guint32 *before = NULL;
-
-      for (int i = 0; i < 80 * 60; i++)
-        img->px[i] = k == 0 ? 0xFF00FF00u : k == 1 ? (i % 80 < 15 ? 0xFFFF0000u : 0xFF0000FFu) : (0xFFFF0000u | (guint32) (i % 7));
-      easel_canvas_update (canvas);
-      before = g_memdup2 (img->px, 80 * 60 * 4);
-      if (k >= 1)
-        {
-          use_tool (win, "select");
-          if (k == 1)
-            drag_selection (win, 0, 0, 14, 59);                            /* 15 wide: the early answer */
-          else
-            drag_selection (win, 10, 10, 49, 49);                          /* the model asked: its answer is flat */
-        }
-      rbg_run (win);
-      wait_for_dialogs (win, 1);
-      g_assert_cmpstr (top_heading (win), ==, "Nothing to Remove");
-      g_assert_cmpstr (adw_alert_dialog_get_body (ADW_ALERT_DIALOG (visible_dialog (win))), ==, "No background was found to remove.");
-      respond (win, "close");
-      g_assert_cmpint (memcmp (img->px, before, 80 * 60 * 4), ==, 0);
-      g_assert_false (action_enabled (win, "undo"));
-      if (k >= 1)
-        {
-          int x, y, w, h;
-          gboolean floating = TRUE;
-
-          g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
-          g_assert_false (floating);                                       /* marked still */
-          easel_canvas_deselect (canvas);
-        }
-    }
-  rbg_done ();
-}
-
-/* 0035 AS-6 (REQ-0035-06): without the memory, and with a model that cannot be loaded: the dialog and nothing changed; Ctrl+Q with
-   the dialog open closes it and goes on. */
-static void
-rbg_as6_failures (void)
-{
-  EaselWindow *win = rbg_window ("fake-finder.onnx");
-  const EaselImage *img;
-  g_autofree guint32 *before = NULL;
-  g_autofree char *broken = NULL;
-  int fd;
-
-  if (win == NULL)
-    return;
-  img = easel_window_get_picture (win);
-  before = g_memdup2 (img->px, 80 * 60 * 4);
-  easel_window_set_transform_limit (win, 100);
-  rbg_run (win);
-  easel_window_set_transform_limit (win, G_MAXSIZE);
-  wait_for_dialogs (win, 1);
-  g_assert_cmpstr (top_heading (win), ==, "Could Not Remove the Background");
-  g_assert_cmpstr (adw_alert_dialog_get_body (ADW_ALERT_DIALOG (visible_dialog (win))), ==, "There is not enough memory for this change.");
-  respond (win, "close");
-  g_assert_cmpint (memcmp (img->px, before, 80 * 60 * 4), ==, 0);
-  rbg_done ();
-  /* A model that is there but cannot be loaded. */
-  fd = g_file_open_tmp ("easel-broken-XXXXXX.onnx", &broken, NULL);
-  g_assert_cmpint (fd, >=, 0);
-  g_assert_cmpint (write (fd, "not a model", 11), ==, 11);
-  close (fd);
-  g_setenv ("EASEL_TEST_FINDER", broken, TRUE);
-  win = window_with ("[new-picture]\nwidth=80\nheight=60\n");
-  g_unsetenv ("EASEL_TEST_FINDER");
-  use_tool (win, "pencil");
-  easel_canvas_press (easel_window_get_canvas (win), 1, 5.5, 5.5);
-  easel_canvas_release (easel_window_get_canvas (win), 1);
-  rbg_run (win);
-  wait_for_dialogs (win, 1);
-  g_assert_cmpstr (top_heading (win), ==, "Could Not Remove the Background");
-  g_assert_cmpstr (adw_alert_dialog_get_body (ADW_ALERT_DIALOG (visible_dialog (win))), ==, "Background removal is not available.");
-  g_action_group_activate_action (G_ACTION_GROUP (g_application_get_default ()), "quit", NULL);
-  wait_for_dialogs (win, 1);
-  g_assert_cmpstr (top_heading (win), ==, "Save Changes?");
-  g_unlink (broken);
-  rbg_done ();
-}
-
-/* 0035 AS-3 (REQ-0035-02, Check F2): a floating selection is acted on as shown: one inverted (cyan where red was, yellow where blue
-   was: the fake keeps yellow, its red plane full, and removes cyan), one stretched from 8 x 8 to 16 x 16, and a free-form one, whose
-   pixels outside its shape stay. Each floats, and one Undo after its put-down gives the picture back. */
-static void
-rbg_f2_floating_shown (void)
-{
-  EaselWindow *win = rbg_window ("fake-finder.onnx");
-  EaselCanvas *canvas;
-  const EaselImage *img;
-  g_autofree guint32 *before = NULL;
-  int x, y, w, h, mw, mh;
-  gboolean floating;
-  g_autofree guint8 *shape = NULL;
-
-  if (win == NULL)
-    return;
-  canvas = easel_window_get_canvas (win);
-  img = easel_window_get_picture (win);
-  before = g_memdup2 (img->px, 80 * 60 * 4);
-
-  /* Inverted, so floating: what is shown is cyan and yellow, not the picture's red and blue. */
-  use_tool (win, "select");
-  drag_selection (win, 30, 10, 59, 49);
-  g_action_group_activate_action (G_ACTION_GROUP (win), "invert", NULL);
-  g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating) && floating);
-  rbg_run (win);
-  g_assert_null (top_heading (win));
-  g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating) && floating);
-  g_assert_true (easel_canvas_put_down (canvas));
-  g_assert_cmphex (easel_image_get (img, 33, 30), ==, 0x0000FFFFu);       /* cyan, removed: alpha 0, its color kept */
-  g_assert_cmphex (easel_image_get (img, 55, 30), ==, 0xFFFFFF00u);       /* yellow, kept */
-  g_assert_cmphex (easel_image_get (img, 20, 30), ==, 0xFFFF0000u);       /* outside: as it was */
-  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
-  g_assert_cmpint (memcmp (img->px, before, 80 * 60 * 4), ==, 0);
-
-  /* Stretched: 8 x 8 (four red columns, four blue) to 16 x 16; acted on at its shown size. */
-  drag_selection (win, 36, 10, 43, 17);
-  g_assert_true (easel_canvas_stretch_skew_selection (canvas, 16, 16, 0, 0));
-  g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating) && floating);
-  g_assert_true (x == 36 && y == 10 && w == 16 && h == 16);
-  rbg_run (win);
-  g_assert_null (top_heading (win));
-  g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating) && floating);
-  g_assert_true (w == 16 && h == 16);
-  g_assert_true (easel_canvas_put_down (canvas));
-  for (int j = 0; j < 16; j++)
-    for (int i = 0; i < 16; i++)
-      {
-        if (i == 7 || i == 8)
-          continue;                                                        /* the subject's edge */
-        g_assert_cmphex (easel_image_get (img, 36 + i, 10 + j), ==, i < 8 ? 0xFFFF0000u : 0x000000FFu);
-      }
-  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
-  g_assert_cmpint (memcmp (img->px, before, 80 * 60 * 4), ==, 0);
-
-  /* Free-form: the triangle through the corners (30, 10), (50, 10), (30, 30) across the red edge at x = 40 (its box 20 x 20: at least
-     16, so the model is asked). */
-  use_free_select (win);
-  trace_press (win, 30, 10);
-  corner_to (win, 50, 10);
-  corner_to (win, 30, 30);
-  shape_release (win, 1);
-  g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating) && !floating);
-  shape = g_memdup2 (easel_canvas_get_selection_mask (canvas, &mw, &mh), (gsize) w * h);
-  g_assert_true (mw == w && mh == h);
-  rbg_run (win);
-  g_assert_cmpstr (top_heading (win), ==, NULL);
-  g_assert_true (w >= 16 && h >= 16);
-  g_assert_true (easel_canvas_put_down (canvas));
-  for (int j = 0; j < h; j++)
-    for (int i = 0; i < w; i++)
-      {
-        int px = x + i, py = y + j;
-        guint32 was = before[py * 80 + px];
-
-        if (!shape[j * w + i])
-          g_assert_cmphex (easel_image_get (img, px, py), ==, was);       /* outside the shape: as it was */
-        else if (px <= 38)
-          g_assert_cmphex (easel_image_get (img, px, py), ==, was);       /* red: kept */
-        else if (px >= 41)
-          g_assert_cmphex (easel_image_get (img, px, py), ==, was & 0x00FFFFFFu);  /* blue: removed */
-      }
-  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
-  g_assert_cmpint (memcmp (img->px, before, 80 * 60 * 4), ==, 0);
-  rbg_done ();
-}
-
-/* Waits (at most 3 s) for the progress dialog of a run just chosen. */
-static void
-rbg_wait_progress (EaselWindow *win)
-{
-  gint64 deadline = g_get_monotonic_time () + 3 * G_USEC_PER_SEC;
-
-  while (top_heading (win) == NULL && g_get_monotonic_time () < deadline)
-    g_main_context_iteration (NULL, FALSE);
-  g_assert_cmpstr (top_heading (win), ==, "Removing the Background");
-}
-
-/* Waits (at most 2 s) for the work to end, and returns how long it took after `asked`, in microseconds. */
-static gint64
-rbg_wait_end (EaselWindow *win, gint64 asked)
-{
-  gint64 deadline = g_get_monotonic_time () + 2 * G_USEC_PER_SEC;
-
-  while (easel_window_is_removing_background (win) && g_get_monotonic_time () < deadline)
-    g_main_context_iteration (NULL, FALSE);
-  g_assert_false (easel_window_is_removing_background (win));
-  return g_get_monotonic_time () - asked;
-}
-
-/* 0035 AS-4 (REQ-0035-04, Check F3): Cancel with a marked selection leaves it marked, where it was; Ctrl+W during a run stops it within
-   0.5 s with nothing changed, the Save prompt shows, and its Cancel leaves the window and the picture as before. */
-static void
-rbg_f3_cancel_marked_and_close (void)
-{
-  for (int way = 0; way < 2; way++)
-    {
-      EaselWindow *win = rbg_window ("slow-finder.onnx");
-      EaselCanvas *canvas;
-      const EaselImage *img;
-      g_autofree guint32 *before = NULL;
-      int x, y, w, h;
-      gboolean floating;
-      gint64 asked;
-
-      if (win == NULL)
-        return;
-      canvas = easel_window_get_canvas (win);
-      img = easel_window_get_picture (win);
-      if (way == 0)
-        {
-          use_tool (win, "select");
-          drag_selection (win, 30, 10, 59, 49);
-        }
-      else
-        {
-          use_tool (win, "pencil");
-          easel_canvas_press (canvas, 1, 75.5, 55.5);
-          easel_canvas_release (canvas, 1);
-          g_assert_true (easel_window_get_modified (win));
-        }
-      before = g_memdup2 (img->px, 80 * 60 * 4);
-      g_action_group_activate_action (G_ACTION_GROUP (win), "remove-background", NULL);
-      rbg_wait_progress (win);
-      asked = g_get_monotonic_time ();
-      if (way == 0)
-        respond (win, "cancel");
-      else
-        g_action_group_activate_action (G_ACTION_GROUP (win), "close", NULL);
-      g_assert_cmpint (rbg_wait_end (win, asked), <, G_USEC_PER_SEC / 2);
-      g_assert_cmpint (memcmp (img->px, before, 80 * 60 * 4), ==, 0);
-      if (way == 0)
-        {
-          wait_for_dialogs (win, 0);
-          g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
-          g_assert_false (floating);                                       /* marked again: it was never lifted */
-          g_assert_true (selection_is (win, 30, 10, 30, 40));
-          g_assert_false (action_enabled (win, "undo"));
-        }
-      else
-        {
-          wait_for_dialogs (win, 1);
-          g_assert_cmpstr (top_heading (win), ==, "Save Changes?");
-          respond (win, "cancel");
-          wait_for_dialogs (win, 0);
-          g_assert_true (gtk_widget_get_visible (GTK_WIDGET (win)));
-          g_assert_cmpint (memcmp (img->px, before, 80 * 60 * 4), ==, 0);
-          g_assert_true (easel_window_get_modified (win));
-          g_assert_false (easel_window_is_removing_background (win));
-        }
-      rbg_done ();
-    }
-}
-
-/* 0035 AS-6 and AS-5 (REQ-0035-05, -06, Check F3): a model that loads and then fails in its run (tests/data/finder/fail-finder.onnx):
-   "Background removal is not available.", the picture and its history as they were; a picture whose every pixel is fully transparent
-   (in several colors, so not one color): "Nothing to Remove". */
-static void
-rbg_f3_failed_run_and_transparent (void)
-{
-  EaselWindow *win = rbg_window ("fail-finder.onnx");
-  EaselCanvas *canvas;
-  EaselImage *img;
-  g_autofree guint32 *before = NULL;
-
-  if (win == NULL)
-    return;
-  canvas = easel_window_get_canvas (win);
-  img = (EaselImage *) easel_window_get_picture (win);
-  use_tool (win, "pencil");
-  easel_canvas_press (canvas, 1, 75.5, 55.5);
-  easel_canvas_release (canvas, 1);
-  before = g_memdup2 (img->px, 80 * 60 * 4);
-  rbg_run (win);
-  wait_for_dialogs (win, 1);
-  g_assert_cmpstr (top_heading (win), ==, "Could Not Remove the Background");
-  g_assert_cmpstr (adw_alert_dialog_get_body (ADW_ALERT_DIALOG (visible_dialog (win))), ==, "Background removal is not available.");
-  respond (win, "close");
-  g_assert_cmpint (memcmp (img->px, before, 80 * 60 * 4), ==, 0);
-  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);               /* the pencil's step, and only it */
-  g_assert_cmphex (easel_image_get (img, 75, 55), ==, 0xFF0000FFu);
-  g_assert_false (action_enabled (win, "undo"));
-  rbg_done ();
-
-  win = rbg_window ("fake-finder.onnx");
-  img = (EaselImage *) easel_window_get_picture (win);
-  for (int i = 0; i < 80 * 60; i++)
-    img->px[i] = 0x00FF0000u | (guint32) (i % 7);
-  easel_canvas_update (easel_window_get_canvas (win));
-  g_free (before);
-  before = g_memdup2 (img->px, 80 * 60 * 4);
-  rbg_run (win);
-  wait_for_dialogs (win, 1);
-  g_assert_cmpstr (top_heading (win), ==, "Nothing to Remove");
-  respond (win, "close");
-  g_assert_cmpint (memcmp (img->px, before, 80 * 60 * 4), ==, 0);
-  g_assert_false (action_enabled (win, "undo"));
-  rbg_done ();
-}
-
-/* 0035 Check F4 (REQ-0035-04, -06): a window closed while its run is under way shows nothing when the run ends, even when the run
-   fails (a model that cannot be loaded): no dialog is put on the closed window, and no window is left. */
-static void
-rbg_f4_closed_window (void)
-{
-  g_autofree char *broken = NULL;
-  EaselWindow *win;
-  GtkWidget *weak;
-  gint64 deadline;
-  int fd;
-
-  fd = g_file_open_tmp ("easel-broken-XXXXXX.onnx", &broken, NULL);
-  g_assert_cmpint (fd, >=, 0);
-  g_assert_cmpint (write (fd, "not a model", 11), ==, 11);
-  close (fd);
-  g_setenv ("EASEL_TEST_FINDER", broken, TRUE);
-  win = window_with ("[new-picture]\nwidth=80\nheight=60\n");
-  g_unsetenv ("EASEL_TEST_FINDER");
-  if (!g_action_group_has_action (G_ACTION_GROUP (win), "remove-background"))
-    {
-      g_unlink (broken);
-      rbg_done ();
-      g_test_skip ("this build has no model's runtime (REQ-0035-10)");
-      return;
-    }
-  {
-    EaselImage *img = (EaselImage *) easel_window_get_picture (win);
-
-    for (int i = 0; i < 80 * 60; i++)
-      img->px[i] = i % 80 < 40 ? 0xFFFF0000u : 0xFF0000FFu;
-  }
-  weak = GTK_WIDGET (win);
-  g_object_add_weak_pointer (G_OBJECT (win), (gpointer *) &weak);
-  g_action_group_activate_action (G_ACTION_GROUP (win), "remove-background", NULL);
-  g_assert_true (easel_window_is_removing_background (win));
-  g_action_group_activate_action (G_ACTION_GROUP (win), "close", NULL);           /* not modified: it closes at once */
-  deadline = g_get_monotonic_time () + 5 * G_USEC_PER_SEC;
-  while (weak != NULL && g_get_monotonic_time () < deadline)
-    g_main_context_iteration (NULL, FALSE);
-  g_assert_null (weak);                                                      /* the run ended and gave the window back */
-  for (int i = 0; i < 20; i++)
-    g_main_context_iteration (NULL, FALSE);
-  {
-    g_autoptr (GList) tops = gtk_window_list_toplevels ();
-
-    for (GList *l = tops; l != NULL; l = l->next)
-      g_assert_false (gtk_widget_get_visible (l->data));                     /* no dialog on a window that is gone */
-  }
-  g_unlink (broken);
-  rbg_done ();
-}
-
-/* 0035 Check F5 (REQ-0035-06): the model's own input and answer (16 bytes a pixel of its square: 64 KB for the fake's 64) count
-   against the memory limit: with a limit that holds the picture's copy (19200 bytes) and the step, but not them, the memory dialog
-   shows and nothing changes. */
-static void
-rbg_f5_model_buffers (void)
-{
-  EaselWindow *win = rbg_window ("fake-finder.onnx");
-  const EaselImage *img;
-  g_autofree guint32 *before = NULL;
-
-  if (win == NULL)
-    return;
-  img = easel_window_get_picture (win);
-  before = g_memdup2 (img->px, 80 * 60 * 4);
-  easel_window_set_transform_limit (win, 60000);
-  rbg_run (win);
-  easel_window_set_transform_limit (win, G_MAXSIZE);
-  wait_for_dialogs (win, 1);
-  g_assert_cmpstr (top_heading (win), ==, "Could Not Remove the Background");
-  g_assert_cmpstr (adw_alert_dialog_get_body (ADW_ALERT_DIALOG (visible_dialog (win))), ==, "There is not enough memory for this change.");
-  respond (win, "close");
-  g_assert_cmpint (memcmp (img->px, before, 80 * 60 * 4), ==, 0);
-  g_assert_false (action_enabled (win, "undo"));
-  rbg_done ();
 }
 
 /* ---- 0036: wheel zoom in every tool ---- */
@@ -38421,16 +38339,14 @@ main (int argc, char **argv)
   g_test_add_func ("/0034/as9_stretched", bw_as9_stretched);
   g_test_add_func ("/0034/as7_memory", bw_as7_memory);
   g_test_add_func ("/0034/as10_quit", bw_as10_quit);
-  g_test_add_func ("/0035/as8_unavailable", rbg_as8_unavailable);
-  g_test_add_func ("/0035/as3_whole_and_selections", rbg_as3_whole_and_selections);
-  g_test_add_func ("/0035/as4_progress_and_cancel", rbg_as4_progress_and_cancel);
+  g_test_add_func ("/0035/as1_menus", rbg_as1_menus);
+  g_test_add_func ("/0035/as4_dialog", rbg_as4_dialog);
+  g_test_add_func ("/0035/as4_real_ok", rbg_as4_real_ok);
+  g_test_add_func ("/0035/as3_selections", rbg_as3_selections);
   g_test_add_func ("/0035/as5_nothing", rbg_as5_nothing);
-  g_test_add_func ("/0035/as6_failures", rbg_as6_failures);
-  g_test_add_func ("/0035/f2_floating_shown", rbg_f2_floating_shown);
-  g_test_add_func ("/0035/f3_cancel_marked_and_close", rbg_f3_cancel_marked_and_close);
-  g_test_add_func ("/0035/f3_failed_run_and_transparent", rbg_f3_failed_run_and_transparent);
-  g_test_add_func ("/0035/f4_closed_window", rbg_f4_closed_window);
-  g_test_add_func ("/0035/f5_model_buffers", rbg_f5_model_buffers);
+  g_test_add_func ("/0035/as6_memory_and_quit", rbg_as6_memory_and_quit);
+  g_test_add_func ("/0035/as8_help", rbg_as8_help);
+  g_test_add_func ("/0035/as9_progress_and_cancel", rbg_as9_progress_and_cancel);
   g_test_add_func ("/0036/as1_every_tool", wz_as1_every_tool);
   g_test_add_func ("/0036/as2_cards", wz_as2_cards);
   g_test_add_func ("/0036/as3_held", wz_as3_held);

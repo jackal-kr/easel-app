@@ -1262,23 +1262,20 @@ msgstr "Nie można przekształcić obrazu"
 msgid "Could Not Convert the Selection"
 msgstr "Nie można przekształcić zaznaczenia"
 
-msgid "R_emove Background"
-msgstr "_Usuń tło"
+msgid "R_emove Background…"
+msgstr "_Usuń tło…"
 
-msgid "Remove Background (Not in This Copy)"
-msgstr "Usuń tło (brak w tej kopii)"
+msgid "Remove Background"
+msgstr "Usuń tło"
+
+msgid "Works best on a plain background."
+msgstr "Działa najlepiej na jednolitym tle."
+
+msgid "Tolerance"
+msgstr "Tolerancja"
 
 msgid "Removing the Background"
 msgstr "Usuwanie tła"
 
-msgid "Nothing to Remove"
-msgstr "Nic do usunięcia"
-
-msgid "No background was found to remove."
-msgstr "Nie znaleziono tła do usunięcia."
-
 msgid "Could Not Remove the Background"
 msgstr "Nie można usunąć tła"
-
-msgid "Background removal is not available."
-msgstr "Usuwanie tła jest niedostępne."

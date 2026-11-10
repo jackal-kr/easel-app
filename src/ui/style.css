@@ -39,6 +39,11 @@ scrolledwindow.workspace > viewport,
   color: var(--popover-fg-color);
 }
 
+/* Remove Background's card (REQ-0035-04): the font card's look, with room round its rows. */
+.rbg-card {
+  padding: 12px;
+}
+
 /* A color square's and a swatch's keyboard stop: the theme's focus ring (REQ-0022-02, -03; JOD's M1). */
 .color-square:focus-visible {
   outline: 2px solid var(--accent-color);

@@ -13,6 +13,7 @@ src/ui/print.c
 src/ui/status-bar.c
 src/ui/stretch-skew-dialog.c
 src/ui/black-white-dialog.c
+src/ui/remove-bg-card.c
 src/ui/text-render.c
 src/ui/thumbnail-card.c
 src/ui/tool.c

@@ -2597,82 +2597,57 @@ easel_canvas_stretch_skew_selection (EaselCanvas *self, int W, int H, int amount
   return TRUE;
 }
 
-gboolean
-easel_canvas_selection_copy (EaselCanvas *self, size_t max_bytes, uint32_t **px, uint8_t **mask, int *w, int *h)
+uint32_t *
+easel_canvas_rbg_float (EaselCanvas *self, gboolean *lifted_here, const uint8_t **mask, int *w, int *h)
 {
-  const uint32_t *src;
-  const uint8_t *shape;
-  size_t n;
-
-  *px = NULL;
-  *mask = NULL;
+  *lifted_here = FALSE;
   if (self->sel_state == 0 || self->img == NULL)
-    return FALSE;
-  if (self->sel_state == 2)
-    {
-      easel_selection_complete (&self->sel_float);
-      *w = self->sel_float.w;
-      *h = self->sel_float.h;
-      src = self->sel_float.px;
-      shape = self->sel_float.mask;
-    }
-  else
-    {
-      *w = self->sel_w;
-      *h = self->sel_h;
-      src = NULL;
-      shape = self->sel_mask;
-    }
-  n = (size_t) *w * (size_t) *h;
-  if (n * 5 > max_bytes || (*px = malloc (n * sizeof **px)) == NULL)
-    return TRUE;                                          /* no memory: *px is NULL */
-  if (shape != NULL && (*mask = malloc (n)) == NULL)
-    {
-      g_clear_pointer (px, free);
-      return TRUE;
-    }
-  if (src != NULL)
-    memcpy (*px, src, n * sizeof **px);
-  else
-    for (int y = 0; y < *h; y++)
-      memcpy (*px + (size_t) y * *w, self->img->px + (size_t) (self->sel_y + y) * self->img->width + self->sel_x,
-              (size_t) *w * sizeof **px);
-  if (shape != NULL)
-    memcpy (*mask, shape, n);
-  return TRUE;
-}
-
-EaselSelectionResult
-easel_canvas_remove_background_selection (EaselCanvas *self, const float *found, int side)
-{
-  gboolean lifted_here = FALSE;
-  EaselSelectionResult r;
-
-  if (self->sel_state == 0 || self->img == NULL)
-    return EASEL_SELECTION_NOTHING;
+    return NULL;
   if (self->sel_state == 1)
     {
       if (easel_selection_lift (&self->sel_float, self->img, self->sel_x, self->sel_y, self->sel_w, self->sel_h, self->sel_mask,
                                 FALSE, hole_color (self), self->sel_lift_max) != EASEL_SELECTION_DONE)
         {
-          g_signal_emit (self, signals[SIGNAL_SELECTION_FAILED], 0, 0);      /* REQ-0013-19's dialog; it stays marked */
-          return EASEL_SELECTION_NO_MEMORY;
+          g_signal_emit (self, signals[SIGNAL_SELECTION_FAILED], 0, 9);      /* REQ-0035-06; it stays marked */
+          return NULL;
         }
       self->sel_state = 2;
-      lifted_here = TRUE;
+      *lifted_here = TRUE;
       g_signal_emit (self, signals[SIGNAL_PENDING_CHANGED], 0);
     }
-  r = easel_selection_remove_background (&self->sel_float, found, side, self->sel_lift_max);
-  if (r == EASEL_SELECTION_NOTHING)
-    {
-      if (lifted_here)
-        {
-          drop_float (self);                                  /* nothing to remove: marked again (REQ-0035-05) */
-          self->sel_state = 1;
-          g_signal_emit (self, signals[SIGNAL_PENDING_CHANGED], 0);
-        }
-      return r;
-    }
+  easel_selection_complete (&self->sel_float);
+  *mask = self->sel_float.mask;
+  *w = self->sel_float.w;
+  *h = self->sel_float.h;
+  return self->sel_float.px;
+}
+
+void
+easel_canvas_rbg_float_changed (EaselCanvas *self)
+{
+  self->sel_epoch++;
+  gtk_widget_queue_draw (GTK_WIDGET (self));
+}
+
+void
+easel_canvas_rbg_unlift (EaselCanvas *self)
+{
+  if (self->sel_state != 2)
+    return;
+  drop_float (self);                                          /* marked again, as before the dialog (REQ-0035-04) */
+  self->sel_state = 1;
+  g_signal_emit (self, signals[SIGNAL_PENDING_CHANGED], 0);
+  gtk_widget_queue_draw (GTK_WIDGET (self));
+}
+
+EaselSelectionResult
+easel_canvas_rbg_float_replace (EaselCanvas *self, const uint32_t *px, gboolean lifted_here)
+{
+  EaselSelectionResult r;
+
+  if (self->sel_state != 2)
+    return EASEL_SELECTION_NOTHING;
+  r = easel_selection_replace_image (&self->sel_float, px, self->sel_lift_max);
   if (r != EASEL_SELECTION_DONE)
     {
       transform_refused (self, lifted_here, 9);

@@ -1252,23 +1252,20 @@ msgstr "Não foi possível converter a imagem"
 msgid "Could Not Convert the Selection"
 msgstr "Não foi possível converter a seleção"
 
-msgid "R_emove Background"
-msgstr "_Remover fundo"
+msgid "R_emove Background…"
+msgstr "_Remover fundo…"
 
-msgid "Remove Background (Not in This Copy)"
-msgstr "Remover fundo (não incluído nesta cópia)"
+msgid "Remove Background"
+msgstr "Remover fundo"
+
+msgid "Works best on a plain background."
+msgstr "Funciona melhor com um fundo liso."
+
+msgid "Tolerance"
+msgstr "Tolerância"
 
 msgid "Removing the Background"
 msgstr "A remover o fundo"
 
-msgid "Nothing to Remove"
-msgstr "Nada a remover"
-
-msgid "No background was found to remove."
-msgstr "Não foi encontrado fundo para remover."
-
 msgid "Could Not Remove the Background"
 msgstr "Não foi possível remover o fundo"
-
-msgid "Background removal is not available."
-msgstr "A remoção do fundo não está disponível."

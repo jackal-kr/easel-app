@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: easel\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-09 13:55+0100\n"
+"POT-Creation-Date: 2026-11-10 00:16+0100\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -71,17 +71,19 @@ msgstr ""
 #. Added as Cancel, Fit, Resize: side by side they read so, stacked (the long labels) the suggested one is on top.
 #: src/ui/attributes-dialog.c:121 src/ui/grid-dialog.c:93
 #: src/ui/preferences-dialog.c:874 src/ui/stretch-skew-dialog.c:308
-#: src/ui/black-white-dialog.c:78 src/ui/window.c:609 src/ui/window.c:940
-#: src/ui/window.c:3925 src/ui/window.c:5011
+#: src/ui/black-white-dialog.c:78 src/ui/remove-bg-card.c:65
+#: src/ui/window.c:607 src/ui/window.c:938 src/ui/window.c:4021
+#: src/ui/window.c:5176
 msgid "_Cancel"
 msgstr ""
 
 #: src/ui/attributes-dialog.c:121 src/ui/preferences-dialog.c:873
-#: src/ui/stretch-skew-dialog.c:308 src/ui/window.c:3623
+#: src/ui/stretch-skew-dialog.c:308 src/ui/remove-bg-card.c:65
+#: src/ui/window.c:3686
 msgid "_OK"
 msgstr ""
 
-#: src/ui/canvas.c:404
+#: src/ui/canvas.c:406
 #, c-format
 msgid "Picture, %d by %d pixel"
 msgid_plural "Picture, %d by %d pixels"
@@ -254,7 +256,7 @@ msgstr ""
 msgid "Invert Colors"
 msgstr ""
 
-#: src/ui/help.c:36 src/ui/window.ui:490
+#: src/ui/help.c:36 src/ui/window.ui:484
 msgid "Attributes…"
 msgstr ""
 
@@ -276,19 +278,19 @@ msgstr ""
 msgid "Zoom Out"
 msgstr ""
 
-#: src/ui/help.c:41 src/ui/window.ui:507
+#: src/ui/help.c:41 src/ui/window.ui:501
 msgid "Normal Size"
 msgstr ""
 
-#: src/ui/help.c:42 src/ui/window.ui:511
+#: src/ui/help.c:42 src/ui/window.ui:505
 msgid "Large Size"
 msgstr ""
 
-#: src/ui/help.c:43 src/ui/window.ui:515
+#: src/ui/help.c:43 src/ui/window.ui:509
 msgid "Fit to Window"
 msgstr ""
 
-#: src/ui/help.c:44 src/ui/window.ui:521
+#: src/ui/help.c:44 src/ui/window.ui:515
 msgid "Show Grid"
 msgstr ""
 
@@ -394,7 +396,7 @@ msgstr ""
 #: src/ui/help.c:81 src/ui/help.c:82 src/ui/help.c:83 src/ui/help.c:84
 #: src/ui/help.c:85 src/ui/help.c:86 src/ui/help.c:87 src/ui/help.c:88
 #: src/ui/help.c:89 src/ui/help.c:90 src/ui/help.c:91
-#: src/ui/preferences-dialog.c:657 src/ui/window.c:3175 src/ui/window.ui:270
+#: src/ui/preferences-dialog.c:657 src/ui/window.c:3238 src/ui/window.ui:270
 msgid "Text"
 msgstr ""
 
@@ -585,15 +587,15 @@ msgstr ""
 msgid "System default"
 msgstr ""
 
-#: src/ui/preferences-dialog.c:555 src/ui/window.ui:535
+#: src/ui/preferences-dialog.c:555 src/ui/window.ui:529
 msgid "Tool Box"
 msgstr ""
 
-#: src/ui/preferences-dialog.c:556 src/ui/window.ui:539
+#: src/ui/preferences-dialog.c:556 src/ui/window.ui:533
 msgid "Color Box"
 msgstr ""
 
-#: src/ui/preferences-dialog.c:557 src/ui/window.ui:543
+#: src/ui/preferences-dialog.c:557 src/ui/window.ui:537
 msgid "Status Bar"
 msgstr ""
 
@@ -719,7 +721,7 @@ msgid "Outline and fill"
 msgstr ""
 
 #: src/ui/preferences-dialog.c:651 src/ui/tool-options.c:365
-#: src/ui/window.c:3173 src/ui/window.ui:195
+#: src/ui/window.c:3236 src/ui/window.ui:195
 msgid "Fill"
 msgstr ""
 
@@ -731,11 +733,11 @@ msgstr ""
 msgid "Saving"
 msgstr ""
 
-#: src/ui/preferences-dialog.c:668 src/ui/window.c:3172 src/ui/window.ui:240
+#: src/ui/preferences-dialog.c:668 src/ui/window.c:3235 src/ui/window.ui:240
 msgid "Brush"
 msgstr ""
 
-#: src/ui/preferences-dialog.c:669 src/ui/window.c:3172 src/ui/window.ui:255
+#: src/ui/preferences-dialog.c:669 src/ui/window.c:3235 src/ui/window.ui:255
 msgid "Airbrush"
 msgstr ""
 
@@ -783,7 +785,7 @@ msgstr ""
 msgid "New Picture"
 msgstr ""
 
-#: src/ui/preferences-dialog.c:861 src/ui/window.c:2935
+#: src/ui/preferences-dialog.c:861 src/ui/window.c:2998
 msgid "Drawing"
 msgstr ""
 
@@ -909,6 +911,18 @@ msgstr ""
 msgid "Con_vert"
 msgstr ""
 
+#: src/ui/remove-bg-card.c:63
+msgid "Remove Background"
+msgstr ""
+
+#: src/ui/remove-bg-card.c:63
+msgid "Works best on a plain background."
+msgstr ""
+
+#: src/ui/remove-bg-card.c:83
+msgid "Tolerance"
+msgstr ""
+
 #: src/ui/thumbnail-card.c:91
 msgid "Thumbnail"
 msgstr ""
@@ -993,91 +1007,91 @@ msgstr ""
 msgid "Reflected"
 msgstr ""
 
-#: src/ui/window.c:289 src/ui/window.c:935
+#: src/ui/window.c:287 src/ui/window.c:933
 msgid "Untitled"
 msgstr ""
 
-#: src/ui/window.c:290
+#: src/ui/window.c:288
 #, c-format
 msgid "• %s – Easel"
 msgstr ""
 
-#: src/ui/window.c:290
+#: src/ui/window.c:288
 #, c-format
 msgid "%s – Easel"
 msgstr ""
 
-#: src/ui/window.c:495 src/ui/window.c:2460 src/ui/window.c:3633
-#: src/ui/window.c:3838
+#: src/ui/window.c:493 src/ui/window.c:2523 src/ui/window.c:3696
+#: src/ui/window.c:3908
 msgid "Close"
 msgstr ""
 
-#: src/ui/window.c:519 src/ui/window.c:573
+#: src/ui/window.c:517 src/ui/window.c:571
 #, c-format
 msgid "Could Not Save “%s”"
 msgstr ""
 
-#: src/ui/window.c:520 src/ui/window.c:574
+#: src/ui/window.c:518 src/ui/window.c:572
 #, c-format
 msgid "“%s” could not be saved: %s"
 msgstr ""
 
-#: src/ui/window.c:537
+#: src/ui/window.c:535
 #, c-format
 msgid "Saved %s"
 msgstr ""
 
-#: src/ui/window.c:606
+#: src/ui/window.c:604
 #, c-format
 msgid "Replace “%s”?"
 msgstr ""
 
-#: src/ui/window.c:607
+#: src/ui/window.c:605
 msgid "A file with this name already exists."
 msgstr ""
 
-#: src/ui/window.c:609
+#: src/ui/window.c:607
 msgid "_Replace"
 msgstr ""
 
-#: src/ui/window.c:647
+#: src/ui/window.c:645
 msgid "Cannot Save This Kind of File"
 msgstr ""
 
-#: src/ui/window.c:647
+#: src/ui/window.c:645
 msgid "Pictures can be saved as PNG, JPEG, BMP, TIFF or WebP."
 msgstr ""
 
-#: src/ui/window.c:667 src/ui/window.c:842
+#: src/ui/window.c:665 src/ui/window.c:840
 msgid "Copy To"
 msgstr ""
 
-#: src/ui/window.c:667 src/ui/window.c:898
+#: src/ui/window.c:665 src/ui/window.c:896
 msgid "Save Picture As"
 msgstr ""
 
-#: src/ui/window.c:775
+#: src/ui/window.c:773
 msgid "By extension"
 msgstr ""
 
-#: src/ui/window.c:841 src/ui/window.c:897
+#: src/ui/window.c:839 src/ui/window.c:895
 msgid "Untitled.png"
 msgstr ""
 
-#: src/ui/window.c:936
+#: src/ui/window.c:934
 #, c-format
 msgid "“%s” has unsaved changes."
 msgstr ""
 
-#: src/ui/window.c:937
+#: src/ui/window.c:935
 msgid "Save Changes?"
 msgstr ""
 
-#: src/ui/window.c:940
+#: src/ui/window.c:938
 msgid "_Discard"
 msgstr ""
 
-#: src/ui/window.c:940 src/ui/window.ui:707
+#: src/ui/window.c:938 src/ui/window.ui:695
 msgid "_Save"
 msgstr ""
 
@@ -1095,15 +1109,15 @@ msgstr ""
 msgid "Could Not Open “%s”"
 msgstr ""
 
-#: src/ui/window.c:1189 src/ui/window.c:4821
+#: src/ui/window.c:1189 src/ui/window.c:4986
 msgid "The file cannot be read."
 msgstr ""
 
-#: src/ui/window.c:1192 src/ui/window.c:4817
+#: src/ui/window.c:1192 src/ui/window.c:4982
 msgid "This is not a picture the app can open."
 msgstr ""
 
-#: src/ui/window.c:1195 src/ui/window.c:4811
+#: src/ui/window.c:1195 src/ui/window.c:4976
 msgid "The picture is bigger than 10000 pixels in width or height."
 msgstr ""
 
@@ -1208,386 +1222,373 @@ msgstr ""
 msgid "Drag to pan. Ctrl+wheel zooms."
 msgstr ""
 
-#: src/ui/window.c:2411
+#: src/ui/window.c:2474
 msgid "Zoom"
 msgstr ""
 
-#: src/ui/window.c:2441
+#: src/ui/window.c:2504
 msgid "Zoom Out (Ctrl+-)"
 msgstr ""
 
-#: src/ui/window.c:2442
+#: src/ui/window.c:2505
 msgid "Zoom In (Ctrl+=)"
 msgstr ""
 
-#: src/ui/window.c:2457
+#: src/ui/window.c:2520
 #, c-format
 msgid "There is not enough memory for a picture of %d × %d pixel."
 msgid_plural "There is not enough memory for a picture of %d × %d pixels."
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/ui/window.c:2467
+#: src/ui/window.c:2530
 msgid "Could Not Resize the Picture"
 msgstr ""
 
-#: src/ui/window.c:2527
+#: src/ui/window.c:2590
 msgid "Could Not Invert the Colors"
 msgstr ""
 
-#: src/ui/window.c:2528
+#: src/ui/window.c:2591
 msgid "Could Not Clear the Picture"
 msgstr ""
 
-#: src/ui/window.c:2529
+#: src/ui/window.c:2592
 msgid "Could Not Flip the Picture"
 msgstr ""
 
-#: src/ui/window.c:2530
+#: src/ui/window.c:2593
 msgid "Could Not Rotate the Picture"
 msgstr ""
 
-#: src/ui/window.c:2532 src/ui/window.c:3734 src/ui/window.c:3778
-#: src/ui/window.c:3957 src/ui/window.c:3976 src/ui/window.c:4016
-#: src/ui/window.c:4540 src/ui/window.c:4542 src/ui/window.c:4544
-#: src/ui/window.c:4546 src/ui/window.c:4548 src/ui/window.c:4550
+#: src/ui/window.c:2595 src/ui/window.c:3797 src/ui/window.c:3841
+#: src/ui/window.c:3906 src/ui/window.c:4705 src/ui/window.c:4707
+#: src/ui/window.c:4709 src/ui/window.c:4711 src/ui/window.c:4713
+#: src/ui/window.c:4715
 msgid "There is not enough memory for this change."
 msgstr ""
 
-#: src/ui/window.c:2933
+#: src/ui/window.c:2996
 msgid "Space to finish, Esc to cancel"
 msgstr ""
 
-#: src/ui/window.c:2935
+#: src/ui/window.c:2998
 msgid "Done"
 msgstr ""
 
-#: src/ui/window.c:2935
+#: src/ui/window.c:2998
 msgid "Cancelled"
 msgstr ""
 
-#: src/ui/window.c:3119
+#: src/ui/window.c:3182
 #, c-format
 msgid "Foreground %s"
 msgstr ""
 
-#: src/ui/window.c:3119
+#: src/ui/window.c:3182
 #, c-format
 msgid "Background %s"
 msgstr ""
 
-#: src/ui/window.c:3146
+#: src/ui/window.c:3209
 msgid "Text box open"
 msgstr ""
 
-#: src/ui/window.c:3146
+#: src/ui/window.c:3209
 msgid "Text box closed"
 msgstr ""
 
-#: src/ui/window.c:3152
+#: src/ui/window.c:3215
 #, c-format
 msgid "Selection %d by %d"
 msgstr ""
 
-#: src/ui/window.c:3157
+#: src/ui/window.c:3220
 msgid "Selection put down"
 msgstr ""
 
-#: src/ui/window.c:3157
+#: src/ui/window.c:3220
 msgid "Selection removed"
 msgstr ""
 
-#: src/ui/window.c:3165
+#: src/ui/window.c:3228
 msgid "Polygon closed"
 msgstr ""
 
-#: src/ui/window.c:3172 src/ui/window.ui:105
+#: src/ui/window.c:3235 src/ui/window.ui:105
 msgid "Pan"
 msgstr ""
 
-#: src/ui/window.c:3172 src/ui/window.ui:225
+#: src/ui/window.c:3235 src/ui/window.ui:225
 msgid "Pencil"
 msgstr ""
 
-#: src/ui/window.c:3172 src/ui/window.ui:165
+#: src/ui/window.c:3235 src/ui/window.ui:165
 msgid "Eraser"
 msgstr ""
 
-#: src/ui/window.c:3173 src/ui/window.ui:120
+#: src/ui/window.c:3236 src/ui/window.ui:120
 msgid "Magnifier"
 msgstr ""
 
-#: src/ui/window.c:3173 src/ui/window.ui:180
+#: src/ui/window.c:3236 src/ui/window.ui:180
 msgid "Pick Color"
 msgstr ""
 
-#: src/ui/window.c:3173 src/ui/window.ui:285
+#: src/ui/window.c:3236 src/ui/window.ui:285
 msgid "Line"
 msgstr ""
 
-#: src/ui/window.c:3173 src/ui/window.ui:315
+#: src/ui/window.c:3236 src/ui/window.ui:315
 msgid "Rectangle"
 msgstr ""
 
-#: src/ui/window.c:3174 src/ui/window.ui:330
+#: src/ui/window.c:3237 src/ui/window.ui:330
 msgid "Rounded Rectangle"
 msgstr ""
 
-#: src/ui/window.c:3174 src/ui/window.ui:345
+#: src/ui/window.c:3237 src/ui/window.ui:345
 msgid "Ellipse"
 msgstr ""
 
-#: src/ui/window.c:3174 src/ui/window.ui:300
+#: src/ui/window.c:3237 src/ui/window.ui:300
 msgid "Curve"
 msgstr ""
 
-#: src/ui/window.c:3174 src/ui/window.ui:360
+#: src/ui/window.c:3237 src/ui/window.ui:360
 msgid "Polygon"
 msgstr ""
 
-#: src/ui/window.c:3175 src/ui/window.ui:210
+#: src/ui/window.c:3238 src/ui/window.ui:210
 msgid "Gradient"
 msgstr ""
 
-#: src/ui/window.c:3175 src/ui/window.ui:135
+#: src/ui/window.c:3238 src/ui/window.ui:135
 msgid "Select"
 msgstr ""
 
-#: src/ui/window.c:3175 src/ui/window.ui:150
+#: src/ui/window.c:3238 src/ui/window.ui:150
 msgid "Free-Form Select"
 msgstr ""
 
-#: src/ui/window.c:3247
+#: src/ui/window.c:3310
 msgid "Could Not Open Help"
 msgstr ""
 
-#: src/ui/window.c:3247
+#: src/ui/window.c:3310
 msgid "The help page could not be opened."
 msgstr ""
 
-#: src/ui/window.c:3249 src/ui/window.c:3349
+#: src/ui/window.c:3312 src/ui/window.c:3412
 msgid "OK"
 msgstr ""
 
-#: src/ui/window.c:3347
+#: src/ui/window.c:3410
 msgid "Could Not Print"
 msgstr ""
 
-#: src/ui/window.c:3347
+#: src/ui/window.c:3410
 msgid "The picture could not be printed."
 msgstr ""
 
 #. so that the dialog's Orientation shows what the page is (a probe, T009)
-#: src/ui/window.c:3545
+#: src/ui/window.c:3608
 msgid "Picture"
 msgstr ""
 
-#: src/ui/window.c:3621
+#: src/ui/window.c:3684
 msgid "Language Changes at Next Start"
 msgstr ""
 
-#: src/ui/window.c:3621
+#: src/ui/window.c:3684
 msgid ""
 "Your changes are kept. The new language shows the next time Easel starts."
 msgstr ""
 
-#: src/ui/window.c:3630
+#: src/ui/window.c:3693
 msgid "Could Not Save the Preferences"
 msgstr ""
 
-#: src/ui/window.c:3631
+#: src/ui/window.c:3694
 msgid ""
 "The changes apply until Easel closes where they can, but settings.ini could "
 "not be written."
 msgstr ""
 
-#: src/ui/window.c:3734
+#: src/ui/window.c:3797
 msgid "Could Not Stretch or Skew the Picture"
 msgstr ""
 
-#: src/ui/window.c:3778
+#: src/ui/window.c:3841
 msgid "Could Not Convert the Picture"
 msgstr ""
 
-#: src/ui/window.c:3920
-msgid "Removing the Background"
-msgstr ""
-
-#: src/ui/window.c:3955 src/ui/window.c:3957 src/ui/window.c:3976
-#: src/ui/window.c:4016 src/ui/window.c:4550
+#: src/ui/window.c:3906 src/ui/window.c:4715
 msgid "Could Not Remove the Background"
 msgstr ""
 
-#: src/ui/window.c:3955
-msgid "Background removal is not available."
+#: src/ui/window.c:4016
+msgid "Removing the Background"
 msgstr ""
 
-#: src/ui/window.c:3965 src/ui/window.c:3974 src/ui/window.c:4022
-msgid "Nothing to Remove"
-msgstr ""
-
-#: src/ui/window.c:3965 src/ui/window.c:3974 src/ui/window.c:4022
-msgid "No background was found to remove."
-msgstr ""
-
-#: src/ui/window.c:4110 src/ui/window.c:4124
+#: src/ui/window.c:4262 src/ui/window.c:4276
 msgid "Undone"
 msgstr ""
 
-#: src/ui/window.c:4110 src/ui/window.c:4124
+#: src/ui/window.c:4262 src/ui/window.c:4276
 msgid "Redone"
 msgstr ""
 
-#: src/ui/window.c:4478
+#: src/ui/window.c:4643
 msgid "Could Not Fill"
 msgstr ""
 
-#: src/ui/window.c:4478
+#: src/ui/window.c:4643
 msgid "There is not enough memory to fill this area."
 msgstr ""
 
-#: src/ui/window.c:4495
+#: src/ui/window.c:4660
 msgid "Could Not Draw the Shape"
 msgstr ""
 
-#: src/ui/window.c:4495
+#: src/ui/window.c:4660
 msgid "There is not enough memory to draw this shape."
 msgstr ""
 
-#: src/ui/window.c:4513
+#: src/ui/window.c:4678
 msgid "Could Not Apply the Gradient"
 msgstr ""
 
-#: src/ui/window.c:4513
+#: src/ui/window.c:4678
 msgid "There is not enough memory to apply this gradient."
 msgstr ""
 
-#: src/ui/window.c:4534
+#: src/ui/window.c:4699
 msgid "Could Not Clear the Selection"
 msgstr ""
 
-#: src/ui/window.c:4534
+#: src/ui/window.c:4699
 msgid "There is not enough memory to clear this selection."
 msgstr ""
 
-#: src/ui/window.c:4536
+#: src/ui/window.c:4701
 msgid "Could Not Make the Selection"
 msgstr ""
 
-#: src/ui/window.c:4536
+#: src/ui/window.c:4701
 msgid "There is not enough memory to make this selection."
 msgstr ""
 
-#: src/ui/window.c:4538
+#: src/ui/window.c:4703
 msgid "Could Not Stretch the Selection"
 msgstr ""
 
-#: src/ui/window.c:4538
+#: src/ui/window.c:4703
 msgid "There is not enough memory to stretch this selection."
 msgstr ""
 
-#: src/ui/window.c:4540
+#: src/ui/window.c:4705
 msgid "Could Not Flip the Selection"
 msgstr ""
 
-#: src/ui/window.c:4542
+#: src/ui/window.c:4707
 msgid "Could Not Rotate the Selection"
 msgstr ""
 
-#: src/ui/window.c:4544
+#: src/ui/window.c:4709
 msgid "Could Not Invert the Selection"
 msgstr ""
 
-#: src/ui/window.c:4546
+#: src/ui/window.c:4711
 msgid "Could Not Stretch or Skew the Selection"
 msgstr ""
 
-#: src/ui/window.c:4548
+#: src/ui/window.c:4713
 msgid "Could Not Convert the Selection"
 msgstr ""
 
-#: src/ui/window.c:4552
+#: src/ui/window.c:4717
 msgid "Could Not Move the Selection"
 msgstr ""
 
-#: src/ui/window.c:4552
+#: src/ui/window.c:4717
 msgid "There is not enough memory to move this selection."
 msgstr ""
 
 #. kind 0: the box's text could not be shown (REQ-0017-07); 1: the put-down's step could not be had (REQ-0017-18)
-#: src/ui/window.c:4562
+#: src/ui/window.c:4727
 msgid "Could Not Add the Text"
 msgstr ""
 
-#: src/ui/window.c:4563
+#: src/ui/window.c:4728
 msgid "There is not enough memory to show this text."
 msgstr ""
 
-#: src/ui/window.c:4563
+#: src/ui/window.c:4728
 msgid "There is not enough memory to add this text."
 msgstr ""
 
-#: src/ui/window.c:4708
+#: src/ui/window.c:4873
 msgid "Could Not Copy the Selection"
 msgstr ""
 
-#: src/ui/window.c:4708
+#: src/ui/window.c:4873
 msgid "There is not enough memory to copy this selection."
 msgstr ""
 
-#: src/ui/window.c:4802
+#: src/ui/window.c:4967
 #, c-format
 msgid "Could Not Paste “%s”"
 msgstr ""
 
-#: src/ui/window.c:4802 src/ui/window.c:5122 src/ui/window.c:5145
+#: src/ui/window.c:4967 src/ui/window.c:5287 src/ui/window.c:5310
 msgid "Could Not Paste"
 msgstr ""
 
-#: src/ui/window.c:4814
+#: src/ui/window.c:4979
 msgid "There is not enough memory to paste this picture."
 msgstr ""
 
-#: src/ui/window.c:4821
+#: src/ui/window.c:4986
 msgid "The clipboard's picture cannot be read."
 msgstr ""
 
-#: src/ui/window.c:5006
+#: src/ui/window.c:5171
 #, c-format
 msgid "The picture is %d × %d pixel; the canvas is %d × %d."
 msgid_plural "The picture is %d × %d pixels; the canvas is %d × %d."
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/ui/window.c:5008
+#: src/ui/window.c:5173
 msgid "Pasted Picture Is Larger Than the Canvas"
 msgstr ""
 
-#: src/ui/window.c:5011
+#: src/ui/window.c:5176
 msgid "_Fit Picture to Canvas"
 msgstr ""
 
-#: src/ui/window.c:5012
+#: src/ui/window.c:5177
 msgid "_Resize Canvas to Picture"
 msgstr ""
 
-#: src/ui/window.c:5122
+#: src/ui/window.c:5287
 msgid "The clipboard's text cannot be read."
 msgstr ""
 
-#: src/ui/window.c:5145
+#: src/ui/window.c:5310
 msgid "There is not enough memory to paste this text."
 msgstr ""
 
-#: src/ui/window.c:5197
+#: src/ui/window.c:5362
 msgid "Could Not Copy the Text"
 msgstr ""
 
-#: src/ui/window.c:5197
+#: src/ui/window.c:5362
 msgid "There is not enough memory to copy this text."
 msgstr ""
 
-#: src/ui/window.c:5280
+#: src/ui/window.c:5445
 msgid "Paste From"
 msgstr ""
 
@@ -1603,148 +1604,144 @@ msgstr ""
 msgid "Text box"
 msgstr ""
 
-#: src/ui/window.ui:432 src/ui/window.ui:579
+#: src/ui/window.ui:432 src/ui/window.ui:573
 msgid "_Flip"
 msgstr ""
 
-#: src/ui/window.ui:435 src/ui/window.ui:582
+#: src/ui/window.ui:435 src/ui/window.ui:576
 msgid "Flip _Horizontal"
 msgstr ""
 
-#: src/ui/window.ui:439 src/ui/window.ui:586
+#: src/ui/window.ui:439 src/ui/window.ui:580
 msgid "Flip _Vertical"
 msgstr ""
 
-#: src/ui/window.ui:445 src/ui/window.ui:592
+#: src/ui/window.ui:445 src/ui/window.ui:586
 msgid "_Rotate"
 msgstr ""
 
-#: src/ui/window.ui:448 src/ui/window.ui:595
+#: src/ui/window.ui:448 src/ui/window.ui:589
 msgid "Rotate _90°"
 msgstr ""
 
-#: src/ui/window.ui:452 src/ui/window.ui:599
+#: src/ui/window.ui:452 src/ui/window.ui:593
 msgid "Rotate 1_80°"
 msgstr ""
 
-#: src/ui/window.ui:456 src/ui/window.ui:603
+#: src/ui/window.ui:456 src/ui/window.ui:597
 msgid "Rotate _270°"
 msgstr ""
 
-#: src/ui/window.ui:462 src/ui/window.ui:609
+#: src/ui/window.ui:462 src/ui/window.ui:603
 msgid "Stretch and _Skew…"
 msgstr ""
 
-#: src/ui/window.ui:469 src/ui/window.ui:614
+#: src/ui/window.ui:469 src/ui/window.ui:608
 msgid "_Invert Colors"
 msgstr ""
 
-#: src/ui/window.ui:474 src/ui/window.ui:619
+#: src/ui/window.ui:474 src/ui/window.ui:613
 msgid "_Black and White…"
 msgstr ""
 
-#: src/ui/window.ui:478 src/ui/window.ui:623
-msgid "R_emove Background"
+#: src/ui/window.ui:478 src/ui/window.ui:617
+msgid "R_emove Background…"
 msgstr ""
 
-#: src/ui/window.ui:483 src/ui/window.ui:628
-msgid "Remove Background (Not in This Copy)"
-msgstr ""
-
-#: src/ui/window.ui:494 src/ui/window.ui:691
+#: src/ui/window.ui:488 src/ui/window.ui:679
 msgid "_Clear Image"
 msgstr ""
 
-#: src/ui/window.ui:525
+#: src/ui/window.ui:519
 msgid "Grid…"
 msgstr ""
 
-#: src/ui/window.ui:529
+#: src/ui/window.ui:523
 msgid "Show Thumbnail"
 msgstr ""
 
-#: src/ui/window.ui:551 src/ui/window.ui:637 src/ui/window.ui:724
+#: src/ui/window.ui:545 src/ui/window.ui:625 src/ui/window.ui:712
 msgid "Cu_t"
 msgstr ""
 
-#: src/ui/window.ui:555 src/ui/window.ui:641 src/ui/window.ui:728
+#: src/ui/window.ui:549 src/ui/window.ui:629 src/ui/window.ui:716
 msgid "_Copy"
 msgstr ""
 
-#: src/ui/window.ui:559 src/ui/window.ui:645 src/ui/window.ui:663
-#: src/ui/window.ui:732
+#: src/ui/window.ui:553 src/ui/window.ui:633 src/ui/window.ui:651
+#: src/ui/window.ui:720
 msgid "_Paste"
 msgstr ""
 
-#: src/ui/window.ui:565 src/ui/window.ui:742
+#: src/ui/window.ui:559 src/ui/window.ui:730
 msgid "C_lear Selection"
 msgstr ""
 
-#: src/ui/window.ui:569 src/ui/window.ui:655 src/ui/window.ui:671
-#: src/ui/window.ui:738
+#: src/ui/window.ui:563 src/ui/window.ui:643 src/ui/window.ui:659
+#: src/ui/window.ui:726
 msgid "Select _All"
 msgstr ""
 
-#: src/ui/window.ui:573 src/ui/window.ui:749
+#: src/ui/window.ui:567 src/ui/window.ui:737
 msgid "Cop_y To…"
 msgstr ""
 
-#: src/ui/window.ui:649
+#: src/ui/window.ui:637
 msgid "Pa_ste as Plain Text"
 msgstr ""
 
-#: src/ui/window.ui:667 src/ui/window.ui:753
+#: src/ui/window.ui:655 src/ui/window.ui:741
 msgid "Paste _From…"
 msgstr ""
 
-#: src/ui/window.ui:677
+#: src/ui/window.ui:665
 msgid "Zoom _In"
 msgstr ""
 
-#: src/ui/window.ui:681
+#: src/ui/window.ui:669
 msgid "Zoom _Out"
 msgstr ""
 
-#: src/ui/window.ui:685
+#: src/ui/window.ui:673
 msgid "_Normal Size"
 msgstr ""
 
-#: src/ui/window.ui:699
+#: src/ui/window.ui:687
 msgid "_New"
 msgstr ""
 
-#: src/ui/window.ui:703
+#: src/ui/window.ui:691
 msgid "_Open…"
 msgstr ""
 
-#: src/ui/window.ui:711
+#: src/ui/window.ui:699
 msgid "Save _As…"
 msgstr ""
 
-#: src/ui/window.ui:715
+#: src/ui/window.ui:703
 msgid "_Print…"
 msgstr ""
 
-#: src/ui/window.ui:721
+#: src/ui/window.ui:709
 msgid "_Edit"
 msgstr ""
 
-#: src/ui/window.ui:759
+#: src/ui/window.ui:747
 msgid "P_references"
 msgstr ""
 
-#: src/ui/window.ui:765
+#: src/ui/window.ui:753
 msgid "_Keyboard Shortcuts"
 msgstr ""
 
-#: src/ui/window.ui:769
+#: src/ui/window.ui:757
 msgid "_Help"
 msgstr ""
 
-#: src/ui/window.ui:773
+#: src/ui/window.ui:761
 msgid "A_bout Easel"
 msgstr ""
 
-#: src/ui/window.ui:779
+#: src/ui/window.ui:767
 msgid "_Quit"
 msgstr ""

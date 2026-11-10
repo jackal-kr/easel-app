@@ -1252,23 +1252,20 @@ msgstr "Impossible de convertir l'image"
 msgid "Could Not Convert the Selection"
 msgstr "Impossible de convertir la sélection"
 
-msgid "R_emove Background"
-msgstr "_Supprimer l'arrière-plan"
+msgid "R_emove Background…"
+msgstr "_Supprimer l'arrière-plan…"
 
-msgid "Remove Background (Not in This Copy)"
-msgstr "Supprimer l'arrière-plan (absent de cette copie)"
+msgid "Remove Background"
+msgstr "Supprimer l'arrière-plan"
+
+msgid "Works best on a plain background."
+msgstr "Fonctionne mieux sur un arrière-plan uni."
+
+msgid "Tolerance"
+msgstr "Tolérance"
 
 msgid "Removing the Background"
 msgstr "Suppression de l'arrière-plan"
 
-msgid "Nothing to Remove"
-msgstr "Rien à supprimer"
-
-msgid "No background was found to remove."
-msgstr "Aucun arrière-plan à supprimer n'a été trouvé."
-
 msgid "Could Not Remove the Background"
 msgstr "Impossible de supprimer l'arrière-plan"
-
-msgid "Background removal is not available."
-msgstr "La suppression de l'arrière-plan n'est pas disponible."

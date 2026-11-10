@@ -1262,23 +1262,20 @@ msgstr "Nu s-a putut converti imaginea"
 msgid "Could Not Convert the Selection"
 msgstr "Nu s-a putut converti selecția"
 
-msgid "R_emove Background"
-msgstr "Elimină _fundalul"
+msgid "R_emove Background…"
+msgstr "Elimină _fundalul…"
 
-msgid "Remove Background (Not in This Copy)"
-msgstr "Elimină fundalul (nu este în această copie)"
+msgid "Remove Background"
+msgstr "Elimină fundalul"
+
+msgid "Works best on a plain background."
+msgstr "Funcționează cel mai bine pe un fundal uniform."
+
+msgid "Tolerance"
+msgstr "Toleranță"
 
 msgid "Removing the Background"
 msgstr "Se elimină fundalul"
 
-msgid "Nothing to Remove"
-msgstr "Nimic de eliminat"
-
-msgid "No background was found to remove."
-msgstr "Nu a fost găsit niciun fundal de eliminat."
-
 msgid "Could Not Remove the Background"
 msgstr "Nu s-a putut elimina fundalul"
-
-msgid "Background removal is not available."
-msgstr "Eliminarea fundalului nu este disponibilă."

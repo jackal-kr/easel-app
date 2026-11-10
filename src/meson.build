@@ -55,25 +55,12 @@ easel_io = static_library('easel-io',
 easel_io_dep = declare_dependency(link_with: easel_io, include_directories: easel_io_inc,
   dependencies: [easel_core_dep, gio_dep, pixbuf_dep])
 
-# Remove background's finder (ADR-0006): only with ONNX Runtime (REQ-0035-10).
-if onnx_dep.found()
-  easel_ml_inc = include_directories('ml')
-  easel_ml = static_library('easel-ml', 'ml/finder.c', include_directories: easel_ml_inc, dependencies: [onnx_dep])
-  easel_ml_dep = declare_dependency(link_with: easel_ml, include_directories: easel_ml_inc, dependencies: [onnx_dep])
-else
-  easel_ml_dep = dependency('', required: false)
-endif
-
 ui_conf = configuration_data()
 ui_conf.set_quoted('APP_ID', app_id)
 ui_conf.set_quoted('RESOURCE_PATH', resource_path)
 ui_conf.set_quoted('VERSION', meson.project_version())
 ui_conf.set_quoted('LOCALE_DIR', get_option('prefix') / get_option('localedir'))
 ui_conf.set_quoted('HELP_PAGE', get_option('prefix') / get_option('datadir') / 'easel' / 'help' / 'index.html')
-ui_conf.set('HAVE_BACKGROUND_REMOVAL', onnx_dep.found() ? 1 : 0)
-ui_conf.set_quoted('BACKGROUND_MODEL', get_option('prefix') / background_model_dir / 'subject-finder.onnx')
-# A build run where it was built, not installed, finds the model at the path it was configured with (empty: none).
-ui_conf.set_quoted('BACKGROUND_MODEL_CONFIGURED', get_option('background_model'))
 configure_file(output: 'config.h', configuration: ui_conf)
 
 gnome = import('gnome')
@@ -89,6 +76,7 @@ easel_ui = static_library('easel-ui',
   'ui/attributes-dialog.c',
   'ui/stretch-skew-dialog.c',
   'ui/black-white-dialog.c',
+  'ui/remove-bg-card.c',
   'ui/help.c',
   'ui/i18n.c',
   'ui/preferences-dialog.c',
@@ -107,13 +95,13 @@ easel_ui = static_library('easel-ui',
   'ui/window.c',
   ui_resources,
   include_directories: easel_ui_inc,
-  dependencies: [gtk_dep, adw_dep, easel_core_dep, easel_io_dep, easel_ml_dep],
+  dependencies: [gtk_dep, adw_dep, easel_core_dep, easel_io_dep],
 )
 
 easel_ui_dep = declare_dependency(
   link_whole: easel_ui,
   include_directories: easel_ui_inc,
-  dependencies: [gtk_dep, adw_dep, easel_core_dep, easel_io_dep, easel_ml_dep],
+  dependencies: [gtk_dep, adw_dep, easel_core_dep, easel_io_dep],
 )
 
 executable('easel', 'ui/main.c',

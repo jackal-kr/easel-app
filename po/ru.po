@@ -1262,23 +1262,20 @@ msgstr "Не удалось преобразовать изображение"
 msgid "Could Not Convert the Selection"
 msgstr "Не удалось преобразовать выделение"
 
-msgid "R_emove Background"
-msgstr "_Удалить фон"
+msgid "R_emove Background…"
+msgstr "_Удалить фон…"
 
-msgid "Remove Background (Not in This Copy)"
-msgstr "Удалить фон (нет в этой копии)"
+msgid "Remove Background"
+msgstr "Удалить фон"
+
+msgid "Works best on a plain background."
+msgstr "Лучше всего работает на однотонном фоне."
+
+msgid "Tolerance"
+msgstr "Допуск"
 
 msgid "Removing the Background"
 msgstr "Удаление фона"
 
-msgid "Nothing to Remove"
-msgstr "Нечего удалять"
-
-msgid "No background was found to remove."
-msgstr "Фон для удаления не найден."
-
 msgid "Could Not Remove the Background"
 msgstr "Не удалось удалить фон"
-
-msgid "Background removal is not available."
-msgstr "Удаление фона недоступно."

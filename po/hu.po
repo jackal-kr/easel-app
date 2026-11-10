@@ -1252,23 +1252,20 @@ msgstr "Nem sikerült átalakítani a képet"
 msgid "Could Not Convert the Selection"
 msgstr "Nem sikerült átalakítani a kijelölést"
 
-msgid "R_emove Background"
-msgstr "_Háttér eltávolítása"
+msgid "R_emove Background…"
+msgstr "_Háttér eltávolítása…"
 
-msgid "Remove Background (Not in This Copy)"
-msgstr "Háttér eltávolítása (ebben a példányban nincs)"
+msgid "Remove Background"
+msgstr "Háttér eltávolítása"
+
+msgid "Works best on a plain background."
+msgstr "Egyszínű háttéren működik a legjobban."
+
+msgid "Tolerance"
+msgstr "Tűréshatár"
 
 msgid "Removing the Background"
 msgstr "Háttér eltávolítása folyamatban"
 
-msgid "Nothing to Remove"
-msgstr "Nincs mit eltávolítani"
-
-msgid "No background was found to remove."
-msgstr "Nem található eltávolítható háttér."
-
 msgid "Could Not Remove the Background"
 msgstr "Nem sikerült eltávolítani a hátteret"
-
-msgid "Background removal is not available."
-msgstr "A háttér eltávolítása nem érhető el."

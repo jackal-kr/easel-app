@@ -245,14 +245,18 @@ gboolean easel_canvas_transform_selection (EaselCanvas *self, EaselOp op);
    and becomes its image (easel_selection_black_white), and it floats. FALSE, nothing done, without a selection. If the lift cannot get
    its memory the dialog of REQ-0013-19; if the conversion cannot, "selection-failed" kind 8 and the selection as it was. */
 gboolean easel_canvas_black_white_selection (EaselCanvas *self, EaselBw how);
-/* Remove background on the selection (REQ-0035-02): a copy of what it acts on, without changing anything: a marked selection's
-   pixels in the picture, or a floating one's as shown, with its shape (NULL for a rectangle). FALSE without a selection; TRUE with
-   *px NULL when 5 bytes a pixel would pass max_bytes or cannot be had. */
-gboolean easel_canvas_selection_copy (EaselCanvas *self, size_t max_bytes, uint32_t **px, uint8_t **mask, int *w, int *h);
 /* The model's answer applied to the selection: a marked one is lifted first (REQ-0013-19's dialog if it cannot be), the result made
    on what is shown becomes its image and it floats; NOTHING leaves it as it was (marked again if this lifted it); NO_MEMORY shows
    "selection-failed" kind 9 with the selection as before. */
-EaselSelectionResult easel_canvas_remove_background_selection (EaselCanvas *self, const float *found, int side);
+/* Remove background's dialog on the selection (REQ-0035-02, -04). rbg_float: a marked selection lifted (*lifted_here TRUE; when the
+   lift cannot get its memory, "selection-failed" kind 9 and NULL), the float's image made whole; returns its pixels as shown, which
+   the preview writes into, with its shape (NULL for a rectangle) and size; NULL without a selection. rbg_float_changed: those pixels
+   were written, shown again. rbg_unlift: Cancel, a selection the dialog lifted marked again. rbg_float_replace: OK, the float's image
+   replaced by px (its size, copied); when the memory cannot be had, kind 9 and a selection lifted here marked again. */
+uint32_t *easel_canvas_rbg_float (EaselCanvas *self, gboolean *lifted_here, const uint8_t **mask, int *w, int *h);
+void easel_canvas_rbg_float_changed (EaselCanvas *self);
+void easel_canvas_rbg_unlift (EaselCanvas *self);
+EaselSelectionResult easel_canvas_rbg_float_replace (EaselCanvas *self, const uint32_t *px, gboolean lifted_here);
 /* Stretch and Skew on the selection (REQ-0019-12): to W x H at its place, then the amounts, and it floats. FALSE, nothing done, without a
    selection. No change at all leaves it as it is, marked or floating (REQ-0019-13). If the lift cannot get its memory the dialog of
    REQ-0013-19 comes; if the rest cannot, "selection-failed" kind 7, with the selection as it was (marked again if this lifted it). */

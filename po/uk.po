@@ -1262,23 +1262,20 @@ msgstr "Не вдалося перетворити зображення"
 msgid "Could Not Convert the Selection"
 msgstr "Не вдалося перетворити виділення"
 
-msgid "R_emove Background"
-msgstr "Вилучити _тло"
+msgid "R_emove Background…"
+msgstr "Вилучити _тло…"
 
-msgid "Remove Background (Not in This Copy)"
-msgstr "Вилучити тло (немає в цій копії)"
+msgid "Remove Background"
+msgstr "Вилучити тло"
+
+msgid "Works best on a plain background."
+msgstr "Найкраще працює на однотонному тлі."
+
+msgid "Tolerance"
+msgstr "Допуск"
 
 msgid "Removing the Background"
 msgstr "Вилучення тла"
 
-msgid "Nothing to Remove"
-msgstr "Нічого вилучати"
-
-msgid "No background was found to remove."
-msgstr "Тло для вилучення не знайдено."
-
 msgid "Could Not Remove the Background"
 msgstr "Не вдалося вилучити тло"
-
-msgid "Background removal is not available."
-msgstr "Вилучення тла недоступне."

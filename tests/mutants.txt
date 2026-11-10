@@ -9726,12 +9726,6 @@ test: ui-0018
       <item>
         <attribute name="label" translatable="yes">R_emove Background</attribute>
         <attribute name="action">win.remove-background</attribute>
-        <attribute name="hidden-when">action-missing</attribute>
-      </item>
-      <item>
-        <attribute name="label" translatable="yes">Remove Background (Not in This Copy)</attribute>
-        <attribute name="action">win.remove-background-off</attribute>
-        <attribute name="hidden-when">action-missing</attribute>
       </item>
     </section>
     <section>
@@ -9747,12 +9741,6 @@ test: ui-0018
       <item>
         <attribute name="label" translatable="yes">R_emove Background</attribute>
         <attribute name="action">win.remove-background</attribute>
-        <attribute name="hidden-when">action-missing</attribute>
-      </item>
-      <item>
-        <attribute name="label" translatable="yes">Remove Background (Not in This Copy)</attribute>
-        <attribute name="action">win.remove-background-off</attribute>
-        <attribute name="hidden-when">action-missing</attribute>
       </item>
     </section>
     <section>
@@ -10009,12 +9997,6 @@ test: ui-0018
       <item>
         <attribute name="label" translatable="yes">R_emove Background</attribute>
         <attribute name="action">win.remove-background</attribute>
-        <attribute name="hidden-when">action-missing</attribute>
-      </item>
-      <item>
-        <attribute name="label" translatable="yes">Remove Background (Not in This Copy)</attribute>
-        <attribute name="action">win.remove-background-off</attribute>
-        <attribute name="hidden-when">action-missing</attribute>
       </item>
     </section>
   </menu>
@@ -10027,12 +10009,6 @@ test: ui-0018
       <item>
         <attribute name="label" translatable="yes">R_emove Background</attribute>
         <attribute name="action">win.remove-background</attribute>
-        <attribute name="hidden-when">action-missing</attribute>
-      </item>
-      <item>
-        <attribute name="label" translatable="yes">Remove Background (Not in This Copy)</attribute>
-        <attribute name="action">win.remove-background-off</attribute>
-        <attribute name="hidden-when">action-missing</attribute>
       </item>
     </section>
   </menu>
@@ -12455,61 +12431,152 @@ test: ui-0034
   adw_dialog_present (easel_black_white_dialog_new (selection, black_white_applied, self), GTK_WIDGET (self));
 
 
-# ---- Remove background (0035): the pixel rules around the model ----
+# ---- Remove background (0035, ADR-0007): the classical method ----
 
-=== REQ-0035-03 a removed pixel loses its color
+=== REQ-0035-07 a removed pixel loses its color
 file: src/core/remove-bg.c
 test: core-remove-bg
 --- find
-              px[i] &= 0x00FFFFFFu;                 /* removed: alpha 0, the color kept (REQ-0035-03) */
+          if (lab == BACK)
+            {
+              dst[i] = px[i] & 0x00FFFFFFu;
 --- replace
-              px[i] = 0;
+          if (lab == BACK)
+            {
+              dst[i] = 0;
 
 === REQ-0035-02 a pixel outside the selection's shape is removed
 file: src/core/remove-bg.c
 test: core-remove-bg
 --- find
+          dst[i] = px[i];
           if (!looked_at (mask, i) || (px[i] >> 24) == 0)
             continue;
+          if (r->s > 1)
 --- replace
+          dst[i] = px[i];
           if ((px[i] >> 24) == 0)
             continue;
+          if (r->s > 1)
 
-=== REQ-0035-03 more than the background is removed
+=== REQ-0035-03 a second subject a tenth of the largest or more is removed
 file: src/core/remove-bg.c
 test: core-remove-bg
 --- find
-          if (v < 0.5f)
+(uint64_t) size * 10 < largest
 --- replace
-          if (v < 0.7f)
+(uint64_t) size < largest
 
-=== REQ-0035-05 a flat answer removes everything
+=== REQ-0035-03 a one-pixel fringe of background stays round the subject
 file: src/core/remove-bg.c
 test: core-remove-bg
 --- find
-  if (!(hi > lo))
-    return 0;                                     /* one value: nothing told apart, everything is subject */
+        if (de2 (r->lab + 3 * c, sf) <= t2)
+          r->label[c] = NONE;
 --- replace
-  if (!(hi > lo))
-    hi = lo + 1;                                  /* every value 0 after the stretch: all removed */
+        if (de2 (r->lab + 3 * c, sf) < 0)
+          r->label[c] = NONE;
 
-=== REQ-0035-02 the whole picture's result is not one undo step
+=== REQ-0035-03 the fringe takes pixels that are mostly subject
 file: src/core/remove-bg.c
 test: core-remove-bg
 --- find
-  return easel_image_replace_pixels (img, history, px, max_bytes);
+                if (2 * dot >= sl
 --- replace
-  memcpy (img->px, px, total * sizeof *px);
-  free (px);
-  return EASEL_TRANSFORM_DONE;
+                if (4 * dot >= 3 * sl
 
-=== REQ-0035-05 a selection with nothing removed is changed anyway
+=== REQ-0035-03 the fringe judges against the background's neighbour, not where it settles
 file: src/core/remove-bg.c
 test: core-remove-bg
 --- find
-  if (easel_rbg_apply (px, f->mask, f->w, f->h, found, side) == 0)
+            bi = settled (r, px, mask, dst, x, y, -ix, -iy, false, t2);
 --- replace
-  if (easel_rbg_apply (px, f->mask, f->w, f->h, found, side) == (size_t) -1)
+            bi = (ptrdiff_t) (y - iy) * w + (x - ix);
+
+=== REQ-0035-03 the boundary of a large picture is not refined at full size
+file: src/core/remove-bg.c
+test: core-remove-bg
+--- find
+          if (r->s > 1)
+--- replace
+          if (r->s > 2)
+
+=== REQ-0035-04 the tolerance is not held to 40
+file: src/core/remove-bg.c
+test: core-remove-bg
+--- find
+    tolerance = EASEL_RBG_TOLERANCE_MAX;
+--- replace
+    (void) 0;
+
+=== REQ-0035-04 the automatic tolerance rises by halves of a delta-E
+file: src/core/remove-bg.c
+test: core-remove-bg
+--- find
+2 * ((median64 - AUTO_KNEE * 64) / 64)
+--- replace
+(2 * (median64 - AUTO_KNEE * 64)) / 64
+
+=== REQ-0035-09 the analysis is made above its memory limit
+file: src/core/remove-bg.c
+test: core-remove-bg
+--- find
+  if (r->bytes > max_bytes)
+--- replace
+  if (r->bytes > max_bytes + 4096)
+
+=== REQ-0035-04 Esc does not cancel the card
+file: src/ui/window.c
+test: ui-0035
+--- find
+          if (!repeat)
+            easel_remove_bg_card_answer (self->rbg_card, FALSE);
+--- replace
+          (void) repeat;
+
+=== REQ-0035-12 a quit leaves the card open with its preview
+file: src/ui/window.c
+test: ui-0035
+--- find
+      if (self->rbg_card != NULL)
+        easel_remove_bg_card_answer (self->rbg_card, FALSE);   /* Remove Background's card closes as Cancel (REQ-0035-12) */
+--- replace
+      (void) 0;
+
+=== REQ-0035-04 Cancel leaves the preview in the picture
+file: src/ui/window.c
+test: ui-0035
+--- find
+  s->restored = TRUE;
+  memcpy (s->live, s->orig, (size_t) s->w * (size_t) s->h * sizeof *s->orig);
+  rbg_show (s);
+--- replace
+  s->restored = TRUE;
+  rbg_show (s);
+
+=== REQ-0035-04 Cancel leaves a selection the dialog lifted floating
+file: src/ui/window.c
+test: ui-0035
+--- find
+    easel_canvas_rbg_unlift (s->win->canvas);
+--- replace
+    (void) 0;
+
+=== REQ-0035-05 nothing removed still adds a step
+file: src/ui/window.c
+test: ui-0035
+--- find
+      if (s->removed == 0)
+--- replace
+      if (s->removed == (size_t) -1)
+
+=== REQ-0035-11 the progress dialog's Cancel does not stop the work
+file: src/ui/window.c
+test: ui-0035
+--- find
+  __atomic_store_n (&self->rbg->cancel, 1, __ATOMIC_SEQ_CST);
+--- replace
+  (void) 0;
 
 # ---- wheel zoom in every tool (0036) ----
 
