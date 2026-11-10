@@ -123,6 +123,11 @@ Order suggestion: A and B first, C after the graphics path audit, D with file in
     cell a background seed, overriding the color seeds; the flood then runs as now, so one stroke across a subject the colors miss
     keeps all of it up to its edges. A cell under both: the later stroke wins.
   - Kept, like the presses, as picture pixels, so a Tolerance change keeps them; the preview after a stroke within 0.3 s at any size.
+- Built 2026-11-10 (spec 0038). Open from its check (0038 Check F5 to F11): test cases for the secondary button, Enter, focus loss,
+  resize, the wheel and Ctrl+Q during a stroke, a typed number, a pending preview, a stroke during OK, the bands at 400 % and a free-form
+  shape; a mouse press joining a keyboard stroke; Ctrl+Z's memory failure ignored; the selection's shape inside a copy cell over
+  2 000 000 pixels; `covers` overflow far outside; a drag's band repaint at 8000 x 8000; joined cells first-come and one outline for
+  overlapping strokes of a kind.
   - No undo step inside the card; Cancel drops them, OK keeps the result as one step. Open: an eraser for strokes, the stroke's size
     control, and the keyboard path (the marker painting with Space held).
 

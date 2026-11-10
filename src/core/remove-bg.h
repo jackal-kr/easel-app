@@ -45,10 +45,12 @@ EaselRbgResult easel_rbg_preview (const EaselRbg *r, const uint32_t *px, const u
 EaselRbgResult easel_rbg_result (const EaselRbg *r, const uint32_t *px, const uint8_t *mask, uint32_t *dst, size_t *removed,
                                  const volatile int *cancel);
 
-/* A press on the preview (0037): a pixel of px, as the caller looks at it. */
+/* A press on the preview (0037): a pixel of px, as the caller looks at it; strokes_after, how many of the strokes last set came after it
+   (0038: a pixel such a stroke covers keeps the stroke's kind; 0, none). */
 typedef struct
 {
   int x, y;
+  int strokes_after;
 } EaselRbgPress;
 
 /* After easel_rbg_preview or easel_rbg_result into dst (REQ-0037-01, -02, -09): each piece holding an odd number of the n presses turns
@@ -62,6 +64,26 @@ void easel_rbg_flips (EaselRbg *r, const uint32_t *px, const uint8_t *mask, uint
 /* Whether two pixels lie in one piece of the last easel_rbg_flips (REQ-0037-04); FALSE when either lies in none. */
 bool easel_rbg_same_piece (const EaselRbg *r, int x1, int y1, int x2, int y2);
 
+/* A stroke of Remove Background: brushes (0038): keep (Keep this) or remove (Remove this), its width in whole picture pixels (at least
+   1), and its n places (x, y) in picture pixels, xy holding 2 n values. */
+typedef struct
+{
+  bool keep;
+  int width;
+  size_t n;
+  const int32_t *xy;
+} EaselRbgStroke;
+
+/* Sets the strokes that the labels, the preview and the result take from now on (REQ-0038-03; the labels are made again by the next
+   easel_rbg_label): a pixel of px is covered by a stroke when its centre lies within width / 2 of the path joining the stroke's places,
+   and the later stroke wins where two cover one pixel. The strokes are read here, not kept. n 0 clears them. FALSE when the memory
+   for them cannot be had (counted against max_bytes, as the analysis): the strokes are as before. */
+bool easel_rbg_set_strokes (EaselRbg *r, const EaselRbgStroke *strokes, size_t n);
+
+/* Whether a stroke of width (whole picture pixels) along the segment a-b covers the centre of pixel (x, y) (REQ-0038-02); a point when
+   a and b are one. The rule easel_rbg_set_strokes uses, for the bands and the presses a stroke covers. */
+bool easel_rbg_covers (int x, int y, int ax, int ay, int bx, int by, int width);
+
 /* Whether the card shows its second line (REQ-0035-04): the ring's 90th percentile distance to the background as judged above 6
    delta-E, a border the background's model explains poorly in part. */
 bool easel_rbg_complex (const EaselRbg *r);
@@ -70,6 +92,8 @@ bool easel_rbg_complex (const EaselRbg *r);
    CIE Lab function f(t) of the table, t and the result in Q16 (t from 0 to 65536); the integer Lab of an sRGB color (L, a, b x 64). */
 size_t easel_rbg_bytes (const EaselRbg *r);
 int64_t easel_rbg_residual (const EaselRbg *r);
+/* Test hook: the kind of the strokes at pixel (x, y), 0 none, 1 Keep this, 2 Remove this (0038). */
+int easel_rbg_stroke_kind (const EaselRbg *r, int x, int y);
 /* Test hook: the median (delta-E x 64) the automatic tolerance comes from: the surface's, or the clusters' where they judge. */
 int64_t easel_rbg_judged (const EaselRbg *r);
 /* Test hook: the automatic tolerance from the ring's median, before the stability check (REQ-0035-04). */

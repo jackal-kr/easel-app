@@ -5,7 +5,7 @@ one menu page share a letter (0035 Check F1, kept by `/0023-lang/as14_menu_mnemo
 underscore marks the letter. A word is wrong, or a letter hard to type on your keyboard: say which, and the letter is moved again
 (the test says whether the new one is free).
 
-## Russian (ru): 18 strings
+## Russian (ru): 26 strings
 
 | English | Before | Now |
 |---|---|---|
@@ -13,7 +13,7 @@ underscore marks the letter. A word is wrong, or a letter hard to type on your k
 | R_emove Background… | (new) | _Удалить фон… |
 | Kept | (new) | Оставлено |
 | Removed | (new) | Удалено |
-| This background is complex. Lower the Tolerance, then click pieces to fix them. | (new) | Этот фон сложный. Уменьшите Допуск, затем щёлкните по частям, чтобы исправить их. |
+| This background is complex. Lower the Tolerance, then click pieces to fix them. | (dropped, 0038) | Этот фон сложный. Уменьшите Допуск, затем щёлкните по частям, чтобы исправить их. |
 | Remove Background | (new) | Удалить фон |
 | Works best on a plain background. | (new) | Лучше всего работает на однотонном фоне. |
 | Tolerance | (new) | Допуск |
@@ -27,8 +27,16 @@ underscore marks the letter. A word is wrong, or a letter hard to type on your k
 | _Paste | Вст_авить | _Вставить |
 | _Rotate | По_вернуть | _Повернуть |
 | Select _All | Выделить _всё | Вы_делить всё |
+| _Keep this | (new) | О_ставить |
+| _Remove this | (new) | _Убрать |
+| Paint over parts to keep | (new) | Закрасьте части, которые нужно оставить |
+| Paint over parts to remove | (new) | Закрасьте части, которые нужно убрать |
+| Keep this on | (new) | Оставить включено |
+| Remove this on | (new) | Убрать включено |
+| Brushes off | (new) | Кисти выключены |
+| This background is complex. Lower the Tolerance, then use Keep this and Remove this. | (new) | Этот фон сложный. Уменьшите Допуск, затем используйте Оставить и Убрать. |
 
-## Ukrainian (uk): 17 strings
+## Ukrainian (uk): 25 strings
 
 | English | Before | Now |
 |---|---|---|
@@ -36,7 +44,7 @@ underscore marks the letter. A word is wrong, or a letter hard to type on your k
 | R_emove Background… | (new) | Вилучити _тло… |
 | Kept | (new) | Залишено |
 | Removed | (new) | Вилучено |
-| This background is complex. Lower the Tolerance, then click pieces to fix them. | (new) | Це тло складне. Зменште Допуск, потім клацніть частини, щоб виправити їх. |
+| This background is complex. Lower the Tolerance, then click pieces to fix them. | (dropped, 0038) | Це тло складне. Зменште Допуск, потім клацніть частини, щоб виправити їх. |
 | Remove Background | (new) | Вилучити тло |
 | Works best on a plain background. | (new) | Найкраще працює на однотонному тлі. |
 | Tolerance | (new) | Допуск |
@@ -49,8 +57,16 @@ underscore marks the letter. A word is wrong, or a letter hard to type on your k
 | Paste _From… | Вставити _з… | Вс_тавити з… |
 | P_references | Пара_метри | П_араметри |
 | Select _All | Виділити _все | Виді_лити все |
+| _Keep this | (new) | _Залишити |
+| _Remove this | (new) | _Прибрати |
+| Paint over parts to keep | (new) | Зафарбуйте частини, які треба залишити |
+| Paint over parts to remove | (new) | Зафарбуйте частини, які треба прибрати |
+| Keep this on | (new) | Залишити увімкнено |
+| Remove this on | (new) | Прибрати увімкнено |
+| Brushes off | (new) | Пензлі вимкнено |
+| This background is complex. Lower the Tolerance, then use Keep this and Remove this. | (new) | Це тло складне. Зменште Допуск, потім скористайтеся Залишити й Прибрати. |
 
-## Polish (pl): 18 strings
+## Polish (pl): 26 strings
 
 | English | Before | Now |
 |---|---|---|
@@ -58,7 +74,7 @@ underscore marks the letter. A word is wrong, or a letter hard to type on your k
 | R_emove Background… | (new) | _Usuń tło… |
 | Kept | (new) | Zachowane |
 | Removed | (new) | Usunięte |
-| This background is complex. Lower the Tolerance, then click pieces to fix them. | (new) | To tło jest złożone. Zmniejsz Tolerancję, a następnie kliknij fragmenty, aby je poprawić. |
+| This background is complex. Lower the Tolerance, then click pieces to fix them. | (dropped, 0038) | To tło jest złożone. Zmniejsz Tolerancję, a następnie kliknij fragmenty, aby je poprawić. |
 | Remove Background | (new) | Usuń tło |
 | Works best on a plain background. | (new) | Działa najlepiej na jednolitym tle. |
 | Tolerance | (new) | Tolerancja |
@@ -72,17 +88,25 @@ underscore marks the letter. A word is wrong, or a letter hard to type on your k
 | _Quit | _Zakończ | Zakoń_cz |
 | Select _All | Zaznacz _wszystko | Z_aznacz wszystko |
 | Stretch and _Skew… | Rozciągnij i po_chyl… | Rozciągnij _i pochyl… |
+| _Keep this | (new) | _Zachowaj |
+| _Remove this | (new) | _Usuń |
+| Paint over parts to keep | (new) | Zamaluj części do zachowania |
+| Paint over parts to remove | (new) | Zamaluj części do usunięcia |
+| Keep this on | (new) | Zachowaj włączone |
+| Remove this on | (new) | Usuń włączone |
+| Brushes off | (new) | Pędzle wyłączone |
+| This background is complex. Lower the Tolerance, then use Keep this and Remove this. | (new) | To tło jest złożone. Zmniejsz Tolerancję, a następnie użyj Zachowaj i Usuń. |
 
 ## The other languages: counts only
 
 | Language | New | Changed mnemonic or text |
 |---|---|---|
-| en (the source) | 9 | 5 labels: C_lear Selection, Cop_y To…, Pa_ste as Plain Text, A_bout Easel, P_references |
-| cs | 9 | 4 |
-| de | 9 | 5 |
-| es | 9 | 7 |
-| fr | 9 | 4 |
-| hu | 9 | 8 |
-| it | 9 | 9 |
-| pt | 9 | 10 |
-| ro | 9 | 8 |
+| en (the source) | 17 | 5 labels: C_lear Selection, Cop_y To…, Pa_ste as Plain Text, A_bout Easel, P_references |
+| cs | 17 | 4 |
+| de | 17 | 5 |
+| es | 17 | 7 |
+| fr | 17 | 4 |
+| hu | 17 | 8 |
+| it | 17 | 9 |
+| pt | 17 | 10 |
+| ro | 17 | 8 |

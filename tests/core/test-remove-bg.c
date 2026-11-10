@@ -809,6 +809,385 @@ pieces_large (void)
   free (m);
 }
 
+static size_t heap_in_use (void);
+
+/* ---- 0038: the brushes ---- */
+
+/* The result at Tolerance tol (AUTO: the automatic one, taken before the strokes, as the card does) with the n strokes. */
+static void
+stroked (const uint32_t *p, int w, int h, int tol, const EaselRbgStroke *st, size_t n, uint32_t *dst)
+{
+  EaselRbg *r = easel_rbg_new (p, NULL, w, h, BIG);
+
+  CHECK (r != NULL);
+  if (tol == AUTO)
+    tol = easel_rbg_auto_tolerance (r);
+  CHECK (easel_rbg_set_strokes (r, st, n));
+  CHECK (easel_rbg_label (r, tol, NULL) == EASEL_RBG_DONE);
+  CHECK (easel_rbg_result (r, p, NULL, dst, NULL, NULL) == EASEL_RBG_DONE);
+  easel_rbg_free (r);
+}
+
+static size_t
+count_removed (const uint32_t *p, const uint32_t *d, size_t n, uint32_t of)
+{
+  size_t k = 0;
+
+  for (size_t i = 0; i < n; i++)
+    k += p[i] == of && d[i] == 0;
+  return k;
+}
+
+/* AS-14 (REQ-0038-03, JOD 2026-11-10 at the check): each pixel takes the latest word on it. A red disk on white, a press on its centre
+   (the disk removed), a Keep dot of width 8 on its left part, away from the pressed pixel: with the stroke after the press its pixels are
+   kept and the rest of the disk removed; with the press after it the whole disk is removed. */
+static void
+strokes_after_press (void)
+{
+  uint32_t *p = picture (120, 80, WHITE), *d = picture (120, 80, 0);
+  const int32_t dot[2] = { 48, 40 };
+  EaselRbgStroke keep = { true, 8, 1, dot };
+
+  disk (p, 120, 60, 40, 20, RED);
+  for (int after = 1; after >= 0; after--)
+    {
+      EaselRbg *r = easel_rbg_new (p, NULL, 120, 80, BIG);
+      EaselRbgPress press = { 60, 40, after };
+
+      CHECK (easel_rbg_set_strokes (r, &keep, 1));
+      CHECK (easel_rbg_label (r, 5, NULL) == EASEL_RBG_DONE);
+      CHECK (easel_rbg_result (r, p, NULL, d, NULL, NULL) == EASEL_RBG_DONE);
+      CHECK (d[40 * 120 + 60] == RED && d[40 * 120 + 48] == RED);      /* the method keeps the disk */
+      easel_rbg_flips (r, p, NULL, d, &press, 1, NULL);
+      for (int y = 0; y < 80; y++)
+        for (int x = 0; x < 120; x++)
+          if (p[y * 120 + x] == RED)
+            {
+              int dx = x - 48, dy = y - 40;
+              bool in_dot = 4 * (dx * dx + dy * dy) <= 64;
+
+              CHECK (after && in_dot ? d[y * 120 + x] == RED : d[y * 120 + x] == 0);
+            }
+      easel_rbg_free (r);
+    }
+  free (p);
+  free (d);
+}
+
+/* REQ-0038-02's coverage (AS-4's numbers, by the rule's own arithmetic): a Remove dot of width 16 on a red disk removes the 197 pixels
+   within 8 of its pixel's centre and no other; of width 1, that pixel alone; of width 2, the five within 1. */
+static void
+strokes_dot (void)
+{
+  uint32_t *p = picture (60, 60, WHITE), *d = picture (60, 60, 0);
+  const int32_t at[2] = { 30, 30 };
+
+  disk (p, 60, 30, 30, 20, RED);
+  for (int k = 0; k < 3; k++)
+    {
+      static const int width[3] = { 16, 1, 2 };
+      static const size_t want[3] = { 197, 1, 5 };
+      EaselRbgStroke st = { false, width[k], 1, at };
+
+      stroked (p, 60, 60, 5, &st, 1, d);
+      CHECK (count_removed (p, d, 60 * 60, RED) == want[k]);
+      CHECK (d[30 * 60 + 30] == 0);
+    }
+  free (p);
+  free (d);
+}
+
+/* AS-3 (REQ-0038-03): a Remove stroke across a red rectangle removes the red it covers and keeps the rest; a later Keep dot over part of
+   it keeps that part (the later stroke wins); a hole the method fills is removed by a Remove dot on it; a fully transparent pixel under
+   Keep this stays as it is. */
+static void
+strokes_rules (void)
+{
+  uint32_t *p = picture (80, 60, WHITE), *d = picture (80, 60, 0);
+  const int32_t line[4] = { 25, 30, 35, 30 }, dot[2] = { 30, 30 };
+  EaselRbgStroke st[2] = { { false, 16, 2, line }, { true, 16, 1, dot } };
+  size_t covered = 0;
+
+  for (int y = 15; y < 45; y++)
+    for (int x = 20; x < 60; x++)
+      p[y * 80 + x] = RED;
+  stroked (p, 80, 60, 5, st, 1, d);
+  for (int y = 15; y < 45; y++)
+    for (int x = 20; x < 60; x++)
+      {
+        long cx = x < 25 ? 25 : x > 35 ? 35 : x, dx = x - cx, dy = y - 30;
+        bool in = 4 * (dx * dx + dy * dy) <= 16 * 16;
+
+        covered += in;
+        CHECK (in ? d[y * 80 + x] == 0 : d[y * 80 + x] == RED);
+      }
+  CHECK (covered > 0);
+  stroked (p, 80, 60, 5, st, 2, d);
+  for (int y = 15; y < 45; y++)
+    for (int x = 20; x < 60; x++)
+      {
+        long cx = x < 25 ? 25 : x > 35 ? 35 : x, dx = x - cx, dy = y - 30, ex = x - 30;
+        bool in_line = 4 * (dx * dx + dy * dy) <= 256, in_dot = 4 * (ex * ex + dy * dy) <= 256;
+
+        CHECK (in_dot ? d[y * 80 + x] == RED : in_line ? d[y * 80 + x] == 0 : d[y * 80 + x] == RED);
+      }
+  free (p);
+  free (d);
+  {
+    /* the hole: 8 x 8 white in a 200 x 200 red square on white, under 1 % of it, so the method fills it */
+    uint32_t *q = picture (240, 240, WHITE), *e = picture (240, 240, 0);
+    const int32_t hole[2] = { 119, 119 };
+    EaselRbgStroke rm = { false, 8, 1, hole };
+
+    for (int y = 20; y < 220; y++)
+      for (int x = 20; x < 220; x++)
+        q[y * 240 + x] = y >= 116 && y < 124 && x >= 116 && x < 124 ? WHITE : RED;
+    stroked (q, 240, 240, 5, NULL, 0, e);
+    CHECK (e[119 * 240 + 119] == WHITE);                                   /* filled by the method */
+    stroked (q, 240, 240, 5, &rm, 1, e);
+    for (int y = 116; y < 124; y++)
+      for (int x = 116; x < 124; x++)
+        CHECK (e[y * 240 + x] == 0);                                       /* the whole hole removed */
+    CHECK (e[60 * 240 + 60] == RED);
+    /* a fully transparent pixel under Keep this stays as it is */
+    {
+      const int32_t corner[2] = { 5, 5 };
+      EaselRbgStroke kp = { true, 6, 1, corner };
+
+      q[5 * 240 + 5] = 0x00ABCDEFu;
+      stroked (q, 240, 240, 5, &kp, 1, e);
+      CHECK (e[5 * 240 + 5] == 0x00ABCDEFu && e[5 * 240 + 6] == WHITE);
+    }
+    free (q);
+    free (e);
+  }
+}
+
+/* AS-11 (REQ-0038-03): on a grey ramp from 60 to 200 with a red disk, a Keep dot at (5, 50) at Tolerance 5 keeps only what is joined to it
+   within 5 delta-E of the dot's mean color: the ramp's left part, not its right end. */
+static void
+strokes_joined (void)
+{
+  uint32_t *p = picture (200, 100, 0), *d = picture (200, 100, 0);
+  const int32_t at[2] = { 5, 50 };
+  EaselRbgStroke st = { true, 16, 1, at };
+
+  for (int y = 0; y < 100; y++)
+    for (int x = 0; x < 200; x++)
+      p[y * 200 + x] = 0xFF000000u | (uint32_t) (60 + (140 * x + 99) / 199) * 0x010101u;
+  disk (p, 200, 100, 50, 20, RED);
+  stroked (p, 200, 100, 5, &st, 1, d);
+  CHECK (d[10 * 200 + 0] != 0 && d[10 * 200 + 20] != 0);                 /* joined to the dot */
+  CHECK (d[10 * 200 + 195] == 0 && d[90 * 200 + 195] == 0);              /* the right end removed */
+  CHECK (d[50 * 200 + 100] == RED);
+  free (p);
+  free (d);
+}
+
+/* AS-2 (REQ-0038-03, -04): 0035 AS-11's picture at its automatic tolerance (5): the method removes the shirt and keeps the face; a Keep dot
+   at (120, 290) keeps the whole shirt and changes no other pixel; a Remove dot at (33, 120) on the foliage the method keeps removes the
+   pixels it covers, the face and the shirt unchanged. */
+static void
+strokes_selfie (void)
+{
+  uint32_t *p = picture (240, 320, 0), *none = picture (240, 320, 0), *d = picture (240, 320, 0);
+  const int32_t shirt[2] = { 120, 290 }, leaf[2] = { 33, 120 };
+  EaselRbgStroke keep = { true, 16, 1, shirt }, rm = { false, 16, 1, leaf };
+  size_t changed = 0;
+
+  for (int y = 0; y < 320; y++)
+    for (int x = 0; x < 240; x++)
+      {
+        uint32_t i = (uint32_t) (y * 240 + x), n = (i * 2654435761u) >> 27;
+        long ex = x - 120, ey = y - 176;
+
+        if (y >= 256)
+          p[i] = 0xFF2D303Au;
+        else if (ex * ex * 55 * 55 + ey * ey * 48 * 48 <= 48L * 48 * 55 * 55)
+          p[i] = 0xFFC8A08Cu;
+        else if (y >= 107 && (x < 53 || x >= 187))
+          p[i] = 0xFF000000u | (134 + n) << 16 | (124 + n) << 8 | (24 + n);
+        else
+          p[i] = 0xFF96BEEBu;
+      }
+  stroked (p, 240, 320, AUTO, NULL, 0, none);
+  CHECK (none[290 * 240 + 120] == 0 && none[176 * 240 + 120] == 0xFFC8A08Cu);   /* the shirt removed, the face kept */
+  CHECK (none[120 * 240 + 33] != 0);                                           /* foliage the method keeps */
+  stroked (p, 240, 320, AUTO, &keep, 1, d);
+  for (int i = 0; i < 240 * 320; i++)
+    {
+      CHECK (i / 240 >= 256 ? d[i] == p[i] : d[i] == none[i]);
+      changed += d[i] != none[i];
+    }
+  CHECK (changed == 64 * 240);
+  stroked (p, 240, 320, AUTO, &rm, 1, d);
+  for (int y = 0; y < 320; y++)
+    for (int x = 0; x < 240; x++)
+      {
+        long dx = x - 33, dy = y - 120;
+
+        if (4 * (dx * dx + dy * dy) <= 256)
+          CHECK (d[y * 240 + x] == 0);
+        else if (y >= 140 || (x > 60 && x < 180))
+          CHECK (d[y * 240 + x] == none[y * 240 + x]);                         /* the face, the shirt and what lies apart */
+      }
+  free (p);
+  free (none);
+  free (d);
+}
+
+/* REQ-0038-02's coverage set by rows (2026-11-10, for speed): 40 random Remove strokes of widths 1 to 20, slanted, level and upright,
+   inside a red square; the pixels the strokes cover are exactly those a test of each pixel with easel_rbg_covers gives. */
+static void
+strokes_runs (void)
+{
+  int w = 260, h = 260;
+  uint32_t *p = picture (w, h, WHITE), *d = picture (w, h, 0);
+  uint8_t *want = calloc ((size_t) w * h, 1);
+  int32_t xy[40][6];
+  EaselRbgStroke st[40];
+  uint32_t seed = 12345;
+
+  for (int y = 30; y < 230; y++)
+    for (int x = 30; x < 230; x++)
+      p[y * w + x] = RED;
+  for (int k = 0; k < 40; k++)
+    {
+      int n = 1 + k % 3, width = 1 + k % 20;
+
+      for (int j = 0; j < n; j++)
+        {
+          seed = seed * 1103515245u + 12345u;
+          xy[k][2 * j] = 60 + (int32_t) (seed >> 8) % 140;
+          seed = seed * 1103515245u + 12345u;
+          xy[k][2 * j + 1] = 60 + (int32_t) (seed >> 8) % 140;
+          if (k % 7 == 3 && j > 0)
+            xy[k][2 * j + 1] = xy[k][1];                                    /* level */
+          if (k % 7 == 5 && j > 0)
+            xy[k][2 * j] = xy[k][0];                                        /* upright */
+        }
+      st[k] = (EaselRbgStroke) { false, width, (size_t) n, xy[k] };
+      for (int j = 0; j < n; j++)
+        {
+          int ax = xy[k][2 * j], ay = xy[k][2 * j + 1];
+          int bx = j + 1 < n ? xy[k][2 * j + 2] : ax, by = j + 1 < n ? xy[k][2 * j + 3] : ay;
+
+          if (j + 1 == n && n > 1)
+            break;
+          for (int y = 0; y < h; y++)
+            for (int x = 0; x < w; x++)
+              if (easel_rbg_covers (x, y, ax, ay, bx, by, width))
+                want[y * w + x] = 1;
+        }
+    }
+  {
+    EaselRbg *r = easel_rbg_new (p, NULL, w, h, BIG);
+
+    CHECK (easel_rbg_set_strokes (r, st, 40));
+    for (int y = 0; y < h; y++)
+      for (int x = 0; x < w; x++)
+        CHECK ((easel_rbg_stroke_kind (r, x, y) == 2) == (want[y * w + x] != 0));
+    easel_rbg_free (r);
+  }
+  (void) d;
+  free (want);
+  free (p);
+  free (d);
+}
+
+/* REQ-0038-03 (g): the fringe does not remove a pixel under Keep this: on (g)'s soft edge a Keep dot across radius 45.5, where the fringe
+   removes the blends more than half sky, keeps every pixel it covers as it was. */
+static void
+strokes_fringe (void)
+{
+  int w = 300, h = 200;
+  uint32_t *p = picture (w, h, SKY), *d = picture (w, h, 0);
+  const int32_t at[2] = { 196, 100 };
+  EaselRbgStroke st = { true, 5, 1, at };
+
+  for (int y = 0; y < h; y++)
+    for (int x = 0; x < w; x++)
+      {
+        int64_t q = (int64_t) (x - 150) * (x - 150) + (int64_t) (y - 100) * (y - 100);
+
+        if (q <= 40 * 40)
+          p[y * w + x] = DARK;
+        else if (q < 50 * 50)
+          {
+            int r256 = 0;
+
+            while ((int64_t) (r256 + 1) * (r256 + 1) <= q * 256 * 256)
+              r256++;
+            p[y * w + x] = blend (256 - (r256 - 40 * 256) / 10);
+          }
+      }
+  stroked (p, w, h, AUTO, &st, 1, d);
+  for (int y = 96; y <= 104; y++)
+    for (int x = 192; x <= 200; x++)
+      if (4 * ((x - 196) * (x - 196) + (y - 100) * (y - 100)) <= 25)
+        CHECK (d[y * w + x] == p[y * w + x]);
+  free (p);
+  free (d);
+}
+
+/* AS-9 (REQ-0038-09): over 2 000 000 pixels (2 x 2 blocks) every pixel a Remove stroke covers is removed exactly, the red it misses kept,
+   and a second run gives the same pixels. */
+static void
+strokes_large (void)
+{
+  const int w = 1500, h = 1400;
+  uint32_t *p = picture (w, h, WHITE), *d = picture (w, h, 0), *e = picture (w, h, 0);
+  const int32_t line[4] = { 300, 200, 700, 260 };
+  EaselRbgStroke st = { false, 9, 2, line };
+
+  for (int y = 100; y < 400; y++)
+    for (int x = 100; x < 900; x++)
+      p[(size_t) y * w + x] = RED;
+  stroked (p, w, h, 5, &st, 1, d);
+  for (int y = 100; y < 400; y++)
+    for (int x = 100; x < 900; x++)
+      {
+        long vx = 400, vy = 60, px = x - 300, py = y - 200, dot = px * vx + py * vy, vv = vx * vx + vy * vy, pp = px * px + py * py;
+        bool in = dot <= 0 ? 4 * pp <= 81 : dot >= vv ? 4 * ((x - 700L) * (x - 700L) + (y - 260L) * (y - 260L)) <= 81
+                                                       : 4 * (pp * vv - dot * dot) <= 81 * vv;
+
+        CHECK (in ? d[(size_t) y * w + x] == 0 : d[(size_t) y * w + x] == RED);
+      }
+  stroked (p, w, h, 5, &st, 1, e);
+  CHECK (memcmp (d, e, (size_t) w * h * 4) == 0);
+  free (p);
+  free (d);
+  free (e);
+}
+
+/* REQ-0038-08: the strokes' memory is counted with the analysis's; under the limit set_strokes refuses and the strokes are as before. */
+static void
+strokes_memory (void)
+{
+  uint32_t *p = picture (300, 200, WHITE);
+  const int32_t at[2] = { 150, 100 };
+  EaselRbgStroke st = { false, 16, 1, at };
+  EaselRbg *r;
+  size_t before, held, counted;
+
+  disk (p, 300, 150, 100, 40, RED);
+  r = easel_rbg_new (p, NULL, 300, 200, BIG);
+  CHECK (r != NULL);
+  counted = easel_rbg_bytes (r);
+  before = heap_in_use ();
+  CHECK (easel_rbg_set_strokes (r, &st, 1));
+  held = heap_in_use () - before;
+  CHECK (easel_rbg_bytes (r) > counted);
+  CHECK (held <= easel_rbg_bytes (r) - counted + 4096 && easel_rbg_bytes (r) - counted <= held + 4096);
+  easel_rbg_free (r);
+  r = easel_rbg_new (p, NULL, 300, 200, counted);                         /* room for the analysis alone */
+  CHECK (r != NULL);
+  CHECK (!easel_rbg_set_strokes (r, &st, 1));
+  CHECK (easel_rbg_bytes (r) == counted);
+  easel_rbg_free (r);
+  free (p);
+}
+
 static size_t
 heap_in_use (void)
 {
@@ -877,5 +1256,14 @@ main (void)
   RUN (pieces_small);
   RUN (pieces_large);
   RUN (memory_and_cancel);
+  RUN (strokes_dot);
+  RUN (strokes_rules);
+  RUN (strokes_after_press);
+  RUN (strokes_joined);
+  RUN (strokes_selfie);
+  RUN (strokes_runs);
+  RUN (strokes_fringe);
+  RUN (strokes_large);
+  RUN (strokes_memory);
   return 0;
 }

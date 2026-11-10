@@ -57,6 +57,13 @@ struct EaselRbg
   int tolerance;                   /* the labels' */
   bool labeled;                    /* the labels are complete for tolerance */
   uint8_t *marks;                  /* the fringe's pixels to remove in a round, a bit each */
+  size_t max_bytes;                /* what the analysis and the strokes may hold together */
+  uint8_t *pxmap;                  /* 0038: each pixel's stroke, 2 bits (0 none, 1 Keep this, 2 Remove this); NULL with no stroke */
+  uint8_t *cmark;                  /* each copy cell's kind, the latest stroke's that covers any of its pixels */
+  int32_t *cowner;                 /* that stroke's number */
+  int16_t (*smean)[3];             /* each stroke's mean Lab over the cells it covers */
+  size_t nstrokes;                 /* how many were set */
+  size_t stroke_bytes;
   size_t bytes;
 };
 
@@ -538,6 +545,10 @@ easel_rbg_free (EaselRbg *r)
   free (r->sizes);
   free (r->ft);
   free (r->marks);
+  free (r->pxmap);
+  free (r->cmark);
+  free (r->cowner);
+  free (r->smean);
   free (r);
 }
 
@@ -573,6 +584,7 @@ easel_rbg_new (const uint32_t *px, const uint8_t *mask, int w, int h, size_t max
   if (r->d < 2)
     r->d = 2;
   r->bytes = sizeof *r + r->n * per_cell + 65537 * sizeof (int32_t) + ((size_t) w * (size_t) h + 7) / 8;
+  r->max_bytes = max_bytes;
   if (r->bytes > max_bytes)
     {
       free (r);
@@ -763,6 +775,176 @@ easel_rbg_new (const uint32_t *px, const uint8_t *mask, int w, int h, size_t max
   return r;
 }
 
+/* 0038: the kind of the stroke at pixel i (0 none, 1 Keep this, 2 Remove this). */
+static int
+stroke_at (const EaselRbg *r, size_t i)
+{
+  return r->pxmap != NULL ? r->pxmap[i >> 2] >> ((i & 3) * 2) & 3 : 0;
+}
+
+/* Whether the centre of pixel (x, y) lies within width / 2 of the segment a-b (REQ-0038-02): 4 d^2 <= width^2, in integers. */
+static bool
+covers (int64_t x, int64_t y, int64_t ax, int64_t ay, int64_t bx, int64_t by, int64_t width)
+{
+  int64_t vx = bx - ax, vy = by - ay, px = x - ax, py = y - ay, dot = px * vx + py * vy, vv = vx * vx + vy * vy, w2 = width * width;
+
+  if (vv == 0 || dot <= 0)
+    return 4 * (px * px + py * py) <= w2;
+  if (dot >= vv)
+    return 4 * ((x - bx) * (x - bx) + (y - by) * (y - by)) <= w2;
+  return 4 * ((px * px + py * py) * vv - dot * dot) <= w2 * vv;
+}
+
+/* The run of row y that the stroke of width along a-b covers (REQ-0038-02), held to x0 .. x1: FALSE when none. The covered pixels of a
+   row form one run, the stroke's shape being convex; within the segment's rows the pixel nearest its crossing is covered (a width of 1
+   or more reaches half a pixel), beyond them the endpoint's column is the nearest to every centre of the stroke, so a row with any
+   covered pixel has one of those covered, and the run's ends are found by halving from it. The same pixels as a test of each. */
+static bool
+cover_run (int64_t y, int64_t ax, int64_t ay, int64_t bx, int64_t by, int64_t width, int64_t x0, int64_t x1, int64_t *left, int64_t *right)
+{
+  int64_t seed, lo, hi;
+
+  if (ay == by || y < (ay < by ? ay : by) || y > (ay > by ? ay : by))
+    {
+      /* beyond the segment's rows (or a level one): the nearer endpoint's column; a level segment covers from its nearer end */
+      int64_t ex = ay == by ? (ax < bx ? ax : bx) : (llabs (y - ay) <= llabs (y - by) ? ax : bx);
+
+      seed = ex;
+    }
+  else
+    {
+      /* the crossing's column, rounded: (y - ay) (bx - ax) / (by - ay) + ax */
+      int64_t num = (y - ay) * (bx - ax), den = by - ay;
+
+      if (den < 0)
+        num = -num, den = -den;
+      seed = ax + (num >= 0 ? (2 * num + den) / (2 * den) : -((-2 * num + den) / (2 * den)));
+    }
+  if (seed < x0)
+    seed = x0;
+  if (seed > x1)
+    seed = x1;
+  if (!covers (seed, y, ax, ay, bx, by, width))
+    {
+      /* a level segment's seed is its left end; its run may lie on either side only when the row is within the width: try the right */
+      if (ay == by && covers (ax > bx ? ax : bx, y, ax, ay, bx, by, width))
+        seed = ax > bx ? ax : bx;
+      else
+        return false;
+      if (seed < x0 || seed > x1)
+        return false;
+    }
+  lo = x0, hi = seed;                                   /* the leftmost covered in lo .. hi: hi is covered */
+  while (lo < hi)
+    {
+      int64_t mid = lo + (hi - lo) / 2;
+
+      if (covers (mid, y, ax, ay, bx, by, width))
+        hi = mid;
+      else
+        lo = mid + 1;
+    }
+  *left = lo;
+  lo = seed, hi = x1;                                   /* the rightmost covered in lo .. hi: lo is covered */
+  while (lo < hi)
+    {
+      int64_t mid = lo + (hi - lo + 1) / 2;
+
+      if (covers (mid, y, ax, ay, bx, by, width))
+        lo = mid;
+      else
+        hi = mid - 1;
+    }
+  *right = lo;
+  return true;
+}
+
+bool
+easel_rbg_covers (int x, int y, int ax, int ay, int bx, int by, int width)
+{
+  return covers (x, y, ax, ay, bx, by, width < 1 ? 1 : width);
+}
+
+bool
+easel_rbg_set_strokes (EaselRbg *r, const EaselRbgStroke *strokes, size_t n)
+{
+  size_t npx = ((size_t) r->w * (size_t) r->h + 3) / 4, need = 0;
+  uint8_t *pxmap = NULL, *cmark = NULL;
+  int32_t *cowner = NULL;
+  int16_t (*smean)[3] = NULL;
+  int64_t (*sum)[4] = NULL;
+
+  if (n > 0)
+    {
+      need = npx + r->n * (1 + sizeof *cowner) + n * sizeof *smean;
+      if (r->bytes - r->stroke_bytes + need > r->max_bytes)
+        return false;
+      pxmap = calloc (npx, 1);
+      cmark = calloc (r->n, 1);
+      cowner = malloc (r->n * sizeof *cowner);
+      smean = calloc (n, sizeof *smean);
+      sum = calloc (n, sizeof *sum);
+      if (pxmap == NULL || cmark == NULL || cowner == NULL || smean == NULL || sum == NULL)
+        {
+          free (pxmap), free (cmark), free (cowner), free (smean), free (sum);
+          return false;
+        }
+      for (size_t c = 0; c < r->n; c++)
+        cowner[c] = -1;
+      /* in order, so that the later stroke wins: each covered pixel takes its kind, each cell its kind and number */
+      for (size_t k = 0; k < n; k++)
+        {
+          const EaselRbgStroke *st = &strokes[k];
+          int kind = st->keep ? 1 : 2, width = st->width < 1 ? 1 : st->width, reach = width / 2 + 1;
+
+          for (size_t j = 0; j < st->n; j++)
+            {
+              int64_t ax = st->xy[2 * j], ay = st->xy[2 * j + 1];
+              int64_t bx = j + 1 < st->n ? st->xy[2 * j + 2] : ax, by = j + 1 < st->n ? st->xy[2 * j + 3] : ay;
+              int64_t x0 = (ax < bx ? ax : bx) - reach, x1 = (ax > bx ? ax : bx) + reach;
+              int64_t y0 = (ay < by ? ay : by) - reach, y1 = (ay > by ? ay : by) + reach;
+
+              if (j + 1 == st->n && st->n > 1)
+                break;                                  /* the last place ends the previous segment */
+              x0 = x0 < 0 ? 0 : x0, y0 = y0 < 0 ? 0 : y0;
+              x1 = x1 >= r->w ? r->w - 1 : x1, y1 = y1 >= r->h ? r->h - 1 : y1;
+              for (int64_t y = y0; y <= y1; y++)
+                {
+                  int64_t xl, xr;
+
+                  if (!cover_run (y, ax, ay, bx, by, width, x0, x1, &xl, &xr))
+                    continue;
+                  for (int64_t x = xl; x <= xr; x++)
+                    {
+                      size_t i = (size_t) y * r->w + (size_t) x, c = (size_t) (y / r->s) * r->cw + (size_t) (x / r->s);
+
+                      pxmap[i >> 2] = (uint8_t) ((pxmap[i >> 2] & ~(3u << ((i & 3) * 2))) | (unsigned) kind << ((i & 3) * 2));
+                      if (cowner[c] != (int32_t) k && r->present[c])
+                        {
+                          for (int q = 0; q < 3; q++)
+                            sum[k][q] += r->lab[3 * c + q];
+                          sum[k][3]++;
+                        }
+                      cowner[c] = (int32_t) k;
+                      cmark[c] = (uint8_t) kind;
+                    }
+                }
+            }
+        }
+      for (size_t k = 0; k < n; k++)
+        for (int q = 0; q < 3; q++)
+          smean[k][q] = (int16_t) (sum[k][3] > 0 ? sum[k][q] / sum[k][3] : 0);
+      free (sum);
+    }
+  free (r->pxmap), free (r->cmark), free (r->cowner), free (r->smean);
+  r->pxmap = pxmap, r->cmark = cmark, r->cowner = cowner, r->smean = smean;
+  r->nstrokes = n;
+  r->bytes = r->bytes - r->stroke_bytes + need;
+  r->stroke_bytes = need;
+  r->labeled = false;                           /* the labels are made again with the strokes */
+  return true;
+}
+
 bool
 easel_rbg_complex (const EaselRbg *r)
 {
@@ -863,7 +1045,12 @@ easel_rbg_flips (EaselRbg *r, const uint32_t *px, const uint8_t *mask, uint32_t 
         continue;
       c = r->piece[(size_t) (y / r->s) * r->cw + x / r->s];
       if (c >= 0)
-        r->sizes[c] ^= 1;
+        {
+          r->sizes[c] ^= 1;
+          size_t after = presses[i].strokes_after > 0 ? (size_t) presses[i].strokes_after : 0;
+
+          r->queue[c] = (uint32_t) (after < r->nstrokes ? r->nstrokes - after : 0);
+        }                                  /* the first stroke after the piece's press (the queue is free again) */
     }
   /* each piece with an odd count: its pixels take the other kind (a removed pixel back only if the method removed it); only the
      blocks of such pieces are visited, and the count before is adjusted by what changes */
@@ -882,6 +1069,8 @@ easel_rbg_flips (EaselRbg *r, const uint32_t *px, const uint8_t *mask, uint32_t 
 
             if (!looked_at (mask, i) || (px[i] >> 24) == 0)
               continue;
+            if (stroke_at (r, i) != 0 && r->cowner[g] >= (int32_t) r->queue[c])
+              continue;                    /* a stroke after the press covers it: the stroke's kind stays (AS-14, the latest word) */
             dst[i] = (r->next[c] & 1) ? 0 : px[i];                   /* removed: 0x00000000 (P7.7) */
             gone += ((dst[i] >> 24) == 0) - was;
           }
@@ -912,6 +1101,12 @@ void
 easel_rbg_lab (const EaselRbg *r, int red, int green, int blue, int16_t out[3])
 {
   to_lab (r, red & 0xFF, green & 0xFF, blue & 0xFF, out);
+}
+
+int
+easel_rbg_stroke_kind (const EaselRbg *r, int x, int y)
+{
+  return x < 0 || y < 0 || x >= r->w || y >= r->h ? 0 : stroke_at (r, (size_t) y * r->w + x);
 }
 
 int
@@ -974,6 +1169,36 @@ easel_rbg_label (EaselRbg *r, int tolerance, const volatile int *cancel)
     head[b] = tail[b] = -1;
 #define PUSH(idx, pr) do { int pr_ = (pr) < level ? level : (pr); r->next[idx] = -1;                                      \
     if (tail[pr_] < 0) head[pr_] = (int32_t) (idx); else r->next[tail[pr_]] = (int32_t) (idx); tail[pr_] = (int32_t) (idx); } while (0)
+  /* 0038 (REQ-0038-03 b): the cells joined to a Keep this stroke (a 4-connected path of cells no stroke covers, each within the
+     tolerance of that stroke's mean color) are subject seeds, never background seeds; flood marks them meanwhile (1 joined, 2 the
+     stroke's own), next the stroke each was reached from. */
+  if (r->cmark != NULL)
+    {
+      size_t qh = 0, qt = 0;
+
+      memset (r->flood, 0, r->n);
+      for (size_t c = 0; c < r->n; c++)
+        if (r->cmark[c] == 1 && r->present[c])
+          {
+            r->flood[c] = 2;
+            r->next[c] = r->cowner[c];
+            r->queue[qt++] = (uint32_t) c;
+          }
+      while (qh < qt)
+        {
+          size_t c = r->queue[qh++], nb[4];
+          int k = neighbours (r, c, nb);
+
+          for (int j = 0; j < k; j++)
+            if (r->flood[nb[j]] == 0 && r->present[nb[j]] && r->cmark[nb[j]] == 0
+                && de2 (r->smean[r->next[c]], r->lab + 3 * nb[j]) <= t2)
+              {
+                r->flood[nb[j]] = 1;
+                r->next[nb[j]] = r->next[c];
+                r->queue[qt++] = (uint32_t) nb[j];
+              }
+        }
+    }
   for (int cy = 0; cy < r->ch; cy++)
     for (int cx = 0; cx < r->cw; cx++)
       {
@@ -983,6 +1208,12 @@ easel_rbg_label (EaselRbg *r, int tolerance, const volatile int *cancel)
         if (!r->present[c])
           {
             r->label[c] = ABSENT;
+            continue;
+          }
+        if (r->cmark != NULL && (r->cmark[c] != 0 || r->flood[c] == 1))
+          {
+            r->label[c] = r->cmark[c] == 2 ? BACK : SUBJECT;   /* the user's word (REQ-0038-03 b) */
+            PUSH (c, 0);
             continue;
           }
         d = bg_d2 (r, cx, cy);
@@ -1027,8 +1258,8 @@ easel_rbg_label (EaselRbg *r, int tolerance, const volatile int *cancel)
         int k;
         bool beside = false;
 
-        if (r->label[c] != SUBJECT)
-          continue;
+        if (r->label[c] != SUBJECT || (r->cmark != NULL && r->cmark[c] != 0))
+          continue;                             /* a stroke's cell: the seam does not change it (REQ-0038-03 b) */
         k = neighbours (r, c, nb);
         for (int j = 0; j < k; j++)
           beside = beside || r->label[nb[j]] == BACK;
@@ -1056,7 +1287,7 @@ easel_rbg_label (EaselRbg *r, int tolerance, const volatile int *cancel)
       for (size_t s0 = 0; s0 < r->n; s0++)
         {
           size_t qh = 0, qt = 0;
-          bool touches = false;
+          bool touches = false, held = false;
 
           if (r->label[s0] != want || r->next[s0] >= 0)
             continue;
@@ -1070,6 +1301,8 @@ easel_rbg_label (EaselRbg *r, int tolerance, const volatile int *cancel)
 
               if (x == 0 || y == 0 || x == r->cw - 1 || y == r->ch - 1)
                 touches = true;
+              if (r->cmark != NULL && r->cmark[c] == (pass == 0 ? 1 : 2))
+                held = true;                    /* a Keep this cell in a subject region, a Remove this cell in a background one */
               for (int j = 0; j < k; j++)
                 {
                   if (r->label[nb[j]] == ABSENT)
@@ -1081,7 +1314,7 @@ easel_rbg_label (EaselRbg *r, int tolerance, const volatile int *cancel)
                     }
                 }
             }
-          r->sizes[nregions] = (uint32_t) qt | (touches ? (uint32_t) 1 << 31 : 0);
+          r->sizes[nregions] = (uint32_t) qt | (touches ? (uint32_t) 1 << 31 : 0) | (held ? (uint32_t) 1 << 30 : 0);
           if (qt > largest)
             largest = (uint32_t) qt;
           nregions++;
@@ -1091,10 +1324,10 @@ easel_rbg_label (EaselRbg *r, int tolerance, const volatile int *cancel)
       for (size_t c = 0; c < r->n; c++)
         if (r->label[c] == want)
           {
-            uint32_t size = r->sizes[r->next[c]] & 0x7FFFFFFFu;
-            bool edge = (r->sizes[r->next[c]] >> 31) != 0;
+            uint32_t size = r->sizes[r->next[c]] & 0x3FFFFFFFu;
+            bool edge = (r->sizes[r->next[c]] >> 31) != 0, held = (r->sizes[r->next[c]] >> 30 & 1) != 0;
 
-            if (pass == 0 ? (uint64_t) size * 10 < largest : (!edge && (uint64_t) size * 100 < r->n))
+            if (!held && (pass == 0 ? (uint64_t) size * 10 < largest : (!edge && (uint64_t) size * 100 < r->n)))
               r->label[c] = other;
           }
     }
@@ -1224,6 +1457,8 @@ fringe_round (const EaselRbg *r, const uint32_t *px, const uint8_t *mask, uint32
                     || (dot >= 0 ? (pp * sl - dot * dot) * FRINGE_FIT_DIV * FRINGE_FIT_DIV > sl * sl
                                  : pp * FRINGE_FIT_DIV * FRINGE_FIT_DIV > sl))
                   break;
+                if (stroke_at (r, q) == 1)
+                  break;                        /* Keep this: the fringe does not remove it (REQ-0038-03 g) */
                 if (!(r->marks[q >> 3] >> (q & 7) & 1))
                   {
                     r->marks[q >> 3] |= (uint8_t) (1u << (q & 7));
@@ -1239,6 +1474,32 @@ fringe_round (const EaselRbg *r, const uint32_t *px, const uint8_t *mask, uint32
         if (r->marks[byte] >> (i & 7) & 1)
           dst[i] = 0;                                   /* removed: 0x00000000 (P7.7) */
   return marked;
+}
+
+/* 0038 (REQ-0038-03 d): a pixel a stroke covers takes the stroke's kind, a removed one 0x00000000, a kept one as it was; a pixel not
+   looked at or fully transparent before stays as it is. */
+static void
+apply_strokes (const EaselRbg *r, const uint32_t *px, const uint8_t *mask, uint32_t *dst, size_t *gone)
+{
+  if (r->pxmap == NULL)
+    return;
+  for (size_t i = 0; i < (size_t) r->w * (size_t) r->h; i++)
+    {
+      int kind = stroke_at (r, i);
+
+      if (kind == 0 || !looked_at (mask, i) || (px[i] >> 24) == 0)
+        continue;
+      if (kind == 1 && dst[i] == 0)
+        {
+          dst[i] = px[i];
+          (*gone)--;
+        }
+      else if (kind == 2 && dst[i] != 0)
+        {
+          dst[i] = 0;
+          (*gone)++;
+        }
+    }
 }
 
 static EaselRbgResult
@@ -1285,6 +1546,7 @@ easel_rbg_preview (const EaselRbg *r, const uint32_t *px, const uint8_t *mask, u
             }
         }
     }
+  apply_strokes (r, px, mask, dst, &gone);
   fringe (r, px, mask, dst, &gone, NULL, FRINGE_ROUNDS);
   if (removed != NULL)
     *removed = gone;
@@ -1359,6 +1621,7 @@ easel_rbg_result (const EaselRbg *r, const uint32_t *px, const uint8_t *mask, ui
             }
         }
     }
+  apply_strokes (r, px, mask, dst, &gone);
   if (fringe (r, px, mask, dst, &gone, cancel, FRINGE_ROUNDS) != EASEL_RBG_DONE)
     return EASEL_RBG_CANCELLED;
   if (removed != NULL)

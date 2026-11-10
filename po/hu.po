@@ -1261,8 +1261,29 @@ msgstr "Háttér eltávolítása"
 msgid "Works best on a plain background."
 msgstr "Egyszínű háttéren működik a legjobban."
 
-msgid "This background is complex. Lower the Tolerance, then click pieces to fix them."
-msgstr "Ez a háttér összetett. Csökkentse a Tűréshatárt, majd kattintson a darabokra a javításukhoz."
+msgid "_Keep this"
+msgstr "Meg_tartás"
+
+msgid "_Remove this"
+msgstr "_Eltávolítás"
+
+msgid "Paint over parts to keep"
+msgstr "Fesse át a megtartandó részeket"
+
+msgid "Paint over parts to remove"
+msgstr "Fesse át az eltávolítandó részeket"
+
+msgid "Keep this on"
+msgstr "Megtartás be"
+
+msgid "Remove this on"
+msgstr "Eltávolítás be"
+
+msgid "Brushes off"
+msgstr "Ecsetek ki"
+
+msgid "This background is complex. Lower the Tolerance, then use Keep this and Remove this."
+msgstr "Ez a háttér összetett. Csökkentse a Tűréshatárt, majd használja a Megtartás és az Eltávolítás gombot."
 
 msgid "Tolerance"
 msgstr "Tűréshatár"

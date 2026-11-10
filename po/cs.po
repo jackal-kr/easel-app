@@ -1271,8 +1271,29 @@ msgstr "Odstranit pozadí"
 msgid "Works best on a plain background."
 msgstr "Nejlépe funguje na jednolitém pozadí."
 
-msgid "This background is complex. Lower the Tolerance, then click pieces to fix them."
-msgstr "Toto pozadí je složité. Snižte Toleranci a pak je opravte klepnutím na části."
+msgid "_Keep this"
+msgstr "_Ponechat"
+
+msgid "_Remove this"
+msgstr "Odst_ranit"
+
+msgid "Paint over parts to keep"
+msgstr "Přetřete části, které chcete ponechat"
+
+msgid "Paint over parts to remove"
+msgstr "Přetřete části, které chcete odstranit"
+
+msgid "Keep this on"
+msgstr "Ponechat zapnuto"
+
+msgid "Remove this on"
+msgstr "Odstranit zapnuto"
+
+msgid "Brushes off"
+msgstr "Štětce vypnuty"
+
+msgid "This background is complex. Lower the Tolerance, then use Keep this and Remove this."
+msgstr "Toto pozadí je složité. Snižte Toleranci, pak použijte Ponechat a Odstranit."
 
 msgid "Tolerance"
 msgstr "Tolerance"

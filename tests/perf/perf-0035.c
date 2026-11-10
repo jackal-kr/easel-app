@@ -47,7 +47,7 @@ static void
 measure (int w, int h, double open_budget, double result_budget)
 {
   uint32_t *px = malloc ((size_t) w * h * sizeof *px), *dst = malloc ((size_t) w * h * sizeof *dst);
-  double open[RUNS], again[RUNS], result[RUNS], press1[RUNS], press1000[RUNS];
+  double open[RUNS], again[RUNS], result[RUNS], press1[RUNS], press1000[RUNS], stroke_set[RUNS], stroke_tol[RUNS], stroke_ok[RUNS], stroke_one[RUNS];
   size_t bytes = 0;
   int automatic = 0;
 
@@ -86,6 +86,42 @@ measure (int w, int h, double open_budget, double result_budget)
         press1000[i] = now_ms () - t4;
         free (pr);
       }
+      {
+        /* 0038 (REQ-0038-04, -08): 100 strokes of 1 000 places each spread over the picture, width 16; the strokes set and a preview
+           (a stroke's end), then a Tolerance change with them, then the result at OK */
+        int32_t *xy = malloc (100 * 1000 * 2 * sizeof *xy);
+        EaselRbgStroke *st = malloc (100 * sizeof *st);
+        double t5, t6, t7;
+
+        for (int k = 0; k < 100; k++)
+          {
+            for (int j = 0; j < 1000; j++)
+              {
+                xy[(k * 1000 + j) * 2] = (int32_t) ((uint32_t) (k * 2654435761u + j * 3u) % (uint32_t) w);
+                xy[(k * 1000 + j) * 2 + 1] = (int32_t) ((uint32_t) (k * 40503u) % (uint32_t) h);
+              }
+            st[k] = (EaselRbgStroke) { k % 2 == 0, 16, 1000, xy + k * 2000 };
+          }
+        t5 = now_ms ();
+        easel_rbg_set_strokes (r, st, 1);
+        easel_rbg_label (r, automatic, NULL);
+        easel_rbg_preview (r, px, NULL, dst, NULL);
+        stroke_one[i] = now_ms () - t5;
+        t5 = now_ms ();
+        easel_rbg_set_strokes (r, st, 100);
+        easel_rbg_label (r, automatic, NULL);
+        easel_rbg_preview (r, px, NULL, dst, NULL);
+        t6 = now_ms ();
+        easel_rbg_label (r, automatic + 2, NULL);
+        easel_rbg_preview (r, px, NULL, dst, NULL);
+        t7 = now_ms ();
+        easel_rbg_result (r, px, NULL, dst, NULL, NULL);
+        stroke_set[i] = t6 - t5;
+        stroke_tol[i] = t7 - t6;
+        stroke_ok[i] = now_ms () - t7;
+        free (xy);
+        free (st);
+      }
       bytes = easel_rbg_bytes (r);
       easel_rbg_free (r);
     }
@@ -100,6 +136,13 @@ measure (int w, int h, double open_budget, double result_budget)
           w, h, press1[0], press1[1], press1[2], press1000[0], press1000[1], press1000[2],
           (press1[0] < 300 && press1[1] < 300 && press1[2] < 300 && press1000[0] < 300 && press1000[1] < 300 && press1000[2] < 300)
             ? "within" : "OVER");
+  printf ("%d x %d: one stroke of 1 000 places set with its preview %.0f %.0f %.0f ms (%s < 300)\n", w, h, stroke_one[0], stroke_one[1],
+          stroke_one[2], (stroke_one[0] < 300 && stroke_one[1] < 300 && stroke_one[2] < 300) ? "within" : "OVER");
+  printf ("%d x %d: 100 strokes of 1 000 places set with their preview %.0f %.0f %.0f ms, a Tolerance change with them %.0f %.0f %.0f ms "
+          "(%s < 300); the result with them %.0f %.0f %.0f ms\n", w, h, stroke_set[0], stroke_set[1], stroke_set[2], stroke_tol[0],
+          stroke_tol[1], stroke_tol[2],
+          (stroke_set[0] < 300 && stroke_set[1] < 300 && stroke_set[2] < 300 && stroke_tol[0] < 300 && stroke_tol[1] < 300 && stroke_tol[2] < 300)
+            ? "within" : "OVER", stroke_ok[0], stroke_ok[1], stroke_ok[2]);
   free (px);
   free (dst);
 }

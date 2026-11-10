@@ -1261,8 +1261,29 @@ msgstr "Rimuovi lo sfondo"
 msgid "Works best on a plain background."
 msgstr "Funziona meglio su uno sfondo uniforme."
 
-msgid "This background is complex. Lower the Tolerance, then click pieces to fix them."
-msgstr "Questo sfondo è complesso. Abbassa la Tolleranza, poi fai clic sulle parti per correggerle."
+msgid "_Keep this"
+msgstr "_Mantieni"
+
+msgid "_Remove this"
+msgstr "_Rimuovi"
+
+msgid "Paint over parts to keep"
+msgstr "Dipingi sulle parti da mantenere"
+
+msgid "Paint over parts to remove"
+msgstr "Dipingi sulle parti da rimuovere"
+
+msgid "Keep this on"
+msgstr "Mantieni attivo"
+
+msgid "Remove this on"
+msgstr "Rimuovi attivo"
+
+msgid "Brushes off"
+msgstr "Pennelli disattivati"
+
+msgid "This background is complex. Lower the Tolerance, then use Keep this and Remove this."
+msgstr "Questo sfondo è complesso. Abbassa la Tolleranza, poi usa Mantieni e Rimuovi."
 
 msgid "Tolerance"
 msgstr "Tolleranza"

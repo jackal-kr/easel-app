@@ -3898,8 +3898,39 @@ struct RbgSession
   size_t analysis_limit;                 /* the memory the analysis may hold */
   EaselRbgPress *presses;                /* 0037: the presses in force, pixels of what the command looks at */
   size_t n_presses, cap_presses;
+  guint32 *press_seq;                    /* 0038: each press's place in the order of presses and strokes (Ctrl+Z) */
+  guint32 seq;
   gboolean labeled;                      /* the labels are the shown number's */
+  struct RbgStroke *strokes;             /* 0038: the strokes, in order, the last one in progress while stroking */
+  size_t n_strokes, cap_strokes;
+  gboolean stroking;
+  gboolean key_stroke;                   /* the stroke in progress is the keyboard's (Space held, REQ-0038-06) */
+  EaselRbgBrush brush;
+  uint8_t *bands;                        /* each pixel's band kind, 2 bits (0 none, 1 Keep this, 2 Remove this) */
+  int bx0, by0, bx1, by1;                /* the bounds of the marked pixels (bx1, by1 exclusive) */
 };
+
+/* A stroke of the brushes (0038): its kind, its width in whole picture pixels, its places (x, y) in the pixels the command looks at. */
+struct RbgStroke
+{
+  gboolean keep;
+  guint32 seq;                           /* its place in the order of presses and strokes */
+  int width;
+  int32_t *xy;
+  size_t n, cap;
+  EaselRbgPress *dropped;                /* the earlier presses it covered, out of force while it stands (0038 Check F3) */
+  guint32 *dropped_seq;
+  size_t n_dropped;
+};
+
+/* A stroke's dropped presses forgotten: a Tolerance change drops the presses (REQ-0037-04), or the stroke goes. */
+static void
+rbg_stroke_forget_dropped (struct RbgStroke *st)
+{
+  g_clear_pointer (&st->dropped, free);
+  g_clear_pointer (&st->dropped_seq, free);
+  st->n_dropped = 0;
+}
 
 static void
 rbg_session_free (struct RbgSession *s)
@@ -3910,6 +3941,14 @@ rbg_session_free (struct RbgSession *s)
   free (s->mask);
   free (s->dst);
   free (s->presses);
+  free (s->press_seq);
+  for (size_t k = 0; k < s->n_strokes; k++)
+    {
+      free (s->strokes[k].xy);
+      rbg_stroke_forget_dropped (&s->strokes[k]);
+    }
+  free (s->strokes);
+  free (s->bands);
   g_object_unref (s->win);
   g_free (s);
 }
@@ -3951,6 +3990,20 @@ rbg_restore (struct RbgSession *s)
 }
 
 /* The preview for the number shown (REQ-0035-04): the labels on the copy, each cell standing for its block. */
+/* Each press's count of the strokes made after it, for the core's latest word on a pixel (REQ-0038-03, AS-14). */
+static void
+rbg_presses_order (struct RbgSession *s)
+{
+  for (size_t i = 0; i < s->n_presses; i++)
+    {
+      int after = 0;
+
+      for (size_t k = 0; k < s->n_strokes; k++)
+        after += s->strokes[k].seq > s->press_seq[i];
+      s->presses[i].strokes_after = after;
+    }
+}
+
 static void
 rbg_preview (struct RbgSession *s)
 {
@@ -3961,6 +4014,7 @@ rbg_preview (struct RbgSession *s)
       s->labeled = TRUE;
     }
   easel_rbg_preview (s->rbg, s->orig, s->mask, s->live, NULL);
+  rbg_presses_order (s);
   easel_rbg_flips (s->rbg, s->orig, s->mask, s->live, s->presses, s->n_presses, NULL);   /* the presses in force (REQ-0037-01, -04) */
   rbg_show (s);
 }
@@ -3982,7 +4036,11 @@ on_rbg_changed (int tolerance, gpointer data)
   struct RbgSession *s = data;
 
   if (tolerance != s->shown)
-    s->n_presses = 0;            /* the presses are the pieces of one Tolerance: a new one drops them (REQ-0037-04, 2026-11-10) */
+    {
+      s->n_presses = 0;          /* the presses are the pieces of one Tolerance: a new one drops them (REQ-0037-04, 2026-11-10) */
+      for (size_t k = 0; k < s->n_strokes; k++)
+        rbg_stroke_forget_dropped (&s->strokes[k]);   /* and those a stroke put out of force */
+    }
   s->shown = tolerance;
   if (s->idle == 0)
     s->idle = g_idle_add (on_rbg_idle, s);
@@ -4116,6 +4174,8 @@ on_rbg_closed (gboolean ok, int tolerance, gpointer data)
     {
       gtk_overlay_remove_overlay (self->canvas_overlay, self->rbg_card);
       self->rbg_card = NULL;
+      easel_canvas_set_paint_hook (self->canvas, NULL, 0, NULL);
+      easel_canvas_set_bands (self->canvas, NULL, NULL);
       easel_canvas_set_press_hook (self->canvas, NULL, NULL);
       on_visible_dialog_changed (self);
       gtk_widget_grab_focus (GTK_WIDGET (self->canvas));   /* the keys go back to the canvas */
@@ -4139,6 +4199,7 @@ on_rbg_closed (gboolean ok, int tolerance, gpointer data)
   self->removing = TRUE;
   on_visible_dialog_changed (self);
   self->rbg_timer = g_timeout_add (500, rbg_show_progress, self);
+  rbg_presses_order (s);                                  /* before the worker reads them */
   task = g_task_new (NULL, NULL, rbg_finished, s);
   g_task_set_task_data (task, s, NULL);
   g_task_run_in_thread (task, rbg_work);
@@ -4181,6 +4242,7 @@ on_rbg_press (int x, int y, gpointer data)
     if (easel_rbg_same_piece (s->rbg, x, y, s->presses[j].x, s->presses[j].y))
       {
         memmove (s->presses + j, s->presses + j + 1, (s->n_presses - j - 1) * sizeof *s->presses);
+        memmove (s->press_seq + j, s->press_seq + j + 1, (s->n_presses - j - 1) * sizeof *s->press_seq);
         s->n_presses--;
         found = TRUE;
       }
@@ -4190,6 +4252,7 @@ on_rbg_press (int x, int y, gpointer data)
         {
           size_t cap = s->cap_presses ? 2 * s->cap_presses : 16;
           EaselRbgPress *grown = cap * sizeof *grown <= self->transform_limit ? realloc (s->presses, cap * sizeof *grown) : NULL;
+          guint32 *seqs;
 
           if (grown == NULL)
             {
@@ -4197,12 +4260,345 @@ on_rbg_press (int x, int y, gpointer data)
               return;
             }
           s->presses = grown;
+          seqs = realloc (s->press_seq, cap * sizeof *seqs);
+          if (seqs == NULL)
+            {
+              rbg_message (self);
+              return;
+            }
+          s->press_seq = seqs;
           s->cap_presses = cap;
         }
+      s->press_seq[s->n_presses] = ++s->seq;
       s->presses[s->n_presses++] = (EaselRbgPress) { x, y };
     }
   rbg_preview (s);
   easel_window_announce (self, (s->live[i] >> 24) != 0 ? _ ("Kept") : _ ("Removed"));
+}
+
+/* ---- 0038: the brushes ---- */
+
+/* The picture pixel (x, y) in the pixels the command looks at: a floating selection's own, else the picture's. */
+static void
+rbg_own_pixel (EaselWindow *self, struct RbgSession *s, int *x, int *y)
+{
+  if (s->selection)
+    {
+      int sx, sy, sw, sh;
+      gboolean floating;
+
+      easel_canvas_get_selection (self->canvas, &sx, &sy, &sw, &sh, &floating);
+      *x -= sx, *y -= sy;
+    }
+}
+
+static int
+rbg_band_at (struct RbgSession *s, int x, int y)
+{
+  size_t i;
+
+  if (s->bands == NULL || x < 0 || y < 0 || x >= s->w || y >= s->h)
+    return 0;
+  i = (size_t) y * s->w + x;
+  return s->bands[i >> 2] >> ((i & 3) * 2) & 3;
+}
+
+/* The canvas asks the band of picture pixel (x, y) (REQ-0038-05). */
+static int
+rbg_band_kind (int x, int y, gpointer data)
+{
+  EaselWindow *self = data;
+
+  if (self->rbg == NULL)
+    return 0;
+  rbg_own_pixel (self, self->rbg, &x, &y);
+  return rbg_band_at (self->rbg, x, y);
+}
+
+static void
+rbg_bands_show (EaselWindow *self, struct RbgSession *s)
+{
+  int ox = 0, oy = 0, sw, sh;
+  gboolean floating;
+
+  if (s->selection)
+    easel_canvas_get_selection (self->canvas, &ox, &oy, &sw, &sh, &floating);
+  if (s->bx1 > s->bx0)
+    easel_canvas_bands_changed (self->canvas, s->bx0 + ox, s->by0 + oy, s->bx1 + ox, s->by1 + oy);
+  else
+    easel_canvas_bands_changed (self->canvas, 0, 0, 0, 0);
+}
+
+/* The band of segment j of stroke st (its last place alone when j is its last), by the stroke's own rule (easel_rbg_covers). */
+static void
+rbg_band_paint (struct RbgSession *s, const struct RbgStroke *st, size_t j)
+{
+  int ax = st->xy[2 * j], ay = st->xy[2 * j + 1];
+  int bx = j + 1 < st->n ? st->xy[2 * j + 2] : ax, by = j + 1 < st->n ? st->xy[2 * j + 3] : ay;
+  int reach = st->width / 2 + 1, kind = st->keep ? 1 : 2;
+  int x0 = MAX (0, MIN (ax, bx) - reach), x1 = MIN (s->w - 1, MAX (ax, bx) + reach);
+  int y0 = MAX (0, MIN (ay, by) - reach), y1 = MIN (s->h - 1, MAX (ay, by) + reach);
+
+  for (int y = y0; y <= y1; y++)
+    for (int x = x0; x <= x1; x++)
+      if (s->mask == NULL || s->mask[(size_t) y * s->w + x])
+        if (easel_rbg_covers (x, y, ax, ay, bx, by, st->width))
+          {
+            size_t i = (size_t) y * s->w + x;
+
+            s->bands[i >> 2] = (uint8_t) ((s->bands[i >> 2] & ~(3u << ((i & 3) * 2))) | (unsigned) kind << ((i & 3) * 2));
+            if (s->bx1 <= s->bx0)
+              s->bx0 = x, s->by0 = y, s->bx1 = x + 1, s->by1 = y + 1;
+            s->bx0 = MIN (s->bx0, x), s->by0 = MIN (s->by0, y), s->bx1 = MAX (s->bx1, x + 1), s->by1 = MAX (s->by1, y + 1);
+          }
+}
+
+static void
+rbg_bands_rebuild (struct RbgSession *s)
+{
+  if (s->bands != NULL)
+    memset (s->bands, 0, ((size_t) s->w * s->h + 3) / 4);
+  s->bx0 = s->by0 = s->bx1 = s->by1 = 0;
+  for (size_t k = 0; k < s->n_strokes; k++)
+    for (size_t j = 0; j < s->strokes[k].n; j++)
+      rbg_band_paint (s, &s->strokes[k], j);
+}
+
+/* Adds place (x, y) to the stroke in progress; FALSE when its memory cannot be had (REQ-0038-08). */
+static gboolean
+rbg_stroke_add (EaselWindow *self, struct RbgStroke *st, int x, int y)
+{
+  if (st->n == st->cap)
+    {
+      size_t cap = st->cap ? 2 * st->cap : 64;
+      int32_t *grown = cap * 2 * sizeof *grown <= self->transform_limit ? realloc (st->xy, cap * 2 * sizeof *grown) : NULL;
+
+      if (grown == NULL)
+        return FALSE;
+      st->xy = grown;
+      st->cap = cap;
+    }
+  st->xy[2 * st->n] = x, st->xy[2 * st->n + 1] = y;
+  st->n++;
+  return TRUE;
+}
+
+/* The stroke in progress taken out (dropped, or refused for lack of memory): the bands made again without it. */
+static void
+rbg_stroke_drop (EaselWindow *self, struct RbgSession *s)
+{
+  s->stroking = FALSE;
+  s->key_stroke = FALSE;
+  s->n_strokes--;
+  free (s->strokes[s->n_strokes].xy);
+  rbg_bands_rebuild (s);
+  rbg_bands_show (self, s);
+  easel_remove_bg_card_hold_brushes (self->rbg_card, FALSE);
+}
+
+/* The card's brush painted with (REQ-0038-02, -04, -07): a stroke begun, extended, ended (the strokes to the method, the presses it
+   covers dropped, the preview again) or dropped. */
+/* Whether a stroke covers picture pixel (x, y) (REQ-0038-02). */
+static gboolean
+rbg_stroke_covers (const struct RbgStroke *st, int x, int y)
+{
+  for (size_t j = 0; j < st->n; j++)
+    if (easel_rbg_covers (x, y, st->xy[2 * j], st->xy[2 * j + 1], j + 1 < st->n ? st->xy[2 * j + 2] : st->xy[2 * j],
+                          j + 1 < st->n ? st->xy[2 * j + 3] : st->xy[2 * j + 1], st->width))
+      return TRUE;
+  return FALSE;
+}
+
+static void
+on_rbg_paint (EaselPaintEvent event, int x, int y, gpointer data)
+{
+  EaselWindow *self = data;
+  struct RbgSession *s = self->rbg;
+  struct RbgStroke *st;
+
+  if (s == NULL || self->rbg_card == NULL)
+    return;
+  rbg_own_pixel (self, s, &x, &y);
+  if (event == EASEL_PAINT_BEGIN)
+    {
+
+      if (self->removing || s->brush == EASEL_RBG_BRUSH_NONE || s->stroking)
+        return;
+      easel_remove_bg_card_commit (self->rbg_card);           /* a typed number first (REQ-0038-04) */
+      if (s->idle != 0)
+        {
+          g_clear_handle_id (&s->idle, g_source_remove);
+          rbg_preview (s);
+        }
+      if (s->bands == NULL && (((size_t) s->w * s->h + 3) / 4 > self->transform_limit
+                               || (s->bands = calloc (((size_t) s->w * s->h + 3) / 4, 1)) == NULL))
+        {
+          rbg_message (self);
+          return;
+        }
+      if (s->n_strokes == s->cap_strokes)
+        {
+          size_t cap = s->cap_strokes ? 2 * s->cap_strokes : 8;
+          struct RbgStroke *grown = realloc (s->strokes, cap * sizeof *grown);
+
+          if (grown == NULL)
+            {
+              rbg_message (self);
+              return;
+            }
+          s->strokes = grown;
+          s->cap_strokes = cap;
+        }
+      st = &s->strokes[s->n_strokes++];
+      *st = (struct RbgStroke) { s->brush == EASEL_RBG_BRUSH_KEEP, ++s->seq, easel_canvas_paint_width (self->canvas), NULL, 0, 0 };
+      s->stroking = TRUE;
+      easel_remove_bg_card_hold_brushes (self->rbg_card, TRUE);
+      if (!rbg_stroke_add (self, st, x, y))
+        {
+          rbg_stroke_drop (self, s);
+          rbg_message (self);
+          return;
+        }
+      rbg_band_paint (s, st, 0);
+      rbg_bands_show (self, s);
+      return;
+    }
+  if (!s->stroking)
+    return;
+  st = &s->strokes[s->n_strokes - 1];
+  if (event == EASEL_PAINT_DROP)
+    {
+      rbg_stroke_drop (self, s);
+      return;
+    }
+  if (event == EASEL_PAINT_EXTEND)
+    {
+      if (!rbg_stroke_add (self, st, x, y))
+        {
+          rbg_stroke_drop (self, s);
+          rbg_message (self);
+          return;
+        }
+      rbg_band_paint (s, st, st->n - 2);
+      rbg_band_paint (s, st, st->n - 1);
+      rbg_bands_show (self, s);
+      return;
+    }
+  /* the end: every stroke to the method, the earlier presses this one covers dropped, the preview again */
+  {
+    g_autofree EaselRbgStroke *all = g_new (EaselRbgStroke, s->n_strokes);
+
+    for (size_t k = 0; k < s->n_strokes; k++)
+      all[k] = (EaselRbgStroke) { s->strokes[k].keep, s->strokes[k].width, s->strokes[k].n, s->strokes[k].xy };
+    if (!easel_rbg_set_strokes (s->rbg, all, s->n_strokes))
+      {
+        rbg_stroke_drop (self, s);
+        rbg_message (self);                                 /* REQ-0038-08: the preview as before the stroke */
+        return;
+      }
+  }
+  s->stroking = FALSE;
+  s->key_stroke = FALSE;
+  easel_remove_bg_card_hold_brushes (self->rbg_card, FALSE);
+  {
+    size_t n_covered = 0;
+
+    for (size_t i = 0; i < s->n_presses; i++)
+      n_covered += rbg_stroke_covers (st, s->presses[i].x, s->presses[i].y);
+    if (n_covered > 0)
+      {
+        st->dropped = n_covered * sizeof *st->dropped <= self->transform_limit ? malloc (n_covered * sizeof *st->dropped) : NULL;
+        st->dropped_seq = st->dropped != NULL ? malloc (n_covered * sizeof *st->dropped_seq) : NULL;
+        if (st->dropped_seq == NULL)
+          {
+            rbg_stroke_forget_dropped (st);
+            rbg_stroke_drop (self, s);
+            rbg_message (self);                             /* REQ-0038-08: the preview as before the stroke */
+            return;
+          }
+      }
+    for (size_t i = 0; i < s->n_presses;)
+      if (rbg_stroke_covers (st, s->presses[i].x, s->presses[i].y))
+        {
+          st->dropped[st->n_dropped] = s->presses[i];       /* the later word wins (REQ-0038-03), kept for Ctrl+Z (REQ-0038-04) */
+          st->dropped_seq[st->n_dropped++] = s->press_seq[i];
+          memmove (s->presses + i, s->presses + i + 1, (s->n_presses - i - 1) * sizeof *s->presses);
+          memmove (s->press_seq + i, s->press_seq + i + 1, (s->n_presses - i - 1) * sizeof *s->press_seq);
+          s->n_presses--;
+        }
+      else
+        i++;
+  }
+  s->labeled = FALSE;
+  rbg_preview (s);
+}
+
+/* Ctrl+Z inside the card (REQ-0038-04): the last press or stroke taken back, whichever came last, and the preview made again; nothing
+   when none is left. */
+static void
+rbg_undo_last (EaselWindow *self, struct RbgSession *s)
+{
+  guint32 last_press = s->n_presses > 0 ? s->press_seq[s->n_presses - 1] : 0;
+  size_t at = 0;
+
+  for (size_t i = 0; i < s->n_presses; i++)
+    if (s->press_seq[i] >= last_press)
+      last_press = s->press_seq[i], at = i;
+  if (s->n_strokes > 0 && s->strokes[s->n_strokes - 1].seq > last_press)
+    {
+      g_autofree EaselRbgStroke *all = g_new (EaselRbgStroke, s->n_strokes);
+
+      struct RbgStroke *st = &s->strokes[--s->n_strokes];
+
+      /* the presses it put out of force come back in their order: every press after the stroke is taken back already, so they fit in
+         what the list held before the stroke ended */
+      for (size_t d = 0; d < st->n_dropped; d++)
+        {
+          size_t i = s->n_presses;
+
+          while (i > 0 && s->press_seq[i - 1] > st->dropped_seq[d])
+            i--;
+          memmove (s->presses + i + 1, s->presses + i, (s->n_presses - i) * sizeof *s->presses);
+          memmove (s->press_seq + i + 1, s->press_seq + i, (s->n_presses - i) * sizeof *s->press_seq);
+          s->presses[i] = st->dropped[d];
+          s->press_seq[i] = st->dropped_seq[d];
+          s->n_presses++;
+        }
+      rbg_stroke_forget_dropped (st);
+      free (st->xy);
+      for (size_t k = 0; k < s->n_strokes; k++)
+        all[k] = (EaselRbgStroke) { s->strokes[k].keep, s->strokes[k].width, s->strokes[k].n, s->strokes[k].xy };
+      easel_rbg_set_strokes (s->rbg, all, s->n_strokes);   /* fewer strokes: never more memory */
+      rbg_bands_rebuild (s);
+      rbg_bands_show (self, s);
+      s->labeled = FALSE;
+    }
+  else if (s->n_presses > 0)
+    {
+      memmove (s->presses + at, s->presses + at + 1, (s->n_presses - at - 1) * sizeof *s->presses);
+      memmove (s->press_seq + at, s->press_seq + at + 1, (s->n_presses - at - 1) * sizeof *s->press_seq);
+      s->n_presses--;
+    }
+  else
+    return;
+  rbg_preview (s);
+}
+
+/* A brush turned on or off (REQ-0038-01, -06): the canvas paints with it, the bands show while one is on; announced. */
+static void
+on_rbg_brush (EaselRbgBrush brush, gpointer data)
+{
+  EaselWindow *self = data;
+
+  if (self->rbg != NULL)
+    {
+      self->rbg->brush = brush;
+      easel_canvas_set_paint_hook (self->canvas, brush != EASEL_RBG_BRUSH_NONE ? on_rbg_paint : NULL, 16, self);
+      easel_canvas_set_bands (self->canvas, rbg_band_kind, self);
+      rbg_bands_show (self, self->rbg);
+    }
+  easel_window_announce (self, brush == EASEL_RBG_BRUSH_KEEP ? _ ("Keep this on")
+                               : brush == EASEL_RBG_BRUSH_REMOVE ? _ ("Remove this on") : _ ("Brushes off"));
 }
 
 /* The worker of the opening (REQ-0035-09, 2026-11-10: the first opening at 8000 x 8000 measured 307 to 315 ms): the analysis, the labels
@@ -4268,6 +4664,7 @@ rbg_opened (GObject *source, GAsyncResult *result, gpointer data)
   rbg_show (s);
   /* The card in the canvas area's bottom right corner, over the view, as the thumbnail is in its top right (REQ-0035-04). */
   card = easel_remove_bg_card_new (s->shown, easel_rbg_complex (s->rbg), on_rbg_changed, on_rbg_closed, s);
+  easel_remove_bg_card_on_brush (card, on_rbg_brush, self);
   gtk_widget_set_halign (card, GTK_ALIGN_END);
   gtk_widget_set_valign (card, GTK_ALIGN_END);
   gtk_widget_set_margin_end (card, 12);
@@ -4439,8 +4836,14 @@ step_history (EaselWindow *self, gboolean undo)
 static void
 undo_activated (GSimpleAction *action, GVariant *parameter, gpointer user_data)
 {
-  if (!card_field_action (EASEL_WINDOW (user_data), "text.undo"))
-    step_history (EASEL_WINDOW (user_data), TRUE);
+  EaselWindow *self = EASEL_WINDOW (user_data);
+
+  /* Ctrl+Z reaches here as the window's accelerator when the picture has steps to undo: with Remove Background's card open and the
+     focus on the canvas it takes back the last press or stroke, as the key handler does with no steps (REQ-0038-04, 0038 Check F1). */
+  if (self->rbg != NULL && gtk_root_get_focus (GTK_ROOT (self)) == GTK_WIDGET (self->canvas))
+    rbg_undo_last (self, self->rbg);
+  else if (!card_field_action (self, "text.undo"))
+    step_history (self, TRUE);
 }
 
 static void
@@ -4596,6 +4999,36 @@ on_key_pressed (EaselWindow *self, guint keyval, guint keycode, GdkModifierType 
       gboolean on_canvas = focus == GTK_WIDGET (self->canvas);
       gboolean tab = keyval == GDK_KEY_Tab || keyval == GDK_KEY_ISO_Left_Tab || keyval == GDK_KEY_KP_Tab;
 
+      if (easel_canvas_is_painting (self->canvas))
+        {
+          /* during a stroke: Esc drops that stroke only, Enter and the other keys do nothing (REQ-0038-07) */
+          if (keyval == GDK_KEY_Escape && !repeat)
+            easel_canvas_drop_paint (self->canvas);
+          return GDK_EVENT_STOP;
+        }
+      if (self->rbg != NULL && self->rbg->key_stroke)
+        {
+          /* the keyboard's stroke (REQ-0038-06): the arrows move the marker and extend it, Esc drops it, a repeat of Space and the
+             other keys do nothing; Space's release ends it (on_key_released) */
+          int mx, my;
+
+          if (keyval == GDK_KEY_Escape && !repeat)
+            on_rbg_paint (EASEL_PAINT_DROP, 0, 0, self);
+          else if (keyval == GDK_KEY_Left || keyval == GDK_KEY_Right || keyval == GDK_KEY_Up || keyval == GDK_KEY_Down)
+            {
+              easel_canvas_key_move (self->canvas, keyval == GDK_KEY_Left ? -1 : keyval == GDK_KEY_Right ? 1 : 0,
+                                     keyval == GDK_KEY_Up ? -1 : keyval == GDK_KEY_Down ? 1 : 0);
+              easel_canvas_marker_get (self->canvas, &mx, &my);
+              on_rbg_paint (EASEL_PAINT_EXTEND, mx, my, self);
+            }
+          return GDK_EVENT_STOP;
+        }
+      if (on_canvas && (keyval == GDK_KEY_z || keyval == GDK_KEY_Z) && (state & GDK_CONTROL_MASK) != 0 && (state & GDK_SHIFT_MASK) == 0)
+        {
+          if (!repeat && self->rbg != NULL)
+            rbg_undo_last (self, self->rbg);             /* the last press or stroke (REQ-0038-04) */
+          return GDK_EVENT_STOP;
+        }
       if (keyval == GDK_KEY_Escape)
         {
           if (!repeat)
@@ -4633,7 +5066,13 @@ on_key_pressed (EaselWindow *self, guint keyval, guint keycode, GdkModifierType 
               if (!repeat && easel_canvas_marker_is_set (self->canvas))
                 {
                   easel_canvas_marker_get (self->canvas, &mx, &my);
-                  on_rbg_press (mx, my, self);   /* a press at the marker; a repeat flips nothing */
+                  if (self->rbg != NULL && self->rbg->brush != EASEL_RBG_BRUSH_NONE)
+                    {
+                      on_rbg_paint (EASEL_PAINT_BEGIN, mx, my, self);   /* Space held paints at the marker (REQ-0038-06) */
+                      self->rbg->key_stroke = self->rbg->stroking;
+                    }
+                  else
+                    on_rbg_press (mx, my, self);   /* a press at the marker; a repeat flips nothing */
                 }
               return GDK_EVENT_STOP;
             }
@@ -4757,6 +5196,8 @@ on_key_released (EaselWindow *self, guint keyval, guint keycode, GdkModifierType
 {
   if (keyval == self->key_down)
     self->key_down = 0;
+  if (keyval == GDK_KEY_space && self->rbg != NULL && self->rbg->key_stroke)
+    on_rbg_paint (EASEL_PAINT_END, 0, 0, self);         /* Space released: the keyboard's stroke ends (REQ-0038-06) */
 }
 
 /* Shift going down or up changes a shape being dragged at once (REQ-0010-14); the state is the new one. */
@@ -4775,7 +5216,11 @@ on_active_changed (EaselWindow *self)
 {
   self->key_down = 0;                           /* the release of a key held as the window went to the back never arrives */
   if (!gtk_window_is_active (GTK_WINDOW (self)))
-    easel_canvas_reset_pointer (self->canvas);
+    {
+      easel_canvas_reset_pointer (self->canvas);
+      if (self->rbg != NULL && self->rbg->key_stroke)
+        on_rbg_paint (EASEL_PAINT_END, 0, 0, self);     /* the keyboard's stroke ends as released (REQ-0038-07) */
+    }
 }
 
 /* What the canvas paints with follows the options panel (REQ-0006-03). */

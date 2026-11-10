@@ -1261,8 +1261,29 @@ msgstr "Hintergrund entfernen"
 msgid "Works best on a plain background."
 msgstr "Funktioniert am besten auf einem einfarbigen Hintergrund."
 
-msgid "This background is complex. Lower the Tolerance, then click pieces to fix them."
-msgstr "Dieser Hintergrund ist komplex. Toleranz senken, dann auf Teile klicken, um sie zu korrigieren."
+msgid "_Keep this"
+msgstr "Be_halten"
+
+msgid "_Remove this"
+msgstr "_Entfernen"
+
+msgid "Paint over parts to keep"
+msgstr "Über Teile malen, die bleiben sollen"
+
+msgid "Paint over parts to remove"
+msgstr "Über Teile malen, die entfernt werden sollen"
+
+msgid "Keep this on"
+msgstr "Behalten an"
+
+msgid "Remove this on"
+msgstr "Entfernen an"
+
+msgid "Brushes off"
+msgstr "Pinsel aus"
+
+msgid "This background is complex. Lower the Tolerance, then use Keep this and Remove this."
+msgstr "Dieser Hintergrund ist komplex. Toleranz senken, dann Behalten und Entfernen verwenden."
 
 msgid "Tolerance"
 msgstr "Toleranz"

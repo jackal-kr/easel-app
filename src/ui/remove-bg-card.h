@@ -20,6 +20,25 @@ GtkWidget *easel_remove_bg_card_new (int automatic, gboolean complex, EaselRemov
 /* Answers as its buttons do (Esc: FALSE; a quit: FALSE); nothing once answered. */
 void easel_remove_bg_card_answer (GtkWidget *card, gboolean ok);
 
+/* The brush the card's toggles set (REQ-0038-01): none, Keep this or Remove this. */
+typedef enum
+{
+  EASEL_RBG_BRUSH_NONE,
+  EASEL_RBG_BRUSH_KEEP,
+  EASEL_RBG_BRUSH_REMOVE
+} EaselRbgBrush;
+
+typedef void (*EaselRemoveBgBrushChanged) (EaselRbgBrush brush, gpointer data);
+
+/* Tells changed each time the brush changes by a toggle (not when it is set by easel_remove_bg_card_set_brush). */
+void easel_remove_bg_card_on_brush (GtkWidget *card, EaselRemoveBgBrushChanged changed, gpointer data);
+
+/* The brush on. */
+EaselRbgBrush easel_remove_bg_card_brush (GtkWidget *card);
+
+/* While held (a stroke in progress), a click or a mnemonic on a toggle changes nothing (REQ-0038-01). */
+void easel_remove_bg_card_hold_brushes (GtkWidget *card, gboolean held);
+
 /* Takes a number typed in the field, as leaving the field does (REQ-0037-05). */
 void easel_remove_bg_card_commit (GtkWidget *card);
 

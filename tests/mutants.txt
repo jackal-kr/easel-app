@@ -8650,9 +8650,9 @@ test: ui-0017
 file: src/ui/window.c
 test: ui-0017
 --- find
-  if (!card_field_action (EASEL_WINDOW (user_data), "text.undo"))
+  else if (!card_field_action (self, "text.undo"))
 --- replace
-  if (1)
+  else if (1)
 
 === REQ-0017-14 a press in the box leaves the focus in a card field
 file: src/ui/canvas.c
@@ -12663,11 +12663,11 @@ test: core-remove-bg
 --- find
             if (!looked_at (mask, i) || (px[i] >> 24) == 0)
               continue;
-            dst[i] = (r->next[c] & 1) ? 0 : px[i];                   /* removed: 0x00000000 (P7.7) */
+            if (stroke_at (r, i) != 0 && r->cowner[g] >= (int32_t) r->queue[c])
 --- replace
             if (!looked_at (mask, i))
               continue;
-            dst[i] = (r->next[c] & 1) ? 0 : px[i];                   /* removed: 0x00000000 (P7.7) */
+            if (stroke_at (r, i) != 0 && r->cowner[g] >= (int32_t) r->queue[c])
 
 === REQ-0037-04 every two pixels are in one piece
 file: src/core/remove-bg.c
@@ -12905,9 +12905,9 @@ test: core-remove-bg
 file: src/ui/window.c
 test: ui-0037
 --- find
-    s->n_presses = 0;            /* the presses are the pieces of one Tolerance: a new one drops them (REQ-0037-04, 2026-11-10) */
+      s->n_presses = 0;          /* the presses are the pieces of one Tolerance: a new one drops them (REQ-0037-04, 2026-11-10) */
 --- replace
-    (void) 0;
+      (void) 0;
 
 === REQ-0007-05 a fully transparent pixel is equal only to the same red, green and blue
 file: src/core/image.h
@@ -12964,3 +12964,107 @@ test: ui-0037
             announce_marker (self);                       /* the marker's place and the preview's color (REQ-0022-13) */
 --- replace
             (void) 0;
+
+=== REQ-0038-03 the earlier stroke wins where two cover one pixel
+file: src/core/remove-bg.c
+test: core-remove-bg
+--- find
+                      pxmap[i >> 2] = (uint8_t) ((pxmap[i >> 2] & ~(3u << ((i & 3) * 2))) | (unsigned) kind << ((i & 3) * 2));
+--- replace
+                      if ((pxmap[i >> 2] >> ((i & 3) * 2) & 3) == 0)
+                        pxmap[i >> 2] = (uint8_t) ((pxmap[i >> 2] & ~(3u << ((i & 3) * 2))) | (unsigned) kind << ((i & 3) * 2));
+
+=== REQ-0038-03 the cells joined to a Keep stroke are no seeds
+file: src/core/remove-bg.c
+test: core-remove-bg
+--- find
+        if (r->cmark != NULL && (r->cmark[c] != 0 || r->flood[c] == 1))
+--- replace
+        if (r->cmark != NULL && r->cmark[c] != 0)
+
+=== REQ-0038-03 the joined cells drift from neighbour to neighbour, not by the stroke's color
+file: src/core/remove-bg.c
+test: core-remove-bg
+--- find
+                && de2 (r->smean[r->next[c]], r->lab + 3 * nb[j]) <= t2)
+--- replace
+                && de2 (r->lab + 3 * c, r->lab + 3 * nb[j]) <= t2)
+
+=== REQ-0038-03 a region a stroke holds still follows the size rule
+file: src/core/remove-bg.c
+test: core-remove-bg
+--- find
+            if (!held && (pass == 0 ? (uint64_t) size * 10 < largest : (!edge && (uint64_t) size * 100 < r->n)))
+--- replace
+            if ((pass == 0 ? (uint64_t) size * 10 < largest : (!edge && (uint64_t) size * 100 < r->n)))
+
+=== REQ-0038-03 a covered pixel does not take the stroke's kind at full size
+file: src/core/remove-bg.c
+test: core-remove-bg
+--- find
+  if (r->pxmap == NULL)
+    return;
+  for (size_t i = 0; i < (size_t) r->w * (size_t) r->h; i++)
+--- replace
+  return;
+  for (size_t i = 0; i < (size_t) r->w * (size_t) r->h; i++)
+
+=== REQ-0038-03 the fringe removes a pixel under Keep this
+file: src/core/remove-bg.c
+test: core-remove-bg
+--- find
+                if (stroke_at (r, q) == 1)
+                  break;                        /* Keep this: the fringe does not remove it (REQ-0038-03 g) */
+--- replace
+                if (0)
+                  break;
+
+=== REQ-0038-02 a pixel exactly half the width away is not covered
+file: src/core/remove-bg.c
+test: core-remove-bg
+--- find
+    return 4 * (px * px + py * py) <= w2;
+--- replace
+    return 4 * (px * px + py * py) < w2;
+
+=== REQ-0038-08 the strokes' memory is not held to the limit
+file: src/core/remove-bg.c
+test: core-remove-bg
+--- find
+      if (r->bytes - r->stroke_bytes + need > r->max_bytes)
+--- replace
+      if (0)
+
+=== REQ-0038-03 the seam changes a stroke's cell
+file: src/core/remove-bg.c
+test: core-remove-bg
+--- find
+        if (r->label[c] != SUBJECT || (r->cmark != NULL && r->cmark[c] != 0))
+--- replace
+        if (r->label[c] != SUBJECT)
+
+=== REQ-0038-02 a row's covered run ends where it started
+file: src/core/remove-bg.c
+test: core-remove-bg
+--- find
+  *right = lo;
+  return true;
+--- replace
+  *right = seed;
+  return true;
+
+=== REQ-0038-03 a stroke right after the press does not count as after it
+file: src/core/remove-bg.c
+test: core-remove-bg
+--- find
+            if (stroke_at (r, i) != 0 && r->cowner[g] >= (int32_t) r->queue[c])
+--- replace
+            if (stroke_at (r, i) != 0 && r->cowner[g] > (int32_t) r->queue[c])
+
+=== REQ-0038-03 every stroke counts as after the press
+file: src/core/remove-bg.c
+test: core-remove-bg
+--- find
+          r->queue[c] = (uint32_t) (after < r->nstrokes ? r->nstrokes - after : 0);
+--- replace
+          r->queue[c] = 0;

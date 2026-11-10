@@ -33768,6 +33768,17 @@ as14_mnemonics_differ (void)
   g_assert_true (ok != cancel && ok != apply && cancel != apply);
 }
 
+/* 0038 AS-1 (REQ-0038-01): the card's mnemonics, Keep this, Remove this, Cancel and OK, differ in every language. */
+static void
+as1_card_mnemonics_differ (void)
+{
+  gunichar k[4] = { mnemonic_of (_ ("_Keep this")), mnemonic_of (_ ("_Remove this")), mnemonic_of (_ ("_Cancel")), mnemonic_of (_ ("_OK")) };
+
+  for (int i = 0; i < 4; i++)
+    for (int j = i + 1; j < 4; j++)
+      g_assert_true (k[i] != k[j]);
+}
+
 /* The mnemonics of one page of a menu (its sections together: a popover shows them as one list), each submenu's page checked on its
    own; an item hidden because its action is missing is not shown and does not count. A clash fails with both labels. */
 static void
@@ -36864,7 +36875,7 @@ rbg_answer (EaselWindow *win, const char *response)
   wait_for_layout (win);
 }
 
-#define RBG_HINT "This background is complex. Lower the Tolerance, then click pieces to fix them."
+#define RBG_HINT "This background is complex. Lower the Tolerance, then use Keep this and Remove this."
 
 /* 0035 AS-11 (REQ-0035-04): the card's second line for a picture like a selfie (its dark shirt across the bottom border), shown and
    visible; none for a plain backdrop. */
@@ -36897,6 +36908,16 @@ rbg_as11_complex_hint (void)
   hint = find_label (card, RBG_HINT);
   g_assert_nonnull (hint);
   g_assert_true (gtk_widget_get_mapped (GTK_WIDGET (hint)));
+  {
+    /* the card at most about 380 wide, the hint wrapped to more than one line (JOD, 2026-11-10) */
+    graphene_rect_t cb, hb, lb;
+
+    g_assert_true (gtk_widget_compute_bounds (card, gtk_widget_get_parent (card), &cb));
+    g_assert_cmpfloat (cb.size.width, <=, 380.5);
+    g_assert_true (gtk_widget_compute_bounds (GTK_WIDGET (hint), card, &hb));
+    g_assert_true (gtk_widget_compute_bounds (GTK_WIDGET (find_label (card, "Works best on a plain background.")), card, &lb));
+    g_assert_cmpfloat (hb.size.height, >, 1.5 * lb.size.height);
+  }
   g_assert_nonnull (find_label (card, "Works best on a plain background."));
   rbg_answer (win, "cancel");
   close_windows ();
@@ -37475,6 +37496,736 @@ rbg_as14_opening_cancel (void)
       g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
       g_assert_cmpint (memcmp (img->px, before_stroke, 80 * 60 * 4), ==, 0);   /* the history as before: the stroke alone */
       g_assert_false (action_enabled (win, "undo"));
+      rbg_done ();
+    }
+}
+
+/* ---- 0038: Remove Background, brushes ---- */
+
+/* 0038 AS-1 (REQ-0038-01, REQ-0038-06's announcements): the card's two toggles, off at the start, side by side between the Tolerance row
+   and the buttons, with their tooltips; the real toggles clicked: one on turns the other off, the one on clicked again turns it off;
+   each change announced; the order Tolerance, Keep this, Remove this, Cancel, OK. */
+static void
+br_as1_toggles (void)
+{
+  EaselWindow *win = rbg_window ();
+  GtkWidget *card = rbg_open (win);
+  GtkWidget *keep = find_named (card, "rbg-keep"), *rm = find_named (card, "rbg-remove");
+  GtkWidget *row = GTK_WIDGET (easel_remove_bg_card_row (card)), *ok = GTK_WIDGET (find_button (card, "_OK"));
+  GtkWidget *cancel = GTK_WIDGET (find_button (card, "_Cancel"));
+  graphene_rect_t rr, rk, rm_b, rc;
+  const char *tk, *tr;
+  g_autofree char *said = NULL;
+
+  g_assert_nonnull (keep);
+  g_assert_nonnull (rm);
+  g_assert_true (GTK_IS_TOGGLE_BUTTON (keep) && GTK_IS_TOGGLE_BUTTON (rm));
+  g_assert_nonnull (find_label (keep, "Keep this"));                     /* the real labels, with their mnemonics */
+  g_assert_nonnull (find_label (rm, "Remove this"));
+  g_assert_nonnull (find_named (keep, "rbg-dot"));                       /* each with its color dot (JOD, 2026-11-10) */
+  g_assert_nonnull (find_named (rm, "rbg-dot"));
+  {
+    graphene_rect_t cb;
+
+    g_assert_true (gtk_widget_compute_bounds (card, gtk_widget_get_parent (card), &cb));
+    g_assert_cmpfloat (cb.size.width, <=, 380.5);                       /* the card at most about 380 wide (JOD, 2026-11-10) */
+  }
+  g_assert_false (gtk_toggle_button_get_active (GTK_TOGGLE_BUTTON (keep)));
+  g_assert_false (gtk_toggle_button_get_active (GTK_TOGGLE_BUTTON (rm)));
+  tk = gtk_widget_get_tooltip_text (keep);
+  tr = gtk_widget_get_tooltip_text (rm);
+  g_assert_cmpstr (tk, ==, "Paint over parts to keep");
+  g_assert_cmpstr (tr, ==, "Paint over parts to remove");
+  /* side by side, between the row and the buttons, in the card as laid out */
+  g_assert_true (gtk_widget_compute_bounds (row, card, &rr));
+  g_assert_true (gtk_widget_compute_bounds (keep, card, &rk));
+  g_assert_true (gtk_widget_compute_bounds (rm, card, &rm_b));
+  g_assert_true (gtk_widget_compute_bounds (cancel, card, &rc));
+  g_assert_cmpfloat (rk.origin.y, >=, rr.origin.y + rr.size.height);
+  g_assert_cmpfloat (rk.origin.y + rk.size.height, <=, rc.origin.y);
+  g_assert_cmpfloat_with_epsilon (rk.origin.y, rm_b.origin.y, 0.5);
+  g_assert_cmpfloat (rk.origin.x + rk.size.width, <=, rm_b.origin.x);
+  /* the focus order: Tolerance, Keep this, Remove this, Cancel, OK */
+  gtk_widget_grab_focus (row);
+  for (int i = 0; i < 6 && gtk_root_get_focus (GTK_ROOT (win)) != keep; i++)
+    gtk_widget_child_focus (card, GTK_DIR_TAB_FORWARD);
+  g_assert_true (gtk_root_get_focus (GTK_ROOT (win)) == keep);
+  gtk_widget_child_focus (card, GTK_DIR_TAB_FORWARD);
+  g_assert_true (gtk_root_get_focus (GTK_ROOT (win)) == rm);
+  gtk_widget_child_focus (card, GTK_DIR_TAB_FORWARD);
+  g_assert_true (gtk_root_get_focus (GTK_ROOT (win)) == cancel);
+  gtk_widget_child_focus (card, GTK_DIR_TAB_FORWARD);
+  g_assert_true (gtk_root_get_focus (GTK_ROOT (win)) == ok);
+  /* the real toggles */
+  easel_window_log_announcements (win, TRUE);
+  g_signal_emit_by_name (keep, "clicked");
+  g_assert_true (gtk_toggle_button_get_active (GTK_TOGGLE_BUTTON (keep)));
+  g_assert_false (gtk_toggle_button_get_active (GTK_TOGGLE_BUTTON (rm)));
+  g_signal_emit_by_name (rm, "clicked");
+  g_assert_true (gtk_toggle_button_get_active (GTK_TOGGLE_BUTTON (rm)));
+  g_assert_false (gtk_toggle_button_get_active (GTK_TOGGLE_BUTTON (keep)));
+  g_signal_emit_by_name (rm, "clicked");
+  g_assert_false (gtk_toggle_button_get_active (GTK_TOGGLE_BUTTON (rm)));
+  g_assert_false (gtk_toggle_button_get_active (GTK_TOGGLE_BUTTON (keep)));
+  said = easel_window_take_announcements (win);
+  g_assert_nonnull (strstr (said, "Keep this on"));
+  g_assert_nonnull (strstr (said, "Remove this on"));
+  g_assert_nonnull (strstr (said, "Brushes off"));
+  g_assert_true (strstr (said, "Keep this on") < strstr (said, "Remove this on") && strstr (said, "Remove this on") < strstr (said, "Brushes off"));
+  easel_window_log_announcements (win, FALSE);
+  rbg_answer (win, "cancel");
+  rbg_done ();
+}
+
+static gboolean wz_wheel (EaselWindow *win, GdkModifierType state, double notches, double vx, double vy);
+static EaselWindow *pc_window (void);
+static void pc_press (EaselWindow *win, int x, int y);
+static gboolean pc_removed (const EaselImage *img, int x, int y);
+
+/* 0035 AS-11's picture, 240 x 320: sky, foliage with noise down both sides, a face, a dark shirt across the bottom fifth. */
+static EaselWindow *
+br_selfie_window (void)
+{
+  EaselWindow *win = window_with ("[new-picture]\nwidth=240\nheight=320\nbackground=#FFFFFF\n");
+  EaselImage *img = (EaselImage *) easel_window_get_picture (win);
+
+  for (int y = 0; y < 320; y++)
+    for (int x = 0; x < 240; x++)
+      {
+        guint32 i = (guint32) (y * 240 + x), n = (i * 2654435761u) >> 27;
+        long ex = x - 120, ey = y - 176;
+
+        if (y >= 256)
+          img->px[i] = 0xFF2D303Au;
+        else if (ex * ex * 55 * 55 + ey * ey * 48 * 48 <= 48L * 48 * 55 * 55)
+          img->px[i] = 0xFFC8A08Cu;
+        else if (y >= 107 && (x < 53 || x >= 187))
+          img->px[i] = 0xFF000000u | (134 + n) << 16 | (124 + n) << 8 | (24 + n);
+        else
+          img->px[i] = 0xFF96BEEBu;
+      }
+  img->dirty = (EaselRect) { 0, 0, 240, 320 };
+  easel_canvas_update (easel_window_get_canvas (win));
+  return win;
+}
+
+/* A real drag with the card's brush: a press at picture pixel (x0, y0), moves through the n - 1 other places, a release. */
+static void
+br_drag (EaselWindow *win, const int *xy, int n)
+{
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  double cx, cy;
+
+  canvas_point (win, xy[0] + 0.5, xy[1] + 0.5, &cx, &cy);
+  easel_canvas_press_timed (canvas, 1, cx, cy, 1000);
+  for (int k = 1; k < n; k++)
+    {
+      canvas_point (win, xy[2 * k] + 0.5, xy[2 * k + 1] + 0.5, &cx, &cy);
+      easel_canvas_motion (canvas, cx, cy);
+    }
+  easel_canvas_release (canvas, 1);
+  rbg_settle (win);
+}
+
+static void
+br_brush (GtkWidget *card, const char *name)
+{
+  g_signal_emit_by_name (find_named (card, name), "clicked");
+}
+
+/* 0038 AS-2 (REQ-0038-02, -03, -04): 0035 AS-11's picture at its automatic 5: the shirt removed, the face kept; Keep this and a dot on the
+   shirt (a press and a release with the real toggle on): the whole shirt kept, no other pixel changed, no step, no mark; Remove this and a
+   dot on the foliage the method keeps: the dot's pixels removed, the face and the shirt unchanged; OK: one step, the result as shown. */
+static void
+br_as2_keep_stroke (void)
+{
+  EaselWindow *win = br_selfie_window ();
+  const EaselImage *img = easel_window_get_picture (win);
+  g_autofree guint32 *orig = g_memdup2 (img->px, 240 * 320 * 4), *before = NULL, *shown = NULL;
+  GtkWidget *card = rbg_open (win);
+  const int shirt[2] = { 120, 290 }, leaf[2] = { 33, 120 };
+
+  rbg_settle (win);
+  g_assert_cmpint ((int) adw_spin_row_get_value (easel_remove_bg_card_row (card)), ==, 5);
+  g_assert_cmphex (img->px[290 * 240 + 120], ==, 0);                    /* the shirt removed */
+  g_assert_cmphex (img->px[176 * 240 + 120], ==, 0xFFC8A08Cu);          /* the face kept */
+  before = g_memdup2 (img->px, 240 * 320 * 4);
+  br_brush (card, "rbg-keep");
+  br_drag (win, shirt, 1);
+  for (int i = 0; i < 240 * 320; i++)
+    {
+      if (i / 240 >= 256)
+        g_assert_cmphex (img->px[i], ==, orig[i]);                      /* the whole shirt kept */
+      else
+        g_assert_cmphex (img->px[i], ==, before[i]);                    /* nothing else changed */
+    }
+  g_assert_false (action_enabled (win, "undo"));
+  g_assert_false (easel_window_get_modified (win));
+  g_free (before);
+  before = g_memdup2 (img->px, 240 * 320 * 4);
+  br_brush (card, "rbg-remove");
+  br_drag (win, leaf, 1);
+  for (int y = 0; y < 320; y++)
+    for (int x = 0; x < 240; x++)
+      {
+        long dx = x - 33, dy = y - 120;
+
+        if (4 * (dx * dx + dy * dy) <= 256)
+          g_assert_cmphex (img->px[y * 240 + x], ==, 0);
+        else if (y >= 140 || (x > 60 && x < 180))
+          g_assert_cmphex (img->px[y * 240 + x], ==, before[y * 240 + x]);
+      }
+  shown = g_memdup2 (img->px, 240 * 320 * 4);
+  rbg_answer (win, "ok");
+  g_assert_cmpint (memcmp (img->px, shown, 240 * 320 * 4), ==, 0);
+  g_assert_true (action_enabled (win, "undo"));
+  g_assert_true (easel_window_get_modified (win));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_cmpint (memcmp (img->px, orig, 240 * 320 * 4), ==, 0);
+  rbg_done ();
+}
+
+/* 0038 AS-3 (REQ-0038-03): the 80 x 60 picture with a red rectangle at 100 %: Remove this and a drag from (25, 30) to (35, 30): the red it
+   covers removed, the rest kept; Keep this and a dot at (30, 30): its pixels kept (the later stroke wins); a fully transparent pixel under
+   Keep this stays as it is. */
+static void
+br_as3_remove_and_order (void)
+{
+  EaselWindow *win = rbg_window ();
+  EaselImage *img = (EaselImage *) easel_window_get_picture (win);
+  GtkWidget *card;
+  const int line[22] = { 25, 30, 26, 30, 27, 30, 28, 30, 29, 30, 30, 30, 31, 30, 32, 30, 33, 30, 34, 30, 35, 30 }, dot[2] = { 30, 30 };
+  const int corner[2] = { 70, 5 };
+
+  img->px[5 * 80 + 70] = 0x00ABCDEFu;
+  card = rbg_open (win);
+  rbg_settle (win);
+  br_brush (card, "rbg-remove");
+  br_drag (win, line, 11);
+  for (int y = 15; y < 45; y++)
+    for (int x = 20; x < 60; x++)
+      {
+        long cx = x < 25 ? 25 : x > 35 ? 35 : x, dx = x - cx, dy = y - 30;
+
+        g_assert_cmphex (img->px[y * 80 + x], ==, 4 * (dx * dx + dy * dy) <= 256 ? 0 : 0xFFFF0000u);
+      }
+  br_brush (card, "rbg-keep");
+  br_drag (win, dot, 1);
+  for (int y = 15; y < 45; y++)
+    for (int x = 20; x < 60; x++)
+      {
+        long cx = x < 25 ? 25 : x > 35 ? 35 : x, dx = x - cx, dy = y - 30, ex = x - 30;
+        gboolean in_dot = 4 * (ex * ex + dy * dy) <= 256, in_line = 4 * (dx * dx + dy * dy) <= 256;
+
+        g_assert_cmphex (img->px[y * 80 + x], ==, in_dot || !in_line ? 0xFFFF0000u : 0);
+      }
+  br_drag (win, corner, 1);
+  g_assert_cmphex (img->px[5 * 80 + 70], ==, 0x00ABCDEFu);
+  rbg_answer (win, "cancel");
+  rbg_done ();
+}
+
+/* 0038 AS-4 (REQ-0038-02): a Remove dot with no motion at 100 % covers the 197 pixels within 8 of the pressed pixel's centre and flips no
+   piece; at 400 % the 13 within 2; a drag beside the picture paints nothing; with a marked rectangle selection a stroke across its edge
+   covers only what lies inside; with both brushes off a press flips a piece as in 0037. */
+static void
+br_as4_dot_and_shape (void)
+{
+  EaselWindow *win = window_with ("[new-picture]\nwidth=160\nheight=120\nbackground=#FFFFFF\n");
+  EaselImage *img = (EaselImage *) easel_window_get_picture (win);
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  GtkWidget *card;
+  const int dot[2] = { 60, 60 }, far[4] = { 400, 400, 420, 410 };
+  int removed = 0;
+  double cx, cy;
+
+  for (int y = 0; y < 120; y++)
+    for (int x = 0; x < 160; x++)
+      if ((x - 60) * (x - 60) + (y - 60) * (y - 60) <= 40 * 40)
+        img->px[y * 160 + x] = 0xFFFF0000u;
+  img->dirty = (EaselRect) { 0, 0, 160, 120 };
+  easel_canvas_update (canvas);
+  card = rbg_open (win);
+  rbg_settle (win);
+  br_brush (card, "rbg-remove");
+  g_assert_cmpint (easel_canvas_get_zoom (canvas), ==, 100);
+  br_drag (win, dot, 1);
+  for (int i = 0; i < 160 * 120; i++)
+    removed += (img->px[i] >> 24) == 0 && (i % 160 - 60) * (i % 160 - 60) + (i / 160 - 60) * (i / 160 - 60) <= 40 * 40;
+  g_assert_cmpint (removed, ==, 197);
+  /* beside the picture: nothing */
+  {
+    g_autofree guint32 *now = g_memdup2 (img->px, 160 * 120 * 4);
+
+    canvas_point (win, far[0], far[1], &cx, &cy);
+    easel_canvas_press_timed (canvas, 1, cx, cy, 3000);
+    canvas_point (win, far[2], far[3], &cx, &cy);
+    easel_canvas_motion (canvas, cx, cy);
+    easel_canvas_release (canvas, 1);
+    rbg_settle (win);
+    g_assert_cmpint (memcmp (img->px, now, 160 * 120 * 4), ==, 0);
+  }
+  rbg_answer (win, "cancel");
+  /* at 400 %: width 4, the 13 pixels within 2 */
+  easel_canvas_set_zoom (canvas, 400);
+  wait_for_layout (win);
+  card = rbg_open (win);
+  rbg_settle (win);
+  br_brush (card, "rbg-remove");
+  g_assert_cmpint (easel_canvas_get_zoom (canvas), ==, 400);
+  {
+    const int d4[2] = { 60, 60 };
+
+    br_drag (win, d4, 1);
+  }
+  removed = 0;
+  for (int i = 0; i < 160 * 120; i++)
+    removed += (img->px[i] >> 24) == 0 && (i % 160 - 60) * (i % 160 - 60) + (i / 160 - 60) * (i / 160 - 60) <= 40 * 40;
+  g_assert_cmpint (removed, ==, 13);
+  rbg_answer (win, "cancel");
+  easel_canvas_set_zoom (canvas, 100);
+  wait_for_layout (win);
+  /* a marked selection: a stroke across its edge covers only what is inside */
+  use_tool (win, "select");
+  drag_selection (win, 50, 50, 79, 79);
+  card = rbg_open (win);
+  rbg_settle (win);
+  br_brush (card, "rbg-remove");
+  {
+    const int across[4] = { 75, 60, 90, 60 };
+    int sx, sy, sw, sh;
+    gboolean floating;
+
+    br_drag (win, across, 2);
+    g_assert_true (easel_canvas_get_selection (canvas, &sx, &sy, &sw, &sh, &floating) && floating);
+    rbg_answer (win, "ok");
+  }
+  g_assert_cmphex (easel_image_get (img, 85, 60), !=, 0);               /* outside the shape: untouched */
+  rbg_done ();
+}
+
+/* 0038 AS-5 (REQ-0038-04, REQ-0037-04): a stroke and a press on an island, the Tolerance changed by 1 and back: the stroke's pixels as before,
+   the island as the method makes it (the press dropped); Cancel: the picture as before the card, no step. */
+static void
+br_as5_tolerance_and_cancel (void)
+{
+  EaselWindow *win = pc_window ();
+  const EaselImage *img = easel_window_get_picture (win);
+  g_autofree guint32 *orig = g_memdup2 (img->px, 160 * 120 * 4);
+  GtkWidget *card = rbg_open (win);
+  AdwSpinRow *row = easel_remove_bg_card_row (card);
+  int t = (int) adw_spin_row_get_value (row);
+  const int dot[2] = { 40, 50 };
+
+  rbg_settle (win);
+  br_brush (card, "rbg-remove");
+  br_drag (win, dot, 1);
+  g_assert_cmphex (img->px[50 * 160 + 40], ==, 0);
+  br_brush (card, "rbg-remove");                                         /* both off: a press flips a piece */
+  pc_press (win, 120, 60);
+  g_assert_true (pc_removed (img, 120, 60));
+  adw_spin_row_set_value (row, t + 1);
+  rbg_settle (win);
+  adw_spin_row_set_value (row, t);
+  rbg_settle (win);
+  g_assert_cmphex (img->px[50 * 160 + 40], ==, 0);                      /* the stroke stays */
+  g_assert_false (pc_removed (img, 120, 60));                            /* the press dropped */
+  rbg_answer (win, "cancel");
+  g_assert_cmpint (memcmp (img->px, orig, 160 * 120 * 4), ==, 0);
+  g_assert_false (action_enabled (win, "undo"));
+  rbg_done ();
+}
+
+/* 0038 AS-6 (REQ-0038-05, -07): the bands drawn while a brush is on, green over a Keep stroke, none with both off; the pointer the dot's
+   outline with a brush on, the arrow with none; Ctrl+wheel during a stroke zooms and the stroke goes on at the width it began with; Esc
+   during a stroke drops it, the card stays; a lost release ends it as a release; a toggle clicked during a stroke changes nothing. */
+static void
+br_as6_bands_and_zoom (void)
+{
+  EaselWindow *win = rbg_window ();
+  EaselImage *img = (EaselImage *) easel_window_get_picture (win);
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  GtkWidget *card = rbg_open (win), *keep = find_named (card, "rbg-keep");
+  double cx, cy;
+  int w, h, bx, by, green = 0;
+  g_autofree guint32 *px = NULL;
+
+  rbg_settle (win);
+  g_assert_null (gtk_widget_get_cursor (GTK_WIDGET (canvas)));          /* the arrow with no brush */
+  br_brush (card, "rbg-keep");
+  g_assert_nonnull (gtk_widget_get_cursor (GTK_WIDGET (canvas)));       /* the dot's outline */
+  {
+    const int dot[2] = { 10, 10 };
+
+    br_drag (win, dot, 1);
+  }
+  px = render_pixels (win, &w, &h, &bx, &by);
+  for (int y = 0; y < 8; y++)
+    for (int x = 0; x < 8; x++)
+      {
+        guint32 c = px[(by + 7 + y) * w + bx + 7 + x];
+
+        green += (c >> 8 & 0xFF) > (c >> 16 & 0xFF) + 20;               /* green over the white kept by the stroke */
+      }
+  g_assert_cmpint (green, >, 40);
+  g_free (px);
+  br_brush (card, "rbg-keep");                                           /* off: no band */
+  wait_for_layout (win);
+  px = render_pixels (win, &w, &h, &bx, &by);
+  green = 0;
+  for (int y = 0; y < 8; y++)
+    for (int x = 0; x < 8; x++)
+      {
+        guint32 c = px[(by + 7 + y) * w + bx + 7 + x];
+
+        green += (c >> 8 & 0xFF) > (c >> 16 & 0xFF) + 20;
+      }
+  g_assert_cmpint (green, ==, 0);
+  g_assert_null (gtk_widget_get_cursor (GTK_WIDGET (canvas)));
+  /* Esc during a stroke drops it; the toggle held during it */
+  br_brush (card, "rbg-remove");
+  {
+    g_autofree guint32 *now = g_memdup2 (img->px, 80 * 60 * 4);
+
+    canvas_point (win, 30.5, 30.5, &cx, &cy);
+    easel_canvas_press_timed (canvas, 1, cx, cy, 5000);
+    g_signal_emit_by_name (keep, "clicked");                             /* held: nothing */
+    g_assert_false (gtk_toggle_button_get_active (GTK_TOGGLE_BUTTON (keep)));
+    g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+    easel_canvas_release (canvas, 1);
+    rbg_settle (win);
+    g_assert_nonnull (easel_window_remove_background_card (win));        /* the card stays */
+    g_assert_cmpint (memcmp (img->px, now, 80 * 60 * 4), ==, 0);       /* nothing painted */
+  }
+  /* a lost release ends the stroke as a release */
+  canvas_point (win, 30.5, 30.5, &cx, &cy);
+  easel_canvas_press_timed (canvas, 1, cx, cy, 7000);
+  easel_canvas_buttons_released (canvas);
+  rbg_settle (win);
+  g_assert_cmphex (img->px[30 * 80 + 30], ==, 0);
+  /* Ctrl+wheel during a stroke: the view zooms, the stroke goes on at its first width (16 at 100 %) */
+  canvas_point (win, 40.5, 20.5, &cx, &cy);
+  easel_canvas_press_timed (canvas, 1, cx, cy, 9000);
+  g_assert_true (wz_wheel (win, GDK_CONTROL_MASK, -1, cx, cy));
+  g_assert_cmpint (easel_canvas_get_zoom (canvas), >, 100);
+  easel_canvas_release (canvas, 1);
+  rbg_settle (win);
+  g_assert_cmphex (img->px[20 * 80 + 40], ==, 0);
+  g_assert_cmphex (img->px[20 * 80 + 47], ==, 0);                       /* 7 away: within the first width */
+  rbg_answer (win, "cancel");
+  rbg_done ();
+}
+
+/* The marker moved to picture pixel (x, y) by the arrows, the focus on the canvas. */
+static void
+br_marker_to (EaselWindow *win, int x, int y)
+{
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  int mx, my;
+
+  for (int i = 0; i < 600; i++)
+    {
+      guint k;
+
+      easel_canvas_marker_get (canvas, &mx, &my);
+      if (mx == x && my == y)
+        break;
+      k = mx != x ? (mx < x ? GDK_KEY_Right : GDK_KEY_Left) : (my < y ? GDK_KEY_Down : GDK_KEY_Up);
+      g_assert_true (key_taken (win, k, 0));
+      key_released (win, k);
+    }
+  easel_canvas_marker_get (canvas, &mx, &my);
+  g_assert_true (mx == x && my == y);
+}
+
+/* 0038 AS-7 (REQ-0038-06): the focus on the canvas and Remove this on: Space at (25, 30), Right ten times while it is held, Space
+   released: the stroke covers what the mouse's drag along those 11 pixels covers (AS-3's); a repeat of Space changes nothing. */
+static void
+br_as7_keyboard (void)
+{
+  EaselWindow *win = rbg_window ();
+  EaselImage *img = (EaselImage *) easel_window_get_picture (win);
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  GtkWidget *card = rbg_open (win);
+
+  rbg_settle (win);
+  br_brush (card, "rbg-remove");
+  g_assert_true (key_taken (win, GDK_KEY_F6, 0));
+  key_released (win, GDK_KEY_F6);
+  g_assert_true (gtk_root_get_focus (GTK_ROOT (win)) == GTK_WIDGET (canvas));
+  br_marker_to (win, 25, 30);
+  g_assert_true (key_taken (win, GDK_KEY_space, 0));
+  for (int k = 0; k < 10; k++)
+    {
+      g_assert_true (key_taken (win, GDK_KEY_Right, 0));
+      key_released (win, GDK_KEY_Right);
+    }
+  key_released (win, GDK_KEY_space);
+  rbg_settle (win);
+  for (int y = 15; y < 45; y++)
+    for (int x = 20; x < 60; x++)
+      {
+        long cx = x < 25 ? 25 : x > 35 ? 35 : x, dx = x - cx, dy = y - 30;
+
+        g_assert_cmphex (img->px[y * 80 + x], ==, 4 * (dx * dx + dy * dy) <= 256 ? 0 : 0xFFFF0000u);
+      }
+  /* a repeat of Space (pressed again with no release) paints nothing more */
+  {
+    g_autofree guint32 *now = NULL;
+
+    br_marker_to (win, 50, 20);
+    now = g_memdup2 (img->px, 80 * 60 * 4);
+    g_assert_true (key_taken (win, GDK_KEY_space, 0));
+    g_assert_true (key_taken (win, GDK_KEY_space, 0));                 /* the repeat */
+    key_released (win, GDK_KEY_space);
+    rbg_settle (win);
+    for (int i = 0; i < 80 * 60; i++)
+      if (img->px[i] != now[i])
+        {
+          int x = i % 80, y = i / 80;
+
+          g_assert_cmpint (4 * ((x - 50) * (x - 50) + (y - 20) * (y - 20)), <=, 256);   /* only the one dot at (50, 20) */
+        }
+  }
+  rbg_answer (win, "cancel");
+  rbg_done ();
+}
+
+/* 0038 AS-12 (REQ-0038-04): a press on an island, two Remove strokes, a press on the removed green disk; Ctrl+Z on the canvas takes back
+   the second press, then the second stroke, the first stroke, the first press, and then nothing; with the focus in the Tolerance field,
+   Ctrl+Z is the field's own and the strokes stay. */
+static void
+br_as12_ctrl_z (void)
+{
+  EaselWindow *win = pc_window ();
+  const EaselImage *img = easel_window_get_picture (win);
+  GtkWidget *card = rbg_open (win);
+  const int a[2] = { 40, 50 }, b[2] = { 60, 70 };
+  g_autofree guint32 *none = NULL;
+
+  rbg_settle (win);
+  none = g_memdup2 (img->px, 160 * 120 * 4);
+  pc_press (win, 120, 60);                                               /* the island removed */
+  br_brush (card, "rbg-remove");
+  br_drag (win, a, 1);
+  br_drag (win, b, 1);
+  br_brush (card, "rbg-remove");                                         /* off */
+  pc_press (win, 120, 100);                                              /* the green disk kept */
+  g_assert_true (pc_removed (img, 120, 60) && pc_removed (img, 40, 50) && pc_removed (img, 60, 70) && !pc_removed (img, 120, 100));
+  /* the field's Ctrl+Z leaves them */
+  gtk_widget_grab_focus (GTK_WIDGET (easel_remove_bg_card_row (card)));
+  key_taken (win, GDK_KEY_z, GDK_CONTROL_MASK);
+  key_released (win, GDK_KEY_z);
+  rbg_settle (win);
+  g_assert_true (pc_removed (img, 60, 70) && !pc_removed (img, 120, 100));
+  /* on the canvas: one at a time, the latest first */
+  g_assert_true (key_taken (win, GDK_KEY_F6, 0));
+  key_released (win, GDK_KEY_F6);
+  g_assert_true (key_taken (win, GDK_KEY_z, GDK_CONTROL_MASK));
+  key_released (win, GDK_KEY_z);
+  rbg_settle (win);
+  g_assert_true (pc_removed (img, 120, 100) && pc_removed (img, 60, 70));
+  g_assert_true (key_taken (win, GDK_KEY_z, GDK_CONTROL_MASK));
+  key_released (win, GDK_KEY_z);
+  rbg_settle (win);
+  g_assert_true (!pc_removed (img, 60, 70) && pc_removed (img, 40, 50));
+  g_assert_true (key_taken (win, GDK_KEY_z, GDK_CONTROL_MASK));
+  key_released (win, GDK_KEY_z);
+  rbg_settle (win);
+  g_assert_true (!pc_removed (img, 40, 50) && pc_removed (img, 120, 60));
+  g_assert_true (key_taken (win, GDK_KEY_z, GDK_CONTROL_MASK));
+  key_released (win, GDK_KEY_z);
+  rbg_settle (win);
+  g_assert_cmpint (memcmp (img->px, none, 160 * 120 * 4), ==, 0);       /* as with none */
+  key_taken (win, GDK_KEY_z, GDK_CONTROL_MASK);
+  key_released (win, GDK_KEY_z);
+  rbg_settle (win);
+  g_assert_cmpint (memcmp (img->px, none, 160 * 120 * 4), ==, 0);       /* nothing more */
+  g_assert_false (action_enabled (win, "undo"));
+  rbg_answer (win, "cancel");
+  rbg_done ();
+}
+
+/* 0038 AS-12 (REQ-0038-04) on a picture with undo steps (0038 Check F1): Ctrl+Z is the window's Undo accelerator, so with history it
+   reaches win.undo; with the card open and the focus on the canvas it takes back the last stroke, not a step of the picture. */
+static void
+br_as12_ctrl_z_with_history (void)
+{
+  EaselWindow *win = pc_window ();
+  const EaselImage *img = easel_window_get_picture (win);
+  GtkWidget *card;
+  const int a[2] = { 40, 50 };
+  g_autofree guint32 *none = NULL;
+
+  g_action_group_activate_action (G_ACTION_GROUP (win), "invert", NULL);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "invert", NULL);   /* two steps, the same pixels */
+  g_assert_true (action_enabled (win, "undo"));
+  card = rbg_open (win);
+  rbg_settle (win);
+  none = g_memdup2 (img->px, 160 * 120 * 4);
+  br_brush (card, "rbg-remove");
+  br_drag (win, a, 1);
+  g_assert_true (pc_removed (img, 40, 50));
+  gtk_widget_grab_focus (GTK_WIDGET (easel_remove_bg_card_row (card)));
+  g_assert_true (key_taken (win, GDK_KEY_F6, 0));
+  g_assert_true (gtk_root_get_focus (GTK_ROOT (win)) == GTK_WIDGET (easel_window_get_canvas (win)));
+  key_released (win, GDK_KEY_F6);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);   /* what the accelerator does */
+  rbg_settle (win);
+  g_assert_cmpint (memcmp (img->px, none, 160 * 120 * 4), ==, 0);       /* the stroke taken back */
+  rbg_answer (win, "cancel");
+  g_assert_true (action_enabled (win, "undo"));                          /* the picture's steps untouched */
+  rbg_done ();
+}
+
+/* 0038 AS-12 (REQ-0038-04) (0038 Check F3): a press on an island, a Keep stroke over its pressed pixel (the press dropped); Ctrl+Z takes
+   the stroke back and the preview is as before it: the press in force again. */
+static void
+br_as12_undo_brings_press_back (void)
+{
+  EaselWindow *win = pc_window ();
+  const EaselImage *img = easel_window_get_picture (win);
+  GtkWidget *card = rbg_open (win);
+  const int over[2] = { 120, 60 };
+  g_autofree guint32 *pressed = NULL;
+
+  rbg_settle (win);
+  pc_press (win, 120, 60);
+  g_assert_true (pc_removed (img, 120, 60));                            /* the island removed */
+  pressed = g_memdup2 (img->px, 160 * 120 * 4);
+  br_brush (card, "rbg-keep");
+  br_drag (win, over, 1);
+  g_assert_false (pc_removed (img, 120, 60));                           /* kept: the later word */
+  gtk_widget_grab_focus (GTK_WIDGET (easel_remove_bg_card_row (card)));
+  g_assert_true (key_taken (win, GDK_KEY_F6, 0));
+  key_released (win, GDK_KEY_F6);
+  g_assert_true (gtk_root_get_focus (GTK_ROOT (win)) == GTK_WIDGET (easel_window_get_canvas (win)));
+  g_assert_true (key_taken (win, GDK_KEY_z, GDK_CONTROL_MASK));
+  key_released (win, GDK_KEY_z);
+  rbg_settle (win);
+  g_assert_cmpint (memcmp (img->px, pressed, 160 * 120 * 4), ==, 0);   /* as before the stroke */
+  rbg_answer (win, "cancel");
+  rbg_done ();
+}
+
+/* 0038 AS-14 (REQ-0038-03, -04; JOD 2026-11-10 at the check): the blue island removed by a press on its centre (120, 60); a Keep dot at
+   (111, 60), 9 from the pressed pixel: its part of the island kept, the rest removed; Ctrl+Z: the whole island removed again; the press
+   taken back by a second one, a Keep dot there, then a press: the whole island removed, the dot's part too (the press is later). */
+static void
+br_as14_stroke_after_press (void)
+{
+  EaselWindow *win = pc_window ();
+  const EaselImage *img = easel_window_get_picture (win);
+  GtkWidget *card = rbg_open (win);
+  const int dot[2] = { 111, 60 };
+
+  rbg_settle (win);
+  pc_press (win, 120, 60);
+  g_assert_true (pc_removed (img, 110, 60) && pc_removed (img, 128, 60));
+  br_brush (card, "rbg-keep");
+  br_drag (win, dot, 1);
+  g_assert_false (pc_removed (img, 110, 60));                           /* the stroke's part kept */
+  g_assert_true (pc_removed (img, 120, 60) && pc_removed (img, 128, 60)); /* the rest removed */
+  gtk_widget_grab_focus (GTK_WIDGET (easel_remove_bg_card_row (card)));
+  g_assert_true (key_taken (win, GDK_KEY_F6, 0));
+  key_released (win, GDK_KEY_F6);
+  g_assert_true (key_taken (win, GDK_KEY_z, GDK_CONTROL_MASK));
+  key_released (win, GDK_KEY_z);
+  rbg_settle (win);
+  g_assert_true (pc_removed (img, 110, 60) && pc_removed (img, 128, 60)); /* the whole island removed again */
+  br_brush (card, "rbg-keep");                                           /* off */
+  pc_press (win, 120, 60);                                               /* the press taken back */
+  g_assert_false (pc_removed (img, 120, 60));
+  br_brush (card, "rbg-keep");
+  br_drag (win, dot, 1);
+  br_brush (card, "rbg-keep");                                           /* off */
+  pc_press (win, 120, 60);                                               /* later than the stroke */
+  g_assert_true (pc_removed (img, 110, 60) && pc_removed (img, 128, 60));
+  rbg_answer (win, "ok");
+  g_assert_true (pc_removed (img, 110, 60) && pc_removed (img, 128, 60)); /* the result as shown */
+  rbg_done ();
+}
+
+/* 0038 AS-4 (REQ-0038-02) on a screen of scale 2 (0038 Check F2): at 100 % of logical pixels (a zoom of 200 device percent) the brush is
+   16 logical pixels wide, as at scale 1: a dot covers the 197 pixels within 8 of the pressed pixel's centre. */
+static void
+br_as4_dot_scale2 (void)
+{
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  const EaselImage *img;
+  GtkWidget *card;
+  const int dot[2] = { 40, 30 };
+  g_autofree guint32 *before = NULL;
+  int n = 0;
+
+  if (!session_of_scale_2 ())
+    return;
+  win = rbg_window ();
+  canvas = easel_window_get_canvas (win);
+  img = easel_window_get_picture (win);
+  g_assert_cmpfloat (easel_canvas_get_scale (canvas), ==, 2.0);
+  easel_canvas_set_zoom (canvas, 200);
+  wait_for_layout (win);
+  g_assert_cmpint (easel_canvas_get_zoom (canvas), ==, 200);
+  card = rbg_open (win);
+  rbg_settle (win);
+  before = g_memdup2 (img->px, 80 * 60 * 4);
+  br_brush (card, "rbg-remove");
+  br_drag (win, dot, 1);
+  for (int i = 0; i < 80 * 60; i++)
+    n += img->px[i] != before[i];                                       /* the red the dot removed */
+  g_assert_cmpint (n, ==, 197);
+  rbg_answer (win, "cancel");
+  rbg_done ();
+}
+
+/* 0038 AS-8 (REQ-0038-08): the memory made too small after the card opened: a stroke's press (its bands cannot be had) and, the second
+   way, a stroke growing past what it holds (its places cannot grow): the message shows, the stroke is dropped and the preview is as
+   before it; the card stays. */
+static void
+br_as8_memory (void)
+{
+  for (int way = 0; way < 2; way++)
+    {
+      EaselWindow *win = rbg_window ();
+      EaselCanvas *canvas = easel_window_get_canvas (win);
+      const EaselImage *img = easel_window_get_picture (win);
+      GtkWidget *card = rbg_open (win);
+      g_autofree guint32 *shown = NULL;
+      double cx, cy;
+
+      rbg_settle (win);
+      br_brush (card, "rbg-remove");
+      shown = g_memdup2 (img->px, 80 * 60 * 4);
+      if (way == 0)
+        easel_window_set_transform_limit (win, 600);                    /* the places' first 512 bytes fit, the bands' 1 200 do not */
+      canvas_point (win, 25.5, 30.5, &cx, &cy);
+      easel_canvas_press_timed (canvas, 1, cx, cy, 1000);
+      if (way == 1)
+        {
+          for (int k = 0; k < 70; k++)
+            {
+              canvas_point (win, 20.5 + (k % 30), 20.5 + k / 30, &cx, &cy);
+              easel_canvas_motion (canvas, cx, cy);
+            }
+          easel_window_set_transform_limit (win, 64);
+          for (int k = 0; k < 70; k++)
+            {
+              canvas_point (win, 20.5 + (k % 30), 30.5 + k / 30, &cx, &cy);
+              easel_canvas_motion (canvas, cx, cy);
+            }
+        }
+      easel_canvas_release (canvas, 1);
+      easel_window_set_transform_limit (win, G_MAXSIZE);
+      rbg_settle (win);
+      wait_for_dialogs (win, 1);
+      g_assert_cmpstr (top_heading (win), ==, "Could Not Remove the Background");
+      g_assert_cmpint (memcmp (img->px, shown, 80 * 60 * 4), ==, 0);
+      respond (win, "close");
+      wait_for_dialogs (win, 0);
+      g_assert_nonnull (easel_window_remove_background_card (win));
+      rbg_answer (win, "cancel");
       rbg_done ();
     }
 }
@@ -38952,8 +39703,22 @@ main (int argc, char **argv)
   g_test_add_func ("/0035/as9_progress_and_cancel", rbg_as9_progress_and_cancel);
   g_test_add_func ("/0035/as14_opening_cancel", rbg_as14_opening_cancel);
   g_test_add_func ("/0035/as11_complex_hint", rbg_as11_complex_hint);
+  g_test_add_func ("/0038/as13_hint", rbg_as11_complex_hint);
   g_test_add_func ("/0035/as12_fill_after_ok", rbg_as12_fill_after_ok);
   g_test_add_func ("/0035/as12_png_zeros", rbg_as12_png_zeros);
+  g_test_add_func ("/0038/as1_toggles", br_as1_toggles);
+  g_test_add_func ("/0038/as2_keep_stroke", br_as2_keep_stroke);
+  g_test_add_func ("/0038/as3_remove_and_order", br_as3_remove_and_order);
+  g_test_add_func ("/0038/as4_dot_and_shape", br_as4_dot_and_shape);
+  g_test_add_func ("/0038/as5_tolerance_and_cancel", br_as5_tolerance_and_cancel);
+  g_test_add_func ("/0038/as6_bands_and_zoom", br_as6_bands_and_zoom);
+  g_test_add_func ("/0038/as7_keyboard", br_as7_keyboard);
+  g_test_add_func ("/0038/as12_ctrl_z", br_as12_ctrl_z);
+  g_test_add_func ("/0038/as8_memory", br_as8_memory);
+  g_test_add_func ("/0038/as12_ctrl_z_with_history", br_as12_ctrl_z_with_history);
+  g_test_add_func ("/0038/as12_undo_brings_press_back", br_as12_undo_brings_press_back);
+  g_test_add_func ("/0038/as14_stroke_after_press", br_as14_stroke_after_press);
+  g_test_add_func ("/0038-scale2/as4_dot_scale2", br_as4_dot_scale2);
   g_test_add_func ("/0037/as1_presses", pc_as1_presses);
   g_test_add_func ("/0037/as2_cancel", pc_as2_cancel);
   g_test_add_func ("/0037/as3_selection", pc_as3_selection);
@@ -39001,6 +39766,7 @@ main (int argc, char **argv)
   g_test_add_func ("/0023-long/as11_alerts", as11_alerts);
   g_test_add_func ("/0023-long/as11_picture_tab", as11_picture_tab);
   g_test_add_func ("/0023-lang/as14_mnemonics_differ", as14_mnemonics_differ);
+  g_test_add_func ("/0023-lang/as1_card_mnemonics_differ", as1_card_mnemonics_differ);
   g_test_add_func ("/0023-lang/as14_menu_mnemonics_differ", as14_menu_mnemonics_differ);
   g_test_add_func ("/0023-lang/as12_no_english", as12_no_english);
   g_test_add_func ("/0023-lang/as5_sheets", as5_sheets);

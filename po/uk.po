@@ -1271,8 +1271,29 @@ msgstr "Вилучити тло"
 msgid "Works best on a plain background."
 msgstr "Найкраще працює на однотонному тлі."
 
-msgid "This background is complex. Lower the Tolerance, then click pieces to fix them."
-msgstr "Це тло складне. Зменште Допуск, потім клацніть частини, щоб виправити їх."
+msgid "_Keep this"
+msgstr "_Залишити"
+
+msgid "_Remove this"
+msgstr "_Прибрати"
+
+msgid "Paint over parts to keep"
+msgstr "Зафарбуйте частини, які треба залишити"
+
+msgid "Paint over parts to remove"
+msgstr "Зафарбуйте частини, які треба прибрати"
+
+msgid "Keep this on"
+msgstr "Залишити увімкнено"
+
+msgid "Remove this on"
+msgstr "Прибрати увімкнено"
+
+msgid "Brushes off"
+msgstr "Пензлі вимкнено"
+
+msgid "This background is complex. Lower the Tolerance, then use Keep this and Remove this."
+msgstr "Це тло складне. Зменште Допуск, потім скористайтеся Залишити й Прибрати."
 
 msgid "Tolerance"
 msgstr "Допуск"

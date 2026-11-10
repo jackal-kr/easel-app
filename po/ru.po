@@ -1271,8 +1271,29 @@ msgstr "Удалить фон"
 msgid "Works best on a plain background."
 msgstr "Лучше всего работает на однотонном фоне."
 
-msgid "This background is complex. Lower the Tolerance, then click pieces to fix them."
-msgstr "Этот фон сложный. Уменьшите Допуск, затем щёлкните по частям, чтобы исправить их."
+msgid "_Keep this"
+msgstr "О_ставить"
+
+msgid "_Remove this"
+msgstr "_Убрать"
+
+msgid "Paint over parts to keep"
+msgstr "Закрасьте части, которые нужно оставить"
+
+msgid "Paint over parts to remove"
+msgstr "Закрасьте части, которые нужно убрать"
+
+msgid "Keep this on"
+msgstr "Оставить включено"
+
+msgid "Remove this on"
+msgstr "Убрать включено"
+
+msgid "Brushes off"
+msgstr "Кисти выключены"
+
+msgid "This background is complex. Lower the Tolerance, then use Keep this and Remove this."
+msgstr "Этот фон сложный. Уменьшите Допуск, затем используйте Оставить и Убрать."
 
 msgid "Tolerance"
 msgstr "Допуск"

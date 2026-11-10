@@ -82,6 +82,7 @@ test('ui-0033-scale2', test_window, args: ['-p', '/0033-scale2'], env: ui_env, s
 test('ui-0034', test_window, args: ['-p', '/0034'], env: ui_a11y_env, suite: 'ui', timeout: 300, is_parallel: false)
 test('ui-0035', test_window, args: ['-p', '/0035'], env: ui_env, suite: 'ui', timeout: 300, is_parallel: false)
 test('ui-0037', test_window, args: ['-p', '/0037'], env: ui_env, suite: 'ui', timeout: 300, is_parallel: false)
+test('ui-0038', test_window, args: ['-p', '/0038'], env: ui_env, suite: 'ui', timeout: 300, is_parallel: false)
 test('ui-0036', test_window, args: ['-p', '/0036'], env: ui_env, suite: 'ui', timeout: 300, is_parallel: false)
 journey_uk_env = environment()
 journey_uk_env.set('GSK_RENDERER', 'cairo')
@@ -97,6 +98,7 @@ test('ui-0025-scale2', test_window, args: ['-p', '/0025-scale2'], env: ui_env, s
 test('ui-0019-scale2', test_window, args: ['-p', '/0019-scale2'], env: ui_env, suite: 'ui', timeout: 180, is_parallel: false)
 test('ui-0021-scale2', test_window, args: ['-p', '/0021-scale2'], env: ui_env, suite: 'ui', timeout: 180, is_parallel: false)
 test('ui-0022-scale2', test_window, args: ['-p', '/0022-scale2'], env: ui_a11y_env, suite: 'ui', timeout: 180, is_parallel: false)
+test('ui-0038-scale2', test_window, args: ['-p', '/0038-scale2'], env: ui_env, suite: 'ui', timeout: 180, is_parallel: false)
 # The cases that take more than about 15 s each (registered under /long/): run by the gate and /sdd-check, not by tools/mutate.sh,
 # which names the suites it runs (a mutant that only these can kill is listed in tests/mutants.txt with test: ui-0014-long).
 test('ui-0014-long', test_window, args: ['-p', '/long/0014'], env: ui_env, suite: ['ui', 'long'], timeout: 400, is_parallel: false)

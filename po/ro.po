@@ -1271,8 +1271,29 @@ msgstr "Elimină fundalul"
 msgid "Works best on a plain background."
 msgstr "Funcționează cel mai bine pe un fundal uniform."
 
-msgid "This background is complex. Lower the Tolerance, then click pieces to fix them."
-msgstr "Acest fundal este complex. Micșorați Toleranța, apoi faceți clic pe bucăți pentru a le corecta."
+msgid "_Keep this"
+msgstr "_Păstrează"
+
+msgid "_Remove this"
+msgstr "_Elimină"
+
+msgid "Paint over parts to keep"
+msgstr "Pictați peste părțile de păstrat"
+
+msgid "Paint over parts to remove"
+msgstr "Pictați peste părțile de eliminat"
+
+msgid "Keep this on"
+msgstr "Păstrează activat"
+
+msgid "Remove this on"
+msgstr "Elimină activat"
+
+msgid "Brushes off"
+msgstr "Pensule dezactivate"
+
+msgid "This background is complex. Lower the Tolerance, then use Keep this and Remove this."
+msgstr "Acest fundal este complex. Micșorați Toleranța, apoi folosiți Păstrează și Elimină."
 
 msgid "Tolerance"
 msgstr "Toleranță"

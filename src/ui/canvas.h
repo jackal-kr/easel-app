@@ -111,6 +111,31 @@ typedef void (*EaselCanvasPressHook) (int x, int y, gpointer data);
 /* While hook is set (Remove Background's card, REQ-0037-01): a primary press goes to it and nothing else of the canvas acts; the pointer is
    the default arrow and no footprint outline is drawn (REQ-0037-07). NULL ends it. */
 void easel_canvas_set_press_hook (EaselCanvas *self, EaselCanvasPressHook hook, gpointer data);
+
+/* Remove Background: brushes (0038). While a paint hook is set with the press hook, a primary press begins a stroke at its picture
+   pixel, a move to another pixel extends it, the release (or a lost one) ends it, the other button drops it (REQ-0038-02, -07); the
+   pointer is the outline of the dot a press would paint, width_logical logical pixels wide at the zoom (REQ-0038-05). NULL: off. */
+typedef enum
+{
+  EASEL_PAINT_BEGIN,
+  EASEL_PAINT_EXTEND,
+  EASEL_PAINT_END,
+  EASEL_PAINT_DROP
+} EaselPaintEvent;
+typedef void (*EaselCanvasPaintHook) (EaselPaintEvent event, int x, int y, gpointer data);
+void easel_canvas_set_paint_hook (EaselCanvas *self, EaselCanvasPaintHook hook, int width_logical, gpointer data);
+gboolean easel_canvas_is_painting (EaselCanvas *self);
+/* The brush's width in whole picture pixels at the current zoom: width_logical logical pixels over the zoom, rounded to the nearest, at
+   least 1 (REQ-0038-02). */
+int easel_canvas_paint_width (EaselCanvas *self);
+/* Esc during a stroke: the stroke dropped (REQ-0038-07). */
+void easel_canvas_drop_paint (EaselCanvas *self);
+
+/* The bands over the picture while a paint hook is set (REQ-0038-05): kind of picture pixel (x, y), 0 none, 1 Keep this (green),
+   2 Remove this (red). easel_canvas_bands_changed after a change, with the bounds of every marked pixel (x1, y1 exclusive; empty: none). */
+typedef int (*EaselCanvasBandKind) (int x, int y, gpointer data);
+void easel_canvas_set_bands (EaselCanvas *self, EaselCanvasBandKind kind, gpointer data);
+void easel_canvas_bands_changed (EaselCanvas *self, int x0, int y0, int x1, int y1);
 void easel_canvas_set_input_blocked (EaselCanvas *self, gboolean blocked);
 
 /* Where finished strokes are recorded as undo steps (not owned; NULL records nothing). */

@@ -238,6 +238,19 @@ struct _EaselCanvas
   gboolean input_blocked;
   EaselCanvasPressHook press_hook;   /* while set (0037), a primary press goes to it, and nothing else of the canvas acts */
   gpointer press_data;
+  EaselCanvasPaintHook paint_hook;   /* 0038: with the press hook, a primary drag paints a stroke */
+  gpointer paint_data;
+  int paint_width;                   /* the brush's width in logical pixels */
+  gboolean painting;
+  int paint_x, paint_y;              /* the stroke's last picture pixel */
+  GdkCursor *dot_cursor;
+  int dot_zoom;
+  double dot_scale;
+  EaselCanvasBandKind band_kind;
+  gpointer band_data;
+  uint8_t *band_grid;                /* the kinds over the bands' bounds, one a cell of band_step x band_step pixels */
+  int band_x, band_y, band_w, band_h, band_step;
+  GdkTexture *band_texture;
   gboolean busy;          /* a picture is loading: the busy cursor */
   gboolean grid_on, grid_axonometric;
   int grid_cell;
@@ -4799,6 +4812,7 @@ emit_painted (gpointer data)
 
 static void
 canvas_snapshot_frame (EaselCanvas *self, GtkSnapshot *snapshot);
+static void append_bands (EaselCanvas *self, GtkSnapshot *snapshot, double l);
 
 /* ---- The keyboard's marker (0022) ---- */
 
@@ -5146,6 +5160,7 @@ canvas_snapshot_frame (EaselCanvas *self, GtkSnapshot *snapshot)
   append_shape_preview (self, snapshot);
   if (easel_canvas_grid_is_drawn (self))
     append_grid (self, snapshot);
+  append_bands (self, snapshot, l);              /* 0038: the strokes' bands, over the picture and the grid */
   append_gradient_markers (self, snapshot);
   append_handles (self, snapshot);                /* the picture's handles lie under the selection's pixels and tint (REQ-0015-01) */
   append_float_outside (self, snapshot, l);
@@ -5283,6 +5298,77 @@ outline_cursor (EaselCanvas *self)
   return self->outline_cursor;
 }
 
+int
+easel_canvas_paint_width (EaselCanvas *self)
+{
+  /* the zoom counts device pixels: paint_width logical pixels are paint_width x scale of them (0038 Check F2) */
+  return MAX (1, (int) floor (self->paint_width * easel_canvas_get_scale (self) * 100.0 / self->zoom + 0.5));
+}
+
+/* The outline of the dot a press of the brush would paint at the zoom (REQ-0038-05): the covered pixels' squares by the stroke's own rule
+   (easel_canvas_paint_width), a black line just outside them and a white one outside it, drawn in logical pixels (a cell is the zoom
+   over the scale), so that it shows the dot's size on a scaled screen too. */
+static GdkCursor *
+dot_cursor (EaselCanvas *self)
+{
+  if (self->dot_cursor == NULL || self->dot_zoom != self->zoom || self->dot_scale != easel_canvas_get_scale (self))
+    {
+      int width = easel_canvas_paint_width (self), r = width / 2 + 1;
+      double cell = self->zoom / 100.0 / easel_canvas_get_scale (self);
+      int size = MIN (128, (int) ceil ((2 * r + 1) * cell) + 4), half = size / 2;
+      g_autofree uint8_t *in = g_new0 (uint8_t, (gsize) size * size);
+      g_autofree uint32_t *argb = g_new0 (uint32_t, (gsize) size * size);
+      g_autoptr (GBytes) bytes = NULL;
+      g_autoptr (GdkTexture) texture = NULL;
+      g_autoptr (GdkCursor) fallback = gdk_cursor_new_from_name ("crosshair", NULL);
+
+      for (int v = 0; v < size; v++)
+        for (int u = 0; u < size; u++)
+          {
+            int ox = (int) floor ((u + 0.5 - half) / cell + 0.5), oy = (int) floor ((v + 0.5 - half) / cell + 0.5);
+
+            in[v * size + u] = easel_rbg_covers (ox, oy, 0, 0, 0, 0, width);
+          }
+      for (int v = 0; v < size; v++)
+        for (int u = 0; u < size; u++)
+          {
+            gboolean near_in = FALSE, near_black = FALSE;
+
+            if (in[v * size + u])
+              continue;
+            for (int d = 0; d < 4; d++)
+              {
+                int a = u + (d == 0) - (d == 1), b = v + (d == 2) - (d == 3);
+
+                if (a >= 0 && b >= 0 && a < size && b < size && in[b * size + a])
+                  near_in = TRUE;
+              }
+            if (near_in)
+              argb[v * size + u] = 0xFF000000u;
+            else
+              for (int d = 0; d < 8 && !near_black; d++)
+                {
+                  int a = u + (d % 3) - 1, b = v + (d / 3) - 1;
+
+                  if (d == 4)
+                    continue;
+                  near_black = a >= 0 && b >= 0 && a < size && b < size && !in[b * size + a]
+                               && ((a > 0 && in[b * size + a - 1]) || (a + 1 < size && in[b * size + a + 1])
+                                   || (b > 0 && in[(b - 1) * size + a]) || (b + 1 < size && in[(b + 1) * size + a]));
+                }
+            if (!near_in && near_black)
+              argb[v * size + u] = 0xFFFFFFFFu;
+          }
+      bytes = g_bytes_new (argb, (gsize) size * size * sizeof *argb);
+      texture = gdk_memory_texture_new (size, size, GDK_MEMORY_B8G8R8A8_PREMULTIPLIED, bytes, (gsize) size * sizeof *argb);
+      g_clear_object (&self->dot_cursor);
+      self->dot_cursor = gdk_cursor_new_from_texture (texture, half, half, fallback);
+      self->dot_zoom = self->zoom;
+      self->dot_scale = easel_canvas_get_scale (self);
+    }
+  return self->dot_cursor;
+}
+
 /* The cursor shows the tool over the whole canvas area, not only over the picture (REQ-0001-10); every cursor but the busy
    one and the Brush's and the Eraser's outline is drawn by Easel (REQ-0029-01). */
 static void
@@ -5291,6 +5377,14 @@ update_cursor (EaselCanvas *self)
   g_autoptr (GdkCursor) cursor = NULL;
   EaselCursorArt art = EASEL_CURSOR_COUNT;
 
+  if (self->press_hook != NULL && self->paint_hook != NULL)
+    {
+      self->cursor_art = EASEL_CURSOR_COUNT;
+      gtk_widget_set_cursor (GTK_WIDGET (self), dot_cursor (self));   /* the outline of the brush's dot (REQ-0038-05) */
+      if (self->area != NULL)
+        gtk_widget_set_cursor (self->area, dot_cursor (self));
+      return;
+    }
   if (self->press_hook != NULL)
     {
       self->cursor_art = EASEL_CURSOR_COUNT;
@@ -5345,6 +5439,129 @@ easel_canvas_set_press_hook (EaselCanvas *self, EaselCanvasPressHook hook, gpoin
   self->press_data = data;
   update_cursor (self);
   gtk_widget_queue_draw (GTK_WIDGET (self));
+}
+
+void
+easel_canvas_set_paint_hook (EaselCanvas *self, EaselCanvasPaintHook hook, int width_logical, gpointer data)
+{
+  if (self->painting && hook == NULL)
+    easel_canvas_drop_paint (self);
+  self->paint_hook = hook;
+  self->paint_data = data;
+  self->paint_width = width_logical;
+  update_cursor (self);
+  gtk_widget_queue_draw (GTK_WIDGET (self));
+}
+
+gboolean
+easel_canvas_is_painting (EaselCanvas *self)
+{
+  return self->painting;
+}
+
+void
+easel_canvas_drop_paint (EaselCanvas *self)
+{
+  if (!self->painting)
+    return;
+  self->painting = FALSE;
+  self->paint_hook (EASEL_PAINT_DROP, self->paint_x, self->paint_y, self->paint_data);
+}
+
+void
+easel_canvas_set_bands (EaselCanvas *self, EaselCanvasBandKind kind, gpointer data)
+{
+  self->band_kind = kind;
+  self->band_data = data;
+  easel_canvas_bands_changed (self, 0, 0, 0, 0);
+}
+
+/* The bands' cells over their bounds (a cell of band_step pixels on a side, so that a large area stays near 4 000 000 cells) and their
+   texture: green or red at 40 %, premultiplied. */
+void
+easel_canvas_bands_changed (EaselCanvas *self, int x0, int y0, int x1, int y1)
+{
+  g_clear_pointer (&self->band_grid, g_free);
+  g_clear_object (&self->band_texture);
+  self->band_w = self->band_h = 0;
+  if (self->band_kind != NULL && x1 > x0 && y1 > y0)
+    {
+      int64_t area = (int64_t) (x1 - x0) * (y1 - y0);
+      int step = 1;
+      g_autofree uint32_t *argb = NULL;
+      g_autoptr (GBytes) bytes = NULL;
+
+      while (area / ((int64_t) step * step) > 4000000)
+        step++;
+      self->band_step = step;
+      self->band_x = x0, self->band_y = y0;
+      self->band_w = (x1 - x0 + step - 1) / step;
+      self->band_h = (y1 - y0 + step - 1) / step;
+      self->band_grid = g_malloc ((gsize) self->band_w * self->band_h);
+      argb = g_new (uint32_t, (gsize) self->band_w * self->band_h);
+      for (int j = 0; j < self->band_h; j++)
+        for (int i = 0; i < self->band_w; i++)
+          {
+            int k = self->band_kind (x0 + i * step + step / 2, y0 + j * step + step / 2, self->band_data);
+            size_t c = (size_t) j * self->band_w + i;
+
+            self->band_grid[c] = (uint8_t) k;
+            /* 40 % of the style's success (#26A269) and destructive (#E01B24) colors, premultiplied */
+            argb[c] = k == 1 ? 0x66000000u | 15u << 16 | 65u << 8 | 42u : k == 2 ? 0x66000000u | 90u << 16 | 11u << 8 | 14u : 0;
+          }
+      bytes = g_bytes_new (argb, (gsize) self->band_w * self->band_h * sizeof *argb);
+      self->band_texture = gdk_memory_texture_new (self->band_w, self->band_h, GDK_MEMORY_B8G8R8A8_PREMULTIPLIED, bytes,
+                                                   (gsize) self->band_w * sizeof *argb);
+    }
+  gtk_widget_queue_draw (GTK_WIDGET (self));
+}
+
+/* The bands drawn over the picture (REQ-0038-05): the cells' colors, then a black line and a white one beside it, one device pixel each,
+   where a cell's kind differs from its neighbour's. */
+static void
+append_bands (EaselCanvas *self, GtkSnapshot *snapshot, double l)
+{
+  static const GdkRGBA black = { 0, 0, 0, 1 }, white = { 1, 1, 1, 1 };
+  double scale = easel_canvas_get_scale (self), dev = 1.0 / scale, cell = self->band_step * l;
+
+  if (self->paint_hook == NULL || self->band_texture == NULL)
+    return;
+  gtk_snapshot_append_scaled_texture (snapshot, self->band_texture, GSK_SCALING_FILTER_NEAREST,
+                                      &GRAPHENE_RECT_INIT ((float) (self->band_x * l), (float) (self->band_y * l),
+                                                           (float) (self->band_w * cell), (float) (self->band_h * cell)));
+  for (int j = 0; j < self->band_h; j++)
+    for (int i = 0; i < self->band_w; i++)
+      {
+        int k = self->band_grid[(size_t) j * self->band_w + i];
+        int right = i + 1 < self->band_w ? self->band_grid[(size_t) j * self->band_w + i + 1] : 0;
+        int below = j + 1 < self->band_h ? self->band_grid[(size_t) (j + 1) * self->band_w + i] : 0;
+        int left = i > 0 ? self->band_grid[(size_t) j * self->band_w + i - 1] : 0;
+        int above = j > 0 ? self->band_grid[(size_t) (j - 1) * self->band_w + i] : 0;
+        double x = self->band_x * l + i * cell, y = self->band_y * l + j * cell;
+
+        if (k == 0)
+          continue;
+        if (right != k)
+          {
+            gtk_snapshot_append_color (snapshot, &black, &GRAPHENE_RECT_INIT ((float) (x + cell - dev), (float) y, (float) dev, (float) cell));
+            gtk_snapshot_append_color (snapshot, &white, &GRAPHENE_RECT_INIT ((float) (x + cell), (float) y, (float) dev, (float) cell));
+          }
+        if (left != k)
+          {
+            gtk_snapshot_append_color (snapshot, &black, &GRAPHENE_RECT_INIT ((float) x, (float) y, (float) dev, (float) cell));
+            gtk_snapshot_append_color (snapshot, &white, &GRAPHENE_RECT_INIT ((float) (x - dev), (float) y, (float) dev, (float) cell));
+          }
+        if (below != k)
+          {
+            gtk_snapshot_append_color (snapshot, &black, &GRAPHENE_RECT_INIT ((float) x, (float) (y + cell - dev), (float) cell, (float) dev));
+            gtk_snapshot_append_color (snapshot, &white, &GRAPHENE_RECT_INIT ((float) x, (float) (y + cell), (float) cell, (float) dev));
+          }
+        if (above != k)
+          {
+            gtk_snapshot_append_color (snapshot, &black, &GRAPHENE_RECT_INIT ((float) x, (float) y, (float) cell, (float) dev));
+            gtk_snapshot_append_color (snapshot, &white, &GRAPHENE_RECT_INIT ((float) x, (float) (y - dev), (float) cell, (float) dev));
+          }
+      }
 }
 
 void
@@ -5949,12 +6166,22 @@ easel_canvas_buttons_released (EaselCanvas *self)
       self->panning = FALSE;                     /* Pan's drag ends too, so that zooming is not held off for good (REQ-0036-02) */
       update_cursor (self);
     }
+  if (self->painting)
+    {
+      self->painting = FALSE;
+      self->paint_hook (EASEL_PAINT_END, self->paint_x, self->paint_y, self->paint_data);   /* 0038: ended as released */
+    }
   self->cancelled_button = 0;
 }
 
 void
 easel_canvas_reset_pointer (EaselCanvas *self)
 {
+  if (self->painting)
+    {
+      self->painting = FALSE;
+      self->paint_hook (EASEL_PAINT_END, self->paint_x, self->paint_y, self->paint_data);   /* 0038: a lost focus ends it as released */
+    }
   easel_canvas_end_stroke (self);
   self->cancelled_button = 0;
   self->action_button = 0;
@@ -6173,6 +6400,21 @@ easel_canvas_press_timed (EaselCanvas *self, guint button, double x, double y, g
 
   /* Remove Background's card open (REQ-0037-01): the primary press, of the mouse or the marker's Space, goes to the card's hook as the
      picture pixel under it (REQ-0025-02); nothing else of the canvas acts. */
+  if (self->press_hook != NULL && self->paint_hook != NULL)
+    {
+      /* 0038: the primary press begins a stroke at its picture pixel; the other button during one drops it (REQ-0038-02, -07) */
+      if (button == GDK_BUTTON_PRIMARY && self->img != NULL && !self->painting)
+        {
+          if (gtk_widget_get_root (GTK_WIDGET (self)) != NULL)
+            gtk_widget_grab_focus (GTK_WIDGET (self));
+          to_pixel (self, x, y, &self->paint_x, &self->paint_y);
+          self->painting = TRUE;
+          self->paint_hook (EASEL_PAINT_BEGIN, self->paint_x, self->paint_y, self->paint_data);
+        }
+      else if (button != GDK_BUTTON_PRIMARY)
+        easel_canvas_drop_paint (self);
+      return;
+    }
   if (self->press_hook != NULL)
     {
       if (button == GDK_BUTTON_PRIMARY && self->img != NULL)
@@ -6631,6 +6873,17 @@ easel_canvas_motion (EaselCanvas *self, double x, double y)
 {
   int px, py;
 
+  if (self->painting)
+    {
+      to_pixel (self, x, y, &px, &py);
+      if (px != self->paint_x || py != self->paint_y)
+        {
+          self->paint_x = px, self->paint_y = py;
+          self->paint_hook (EASEL_PAINT_EXTEND, px, py, self->paint_data);   /* 0038: the stroke goes on (REQ-0038-02) */
+        }
+      return;
+    }
+
   if (self->resizing != EASEL_HANDLE_NONE)
     {
       resize_to (self, x, y);
@@ -6832,6 +7085,12 @@ end_shape (EaselCanvas *self)
 void
 easel_canvas_release (EaselCanvas *self, guint button)
 {
+  if (self->painting && button == GDK_BUTTON_PRIMARY)
+    {
+      self->painting = FALSE;
+      self->paint_hook (EASEL_PAINT_END, self->paint_x, self->paint_y, self->paint_data);   /* 0038: the stroke ends (REQ-0038-04) */
+      return;
+    }
   if (button == self->cancelled_button)
     self->cancelled_button = 0;
   if (button == self->action_button)
@@ -7379,6 +7638,9 @@ easel_canvas_dispose (GObject *object)
   self->history = NULL;
   self->area = NULL;
   free_tiles (self);
+  g_clear_object (&self->dot_cursor);
+  g_clear_object (&self->band_texture);
+  g_clear_pointer (&self->band_grid, g_free);
   g_clear_object (&self->outline_cursor);
   g_clear_object (&self->builder);
   g_clear_pointer (&self->poly, free);

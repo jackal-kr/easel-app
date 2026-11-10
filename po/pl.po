@@ -1271,8 +1271,29 @@ msgstr "Usuń tło"
 msgid "Works best on a plain background."
 msgstr "Działa najlepiej na jednolitym tle."
 
-msgid "This background is complex. Lower the Tolerance, then click pieces to fix them."
-msgstr "To tło jest złożone. Zmniejsz Tolerancję, a następnie kliknij fragmenty, aby je poprawić."
+msgid "_Keep this"
+msgstr "_Zachowaj"
+
+msgid "_Remove this"
+msgstr "_Usuń"
+
+msgid "Paint over parts to keep"
+msgstr "Zamaluj części do zachowania"
+
+msgid "Paint over parts to remove"
+msgstr "Zamaluj części do usunięcia"
+
+msgid "Keep this on"
+msgstr "Zachowaj włączone"
+
+msgid "Remove this on"
+msgstr "Usuń włączone"
+
+msgid "Brushes off"
+msgstr "Pędzle wyłączone"
+
+msgid "This background is complex. Lower the Tolerance, then use Keep this and Remove this."
+msgstr "To tło jest złożone. Zmniejsz Tolerancję, a następnie użyj Zachowaj i Usuń."
 
 msgid "Tolerance"
 msgstr "Tolerancja"

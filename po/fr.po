@@ -1261,8 +1261,29 @@ msgstr "Supprimer l'arrière-plan"
 msgid "Works best on a plain background."
 msgstr "Fonctionne mieux sur un arrière-plan uni."
 
-msgid "This background is complex. Lower the Tolerance, then click pieces to fix them."
-msgstr "Cet arrière-plan est complexe. Baissez la Tolérance, puis cliquez sur les morceaux pour les corriger."
+msgid "_Keep this"
+msgstr "_Garder"
+
+msgid "_Remove this"
+msgstr "_Retirer"
+
+msgid "Paint over parts to keep"
+msgstr "Peindre sur les parties à garder"
+
+msgid "Paint over parts to remove"
+msgstr "Peindre sur les parties à retirer"
+
+msgid "Keep this on"
+msgstr "Garder activé"
+
+msgid "Remove this on"
+msgstr "Retirer activé"
+
+msgid "Brushes off"
+msgstr "Pinceaux désactivés"
+
+msgid "This background is complex. Lower the Tolerance, then use Keep this and Remove this."
+msgstr "Cet arrière-plan est complexe. Baissez la Tolérance, puis utilisez Garder et Retirer."
 
 msgid "Tolerance"
 msgstr "Tolérance"
