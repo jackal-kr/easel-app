@@ -1267,6 +1267,12 @@ msgstr "Questo sfondo è complesso. Abbassa la Tolleranza, poi fai clic sulle pa
 msgid "Tolerance"
 msgstr "Tolleranza"
 
+msgid "Kept"
+msgstr "Mantenuto"
+
+msgid "Removed"
+msgstr "Rimosso"
+
 msgid "Removing the Background"
 msgstr "Rimozione dello sfondo"
 

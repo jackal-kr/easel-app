@@ -12653,6 +12653,83 @@ test: ui-0035
 
 # ---- Remove Background: pieces (0037) ----
 
+=== REQ-0037-01 two presses on one piece do not cancel
+file: src/core/remove-bg.c
+test: core-remove-bg
+--- find
+        r->sizes[c] ^= 1;
+--- replace
+        r->sizes[c] = 1;
+
+=== REQ-0037-01 an island the size rule removed is the background's piece
+file: src/core/remove-bg.c
+test: core-remove-bg
+--- find
+    return !looked_at (mask, g) || (px[g] >> 24) == 0 ? -1 : 2 * (r->flood[g] == SUBJECT) + ((dst[g] >> 24) != 0);
+--- replace
+    return !looked_at (mask, g) || (px[g] >> 24) == 0 ? -1 : ((dst[g] >> 24) != 0);
+
+=== REQ-0037-02 a fully transparent pixel comes back with a kept piece
+file: src/core/remove-bg.c
+test: core-remove-bg
+--- find
+            if (!looked_at (mask, i) || (px[i] >> 24) == 0)
+              continue;
+            dst[i] = (r->next[c] & 1) ? px[i] & 0x00FFFFFFu : px[i];
+--- replace
+            if (!looked_at (mask, i))
+              continue;
+            dst[i] = (r->next[c] & 1) ? px[i] & 0x00FFFFFFu : px[i];
+
+=== REQ-0037-04 every two pixels are in one piece
+file: src/core/remove-bg.c
+test: core-remove-bg
+--- find
+  return a >= 0 && a == b;
+--- replace
+  return a >= 0 && b >= 0;
+
+=== REQ-0037-09 over 2 000 000 pixels a press flips nothing
+file: src/core/remove-bg.c
+test: core-remove-bg
+--- find
+  return 2 * (r->flood[g] == SUBJECT) + (r->label[g] == SUBJECT);
+--- replace
+  return -1;
+
+=== REQ-0037-01 the result at OK leaves the presses out
+file: src/ui/window.c
+test: ui-0037
+--- find
+  if (s->outcome == EASEL_RBG_DONE)
+    easel_rbg_flips (s->rbg, s->orig, s->mask, s->dst, s->presses, s->n_presses, &s->removed);
+--- replace
+  (void) 0;
+
+=== REQ-0037-04 a press on a pressed piece adds a press instead of removing the earlier
+file: src/ui/window.c
+test: ui-0037
+--- find
+    if (easel_rbg_same_piece (s->rbg, x, y, s->presses[j].x, s->presses[j].y))
+--- replace
+    if (0 && easel_rbg_same_piece (s->rbg, x, y, s->presses[j].x, s->presses[j].y))
+
+=== REQ-0037-01 a press while the card is open reaches no piece
+file: src/ui/window.c
+test: ui-0037
+--- find
+  easel_canvas_set_press_hook (self->canvas, on_rbg_press, self);
+--- replace
+  (void) on_rbg_press;
+
+=== REQ-0037-06 Ctrl+wheel does not zoom while the card is open
+file: src/ui/window.c
+test: ui-0037
+--- find
+    return TRUE;                               /* Remove Background's card alone: the view zooms (REQ-0037-06) */
+--- replace
+    return FALSE;
+
 # ---- wheel zoom in every tool (0036) ----
 
 === REQ-0036-02 Pan's drag is not a hold: Ctrl+wheel zooms during it

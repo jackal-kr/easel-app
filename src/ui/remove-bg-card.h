@@ -20,6 +20,12 @@ GtkWidget *easel_remove_bg_card_new (int automatic, gboolean complex, EaselRemov
 /* Answers as its buttons do (Esc: FALSE; a quit: FALSE); nothing once answered. */
 void easel_remove_bg_card_answer (GtkWidget *card, gboolean ok);
 
+/* Takes a number typed in the field, as leaving the field does (REQ-0037-05). */
+void easel_remove_bg_card_commit (GtkWidget *card);
+
+/* Its OK button, the last of its controls (REQ-0037-03: Tab from it goes to the canvas). */
+GtkWidget *easel_remove_bg_card_ok_button (GtkWidget *card);
+
 /* The row, for the tests and the focus. */
 AdwSpinRow *easel_remove_bg_card_row (GtkWidget *card);
 

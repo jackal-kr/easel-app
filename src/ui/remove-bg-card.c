@@ -12,6 +12,7 @@ typedef struct
 {
   GtkWidget *card;
   AdwSpinRow *row;
+  GtkWidget *ok;
   gboolean done;
   EaselRemoveBgChanged changed;
   EaselRemoveBgClosed closed;
@@ -85,6 +86,7 @@ easel_remove_bg_card_new (int automatic, gboolean complex, EaselRemoveBgChanged 
   gtk_list_box_append (GTK_LIST_BOX (list), GTK_WIDGET (c->row));
   gtk_widget_set_halign (buttons, GTK_ALIGN_END);
   gtk_widget_add_css_class (ok, "suggested-action");
+  c->ok = ok;
   gtk_box_append (GTK_BOX (buttons), cancel);
   gtk_box_append (GTK_BOX (buttons), ok);
   gtk_box_append (GTK_BOX (box), heading);
@@ -118,6 +120,23 @@ easel_remove_bg_card_answer (GtkWidget *card, gboolean ok)
 
   if (c != NULL)
     finish (c, ok);
+}
+
+void
+easel_remove_bg_card_commit (GtkWidget *card)
+{
+  RemoveBgCard *c = g_object_get_data (G_OBJECT (card), DATA_KEY);
+
+  if (c != NULL && !c->done)
+    adw_spin_row_update (c->row);
+}
+
+GtkWidget *
+easel_remove_bg_card_ok_button (GtkWidget *card)
+{
+  RemoveBgCard *c = g_object_get_data (G_OBJECT (card), DATA_KEY);
+
+  return c != NULL ? c->ok : NULL;
 }
 
 AdwSpinRow *

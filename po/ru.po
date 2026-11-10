@@ -1277,6 +1277,12 @@ msgstr "Этот фон сложный. Уменьшите Допуск, зат�
 msgid "Tolerance"
 msgstr "Допуск"
 
+msgid "Kept"
+msgstr "Оставлено"
+
+msgid "Removed"
+msgstr "Удалено"
+
 msgid "Removing the Background"
 msgstr "Удаление фона"
 

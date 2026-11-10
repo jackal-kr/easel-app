@@ -36806,8 +36806,13 @@ static GtkWidget *
 rbg_open (EaselWindow *win)
 {
   GtkWidget *card;
+  gint64 deadline = g_get_monotonic_time () + 10 * G_USEC_PER_SEC;
 
   g_action_group_activate_action (G_ACTION_GROUP (win), "remove-background", NULL);
+  /* the analysis runs in the worker: the card shows when it ends (REQ-0035-11) */
+  while (easel_window_remove_background_card (win) == NULL && easel_window_is_removing_background (win)
+         && g_get_monotonic_time () < deadline)
+    g_main_context_iteration (NULL, FALSE);
   wait_for_layout (win);
   card = easel_window_remove_background_card (win);
   g_assert_nonnull (card);
@@ -37182,9 +37187,16 @@ rbg_as6_memory_and_quit (void)
     }
   g_assert_true (easel_canvas_put_down (canvas));
 
-  /* The result's memory refused at OK: the analysis holds what it needs, the result's 19 200 bytes do not fit. */
+  /* The step's memory refused at OK (the result's buffer is had when the card opens): red but for a white frame 4 pixels wide, so the
+     step is a log of the 1 056 removed pixels (under a third), and 100 bytes do not hold it. */
+  for (int yy = 0; yy < 60; yy++)
+    for (int xx = 0; xx < 80; xx++)
+      ((EaselImage *) img)->px[yy * 80 + xx] = (xx < 4 || yy < 4 || xx >= 76 || yy >= 56) ? 0xFFFFFFFFu : 0xFFFF0000u;
+  ((EaselImage *) img)->dirty = (EaselRect) { 0, 0, 80, 60 };
+  easel_canvas_update (canvas);
+  memcpy (before, img->px, 80 * 60 * 4);
   rbg_open (win);
-  easel_window_set_transform_limit (win, 80 * 60 * 4 + 80 * 60 * 4 / 2);
+  easel_window_set_transform_limit (win, 100);
   rbg_answer (win, "ok");
   easel_window_set_transform_limit (win, G_MAXSIZE);
   wait_for_dialogs (win, 1);
@@ -37309,6 +37321,294 @@ rbg_as9_progress_and_cancel (void)
         }
       rbg_done ();
     }
+}
+
+/* ---- 0037: Remove Background, pieces ---- */
+
+/* A 160 x 120 white picture with a red rectangle from (20, 30) to (79, 89), a blue disk at (120, 60) of radius 13 (an island the
+   method keeps) and a green disk at (120, 100) of radius 3 (one it removes). */
+static EaselWindow *
+pc_window (void)
+{
+  EaselWindow *win = window_with ("[new-picture]\nwidth=160\nheight=120\nbackground=#FFFFFF\n");
+  EaselImage *img = (EaselImage *) easel_window_get_picture (win);
+
+  for (int y = 0; y < 120; y++)
+    for (int x = 0; x < 160; x++)
+      {
+        int b = (x - 120) * (x - 120) + (y - 60) * (y - 60), g = (x - 120) * (x - 120) + (y - 100) * (y - 100);
+
+        if (x >= 20 && x < 80 && y >= 30 && y < 90)
+          img->px[y * 160 + x] = 0xFFFF0000u;
+        else if (b <= 13 * 13)
+          img->px[y * 160 + x] = 0xFF1030C0u;
+        else if (g <= 3 * 3)
+          img->px[y * 160 + x] = 0xFF10A030u;
+      }
+  img->dirty = (EaselRect) { 0, 0, 160, 120 };
+  easel_canvas_update (easel_window_get_canvas (win));
+  return win;
+}
+
+/* A press of the primary button on the picture pixel (x, y) at 100 %. */
+static void
+pc_press (EaselWindow *win, int x, int y)
+{
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+
+  g_assert_cmpint (easel_canvas_get_zoom (canvas), ==, 100);
+  easel_canvas_press (canvas, 1, x + 0.5, y + 0.5);
+  easel_canvas_release (canvas, 1);
+  wait_for_layout (win);
+}
+
+static gboolean
+pc_removed (const EaselImage *img, int x, int y)
+{
+  return (easel_image_get (img, x, y) >> 24) == 0;
+}
+
+/* 0037 AS-1 (REQ-0037-01): a press flips the blue island to removed, again to kept; a press on the green disk the method removed keeps
+   it alone; a press on the white keeps the white; no step, no mark meanwhile; OK keeps the result as shown, one step. */
+static void
+pc_as1_presses (void)
+{
+  EaselWindow *win = pc_window ();
+  const EaselImage *img = easel_window_get_picture (win);
+  g_autofree guint32 *shown = NULL;
+
+  rbg_open (win);
+  rbg_settle (win);
+  g_assert_false (pc_removed (img, 120, 60));
+  g_assert_true (pc_removed (img, 120, 100) && pc_removed (img, 5, 5));
+  pc_press (win, 120, 60);
+  g_assert_true (pc_removed (img, 120, 60));
+  g_assert_false (pc_removed (img, 30, 60));
+  g_assert_false (action_enabled (win, "undo"));
+  g_assert_false (easel_window_get_modified (win));
+  pc_press (win, 118, 62);
+  g_assert_false (pc_removed (img, 120, 60));
+  pc_press (win, 120, 100);
+  g_assert_false (pc_removed (img, 120, 100));
+  g_assert_true (pc_removed (img, 120, 110) && pc_removed (img, 5, 5));
+  pc_press (win, 5, 5);
+  g_assert_false (pc_removed (img, 5, 5) || pc_removed (img, 150, 110));
+  pc_press (win, 150, 110);                                              /* the white again: removed, a press removed */
+  g_assert_true (pc_removed (img, 5, 5));
+  pc_press (win, 120, 60);                                               /* the island removed for OK */
+  shown = g_memdup2 (img->px, 160 * 120 * 4);
+  rbg_answer (win, "ok");
+  g_assert_cmpint (memcmp (img->px, shown, 160 * 120 * 4), ==, 0);       /* the result as shown */
+  g_assert_true (pc_removed (img, 120, 60) && !pc_removed (img, 120, 100));
+  g_assert_true (action_enabled (win, "undo"));
+  g_assert_true (easel_window_get_modified (win));
+  rbg_done ();
+}
+
+/* 0037 AS-2 (REQ-0037-01): Cancel after a press gives the picture back, no step. */
+static void
+pc_as2_cancel (void)
+{
+  EaselWindow *win = pc_window ();
+  const EaselImage *img = easel_window_get_picture (win);
+  g_autofree guint32 *before = g_memdup2 (img->px, 160 * 120 * 4);
+
+  rbg_open (win);
+  pc_press (win, 120, 60);
+  rbg_answer (win, "cancel");
+  g_assert_cmpint (memcmp (img->px, before, 160 * 120 * 4), ==, 0);
+  g_assert_false (action_enabled (win, "undo"));
+  rbg_done ();
+}
+
+/* 0037 AS-3 (REQ-0037-01): with a marked selection from (100, 40) to (155, 80), a press inside it on the island flips it; a press on the
+   picture outside it changes nothing. */
+static void
+pc_as3_selection (void)
+{
+  EaselWindow *win = pc_window ();
+  EaselImage *img = (EaselImage *) easel_window_get_picture (win);
+  g_autofree guint32 *outside = NULL;
+
+  use_tool (win, "select");
+  drag_selection (win, 100, 40, 155, 80);
+  rbg_open (win);
+  rbg_settle (win);
+  outside = g_memdup2 (img->px, 160 * 120 * 4);
+  pc_press (win, 30, 60);                                                /* outside the selection, on the red */
+  g_assert_cmpint (memcmp (img->px, outside, 160 * 120 * 4), ==, 0);
+  pc_press (win, 120, 60);                                               /* the island, inside */
+  rbg_answer (win, "ok");
+  g_assert_true (easel_canvas_put_down (easel_window_get_canvas (win)));
+  g_assert_true (pc_removed (img, 120, 60));
+  g_assert_false (pc_removed (img, 30, 60));
+  rbg_done ();
+}
+
+/* 0037 AS-4 (REQ-0037-02): the white pressed to kept leaves nothing removed: OK adds no step, no mark; a press on pixels transparent
+   before flips nothing. */
+static void
+pc_as4_nothing_and_transparent (void)
+{
+  EaselWindow *win = pc_window ();
+  EaselImage *img = easel_window_get_picture (win) ? (EaselImage *) easel_window_get_picture (win) : NULL;
+  g_autofree guint32 *before = g_memdup2 (img->px, 160 * 120 * 4), *shown = NULL;
+
+  rbg_open (win);
+  pc_press (win, 5, 5);
+  pc_press (win, 120, 100);                                               /* the green: kept too */
+  rbg_answer (win, "ok");
+  g_assert_cmpint (memcmp (img->px, before, 160 * 120 * 4), ==, 0);
+  g_assert_false (action_enabled (win, "undo"));
+  g_assert_false (easel_window_get_modified (win));
+  for (int y = 0; y < 10; y++)
+    for (int x = 0; x < 10; x++)
+      img->px[y * 160 + x] = 0x00FFFFFFu;
+  img->dirty = (EaselRect) { 0, 0, 160, 120 };
+  easel_canvas_update (easel_window_get_canvas (win));
+  rbg_open (win);
+  rbg_settle (win);
+  shown = g_memdup2 (img->px, 160 * 120 * 4);
+  pc_press (win, 3, 3);
+  g_assert_cmpint (memcmp (img->px, shown, 160 * 120 * 4), ==, 0);
+  rbg_answer (win, "cancel");
+  rbg_done ();
+}
+
+/* 0037 AS-5 (REQ-0037-03): F6 takes the keys to the canvas with the marker; the arrows bring it onto the island and Space flips it,
+   "Removed" announced; a key repeat of Space flips nothing; Tab goes back to the field; F6 and Enter on the canvas is OK. */
+static void
+pc_as5_keyboard (void)
+{
+  EaselWindow *win = pc_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  GtkWidget *card = rbg_open (win);
+  int mx, my;
+  g_autofree char *said = NULL;
+
+  rbg_settle (win);
+  easel_window_log_announcements (win, TRUE);
+  g_assert_true (key_taken (win, GDK_KEY_F6, 0));
+  wait_for_layout (win);
+  g_assert_true (gtk_root_get_focus (GTK_ROOT (win)) == GTK_WIDGET (canvas));
+  g_assert_true (easel_canvas_marker_shown (canvas));
+  for (int i = 0; i < 400; i++)
+    {
+      easel_canvas_marker_get (canvas, &mx, &my);
+      if (mx == 120 && my == 60)
+        break;
+      g_assert_true (key_taken (win, mx != 120 ? (mx < 120 ? GDK_KEY_Right : GDK_KEY_Left) : (my < 60 ? GDK_KEY_Down : GDK_KEY_Up), 0));
+    }
+  easel_canvas_marker_get (canvas, &mx, &my);
+  g_assert_true (mx == 120 && my == 60);
+  g_assert_true (key_taken (win, GDK_KEY_space, 0));
+  g_assert_true (pc_removed (img, 120, 60));
+  g_assert_true (key_taken (win, GDK_KEY_space, 0));                     /* the same key again, held: a repeat */
+  wait_for_layout (win);
+  g_assert_true (pc_removed (img, 120, 60));
+  said = easel_window_take_announcements (win);
+  g_assert_nonnull (strstr (said, "Removed"));
+  g_assert_true (key_taken (win, GDK_KEY_Tab, 0));
+  g_assert_true (gtk_widget_is_ancestor (gtk_root_get_focus (GTK_ROOT (win)), card));
+  g_assert_true (key_taken (win, GDK_KEY_F6, 0));
+  g_assert_true (key_taken (win, GDK_KEY_Return, 0));
+  rbg_wait_closed (win);
+  g_assert_true (pc_removed (img, 120, 60));
+  g_assert_true (action_enabled (win, "undo"));
+  easel_window_log_announcements (win, FALSE);
+  rbg_done ();
+}
+
+/* 0037 AS-6 (REQ-0037-04): the island pressed to removed stays so when the Tolerance changes and comes back; a press on it again
+   removes that press. */
+static void
+pc_as6_tolerance (void)
+{
+  EaselWindow *win = pc_window ();
+  const EaselImage *img = easel_window_get_picture (win);
+  GtkWidget *card = rbg_open (win);
+  AdwSpinRow *row = easel_remove_bg_card_row (card);
+  int t = (int) adw_spin_row_get_value (row);
+
+  pc_press (win, 120, 60);
+  g_assert_true (pc_removed (img, 120, 60));
+  adw_spin_row_set_value (row, t + 1);
+  rbg_settle (win);
+  g_assert_true (pc_removed (img, 120, 60));
+  adw_spin_row_set_value (row, t);
+  rbg_settle (win);
+  g_assert_true (pc_removed (img, 120, 60));
+  pc_press (win, 125, 60);
+  g_assert_false (pc_removed (img, 120, 60));
+  rbg_answer (win, "cancel");
+  rbg_done ();
+}
+
+/* 0037 AS-7 (REQ-0037-05): 9 typed and not yet taken, a press: the preview is first made for 9, the island flipped in it. */
+static void
+pc_as7_typed (void)
+{
+  EaselWindow *win = pc_window ();
+  const EaselImage *img = easel_window_get_picture (win);
+  GtkWidget *card = rbg_open (win);
+  AdwSpinRow *row = easel_remove_bg_card_row (card);
+
+  gtk_editable_set_text (GTK_EDITABLE (row), "9");
+  pc_press (win, 120, 60);
+  g_assert_cmpint ((int) adw_spin_row_get_value (row), ==, 9);
+  g_assert_true (pc_removed (img, 120, 60));
+  rbg_answer (win, "cancel");
+  rbg_done ();
+}
+
+/* 0037 AS-8 (REQ-0037-06, -07): while the card is open Ctrl+wheel zooms, the middle button's press does nothing, Undo does nothing,
+   and the pointer is the default arrow. */
+static void
+pc_as8_view (void)
+{
+  EaselWindow *win = pc_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  g_autofree guint32 *shown = NULL;
+
+  rbg_open (win);
+  rbg_settle (win);
+  g_assert_null (gtk_widget_get_cursor (GTK_WIDGET (canvas)));
+  shown = g_memdup2 (img->px, 160 * 120 * 4);
+  easel_canvas_press (canvas, 2, 120.5, 60.5);
+  easel_canvas_release (canvas, 2);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  wait_for_layout (win);
+  g_assert_cmpint (memcmp (img->px, shown, 160 * 120 * 4), ==, 0);
+  g_assert_true (easel_canvas_wheel (canvas, GDK_CONTROL_MASK, -1, 50, 50));
+  wait_for_layout (win);
+  g_assert_cmpint (easel_canvas_get_zoom (canvas), >, 100);
+  rbg_answer (win, "cancel");
+  rbg_done ();
+}
+
+/* 0037 AS-9's memory case (REQ-0037-08): a press whose memory cannot be had shows the message; the preview stays as before it. */
+static void
+pc_as9_memory (void)
+{
+  EaselWindow *win = pc_window ();
+  const EaselImage *img = easel_window_get_picture (win);
+  g_autofree guint32 *shown = NULL;
+
+  rbg_open (win);
+  rbg_settle (win);
+  shown = g_memdup2 (img->px, 160 * 120 * 4);
+  easel_window_set_transform_limit (win, 64);
+  easel_canvas_press (easel_window_get_canvas (win), 1, 120.5, 60.5);
+  easel_canvas_release (easel_window_get_canvas (win), 1);
+  easel_window_set_transform_limit (win, G_MAXSIZE);
+  wait_for_dialogs (win, 1);
+  g_assert_cmpstr (top_heading (win), ==, "Could Not Remove the Background");
+  g_assert_cmpint (memcmp (img->px, shown, 160 * 120 * 4), ==, 0);
+  respond (win, "close");
+  rbg_answer (win, "cancel");
+  rbg_done ();
 }
 
 /* ---- 0036: wheel zoom in every tool ---- */
@@ -38393,6 +38693,15 @@ main (int argc, char **argv)
   g_test_add_func ("/0035/as8_help", rbg_as8_help);
   g_test_add_func ("/0035/as9_progress_and_cancel", rbg_as9_progress_and_cancel);
   g_test_add_func ("/0035/as11_complex_hint", rbg_as11_complex_hint);
+  g_test_add_func ("/0037/as1_presses", pc_as1_presses);
+  g_test_add_func ("/0037/as2_cancel", pc_as2_cancel);
+  g_test_add_func ("/0037/as3_selection", pc_as3_selection);
+  g_test_add_func ("/0037/as4_nothing_and_transparent", pc_as4_nothing_and_transparent);
+  g_test_add_func ("/0037/as5_keyboard", pc_as5_keyboard);
+  g_test_add_func ("/0037/as6_tolerance", pc_as6_tolerance);
+  g_test_add_func ("/0037/as7_typed", pc_as7_typed);
+  g_test_add_func ("/0037/as8_view", pc_as8_view);
+  g_test_add_func ("/0037/as9_memory", pc_as9_memory);
   g_test_add_func ("/0036/as1_every_tool", wz_as1_every_tool);
   g_test_add_func ("/0036/as2_cards", wz_as2_cards);
   g_test_add_func ("/0036/as3_held", wz_as3_held);

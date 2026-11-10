@@ -41,6 +41,7 @@ Vertical slices first (a thin end-to-end feature), breadth later.
 | 0034 | black-and-white | Image › Black and White… turns the picture or the selection to black and white by Threshold, Ordered dither or Error diffusion, chosen in a dialog; one undo step, alpha kept | Phase 2, item D of `docs/phase2-plan.md`. JOD, 2026-11-09 |
 | 0035 | remove-background | Image › Remove Background… makes the background transparent by its colors and edges (a fitted background surface, a watershed, the fringe of mixed pixels), with one Tolerance value and a live preview in a card in the canvas area's corner, on the selection or the picture, hard edges, one undo step | Phase 2, item F of `docs/phase2-plan.md`; ADR-0007 (classical, no model; ADR-0006's model superseded). JOD, 2026-11-07 and 2026-11-09 |
 | 0036 | wheel-zoom | Ctrl+wheel and the pinch zoom with every tool as in Pan, not while anything is held | Phase 2 row; JOD, 2026-11-09: the status bar slider was built and dropped ("too much"), the wheel zoom kept |
+| 0037 | remove-background-pieces | In Remove Background's card a click on a piece of the preview toggles it kept or removed (the eagle's cloud islands, a horizon's bands); segments of the border prototyped and left out | Phase 2, item F of `docs/phase2-plan.md`; JOD, 2026-11-10 |
 
 ### Phase 2: Modern extras (optional, starts only after the core XP scope is delivered)
 | Feature | One line |

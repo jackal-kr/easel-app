@@ -45,6 +45,23 @@ EaselRbgResult easel_rbg_preview (const EaselRbg *r, const uint32_t *px, const u
 EaselRbgResult easel_rbg_result (const EaselRbg *r, const uint32_t *px, const uint8_t *mask, uint32_t *dst, size_t *removed,
                                  const volatile int *cancel);
 
+/* A press on the preview (0037): a pixel of px, as the caller looks at it. */
+typedef struct
+{
+  int x, y;
+} EaselRbgPress;
+
+/* After easel_rbg_preview or easel_rbg_result into dst (REQ-0037-01, -02, -09): each piece holding an odd number of the n presses turns
+   to the other kind. A piece is a 4-connected run of dst's kept, or removed, pixels that are looked at and were not fully transparent in
+   px (up to EASEL_RBG_COPY_MAX pixels), or a run of the copy's labels whose blocks the pixels follow (over that). A removed pixel comes
+   back only if the method removed it. A press on no piece does nothing. *removed (may be NULL), the pixels removed before it (as the
+   preview or the result gave it), becomes the count after it. */
+void easel_rbg_flips (EaselRbg *r, const uint32_t *px, const uint8_t *mask, uint32_t *dst, const EaselRbgPress *presses, size_t n,
+                      size_t *removed);
+
+/* Whether two pixels lie in one piece of the last easel_rbg_flips (REQ-0037-04); FALSE when either lies in none. */
+bool easel_rbg_same_piece (const EaselRbg *r, int x1, int y1, int x2, int y2);
+
 /* Whether the card shows its second line (REQ-0035-04): the ring's 90th percentile distance to the background as judged above 6
    delta-E, a border the background's model explains poorly in part. */
 bool easel_rbg_complex (const EaselRbg *r);

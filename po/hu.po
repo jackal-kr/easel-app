@@ -1267,6 +1267,12 @@ msgstr "Ez a háttér összetett. Csökkentse a Tűréshatárt, majd kattintson 
 msgid "Tolerance"
 msgstr "Tűréshatár"
 
+msgid "Kept"
+msgstr "Megtartva"
+
+msgid "Removed"
+msgstr "Eltávolítva"
+
 msgid "Removing the Background"
 msgstr "Háttér eltávolítása folyamatban"
 

@@ -47,7 +47,7 @@ static void
 measure (int w, int h, double open_budget, double result_budget)
 {
   uint32_t *px = malloc ((size_t) w * h * sizeof *px), *dst = malloc ((size_t) w * h * sizeof *dst);
-  double open[RUNS], again[RUNS], result[RUNS];
+  double open[RUNS], again[RUNS], result[RUNS], press1[RUNS], press1000[RUNS];
   size_t bytes = 0;
   int automatic = 0;
 
@@ -68,6 +68,24 @@ measure (int w, int h, double open_budget, double result_budget)
       open[i] = t1 - t0;
       again[i] = t2 - t1;
       result[i] = now_ms () - t2 + again[i];   /* at OK: the labels for the number shown, then the result */
+      {
+        /* 0037 (REQ-0037-08): a preview with one press, and with 1 000 presses spread over the picture */
+        EaselRbgPress *pr = malloc (1000 * sizeof *pr);
+        double t3, t4;
+
+        for (int k = 0; k < 1000; k++)
+          pr[k] = (EaselRbgPress) { (int) ((uint32_t) (k * 2654435761u) % (uint32_t) w), (int) ((uint32_t) (k * 40503u) % (uint32_t) h) };
+        t3 = now_ms ();
+        easel_rbg_preview (r, px, NULL, dst, NULL);
+        easel_rbg_flips (r, px, NULL, dst, pr, 1, NULL);
+        t4 = now_ms ();
+        press1[i] = t4 - t3;
+        easel_rbg_label (r, automatic + 1, NULL);
+        easel_rbg_preview (r, px, NULL, dst, NULL);
+        easel_rbg_flips (r, px, NULL, dst, pr, 1000, NULL);
+        press1000[i] = now_ms () - t4;
+        free (pr);
+      }
       bytes = easel_rbg_bytes (r);
       easel_rbg_free (r);
     }
@@ -78,6 +96,10 @@ measure (int w, int h, double open_budget, double result_budget)
           open_budget, result[0], result[1], result[2],
           (result[0] < result_budget && result[1] < result_budget && result[2] < result_budget) ? "within" : "OVER", result_budget,
           bytes >> 20);
+  printf ("%d x %d: a preview with a press %.0f %.0f %.0f ms, after a Tolerance change with 1 000 presses %.0f %.0f %.0f ms (%s < 300)\n",
+          w, h, press1[0], press1[1], press1[2], press1000[0], press1000[1], press1000[2],
+          (press1[0] < 300 && press1[1] < 300 && press1[2] < 300 && press1000[0] < 300 && press1000[1] < 300 && press1000[2] < 300)
+            ? "within" : "OVER");
   free (px);
   free (dst);
 }

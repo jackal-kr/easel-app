@@ -679,6 +679,111 @@ large_shape (void)
   free (m);
 }
 
+/* 0037: the pieces. A white picture with a red rectangle, a blue disk apart from it a tenth of its size or more (kept by the method
+   as an island) and a small green disk (removed by the method, under a tenth). Presses flip a piece; twice is as the method made it;
+   a removed piece comes back exactly; the white is one piece; a fully transparent area is no piece. */
+static size_t
+flipped (const uint32_t *p, int w, int h, const EaselRbgPress *pr, size_t n, uint32_t *d, EaselRbg **keep)
+{
+  EaselRbg *r = easel_rbg_new (p, NULL, w, h, BIG);
+  size_t gone = 0;
+
+  CHECK (easel_rbg_label (r, easel_rbg_auto_tolerance (r), NULL) == EASEL_RBG_DONE);
+  CHECK (easel_rbg_result (r, p, NULL, d, &gone, NULL) == EASEL_RBG_DONE);
+  easel_rbg_flips (r, p, NULL, d, pr, n, &gone);
+  if (keep != NULL)
+    *keep = r;
+  else
+    easel_rbg_free (r);
+  return gone;
+}
+
+static void
+pieces_small (void)
+{
+  int w = 160, h = 120;
+  uint32_t *p = picture (w, h, WHITE), *d = picture (w, h, 0), *m = picture (w, h, 0);
+  EaselRbg *r;
+
+  for (int y = 30; y < 90; y++)
+    for (int x = 20; x < 80; x++)
+      p[y * w + x] = RED;                                                 /* 3 600 pixels */
+  disk (p, w, 120, 60, 13, BLUE);                                         /* about 530: an island */
+  disk (p, w, 120, 100, 3, 0xFF10A030u);                                  /* about 29: removed by the method */
+  flipped (p, w, h, NULL, 0, m, NULL);
+  CHECK (m[60 * w + 120] == BLUE && removed (p, m, 100 * (size_t) w + 120) && removed (p, m, 5));   /* the method */
+  {
+    EaselRbgPress one[] = { { 120, 60 } };
+    flipped (p, w, h, one, 1, d, NULL);
+    CHECK (removed (p, d, 60 * (size_t) w + 120) && d[60 * w + 30] == RED && removed (p, d, 5));
+    for (size_t i = 0; i < (size_t) w * h; i++)
+      if (!(abs ((int) (i % w) - 120) <= 13 && abs ((int) (i / w) - 60) <= 13))
+        CHECK (d[i] == m[i]);                                             /* nothing else changed */
+  }
+  {
+    EaselRbgPress two[] = { { 120, 60 }, { 118, 62 } };                   /* twice in one piece: as the method */
+    flipped (p, w, h, two, 2, d, NULL);
+    CHECK (memcmp (d, m, (size_t) w * h * 4) == 0);
+  }
+  {
+    EaselRbgPress green[] = { { 120, 100 } };
+    flipped (p, w, h, green, 1, d, NULL);
+    CHECK (d[100 * w + 120] == 0xFF10A030u && removed (p, d, 5) && removed (p, d, 100 * (size_t) w + 140));
+  }
+  {
+    EaselRbgPress white[] = { { 5, 5 } };
+    size_t gone = flipped (p, w, h, white, 1, d, &r);
+
+    CHECK (d[5] == WHITE && d[110 * w + 150] == WHITE && d[60 * w + 30] == RED);
+    CHECK (easel_rbg_same_piece (r, 5, 5, 150, 110) && !easel_rbg_same_piece (r, 5, 5, 120, 60));
+    CHECK (!easel_rbg_same_piece (r, 5, 5, 30, 60));
+    (void) gone;
+    easel_rbg_free (r);
+  }
+  /* a fully transparent area is no piece: a press there flips nothing, and keeping the white leaves it transparent */
+  for (int y = 0; y < 10; y++)
+    for (int x = 0; x < 10; x++)
+      p[y * w + x] = 0x00ABCDEFu;
+  flipped (p, w, h, NULL, 0, m, NULL);
+  {
+    EaselRbgPress clear[] = { { 3, 3 } }, white[] = { { 50, 5 } };
+    size_t gone = flipped (p, w, h, clear, 1, d, NULL), zero = 0;
+
+    CHECK (memcmp (d, m, (size_t) w * h * 4) == 0);
+    for (size_t i = 0; i < (size_t) w * h; i++)
+      zero += (d[i] >> 24) == 0;
+    CHECK (gone == zero - 100);                    /* the count is of the pixels removed, not of those transparent before */
+    flipped (p, w, h, white, 1, d, NULL);
+    CHECK (d[3 * w + 3] == 0x00ABCDEFu && d[5 * w + 50] == WHITE);
+  }
+  free (p);
+  free (d);
+  free (m);
+}
+
+/* Over 2 000 000 pixels the pieces are the copy's: a press on an island turns every pixel of its blocks; the rest as the method. */
+static void
+pieces_large (void)
+{
+  int w = 2400, h = 1000;
+  uint32_t *p = picture (w, h, WHITE), *d = picture (w, h, 0), *m = picture (w, h, 0);
+  EaselRbgPress one[] = { { 1900, 500 } };
+
+  for (int y = 300; y < 700; y++)
+    for (int x = 400; x < 1200; x++)
+      p[(size_t) y * w + x] = RED;
+  disk (p, w, 1900, 500, 120, BLUE);
+  flipped (p, w, h, NULL, 0, m, NULL);
+  flipped (p, w, h, one, 1, d, NULL);
+  CHECK (removed (p, d, 500 * (size_t) w + 1900) && m[500 * (size_t) w + 1900] == BLUE);
+  for (size_t i = 0; i < (size_t) w * h; i++)
+    if (abs ((int) (i % w) - 1900) > 125 || abs ((int) (i / w) - 500) > 125)
+      CHECK (d[i] == m[i]);
+  free (p);
+  free (d);
+  free (m);
+}
+
 static size_t
 heap_in_use (void)
 {
@@ -744,6 +849,8 @@ main (void)
   RUN (clamp_and_same);
   RUN (large_copy);
   RUN (large_shape);
+  RUN (pieces_small);
+  RUN (pieces_large);
   RUN (memory_and_cancel);
   return 0;
 }

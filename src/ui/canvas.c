@@ -236,6 +236,8 @@ struct _EaselCanvas
   size_t poly_n, poly_cap;
   guint action_button;    /* button held after a press that acted at once (Fill): no other press acts until it is released */
   gboolean input_blocked;
+  EaselCanvasPressHook press_hook;   /* while set (0037), a primary press goes to it, and nothing else of the canvas acts */
+  gpointer press_data;
   gboolean busy;          /* a picture is loading: the busy cursor */
   gboolean grid_on, grid_axonometric;
   int grid_cell;
@@ -5033,8 +5035,8 @@ append_keyboard_marker (EaselCanvas *self, GtkSnapshot *snapshot)
   y1 = MAX (y0 + 1, view_edge (self, self->marker_y + 1));
   append_ring (snapshot, &black, x0 - 1, y0 - 1, x1 + 1, y1 + 1, scale);
   append_ring (snapshot, &white, x0 - 2, y0 - 2, x1 + 2, y1 + 2, scale);
-  /* The footprint's outline, which a mouse has as its cursor (REQ-0022-11). */
-  if (self->tool == EASEL_TOOL_BRUSH || self->tool == EASEL_TOOL_ERASER)
+  /* The footprint's outline, which a mouse has as its cursor (REQ-0022-11); none while presses go to a hook (REQ-0037-07). */
+  if ((self->tool == EASEL_TOOL_BRUSH || self->tool == EASEL_TOOL_ERASER) && self->press_hook == NULL)
     {
       EaselCursorShape shape = easel_cursor_shape (self->footprint, self->zoom, 1);
       uint32_t *argb = g_new (uint32_t, (gsize) shape.width * shape.height);
@@ -5289,6 +5291,14 @@ update_cursor (EaselCanvas *self)
   g_autoptr (GdkCursor) cursor = NULL;
   EaselCursorArt art = EASEL_CURSOR_COUNT;
 
+  if (self->press_hook != NULL)
+    {
+      self->cursor_art = EASEL_CURSOR_COUNT;
+      gtk_widget_set_cursor (GTK_WIDGET (self), NULL);            /* the default arrow (REQ-0037-07) */
+      if (self->area != NULL)
+        gtk_widget_set_cursor (self->area, NULL);
+      return;
+    }
   EaselHandle handle = self->resizing != EASEL_HANDLE_NONE ? self->resizing : self->hover;
 
   if (self->busy)
@@ -5326,6 +5336,15 @@ update_cursor (EaselCanvas *self)
   gtk_widget_set_cursor (GTK_WIDGET (self), cursor);
   if (self->area != NULL)
     gtk_widget_set_cursor (self->area, cursor);
+}
+
+void
+easel_canvas_set_press_hook (EaselCanvas *self, EaselCanvasPressHook hook, gpointer data)
+{
+  self->press_hook = hook;
+  self->press_data = data;
+  update_cursor (self);
+  gtk_widget_queue_draw (GTK_WIDGET (self));
 }
 
 void
@@ -6152,6 +6171,19 @@ easel_canvas_press_timed (EaselCanvas *self, guint button, double x, double y, g
 {
   int px, py;
 
+  /* Remove Background's card open (REQ-0037-01): the primary press, of the mouse or the marker's Space, goes to the card's hook as the
+     picture pixel under it (REQ-0025-02); nothing else of the canvas acts. */
+  if (self->press_hook != NULL)
+    {
+      if (button == GDK_BUTTON_PRIMARY && self->img != NULL)
+        {
+          if (gtk_widget_get_root (GTK_WIDGET (self)) != NULL)
+            gtk_widget_grab_focus (GTK_WIDGET (self));
+          to_pixel (self, x, y, &px, &py);
+          self->press_hook (px, py, self->press_data);
+        }
+      return;
+    }
   /* Only the primary and secondary buttons draw; others are ignored (REQ-0001-24). */
   if (self->input_blocked || (button != GDK_BUTTON_PRIMARY && button != GDK_BUTTON_SECONDARY))
     return;

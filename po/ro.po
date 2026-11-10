@@ -1277,6 +1277,12 @@ msgstr "Acest fundal este complex. Micșorați Toleranța, apoi faceți clic pe 
 msgid "Tolerance"
 msgstr "Toleranță"
 
+msgid "Kept"
+msgstr "Păstrat"
+
+msgid "Removed"
+msgstr "Eliminat"
+
 msgid "Removing the Background"
 msgstr "Se elimină fundalul"
 

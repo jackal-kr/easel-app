@@ -1267,6 +1267,12 @@ msgstr "Este fundo é complexo. Reduza a Tolerância e depois clique nas partes 
 msgid "Tolerance"
 msgstr "Tolerância"
 
+msgid "Kept"
+msgstr "Mantido"
+
+msgid "Removed"
+msgstr "Removido"
+
 msgid "Removing the Background"
 msgstr "A remover o fundo"
 

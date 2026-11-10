@@ -1277,6 +1277,12 @@ msgstr "Toto pozadí je složité. Snižte Toleranci a pak je opravte klepnutím
 msgid "Tolerance"
 msgstr "Tolerance"
 
+msgid "Kept"
+msgstr "Ponecháno"
+
+msgid "Removed"
+msgstr "Odstraněno"
+
 msgid "Removing the Background"
 msgstr "Odstraňuje se pozadí"
 

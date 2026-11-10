@@ -1277,6 +1277,12 @@ msgstr "To tło jest złożone. Zmniejsz Tolerancję, a następnie kliknij fragm
 msgid "Tolerance"
 msgstr "Tolerancja"
 
+msgid "Kept"
+msgstr "Zachowane"
+
+msgid "Removed"
+msgstr "Usunięte"
+
 msgid "Removing the Background"
 msgstr "Usuwanie tła"
 

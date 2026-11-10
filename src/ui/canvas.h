@@ -106,6 +106,11 @@ gsize easel_canvas_get_bytes_copied (EaselCanvas *self);
 double easel_canvas_get_scale (EaselCanvas *self);
 
 /* While blocked (the color chooser is open, REQ-0003-14), presses on the canvas do nothing. */
+/* A primary press (the mouse's, or Space at the keyboard's marker) given as the picture pixel under it (REQ-0025-02). */
+typedef void (*EaselCanvasPressHook) (int x, int y, gpointer data);
+/* While hook is set (Remove Background's card, REQ-0037-01): a primary press goes to it and nothing else of the canvas acts; the pointer is
+   the default arrow and no footprint outline is drawn (REQ-0037-07). NULL ends it. */
+void easel_canvas_set_press_hook (EaselCanvas *self, EaselCanvasPressHook hook, gpointer data);
 void easel_canvas_set_input_blocked (EaselCanvas *self, gboolean blocked);
 
 /* Where finished strokes are recorded as undo steps (not owned; NULL records nothing). */

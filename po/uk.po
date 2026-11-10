@@ -1277,6 +1277,12 @@ msgstr "Це тло складне. Зменште Допуск, потім кл
 msgid "Tolerance"
 msgstr "Допуск"
 
+msgid "Kept"
+msgstr "Залишено"
+
+msgid "Removed"
+msgstr "Вилучено"
+
 msgid "Removing the Background"
 msgstr "Вилучення тла"
 

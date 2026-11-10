@@ -1267,6 +1267,12 @@ msgstr "Cet arrière-plan est complexe. Baissez la Tolérance, puis cliquez sur 
 msgid "Tolerance"
 msgstr "Tolérance"
 
+msgid "Kept"
+msgstr "Conservé"
+
+msgid "Removed"
+msgstr "Supprimé"
+
 msgid "Removing the Background"
 msgstr "Suppression de l'arrière-plan"
 

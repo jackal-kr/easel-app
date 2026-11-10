@@ -1996,6 +1996,9 @@ wheel_zoom_gate (gpointer data)
 {
   EaselWindow *self = data;
 
+  if (self->rbg_card != NULL && !self->removing && self->picture != NULL
+      && adw_application_window_get_visible_dialog (ADW_APPLICATION_WINDOW (self)) == NULL && !menu_is_open (self))
+    return TRUE;                               /* Remove Background's card alone: the view zooms (REQ-0037-06) */
   return self->picture != NULL && !dialog_is_open (self) && !menu_is_open (self)
          && !easel_font_card_family_is_open (self->font_card);
 }
@@ -3885,6 +3888,10 @@ struct RbgSession
   int cancel;                            /* asked to stop (any thread) */
   EaselRbgResult outcome;
   int slow_ms;                           /* the test hook EASEL_TEST_RBG_SLOW_MS: the work made that much slower (AS-9) */
+  size_t analysis_limit;                 /* the memory the analysis may hold */
+  EaselRbgPress *presses;                /* 0037: the presses in force, pixels of what the command looks at */
+  size_t n_presses, cap_presses;
+  gboolean labeled;                      /* the labels are the shown number's */
 };
 
 static void
@@ -3895,6 +3902,7 @@ rbg_session_free (struct RbgSession *s)
   free (s->orig);
   free (s->mask);
   free (s->dst);
+  free (s->presses);
   g_object_unref (s->win);
   g_free (s);
 }
@@ -3939,9 +3947,14 @@ rbg_restore (struct RbgSession *s)
 static void
 rbg_preview (struct RbgSession *s)
 {
-  s->tolerance = s->shown;
-  easel_rbg_label (s->rbg, s->tolerance, NULL);
+  if (!s->labeled || s->tolerance != s->shown)
+    {
+      s->tolerance = s->shown;
+      easel_rbg_label (s->rbg, s->tolerance, NULL);   /* a press alone does not label again */
+      s->labeled = TRUE;
+    }
   easel_rbg_preview (s->rbg, s->orig, s->mask, s->live, NULL);
+  easel_rbg_flips (s->rbg, s->orig, s->mask, s->live, s->presses, s->n_presses, NULL);   /* the presses in force (REQ-0037-01, -04) */
   rbg_show (s);
 }
 
@@ -3977,6 +3990,8 @@ rbg_work (GTask *task, gpointer source, gpointer data, GCancellable *cancellable
   s->outcome = easel_rbg_label (s->rbg, s->shown, &s->cancel);
   if (s->outcome == EASEL_RBG_DONE)
     s->outcome = easel_rbg_result (s->rbg, s->orig, s->mask, s->dst, &s->removed, &s->cancel);
+  if (s->outcome == EASEL_RBG_DONE)
+    easel_rbg_flips (s->rbg, s->orig, s->mask, s->dst, s->presses, s->n_presses, &s->removed);
   if (__atomic_load_n (&s->cancel, __ATOMIC_SEQ_CST))
     s->outcome = EASEL_RBG_CANCELLED;
   g_task_return_boolean (task, TRUE);
@@ -4092,6 +4107,7 @@ on_rbg_closed (gboolean ok, int tolerance, gpointer data)
     {
       gtk_overlay_remove_overlay (self->canvas_overlay, self->rbg_card);
       self->rbg_card = NULL;
+      easel_canvas_set_press_hook (self->canvas, NULL, NULL);
       on_visible_dialog_changed (self);
       gtk_widget_grab_focus (GTK_WIDGET (self->canvas));   /* the keys go back to the canvas */
     }
@@ -4102,8 +4118,8 @@ on_rbg_closed (gboolean ok, int tolerance, gpointer data)
       rbg_session_free (s);
       return;
     }
-  if (held > self->transform_limit || n * sizeof *s->dst > self->transform_limit - held
-      || (s->dst = malloc (n * sizeof *s->dst)) == NULL)
+  if (s->dst == NULL && (held > self->transform_limit || n * sizeof *s->dst > self->transform_limit - held
+                         || (s->dst = malloc (n * sizeof *s->dst)) == NULL))
     {
       rbg_restore (s);
       self->rbg = NULL;
@@ -4120,6 +4136,137 @@ on_rbg_closed (gboolean ok, int tolerance, gpointer data)
   g_object_unref (task);
 }
 
+/* A press on the picture while the card is open (REQ-0037-01, -04, -05): the typed number taken and a preview due made first; then a
+   press on a piece an earlier press flipped removes that press, else the press is kept; the preview again, the flip announced. */
+static void
+on_rbg_press (int x, int y, gpointer data)
+{
+  EaselWindow *self = data;
+  struct RbgSession *s = self->rbg;
+  size_t i;
+  gboolean found = FALSE;
+
+  if (s == NULL || self->removing || self->rbg_card == NULL)
+    return;
+  easel_remove_bg_card_commit (self->rbg_card);
+  if (s->idle != 0)
+    {
+      g_clear_handle_id (&s->idle, g_source_remove);
+      rbg_preview (s);
+    }
+  if (s->selection)
+    {
+      int sx, sy, sw, sh;
+      gboolean floating;
+
+      easel_canvas_get_selection (self->canvas, &sx, &sy, &sw, &sh, &floating);
+      x -= sx, y -= sy;                                   /* the float's own pixels, as shown */
+    }
+  if (x < 0 || y < 0 || x >= s->w || y >= s->h)
+    return;                                               /* beside what the command looks at */
+  i = (size_t) y * s->w + x;
+  if ((s->mask != NULL && !s->mask[i]) || (s->orig[i] >> 24) == 0)
+    return;                                               /* outside the shape, or transparent before: no piece */
+  for (size_t j = 0; j < s->n_presses && !found; j++)
+    if (easel_rbg_same_piece (s->rbg, x, y, s->presses[j].x, s->presses[j].y))
+      {
+        memmove (s->presses + j, s->presses + j + 1, (s->n_presses - j - 1) * sizeof *s->presses);
+        s->n_presses--;
+        found = TRUE;
+      }
+  if (!found)
+    {
+      if (s->n_presses == s->cap_presses)
+        {
+          size_t cap = s->cap_presses ? 2 * s->cap_presses : 16;
+          EaselRbgPress *grown = cap * sizeof *grown <= self->transform_limit ? realloc (s->presses, cap * sizeof *grown) : NULL;
+
+          if (grown == NULL)
+            {
+              rbg_message (self);                         /* REQ-0037-08: the preview as before the press */
+              return;
+            }
+          s->presses = grown;
+          s->cap_presses = cap;
+        }
+      s->presses[s->n_presses++] = (EaselRbgPress) { x, y };
+    }
+  rbg_preview (s);
+  easel_window_announce (self, (s->live[i] >> 24) != 0 ? _ ("Kept") : _ ("Removed"));
+}
+
+/* The worker of the opening (REQ-0035-09, 2026-11-10: the first opening at 8000 x 8000 measured 307 to 315 ms): the analysis, the labels
+   for the automatic tolerance and the first preview into the result's buffer; the main thread copies it in. */
+static void
+rbg_open_work (GTask *task, gpointer source, gpointer data, GCancellable *cancellable)
+{
+  struct RbgSession *s = data;
+
+  s->rbg = easel_rbg_new (s->orig, s->mask, s->w, s->h, s->analysis_limit);
+  if (s->rbg == NULL)
+    s->outcome = EASEL_RBG_NO_MEMORY;
+  else if (__atomic_load_n (&s->cancel, __ATOMIC_SEQ_CST))
+    s->outcome = EASEL_RBG_CANCELLED;
+  else
+    {
+      s->shown = easel_rbg_auto_tolerance (s->rbg);
+      s->outcome = easel_rbg_label (s->rbg, s->shown, &s->cancel);
+      if (s->outcome == EASEL_RBG_DONE)
+        easel_rbg_preview (s->rbg, s->orig, s->mask, s->dst, NULL);
+    }
+  if (__atomic_load_n (&s->cancel, __ATOMIC_SEQ_CST))
+    s->outcome = EASEL_RBG_CANCELLED;
+  g_task_return_boolean (task, TRUE);
+}
+
+/* The end of the opening's work, on the main thread: the progress dialog closed; then the card with the preview, or the memory's
+   message and everything as before (REQ-0035-06), or nothing (cancelled, already put back). */
+static void
+rbg_opened (GObject *source, GAsyncResult *result, gpointer data)
+{
+  struct RbgSession *s = data;
+  EaselWindow *self = s->win;
+  AdwDialog *progress = self->rbg_progress;
+  GtkWidget *card;
+
+  self->removing = FALSE;
+  g_clear_handle_id (&self->rbg_timer, g_source_remove);
+  g_clear_handle_id (&self->rbg_pulse, g_source_remove);
+  if (progress != NULL)
+    {
+      self->rbg_progress = NULL;
+      g_signal_handlers_disconnect_by_func (progress, on_rbg_progress_closed, self);
+      adw_dialog_force_close (progress);
+    }
+  on_visible_dialog_changed (self);
+  if (s->restored || s->outcome != EASEL_RBG_DONE)
+    {
+      gboolean memory = !s->restored && s->outcome == EASEL_RBG_NO_MEMORY;
+
+      rbg_restore (s);                   /* nothing written but a lift, which is undone */
+      self->rbg = NULL;
+      rbg_session_free (s);
+      if (memory)
+        rbg_message (self);
+      return;
+    }
+  s->tolerance = s->shown;
+  s->labeled = TRUE;
+  memcpy (s->live, s->dst, (size_t) s->w * (size_t) s->h * sizeof *s->dst);
+  rbg_show (s);
+  /* The card in the canvas area's bottom right corner, over the view, as the thumbnail is in its top right (REQ-0035-04). */
+  card = easel_remove_bg_card_new (s->shown, easel_rbg_complex (s->rbg), on_rbg_changed, on_rbg_closed, s);
+  gtk_widget_set_halign (card, GTK_ALIGN_END);
+  gtk_widget_set_valign (card, GTK_ALIGN_END);
+  gtk_widget_set_margin_end (card, 12);
+  gtk_widget_set_margin_bottom (card, 12);
+  self->rbg_card = card;
+  gtk_overlay_add_overlay (self->canvas_overlay, card);
+  easel_canvas_set_press_hook (self->canvas, on_rbg_press, self);
+  on_visible_dialog_changed (self);
+  gtk_widget_grab_focus (GTK_WIDGET (easel_remove_bg_card_row (card)));
+}
+
 /* The item (REQ-0035-01, -02, -04): what waits is put down, a marked selection lifted, the pixels as before copied, the analysis
    made; then the dialog with the preview for the automatic tolerance; or the memory's message and nothing changed (REQ-0035-06). */
 static void
@@ -4132,7 +4279,6 @@ remove_background_activated (GSimpleAction *action, GVariant *parameter, gpointe
   const uint8_t *shape = NULL;
   const char *slow = g_getenv ("EASEL_TEST_RBG_SLOW_MS");
   size_t n, held;
-  GtkWidget *card;
 
   if (!view_actions_allowed (self) || easel_canvas_is_panning (self->canvas) || card_field_focus (self) != NULL || self->rbg != NULL)
     return;
@@ -4161,37 +4307,32 @@ remove_background_activated (GSimpleAction *action, GVariant *parameter, gpointe
       s->h = self->picture->height;
     }
   n = (size_t) s->w * (size_t) s->h;
-  held = n * (sizeof *s->orig + (shape != NULL));
+  held = n * (2 * sizeof *s->orig + (shape != NULL));   /* the pixels as before, the result's buffer, the shape */
   if (held <= self->transform_limit && (s->orig = malloc (n * sizeof *s->orig)) != NULL
-      && (shape == NULL || (s->mask = malloc (n)) != NULL))
+      && (s->dst = malloc (n * sizeof *s->dst)) != NULL && (shape == NULL || (s->mask = malloc (n)) != NULL))
     {
+      GTask *task;
+
       memcpy (s->orig, s->live, n * sizeof *s->orig);
       if (shape != NULL)
         memcpy (s->mask, shape, n);
-      s->rbg = easel_rbg_new (s->orig, s->mask, s->w, s->h, self->transform_limit - held);
-    }
-  if (s->rbg == NULL)
-    {
-      s->restored = TRUE;                /* nothing written yet */
-      if (s->lifted_here)
-        easel_canvas_rbg_unlift (self->canvas);
-      rbg_session_free (s);
-      rbg_message (self);
+      s->analysis_limit = self->transform_limit - held;
+      /* The analysis in the worker, the window's input held, the progress dialog after 0.5 s (REQ-0035-11) */
+      self->rbg = s;
+      self->removing = TRUE;
+      on_visible_dialog_changed (self);
+      self->rbg_timer = g_timeout_add (500, rbg_show_progress, self);
+      task = g_task_new (NULL, NULL, rbg_opened, s);
+      g_task_set_task_data (task, s, NULL);
+      g_task_run_in_thread (task, rbg_open_work);
+      g_object_unref (task);
       return;
     }
-  self->rbg = s;
-  s->shown = easel_rbg_auto_tolerance (s->rbg);
-  /* The card in the canvas area's bottom right corner, over the view, as the thumbnail is in its top right (REQ-0035-04). */
-  card = easel_remove_bg_card_new (s->shown, easel_rbg_complex (s->rbg), on_rbg_changed, on_rbg_closed, s);
-  gtk_widget_set_halign (card, GTK_ALIGN_END);
-  gtk_widget_set_valign (card, GTK_ALIGN_END);
-  gtk_widget_set_margin_end (card, 12);
-  gtk_widget_set_margin_bottom (card, 12);
-  self->rbg_card = card;
-  gtk_overlay_add_overlay (self->canvas_overlay, card);
-  on_visible_dialog_changed (self);
-  gtk_widget_grab_focus (GTK_WIDGET (easel_remove_bg_card_row (card)));
-  rbg_preview (s);
+  s->restored = TRUE;                    /* nothing written yet */
+  if (s->lifted_here)
+    easel_canvas_rbg_unlift (self->canvas);
+  rbg_session_free (s);
+  rbg_message (self);
 }
 
 gboolean
@@ -4434,16 +4575,64 @@ on_key_pressed (EaselWindow *self, guint keyval, guint keycode, GdkModifierType 
   self->key_down = keyval;
   if (self->rbg_card != NULL)
     {
-      /* Remove Background's card (REQ-0035-04): Esc is its Cancel; its field and buttons take their own keys; nothing else acts. */
+      /* Remove Background's card (REQ-0035-04, REQ-0037-03): Esc is its Cancel; F6, and Tab from its last button, take the keys to the
+         canvas and show the marker, Tab or F6 there back to the field; on the canvas the arrows move the marker, Space presses at it
+         (a piece flips), Enter is OK; its field and buttons take their own keys; nothing else acts. */
+      GtkWidget *focus = gtk_root_get_focus (GTK_ROOT (self));
+      gboolean on_canvas = focus == GTK_WIDGET (self->canvas);
+      gboolean tab = keyval == GDK_KEY_Tab || keyval == GDK_KEY_ISO_Left_Tab || keyval == GDK_KEY_KP_Tab;
+
       if (keyval == GDK_KEY_Escape)
         {
           if (!repeat)
             easel_remove_bg_card_answer (self->rbg_card, FALSE);
           return GDK_EVENT_STOP;
         }
-      return gtk_root_get_focus (GTK_ROOT (self)) != NULL
-                 && gtk_widget_is_ancestor (gtk_root_get_focus (GTK_ROOT (self)), self->rbg_card)
-               ? GDK_EVENT_PROPAGATE : GDK_EVENT_STOP;
+      if (keyval == GDK_KEY_F6 || (tab && (on_canvas || focus == easel_remove_bg_card_ok_button (self->rbg_card))))
+        {
+          if (repeat)
+            return GDK_EVENT_STOP;
+          if (on_canvas)
+            {
+              easel_canvas_marker_show (self->canvas, FALSE);
+              gtk_widget_grab_focus (GTK_WIDGET (easel_remove_bg_card_row (self->rbg_card)));
+            }
+          else
+            {
+              gtk_widget_grab_focus (GTK_WIDGET (self->canvas));
+              easel_canvas_marker_show (self->canvas, TRUE);
+            }
+          return GDK_EVENT_STOP;
+        }
+      if (on_canvas)
+        {
+          if (keyval == GDK_KEY_Return || keyval == GDK_KEY_KP_Enter)
+            {
+              if (!repeat)
+                easel_remove_bg_card_answer (self->rbg_card, TRUE);
+              return GDK_EVENT_STOP;
+            }
+          if (keyval == GDK_KEY_space && (state & (GDK_SHIFT_MASK | GDK_CONTROL_MASK)) == 0)
+            {
+              int mx, my;
+
+              if (!repeat && easel_canvas_marker_is_set (self->canvas))
+                {
+                  easel_canvas_marker_get (self->canvas, &mx, &my);
+                  on_rbg_press (mx, my, self);   /* a press at the marker; a repeat flips nothing */
+                }
+              return GDK_EVENT_STOP;
+            }
+          if (keyval == GDK_KEY_Left || keyval == GDK_KEY_Right || keyval == GDK_KEY_Up || keyval == GDK_KEY_Down)
+            {
+              easel_canvas_marker_show (self->canvas, TRUE);
+              easel_canvas_key_move (self->canvas, keyval == GDK_KEY_Left ? -1 : keyval == GDK_KEY_Right ? 1 : 0,
+                                     keyval == GDK_KEY_Up ? -1 : keyval == GDK_KEY_Down ? 1 : 0);
+              return GDK_EVENT_STOP;
+            }
+          return GDK_EVENT_STOP;
+        }
+      return focus != NULL && gtk_widget_is_ancestor (focus, self->rbg_card) ? GDK_EVENT_PROPAGATE : GDK_EVENT_STOP;
     }
   if (key_is_shortcuts (self, keyval, keycode, state))
     {

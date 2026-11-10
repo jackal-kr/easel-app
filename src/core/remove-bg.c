@@ -40,6 +40,9 @@ struct EaselRbg
   int64_t line_mad;                /* the line's median distance squared on the ring, at least 1 delta-E squared */
   int ncl;                         /* the ring's color clusters that judge (0: none, the surface explains the ring better) */
   int16_t cl[CL_K][3];
+  int32_t *piece;                  /* 0037: each cell's piece in the last flips (the pixels' up to EASEL_RBG_COPY_MAX), -1 for none */
+  bool pieces_made;
+  uint8_t *flood;                  /* 0037: each cell's label from the flood, before the regions rule (c) */
   uint16_t *edge;                  /* the edge strength, 0 .. BUCKETS - 1 */
   uint8_t *label;                  /* NONE, BACK, SUBJECT, ABSENT */
   int32_t *next;                   /* the watershed's queues, then the regions' numbers */
@@ -526,6 +529,8 @@ easel_rbg_free (EaselRbg *r)
   free (r->lab);
   free (r->present);
   free (r->rgb);
+  free (r->piece);
+  free (r->flood);
   free (r->edge);
   free (r->label);
   free (r->next);
@@ -552,7 +557,7 @@ easel_rbg_new (const uint32_t *px, const uint8_t *mask, int w, int h, size_t max
 {
   EaselRbg *r;
   int s;
-  size_t per_cell = 3 * sizeof (int16_t) + 1 + sizeof (uint16_t) + 1 + sizeof (int32_t) + 2 * sizeof (uint32_t) + 3;
+  size_t per_cell = 3 * sizeof (int16_t) + 1 + sizeof (uint16_t) + 1 + sizeof (int32_t) + 2 * sizeof (uint32_t) + 3 + sizeof (int32_t) + 1;
 
   if (w <= 0 || h <= 0)
     return NULL;
@@ -576,6 +581,8 @@ easel_rbg_new (const uint32_t *px, const uint8_t *mask, int w, int h, size_t max
   r->lab = malloc (r->n * 3 * sizeof *r->lab);
   r->present = malloc (r->n);
   r->rgb = malloc (r->n * 3);
+  r->piece = malloc (r->n * sizeof *r->piece);
+  r->flood = malloc (r->n);
   r->edge = malloc (r->n * sizeof *r->edge);
   r->label = malloc (r->n);
   r->next = malloc (r->n * sizeof *r->next);
@@ -583,7 +590,7 @@ easel_rbg_new (const uint32_t *px, const uint8_t *mask, int w, int h, size_t max
   r->sizes = malloc (r->n * sizeof *r->sizes);
   r->ft = malloc (65537 * sizeof *r->ft);
   r->marks = malloc (((size_t) w * (size_t) h + 7) / 8);
-  if (r->marks == NULL || r->rgb == NULL || r->lab == NULL || r->present == NULL || r->edge == NULL || r->label == NULL || r->next == NULL || r->queue == NULL || r->sizes == NULL || r->ft == NULL)
+  if (r->marks == NULL || r->rgb == NULL || r->piece == NULL || r->flood == NULL || r->lab == NULL || r->present == NULL || r->edge == NULL || r->label == NULL || r->next == NULL || r->queue == NULL || r->sizes == NULL || r->ft == NULL)
     {
       easel_rbg_free (r);
       return NULL;
@@ -793,6 +800,115 @@ easel_rbg_bytes (const EaselRbg *r)
   return r->bytes;
 }
 
+/* 0037: a cell's kind for the pieces: 1 kept, 0 removed, -1 none. Up to EASEL_RBG_COPY_MAX the cells are the pixels and their kind is
+   dst's (the method's result, the fringe included); a pixel not looked at, or fully transparent before, is none. Over that, the copy's
+   labels. */
+static int
+piece_kind (const EaselRbg *r, const uint32_t *px, const uint8_t *mask, const uint32_t *dst, size_t g)
+{
+  /* the kind kept or removed, and apart by the flood's label before (c): an island the size rule removed is its own piece, not the
+     background's, and so is a hole it filled (2 x flood subject + kept) */
+  if (r->flood[g] == ABSENT)
+    return -1;
+  if (r->s == 1)
+    return !looked_at (mask, g) || (px[g] >> 24) == 0 ? -1 : 2 * (r->flood[g] == SUBJECT) + ((dst[g] >> 24) != 0);
+  return 2 * (r->flood[g] == SUBJECT) + (r->label[g] == SUBJECT);
+}
+
+void
+easel_rbg_flips (EaselRbg *r, const uint32_t *px, const uint8_t *mask, uint32_t *dst, const EaselRbgPress *presses, size_t n,
+                 size_t *removed)
+{
+  int32_t pieces = 0;
+  size_t gone = 0;                         /* the change of the removed count (wraps for a decrease, as size_t does) */
+
+  /* the pieces: 4-connected runs of one kind; r->sizes counts the presses per piece (parity), r->next keeps each piece's kind */
+  for (size_t g = 0; g < r->n; g++)
+    r->piece[g] = -1;
+  for (size_t g0 = 0; g0 < r->n; g0++)
+    {
+      int kind = piece_kind (r, px, mask, dst, g0);
+      size_t qh = 0, qt = 0;
+
+      if (kind < 0 || r->piece[g0] >= 0)
+        continue;
+      r->piece[g0] = pieces;
+      r->queue[qt++] = (uint32_t) g0;
+      while (qh < qt)
+        {
+          size_t g = r->queue[qh++];
+          int gx = (int) (g % (size_t) r->cw), gy = (int) (g / (size_t) r->cw);
+          size_t nb[4];
+          int k = 0;
+
+          if (gx > 0)
+            nb[k++] = g - 1;
+          if (gx + 1 < r->cw)
+            nb[k++] = g + 1;
+          if (gy > 0)
+            nb[k++] = g - (size_t) r->cw;
+          if (gy + 1 < r->ch)
+            nb[k++] = g + (size_t) r->cw;
+          for (int j = 0; j < k; j++)
+            if (r->piece[nb[j]] < 0 && piece_kind (r, px, mask, dst, nb[j]) == kind)
+              {
+                r->piece[nb[j]] = pieces;
+                r->queue[qt++] = (uint32_t) nb[j];
+              }
+        }
+      r->sizes[pieces] = 0;
+      r->next[pieces] = kind;
+      pieces++;
+    }
+  r->pieces_made = true;
+  for (size_t i = 0; i < n; i++)
+    {
+      int x = presses[i].x, y = presses[i].y;
+      int32_t c;
+
+      if (x < 0 || y < 0 || x >= r->w || y >= r->h)
+        continue;
+      c = r->piece[(size_t) (y / r->s) * r->cw + x / r->s];
+      if (c >= 0)
+        r->sizes[c] ^= 1;
+    }
+  /* each piece with an odd count: its pixels take the other kind (a removed pixel back only if the method removed it); only the
+     blocks of such pieces are visited, and the count before is adjusted by what changes */
+  for (size_t g = 0; g < r->n; g++)
+    {
+      int32_t c = r->piece[g];
+      int gx = (int) (g % (size_t) r->cw) * r->s, gy = (int) (g / (size_t) r->cw) * r->s;
+
+      if (c < 0 || !(r->sizes[c] & 1))
+        continue;
+      for (int y = gy; y < gy + r->s && y < r->h; y++)
+        for (int x = gx; x < gx + r->s && x < r->w; x++)
+          {
+            size_t i = (size_t) y * r->w + x;
+            bool was = (dst[i] >> 24) == 0;
+
+            if (!looked_at (mask, i) || (px[i] >> 24) == 0)
+              continue;
+            dst[i] = (r->next[c] & 1) ? px[i] & 0x00FFFFFFu : px[i];
+            gone += ((dst[i] >> 24) == 0) - was;
+          }
+    }
+  if (removed != NULL)
+    *removed += gone;
+}
+
+bool
+easel_rbg_same_piece (const EaselRbg *r, int x1, int y1, int x2, int y2)
+{
+  int32_t a, b;
+
+  if (!r->pieces_made || x1 < 0 || y1 < 0 || x2 < 0 || y2 < 0 || x1 >= r->w || y1 >= r->h || x2 >= r->w || y2 >= r->h)
+    return false;
+  a = r->piece[(size_t) (y1 / r->s) * r->cw + x1 / r->s];
+  b = r->piece[(size_t) (y2 / r->s) * r->cw + x2 / r->s];
+  return a >= 0 && a == b;
+}
+
 int32_t
 easel_rbg_lab_f (const EaselRbg *r, int t)
 {
@@ -932,6 +1048,7 @@ easel_rbg_label (EaselRbg *r, int tolerance, const volatile int *cancel)
     if (r->label[c] == NONE)
       r->label[c] = BACK;
 
+  memcpy (r->flood, r->label, r->n);         /* 0037: the flood's own regions, before (c) */
 
   /* (c) the largest subject region and those a tenth of it or more; then enclosed background under 1 % of the copy filled. next holds
      each cell's region number, sizes each region's size (bit 31: a background region touching the copy's edge or a cell standing for
