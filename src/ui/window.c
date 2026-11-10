@@ -3893,7 +3893,8 @@ struct RbgSession
   size_t removed;
   int cancel;                            /* asked to stop (any thread) */
   EaselRbgResult outcome;
-  int slow_ms;                           /* the test hook EASEL_TEST_RBG_SLOW_MS: the work made that much slower (AS-9) */
+  int slow_ms;                           /* the test hook EASEL_TEST_RBG_SLOW_MS: the work at OK made that much slower (AS-9) */
+  int slow_open_ms;                      /* EASEL_TEST_RBG_SLOW_OPEN_MS: the opening's analysis made that much slower (AS-14) */
   size_t analysis_limit;                 /* the memory the analysis may hold */
   EaselRbgPress *presses;                /* 0037: the presses in force, pixels of what the command looks at */
   size_t n_presses, cap_presses;
@@ -4211,6 +4212,8 @@ rbg_open_work (GTask *task, gpointer source, gpointer data, GCancellable *cancel
 {
   struct RbgSession *s = data;
 
+  for (int waited = 0; waited < s->slow_open_ms && !__atomic_load_n (&s->cancel, __ATOMIC_SEQ_CST); waited += 10)
+    g_usleep (10000);
   s->rbg = easel_rbg_new (s->orig, s->mask, s->w, s->h, s->analysis_limit);
   if (s->rbg == NULL)
     s->outcome = EASEL_RBG_NO_MEMORY;
@@ -4286,7 +4289,7 @@ remove_background_activated (GSimpleAction *action, GVariant *parameter, gpointe
   int x, y, w, h;
   gboolean floating;
   const uint8_t *shape = NULL;
-  const char *slow = g_getenv ("EASEL_TEST_RBG_SLOW_MS");
+  const char *slow = g_getenv ("EASEL_TEST_RBG_SLOW_MS"), *slow_open = g_getenv ("EASEL_TEST_RBG_SLOW_OPEN_MS");
   size_t n, held;
 
   if (!view_actions_allowed (self) || easel_canvas_is_panning (self->canvas) || card_field_focus (self) != NULL || self->rbg != NULL)
@@ -4294,6 +4297,7 @@ remove_background_activated (GSimpleAction *action, GVariant *parameter, gpointe
   s = g_new0 (struct RbgSession, 1);
   s->win = g_object_ref (self);
   s->slow_ms = slow != NULL ? atoi (slow) : 0;
+  s->slow_open_ms = slow_open != NULL ? atoi (slow_open) : 0;
   s->selection = easel_canvas_get_selection (self->canvas, &x, &y, &w, &h, &floating);
   if (s->selection)
     {

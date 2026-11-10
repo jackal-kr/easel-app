@@ -37399,6 +37399,86 @@ rbg_as9_progress_and_cancel (void)
     }
 }
 
+/* 0035 AS-14 (REQ-0035-11, the opening's worker, 2026-11-10): the analysis made slow by the test hook: the progress dialog after 0.5 s,
+   not before; its real Cancel button, Esc, and closing the window each end the work within 0.5 s and leave the picture and the undo
+   history exactly as before, the selection the command lifted marked again (closing the window then ends it, as any quit does,
+   REQ-0013-11); closing a modified picture's window shows the Save prompt. */
+static void
+rbg_as14_opening_cancel (void)
+{
+  for (int way = 0; way < 3; way++)
+    {
+      EaselWindow *win = rbg_window ();
+      EaselCanvas *canvas = easel_window_get_canvas (win);
+      const EaselImage *img = easel_window_get_picture (win);
+      g_autofree guint32 *before = NULL, *before_stroke = NULL;
+      gint64 deadline, asked;
+      int x, y, w, h;
+      gboolean floating;
+
+      before_stroke = g_memdup2 (img->px, 80 * 60 * 4);
+      use_tool (win, "pencil");
+      easel_canvas_press (canvas, 1, 75.5, 55.5);                      /* one step in the history, the picture modified */
+      easel_canvas_release (canvas, 1);
+      use_tool (win, "select");
+      drag_selection (win, 10, 5, 69, 54);
+      g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating) && !floating);
+      before = g_memdup2 (img->px, 80 * 60 * 4);
+      g_setenv ("EASEL_TEST_RBG_SLOW_OPEN_MS", "5000", TRUE);         /* read when the command starts */
+      g_action_group_activate_action (G_ACTION_GROUP (win), "remove-background", NULL);
+      g_unsetenv ("EASEL_TEST_RBG_SLOW_OPEN_MS");
+      g_assert_true (easel_window_is_removing_background (win));
+      g_assert_null (easel_window_remove_background_card (win));
+      deadline = g_get_monotonic_time () + G_USEC_PER_SEC * 3 / 10;
+      while (g_get_monotonic_time () < deadline)
+        g_main_context_iteration (NULL, FALSE);
+      g_assert_cmpstr (top_heading (win), !=, "Removing the Background");          /* not before 0.5 s */
+      deadline = g_get_monotonic_time () + 3 * G_USEC_PER_SEC;
+      while (g_strcmp0 (top_heading (win), "Removing the Background") != 0 && g_get_monotonic_time () < deadline)
+        g_main_context_iteration (NULL, FALSE);
+      g_assert_cmpstr (top_heading (win), ==, "Removing the Background");
+      asked = g_get_monotonic_time ();
+      if (way == 0)
+        respond (win, "cancel");                                        /* its real Cancel button */
+      else if (way == 1)
+        g_assert_true (key_taken (win, GDK_KEY_Escape, 0) || (adw_dialog_close (visible_dialog (win)), TRUE));
+      else
+        gtk_window_close (GTK_WINDOW (win));                            /* the window's close */
+      deadline = g_get_monotonic_time () + 2 * G_USEC_PER_SEC;
+      while (easel_window_is_removing_background (win) && g_get_monotonic_time () < deadline)
+        g_main_context_iteration (NULL, FALSE);
+      g_test_message ("way %d: the opening ended %.3f s after the cancel", way, (g_get_monotonic_time () - asked) / 1e6);
+      g_assert_false (easel_window_is_removing_background (win));
+      g_assert_cmpint (g_get_monotonic_time () - asked, <, G_USEC_PER_SEC / 2);
+      g_assert_null (easel_window_remove_background_card (win));       /* no card */
+      g_assert_cmpint (memcmp (img->px, before, 80 * 60 * 4), ==, 0);       /* the lift undone: nothing of it in the picture */
+      if (way < 2)
+        {
+          g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+          g_assert_false (floating);                                    /* marked again, where it was */
+          g_assert_true (x == 10 && y == 5 && w == 60 && h == 50);
+        }
+      else
+        g_assert_false (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));   /* a quit ends a selection, as any quit
+                                                                                            does (REQ-0013-11), once the lift is undone */
+      if (way < 2)
+        wait_for_dialogs (win, 0);
+      else
+        {
+          wait_for_dialogs (win, 1);
+          g_assert_cmpstr (top_heading (win), ==, "Save Changes?");
+          respond (win, "cancel");                                      /* the Save prompt's Cancel: the window stays */
+          wait_for_dialogs (win, 0);
+        }
+      g_assert_true (easel_window_get_modified (win));
+      g_assert_true (action_enabled (win, "undo"));
+      g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+      g_assert_cmpint (memcmp (img->px, before_stroke, 80 * 60 * 4), ==, 0);   /* the history as before: the stroke alone */
+      g_assert_false (action_enabled (win, "undo"));
+      rbg_done ();
+    }
+}
+
 /* ---- 0037: Remove Background, pieces ---- */
 
 /* A 160 x 120 white picture with a red rectangle from (20, 30) to (79, 89), a blue disk at (120, 60) of radius 13 (an island the
@@ -38870,6 +38950,7 @@ main (int argc, char **argv)
   g_test_add_func ("/0035/as6_memory_and_quit", rbg_as6_memory_and_quit);
   g_test_add_func ("/0035/as8_help", rbg_as8_help);
   g_test_add_func ("/0035/as9_progress_and_cancel", rbg_as9_progress_and_cancel);
+  g_test_add_func ("/0035/as14_opening_cancel", rbg_as14_opening_cancel);
   g_test_add_func ("/0035/as11_complex_hint", rbg_as11_complex_hint);
   g_test_add_func ("/0035/as12_fill_after_ok", rbg_as12_fill_after_ok);
   g_test_add_func ("/0035/as12_png_zeros", rbg_as12_png_zeros);
