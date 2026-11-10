@@ -1,6 +1,6 @@
 # 0006 The model that finds the subject (Remove background)
 
-**Status:** Accepted (2026-11-09, JOD: IS-Net built now, its weights' permission asked before any release that ships it; the budgets of point 5 and the 179 MB)
+**Status:** Superseded by ADR-0007 (2026-11-09: no model, a classical method; kept for the record). Was: Accepted (2026-11-09, JOD: IS-Net built now, its weights' permission asked before any release that ships it; the budgets of point 5 and the 179 MB)
 
 **Context:**
 Spec 0035 needs a model that finds the main subjects of a picture, runs on the machine with no network (REQ-0024-10), ships with the

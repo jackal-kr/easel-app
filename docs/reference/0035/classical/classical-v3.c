@@ -1,0 +1,594 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+/* Remove background, the classical method as it is to be built (0035, JOD 2026-11-09: stage 4 of classical-v2.c, made cheap): a
+   prototype, not in the app. libc and integers only, deterministic.
+
+     1  a working copy of at most about 2 million pixels: the picture itself when it is that small, else each block of s x s pixels
+        averaged (integer means), s the smallest whole number that brings it under the size;
+     2  on the copy, once: its Lab colors, the background surface fitted to its border ring (cubic, least squares, refitted once), the
+        edge strength, and the distance of each pixel to the surface; the tolerance, if not given, from the fit's residual on the ring;
+     3  on the copy, classical-v2's stage 4: the watershed from background seeds in the ring and subject seeds far from the surface,
+        then the largest subject regions kept and small enclosed holes filled; this mask, scaled up by repetition, is the preview;
+     4  at full size, the result: a pixel whose copy cell and the eight around it agree takes their label; one on the boundary takes
+        the label of the neighbouring cell whose Lab color is nearest its own (ties: subject).
+
+     cc -O2 -std=c11 -o classical-v3 classical-v3.c
+     ./classical-v3 in.ppm out.pgm [TOLERANCE] [preview.pgm]      (0 or nothing: the automatic tolerance)
+
+   Not used: GrabCut or any iterated graph cut with color models (a patent is believed to cover it, US 7,660,463; status unchecked). */
+
+#define _POSIX_C_SOURCE 200809L
+#include <stddef.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/resource.h>
+#include <time.h>
+
+typedef __int128 i128;
+
+/* sRGB to linear light, Q16 (generated once from the sRGB formula and kept as integers). */
+static const int32_t LIN[256] = { 0, 20, 40, 60, 80, 99, 119, 139, 159, 179, 199, 219, 241, 264, 288, 313, 340, 367, 396, 427, 458, 491, 526, 562, 599, 637, 677, 718, 761, 805, 851, 898, 947, 997, 1048, 1101, 1156, 1212, 1270, 1330, 1391, 1453, 1517, 1583, 1651, 1720, 1790, 1863, 1937, 2013, 2090, 2170, 2250, 2333, 2418, 2504, 2592, 2681, 2773, 2866, 2961, 3058, 3157, 3258, 3360, 3464, 3570, 3678, 3788, 3900, 4014, 4129, 4247, 4366, 4488, 4611, 4736, 4864, 4993, 5124, 5257, 5392, 5530, 5669, 5810, 5953, 6099, 6246, 6395, 6547, 6700, 6856, 7014, 7174, 7335, 7500, 7666, 7834, 8004, 8177, 8352, 8528, 8708, 8889, 9072, 9258, 9445, 9635, 9828, 10022, 10219, 10417, 10619, 10822, 11028, 11235, 11446, 11658, 11873, 12090, 12309, 12530, 12754, 12980, 13209, 13440, 13673, 13909, 14146, 14387, 14629, 14874, 15122, 15371, 15623, 15878, 16135, 16394, 16656, 16920, 17187, 17456, 17727, 18001, 18277, 18556, 18837, 19121, 19407, 19696, 19987, 20281, 20577, 20876, 21177, 21481, 21787, 22096, 22407, 22721, 23038, 23357, 23678, 24002, 24329, 24658, 24990, 25325, 25662, 26001, 26344, 26688, 27036, 27386, 27739, 28094, 28452, 28813, 29176, 29542, 29911, 30282, 30656, 31033, 31412, 31794, 32179, 32567, 32957, 33350, 33745, 34143, 34544, 34948, 35355, 35764, 36176, 36591, 37008, 37429, 37852, 38278, 38706, 39138, 39572, 40009, 40449, 40891, 41337, 41785, 42236, 42690, 43147, 43606, 44069, 44534, 45002, 45473, 45947, 46423, 46903, 47385, 47871, 48359, 48850, 49344, 49841, 50341, 50844, 51349, 51858, 52369, 52884, 53401, 53921, 54445, 54971, 55500, 56032, 56567, 57105, 57646, 58190, 58737, 59287, 59840, 60396, 60955, 61517, 62082, 62650, 63221, 63795, 64372, 64952, 65535 };
+/* XYZ from linear RGB, each row divided by the D65 white's (Xn, 1, Zn), Q16. */
+static const int32_t M[3][3] = { { 28439, 24655, 12441 }, { 13938, 46868, 4730 }, { 1164, 7174, 57198 } };
+
+#ifndef SEED_FAR
+#define SEED_FAR 4                     /* a subject seed is this many tolerances from the surface */
+#endif
+#ifndef ORDER
+#define ORDER 3                        /* the surface's order: 2 (6 terms) or 3 (10 terms) */
+#endif
+#define NB (ORDER == 3 ? 10 : 6)
+enum { WALL = 30, STEP = 4, BUCKETS = 1024 };
+
+static int W, H;
+static int16_t *Lab;                   /* L, a, b per pixel, each times 64 */
+static int32_t *FT;                    /* f(t) of CIE Lab for t = 0 .. 65536 (Q16), integer cube roots */
+
+static uint64_t
+icbrt (uint64_t v)
+{
+  uint64_t r = 0;
+
+  for (int s = 63; s >= 0; s -= 3)
+    {
+      uint64_t b = 3 * r * (2 * r + 1) + 1;
+
+      r <<= 1;
+      if ((v >> s) >= b)
+        {
+          v -= b << s;
+          r++;
+        }
+    }
+  return r;
+}
+
+static void
+make_ft (void)
+{
+  FT = malloc (65537 * sizeof *FT);
+  for (int t = 0; t <= 65536; t++)
+    FT[t] = t > 580 ? (int32_t) icbrt ((uint64_t) t << 32) : (int32_t) ((int64_t) t * 841 / 108 + 4 * 65536 / 29);
+}
+
+static int32_t
+f_of (int64_t t)
+{
+  return FT[t < 0 ? 0 : t > 65536 ? 65536 : t];
+}
+
+static void
+to_lab (const uint8_t *p, int16_t *out)
+{
+  int64_t r = LIN[p[0]], g = LIN[p[1]], b = LIN[p[2]];
+  int32_t fx = f_of ((M[0][0] * r + M[0][1] * g + M[0][2] * b) >> 16);
+  int32_t fy = f_of ((M[1][0] * r + M[1][1] * g + M[1][2] * b) >> 16);
+  int32_t fz = f_of ((M[2][0] * r + M[2][1] * g + M[2][2] * b) >> 16);
+
+  out[0] = (int16_t) ((116 * (int64_t) fy - 16 * 65536) >> 10);
+  out[1] = (int16_t) ((500 * (int64_t) (fx - fy)) >> 10);
+  out[2] = (int16_t) ((200 * (int64_t) (fy - fz)) >> 10);
+}
+
+/* Squared distance of two Lab colors, in (delta-E times 64) squared. */
+static int64_t
+de2 (const int16_t *a, const int16_t *b)
+{
+  int64_t d0 = a[0] - b[0], d1 = a[1] - b[1], d2 = a[2] - b[2];
+
+  return d0 * d0 + d1 * d1 + d2 * d2;
+}
+
+/* ---- the background surface: per channel c(x, y) = sum k_j phi_j, phi = 1, u, v, u^2, uv, v^2, u and v in -1 .. 1 (Q8) ---- */
+
+static int64_t K[3][10];               /* coefficients, value * 2^24 per Q8 basis */
+
+static void
+basis (int x, int y, int64_t phi[10])
+{
+  int64_t u = W > 1 ? ((int64_t) x * 512 / (W - 1)) - 256 : 0, v = H > 1 ? ((int64_t) y * 512 / (H - 1)) - 256 : 0;
+
+  phi[0] = 256, phi[1] = u, phi[2] = v, phi[3] = u * u >> 8, phi[4] = u * v >> 8, phi[5] = v * v >> 8;
+  phi[6] = phi[3] * u >> 8, phi[7] = phi[3] * v >> 8, phi[8] = phi[5] * u >> 8, phi[9] = phi[5] * v >> 8;
+}
+
+static void
+surface_at (int x, int y, int16_t out[3])
+{
+  int64_t phi[10];
+
+  basis (x, y, phi);
+  for (int c = 0; c < 3; c++)
+    {
+      int64_t s = 0;
+
+      for (int j = 0; j < NB; j++)
+        s += K[c][j] * phi[j];
+      s >>= 24;
+      out[c] = (int16_t) (s < -32768 ? -32768 : s > 32767 ? 32767 : s);
+    }
+}
+
+static int
+band (void)
+{
+  int b = (W < H ? W : H) / 100;
+
+  return b < 2 ? 2 : b;
+}
+
+static int
+in_band (int x, int y)
+{
+  int b = band ();
+
+  return x < b || y < b || x >= W - b || y >= H - b;
+}
+
+/* A least-squares fit over the band's pixels (a sample every 'stride' along it), leaving out those farther than limit2 from the last
+   fit when 'refit'. Gaussian elimination in 128-bit integers, the pivot the largest in its column (ties: the first). */
+static void
+fit (int refit, int64_t limit2)
+{
+  int64_t A[10][10] = { { 0 } }, R[3][10] = { { 0 } }, n = 0;
+  int64_t phi[10];
+  size_t ring = 2 * ((size_t) W + H) * band ();
+  int stride = (int) (ring / 8192) + 1, k = 0;
+
+  for (int y = 0; y < H; y++)
+    for (int x = 0; x < W; x++)
+      {
+        int16_t s[3];
+        const int16_t *p = Lab + 3 * ((size_t) y * W + x);
+
+        if (!in_band (x, y) || (k++ % stride) != 0)
+          continue;
+        if (refit)
+          {
+            surface_at (x, y, s);
+            if (de2 (p, s) > limit2)
+              continue;
+          }
+        basis (x, y, phi);
+        for (int i = 0; i < NB; i++)
+          {
+            for (int j = 0; j < NB; j++)
+              A[i][j] += phi[i] * phi[j];
+            for (int c = 0; c < 3; c++)
+              R[c][i] += phi[i] * p[c];
+          }
+        n++;
+      }
+  if (n < NB)
+    return;
+  for (int c = 0; c < 3; c++)
+    {
+      i128 m[10][11];
+
+      for (int i = 0; i < NB; i++)
+        {
+          for (int j = 0; j < NB; j++)
+            m[i][j] = A[i][j] / n;
+          m[i][NB] = ((i128) R[c][i] << 24) / n;
+        }
+      for (int col = 0; col < NB; col++)
+        {
+          int piv = col;
+
+          for (int i = col + 1; i < NB; i++)
+            if ((m[i][col] < 0 ? -m[i][col] : m[i][col]) > (m[piv][col] < 0 ? -m[piv][col] : m[piv][col]))
+              piv = i;
+          if (piv != col)
+            for (int j = 0; j <= NB; j++)
+              {
+                i128 t = m[col][j];
+
+                m[col][j] = m[piv][j];
+                m[piv][j] = t;
+              }
+          if (m[col][col] == 0)
+            continue;
+          for (int i = col + 1; i < NB; i++)
+            {
+              i128 a = m[i][col], d = m[col][col];
+
+              for (int j = col; j <= NB; j++)
+                m[i][j] = m[i][j] - m[col][j] * a / d;
+            }
+        }
+      for (int i = NB - 1; i >= 0; i--)
+        {
+          i128 s = m[i][NB];
+
+          for (int j = i + 1; j < NB; j++)
+            s -= m[i][j] * (i128) K[c][j];
+          K[c][i] = m[i][i] != 0 ? (int64_t) (s / m[i][i]) : 0;
+        }
+    }
+}
+
+/* ---- the edge strength: the Lab gradient, |right - left| + |below - above| summed over L, a, b, in delta-E, capped ---- */
+
+static int
+edge (size_t i, int x, int y)
+{
+  int64_t g = 0;
+
+  if (x == 0 || y == 0 || x == W - 1 || y == H - 1)
+    return 0;
+  for (int c = 0; c < 3; c++)
+    {
+      int64_t dx = Lab[3 * (i + 1) + c] - Lab[3 * (i - 1) + c], dy = Lab[3 * (i + W) + c] - Lab[3 * (i - W) + c];
+
+      g += (dx < 0 ? -dx : dx) + (dy < 0 ? -dy : dy);
+    }
+  g >>= 6;
+  return g >= BUCKETS ? BUCKETS - 1 : (int) g;
+}
+
+
+#ifndef COPY_MAX
+#define COPY_MAX 2000000
+#endif
+/* The automatic tolerance from the ring's median residual r (delta-E): AUTO_FLOOR while r is at most AUTO_KNEE, then 2 more per
+   delta-E above it, at most AUTO_MAX: a clean border (a plain or smooth background) gives AUTO_FLOOR, a noisy one more. */
+#ifndef AUTO_FLOOR
+#define AUTO_FLOOR 5
+#endif
+#ifndef AUTO_KNEE
+#define AUTO_KNEE 2
+#endif
+#ifndef AUTO_MAX
+#define AUTO_MAX 20
+#endif
+
+static int
+auto_tolerance (int64_t r64)
+{
+  int64_t t = AUTO_FLOOR + (r64 > AUTO_KNEE * 64 ? 2 * ((r64 - AUTO_KNEE * 64) / 64) : 0);
+
+  return (int) (t > AUTO_MAX ? AUTO_MAX : t);
+}
+
+static uint64_t
+isqrt64 (uint64_t v)
+{
+  uint64_t r = 0, b = (uint64_t) 1 << 62;
+
+  while (b > v)
+    b >>= 2;
+  while (b != 0)
+    {
+      if (v >= r + b)
+        {
+          v -= r + b;
+          r = (r >> 1) + b;
+        }
+      else
+        r >>= 1;
+      b >>= 2;
+    }
+  return r;
+}
+
+/* The ring's residual after the fit: the median of the samples' distances to the surface, in delta-E x 64 (the median, so that a
+   subject crossing the ring, up to half of it, does not raise it). */
+static int
+cmp64 (const void *a, const void *b)
+{
+  int64_t x = *(const int64_t *) a, y = *(const int64_t *) b;
+
+  return (x > y) - (x < y);
+}
+
+static int64_t
+residual (int64_t limit2)
+{
+  size_t ring = 2 * ((size_t) W + H) * band ();
+  int stride = (int) (ring / 8192) + 1, k = 0;
+  int64_t *d = malloc ((ring / (size_t) stride + 2) * sizeof *d);
+  size_t n = 0;
+  int64_t med;
+
+  (void) limit2;
+  for (int y = 0; y < H; y++)
+    for (int x = 0; x < W; x++)
+      {
+        int16_t s[3];
+
+        if (!in_band (x, y) || (k++ % stride) != 0)
+          continue;
+        surface_at (x, y, s);
+        d[n++] = de2 (Lab + 3 * ((size_t) y * W + x), s);
+      }
+  qsort (d, n, sizeof *d, cmp64);
+  med = n ? (int64_t) isqrt64 ((uint64_t) d[n / 2]) : 0;
+  free (d);
+  return med;
+}
+
+int
+main (int argc, char **argv)
+{
+  FILE *f;
+  int FW, FH, maxv, tol, s, given;
+  uint8_t *rgb, *small_rgb, *mask, *full;
+  int32_t *next;
+  uint16_t *edges;
+  size_t fn, n;
+  struct timespec t0, t1, t2;
+  struct rusage ru;
+
+  if (argc < 3 || (f = fopen (argv[1], "rb")) == NULL || fscanf (f, "P6 %d %d %d", &FW, &FH, &maxv) != 3 || fgetc (f) == EOF)
+    {
+      fprintf (stderr, "usage: classical-v3 in.ppm out.pgm [TOLERANCE] [preview.pgm]\n");
+      return 2;
+    }
+  given = argc > 3 ? atoi (argv[3]) : 0;
+  fn = (size_t) FW * FH;
+  rgb = malloc (fn * 3);
+  if (rgb == NULL || fread (rgb, 3, fn, f) != fn)
+    return 3;
+  fclose (f);
+  clock_gettime (CLOCK_MONOTONIC, &t0);
+  make_ft ();
+
+  /* 1. The copy. */
+  for (s = 1; (size_t) ((FW + s - 1) / s) * (size_t) ((FH + s - 1) / s) > COPY_MAX; s++)
+    ;
+  W = (FW + s - 1) / s;
+  H = (FH + s - 1) / s;
+  n = (size_t) W * H;
+  small_rgb = s == 1 ? rgb : malloc (n * 3);
+  if (s > 1)
+    for (int y = 0; y < H; y++)
+      for (int x = 0; x < W; x++)
+        {
+          uint32_t sum[3] = { 0, 0, 0 }, cnt = 0;
+
+          for (int yy = y * s; yy < y * s + s && yy < FH; yy++)
+            for (int xx = x * s; xx < x * s + s && xx < FW; xx++)
+              {
+                const uint8_t *p = rgb + 3 * ((size_t) yy * FW + xx);
+
+                sum[0] += p[0], sum[1] += p[1], sum[2] += p[2];
+                cnt++;
+              }
+          for (int c = 0; c < 3; c++)
+            small_rgb[3 * ((size_t) y * W + x) + c] = (uint8_t) (sum[c] / cnt);
+        }
+
+  /* 2. Once: Lab, the surface, the edges, the tolerance. */
+  Lab = malloc (n * 3 * sizeof *Lab);
+  edges = malloc (n * sizeof *edges);
+  mask = malloc (n);
+  next = malloc (n * sizeof *next);
+  if (Lab == NULL || edges == NULL || mask == NULL || next == NULL)
+    return 3;
+  for (size_t i = 0; i < n; i++)
+    to_lab (small_rgb + 3 * i, Lab + 3 * i);
+  fit (0, 0);
+  {
+    int64_t r64 = residual (INT64_MAX);
+    int64_t first = given > 0 ? given : auto_tolerance (r64);
+
+    fit (1, 4 * first * 64 * first * 64);
+    r64 = residual (INT64_MAX);
+    tol = given > 0 ? given : auto_tolerance (r64);
+    fit (0, 0);
+    fit (1, 4 * (int64_t) tol * 64 * tol * 64);    /* the surface the labels use: refitted with the tolerance used */
+    fprintf (stderr, "residual %.2f delta-E, tolerance %d%s; ", r64 / 64.0, tol, given > 0 ? " (given)" : " (automatic)");
+  }
+  for (int y = 0; y < H; y++)
+    for (int x = 0; x < W; x++)
+      edges[(size_t) y * W + x] = (uint16_t) edge ((size_t) y * W + x, x, y);
+
+  /* 3. The watershed and the regions, on the copy (classical-v2's stage 4). */
+  {
+    int64_t t2v = (int64_t) tol * 64 * tol * 64;
+    int32_t headb[BUCKETS], tailb[BUCKETS];
+    int level = 0;
+
+    for (int b = 0; b < BUCKETS; b++)
+      headb[b] = tailb[b] = -1;
+    memset (mask, 0, n);
+#define PUSH(idx, pr) do { int pr_ = (pr) < level ? level : (pr); next[idx] = -1; \
+      if (tailb[pr_] < 0) headb[pr_] = (int32_t) (idx); else next[tailb[pr_]] = (int32_t) (idx); tailb[pr_] = (int32_t) (idx); } while (0)
+    for (int y = 0; y < H; y++)
+      for (int x = 0; x < W; x++)
+        {
+          size_t i = (size_t) y * W + x;
+          int16_t sf[3];
+          int64_t d;
+
+          surface_at (x, y, sf);
+          d = de2 (Lab + 3 * i, sf);
+          if (in_band (x, y) && d <= t2v)
+            mask[i] = 1;
+          else if (d >= (int64_t) SEED_FAR * SEED_FAR * t2v)
+            mask[i] = 2;
+          if (mask[i] != 0)
+            PUSH (i, 0);
+        }
+    for (level = 0; level < BUCKETS; level++)
+      while (headb[level] >= 0)
+        {
+          size_t i = (size_t) headb[level];
+          int x = (int) (i % W), y = (int) (i / W);
+          size_t nb[4];
+          int k = 0;
+
+          headb[level] = next[i];
+          if (headb[level] < 0)
+            tailb[level] = -1;
+          if (x > 0) nb[k++] = i - 1;
+          if (x < W - 1) nb[k++] = i + 1;
+          if (y > 0) nb[k++] = i - W;
+          if (y < H - 1) nb[k++] = i + W;
+          for (int j = 0; j < k; j++)
+            if (mask[nb[j]] == 0)
+              {
+                mask[nb[j]] = mask[i];
+                PUSH (nb[j], edges[nb[j]]);
+              }
+        }
+    for (size_t i = 0; i < n; i++)
+      mask[i] = mask[i] == 2 ? 255 : 0;
+    {
+      int32_t *comp = next;
+      uint32_t *queue = malloc (n * sizeof *queue);
+      size_t *sizes = NULL, ncomp, largest = 0;
+
+      for (int pass = 0; pass < 2; pass++)
+        {
+          uint8_t want = pass == 0 ? 255 : 0;
+
+          for (size_t i = 0; i < n; i++)
+            comp[i] = -1;
+          ncomp = 0;
+          free (sizes);
+          sizes = NULL;
+          for (size_t s0 = 0; s0 < n; s0++)
+            {
+              size_t head = 0, tail = 0;
+              int touches = 0;
+
+              if (mask[s0] != want || comp[s0] >= 0)
+                continue;
+              sizes = realloc (sizes, (ncomp + 1) * sizeof *sizes);
+              comp[s0] = (int32_t) ncomp;
+              queue[tail++] = (uint32_t) s0;
+              while (head < tail)
+                {
+                  size_t i = queue[head++];
+                  int x = (int) (i % W), y = (int) (i / W);
+                  size_t nb[4];
+                  int k = 0;
+
+                  touches |= x == 0 || y == 0 || x == W - 1 || y == H - 1;
+                  if (x > 0) nb[k++] = i - 1;
+                  if (x < W - 1) nb[k++] = i + 1;
+                  if (y > 0) nb[k++] = i - W;
+                  if (y < H - 1) nb[k++] = i + W;
+                  for (int j = 0; j < k; j++)
+                    if (mask[nb[j]] == want && comp[nb[j]] < 0)
+                      {
+                        comp[nb[j]] = (int32_t) ncomp;
+                        queue[tail++] = (uint32_t) nb[j];
+                      }
+                }
+              sizes[ncomp] = pass == 0 ? tail : (touches ? 0 : tail);
+              ncomp++;
+            }
+          if (pass == 0)
+            {
+              for (size_t c = 0; c < ncomp; c++)
+                if (sizes[c] > largest)
+                  largest = sizes[c];
+              for (size_t i = 0; i < n; i++)
+                if (mask[i] == 255 && sizes[comp[i]] * 10 < largest)
+                  mask[i] = 0;
+            }
+          else
+            for (size_t i = 0; i < n; i++)
+              if (mask[i] == 0 && sizes[comp[i]] > 0 && sizes[comp[i]] * 100 < n)
+                mask[i] = 255;
+        }
+      free (sizes);
+      free (queue);
+    }
+  }
+  clock_gettime (CLOCK_MONOTONIC, &t1);
+
+  /* 4. The result at full size: agreement copied, the boundary decided by the nearest neighbouring cell's color. */
+  full = malloc (fn);
+  if (full == NULL)
+    return 3;
+  for (int y = 0; y < FH; y++)
+    for (int x = 0; x < FW; x++)
+      {
+        int cx = x / s, cy = y / s, same = 1;
+        uint8_t m0 = mask[(size_t) cy * W + cx];
+
+        for (int dy = -1; dy <= 1 && same; dy++)
+          for (int dx = -1; dx <= 1 && same; dx++)
+            {
+              int nx = cx + dx, ny = cy + dy;
+
+              if (nx >= 0 && ny >= 0 && nx < W && ny < H && mask[(size_t) ny * W + nx] != m0)
+                same = 0;
+            }
+        if (same || s == 1)
+          {
+            full[(size_t) y * FW + x] = m0;
+            continue;
+          }
+        {
+          int16_t me[3];
+          int64_t best = INT64_MAX;
+          uint8_t lab = 255;
+
+          to_lab (rgb + 3 * ((size_t) y * FW + x), me);
+          for (int dy = -1; dy <= 1; dy++)
+            for (int dx = -1; dx <= 1; dx++)
+              {
+                int nx = cx + dx, ny = cy + dy;
+                int64_t d;
+
+                if (nx < 0 || ny < 0 || nx >= W || ny >= H)
+                  continue;
+                d = de2 (me, Lab + 3 * ((size_t) ny * W + nx));
+                if (d < best || (d == best && mask[(size_t) ny * W + nx] == 255))
+                  {
+                    best = d;
+                    lab = mask[(size_t) ny * W + nx];
+                  }
+              }
+          full[(size_t) y * FW + x] = lab;
+        }
+      }
+  clock_gettime (CLOCK_MONOTONIC, &t2);
+
+  f = fopen (argv[2], "wb");
+  if (f == NULL)
+    return 4;
+  fprintf (f, "P5 %d %d 255\n", FW, FH);
+  fwrite (full, 1, fn, f);
+  fclose (f);
+  if (argc > 4)
+    {
+      /* the preview: the copy's mask repeated to full size */
+      f = fopen (argv[4], "wb");
+      fprintf (f, "P5 %d %d 255\n", FW, FH);
+      for (int y = 0; y < FH; y++)
+        for (int x = 0; x < FW; x++)
+          fputc (mask[(size_t) (y / s) * W + x / s], f);
+      fclose (f);
+    }
+  getrusage (RUSAGE_SELF, &ru);
+  fprintf (stderr, "%d x %d (copy %d x %d, s %d): preview %.0f ms, result %.0f ms, peak %ld MB\n", FW, FH, W, H, s,
+           (t1.tv_sec - t0.tv_sec) * 1000.0 + (t1.tv_nsec - t0.tv_nsec) / 1e6,
+           (t2.tv_sec - t0.tv_sec) * 1000.0 + (t2.tv_nsec - t0.tv_nsec) / 1e6, ru.ru_maxrss / 1024);
+  return 0;
+}

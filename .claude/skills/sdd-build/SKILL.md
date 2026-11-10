@@ -38,6 +38,8 @@ Precondition: `Status: accepted` in the spec. Otherwise stop and say so.
      moves the view also checks where the picture is drawn, by rendering the window; a new case also passes when run alone;
    - a step or buffer kept under a memory budget has a test that compares the memory held (capacity) with the memory counted, not only the length, and so does every allocation a task adds that the limit counts (a list that gains a column, a flag array);
    - a test of an input rule calls the function the signal callback calls, with the event's modifier state, never a function deeper down;
+   - a dialog's or card's OK, Apply or Cancel is tested by activating its real button (and Esc by its real close), reading the result
+     only after the dialog has closed, never by emitting the response or calling the apply function (0035: OK kept nothing, its tests passed);
    - a modifier that decides an action (Ctrl, Shift) is read from the event of the press, and the manual check lists each such action
      to try with the real mouse, since no ui test sends real events;
    - where the keys go after a popover, dialog or menu closes is a manual check in the real session in the task that adds it, not

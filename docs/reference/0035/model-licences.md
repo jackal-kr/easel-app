@@ -7,7 +7,7 @@ Checked 2026-11-09, from the sources linked in each row (the repositories' `LICE
 raw.githubusercontent.com, the Hugging Face model cards' front matter and the Hugging Face API). Everything legal is quoted;
 "not stated" means the source says nothing on it. Speed and memory are this machine's from ADR-0006 (AMD Ryzen AI 7 PRO 350,
 ONNX Runtime 1.31 in Python, peak memory of the whole Python process) where a model was measured, else "not measured" (no model card
-here publishes a memory or CPU speed figure). The last column is an engineering reading of the quoted terms, not legal advice.
+here publishes a memory or CPU speed figure); BEN2 Base and ormbg were measured the same day with the same steps, see `methods-comparison.md`. The last column is an engineering reading of the quoted terms, not legal advice.
 
 ## Summary
 
@@ -18,13 +18,46 @@ here publishes a memory or CPU speed figure). The last column is an engineering 
 | silueta | Apache-2.0 (U-2-Net's) | not stated | 44 MB | 0.82 / 0.52 s | 1.1 GB | unclear: a quantized U-2-Net, same status |
 | BiRefNet-lite | MIT | "license: mit" | 224 MB | 9.3 / 5.9 s | 12 GB | yes as stated (MIT); ruled out by memory |
 | BiRefNet (full) | MIT | "license: mit" | 1.0 GB (withoutBG's copy) | not measured | not measured | yes as stated (MIT); size |
-| BEN2 Base | not stated (card only) | "license: mit" | 223 MB | not measured | not measured | yes as stated (MIT) |
-| ormbg | Apache-2.0 (card) | "license: apache-2.0" | 176 MB | not measured | not measured | yes as stated, with a question (see below) |
+| BEN2 Base | not stated (card only) | "license: mit" | 223 MB | 21.4 / 9.1 s (first run) | 7.7 GB | yes as stated (MIT); ruled out by time and memory |
+| ormbg | Apache-2.0 (card) | "license: apache-2.0" | 176 MB | 2.6 / 1.1 s (first run) | 1.6 GB | yes as stated, with a question (see below) |
 | InSPyReNet | MIT | not stated | none published (`.pth`, 368 MB) | not measured | not measured | unclear: no licence for the weights |
 | MODNet (portraits only) | Apache-2.0 | "The code, models, and demos in this repository … are released under the Apache License 2.0" | none published (an export script in `onnx/`) | not measured | not measured | yes as stated; portraits only |
 | withoutBG Open Weights | Apache-2.0 (SDK) | "Apache-2.0 AND LicenseRef-DINOv3" | 104 MB + 350 MB backbone (+ 1.0 GB BiRefNet branch) | not measured | not measured | doubtful: DINOv3's terms pass to every recipient |
 | BRIA RMBG-1.4 | not stated | "source-available model for non-commercial use" | 176 MB | not measured | not measured | no |
 | BRIA RMBG-2.0 | not stated | `license_link: https://creativecommons.org/licenses/by-nc/4.0/deed.en` | 1.0 GB | not measured | not measured | no |
+
+## Training data, as stated
+
+A permissive licence on the weights does not settle the terms of the data they were trained on (JOD, 2026-11-09). Quoted from the same
+sources, checked the same day:
+
+| Model | Training data, as stated |
+|---|---|
+| IS-Net general-use | "the released DIS deep model is the academic version that was trained with DIS V1.0" and "The Terms of use for our DIS5K dataset is provided as [DIS5K-Dataset-Terms-of-Use.pdf]" (https://github.com/xuebinqin/DIS); for the general-use file itself: not stated |
+| u2netp, silueta | not stated for these files; the README speaks of "u2net trained with DUTS-TR dataset" (https://github.com/xuebinqin/U-2-Net) |
+| BiRefNet, BiRefNet-lite | "This BiRefNet for standard dichotomous image segmentation (DIS) is trained on **DIS-TR** and validated on **DIS-TEs and DIS-VD**." (both cards); DIS-TR is DIS5K's training part |
+| BEN2 Base | "BEN2 was trained on the DIS5k and our 22K proprietary segmentation dataset." (https://huggingface.co/PramaLLC/BEN2) |
+| ormbg | "I started training the model with synthetic images of the [Human Segmentation Dataset](https://huggingface.co/datasets/schirrmacher/humans) crafted with [LayerDiffuse]" and "It is based on [Highly Accurate Dichotomous Image Segmentation research](https://github.com/xuebinqin/DIS)." (https://huggingface.co/schirrmacher/ormbg) |
+| InSPyReNet | for the transparent-background checkpoints: not stated; the README: "We trained our model on [Dichotomous Image Segmentation dataset (DIS5K)]" for a separate checkpoint |
+| MODNet | "All the models behind the following demos are trained on the datasets mentioned in [our paper]" |
+| withoutBG Open Weights | not stated |
+| BRIA RMBG-1.4 | "Bria-RMBG model was trained with over 12,000 high-quality, high-resolution, manually labeled (pixel-wise accuracy), fully licensed images." |
+| BRIA RMBG-2.0 | not stated in the card fetched (the model is gated) |
+
+So every general-purpose candidate except BRIA's names DIS5K or builds on DIS work: IS-Net, BiRefNet, BEN2 (with its own data), InSPyReNet,
+and ormbg ("based on" DIS). DIS5K's terms of use are a PDF in the DIS repository
+(https://github.com/xuebinqin/DIS/blob/main/DIS5K-Dataset-Terms-of-Use.pdf, checked 2026-11-09), quoted:
+
+- "2. Intended use: The Dataset is available for non-commercial use in research or educational purpose. As long as you use The
+  Dataset for these purposes, you can edit or process images and annotations in this database. Without permission from the original
+  authors, commercial use of this dataset is prohibited even after copying, editing, processing or any operations of this database.
+  Please contact us for commercial use or if you are uncertain about the decision."
+- "4. Distribution: It is prohibited to sell, transfer, lend, lease, resell, distribute, etc., as it is, or copy, edit, or process this
+  database, in whole or in part."
+- "The original authors of The Dataset may arbitrarily revise this agreement without the approval of the registrant and this data user."
+
+Whether weights trained on the dataset count as "processing" it is not stated in these terms or in any card; it is the open question
+for every model above that names DIS5K, including BEN2 and BiRefNet despite their MIT tags. (A reading, not legal advice.)
 
 ## Each model
 
