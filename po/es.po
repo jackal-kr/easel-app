@@ -1261,6 +1261,9 @@ msgstr "Quitar fondo"
 msgid "Works best on a plain background."
 msgstr "Funciona mejor con un fondo liso."
 
+msgid "This background is complex. Lower the Tolerance, then click pieces to fix them."
+msgstr "Este fondo es complejo. Baje la Tolerancia y luego haga clic en las partes para corregirlas."
+
 msgid "Tolerance"
 msgstr "Tolerancia"
 

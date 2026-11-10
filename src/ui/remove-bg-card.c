@@ -56,7 +56,7 @@ free_card (gpointer data, GObject *where_the_card_was)
 }
 
 GtkWidget *
-easel_remove_bg_card_new (int automatic, EaselRemoveBgChanged changed, EaselRemoveBgClosed closed, gpointer data)
+easel_remove_bg_card_new (int automatic, gboolean complex, EaselRemoveBgChanged changed, EaselRemoveBgClosed closed, gpointer data)
 {
   RemoveBgCard *c = g_new0 (RemoveBgCard, 1);
   GtkWidget *box = gtk_box_new (GTK_ORIENTATION_VERTICAL, 8), *list = gtk_list_box_new ();
@@ -89,6 +89,17 @@ easel_remove_bg_card_new (int automatic, EaselRemoveBgChanged changed, EaselRemo
   gtk_box_append (GTK_BOX (buttons), ok);
   gtk_box_append (GTK_BOX (box), heading);
   gtk_box_append (GTK_BOX (box), line);
+  if (complex)
+    {
+      /* REQ-0035-04, for a background the method explains poorly; "Tolerance" is the row's name, "pieces" the parts a click flips */
+      GtkWidget *hint = gtk_label_new (_ ("This background is complex. Lower the Tolerance, then click pieces to fix them."));
+
+      gtk_widget_set_name (hint, "rbg-complex");
+      gtk_label_set_xalign (GTK_LABEL (hint), 0);
+      gtk_label_set_wrap (GTK_LABEL (hint), TRUE);
+      gtk_widget_add_css_class (hint, "dim-label");
+      gtk_box_append (GTK_BOX (box), hint);
+    }
   gtk_box_append (GTK_BOX (box), list);
   gtk_box_append (GTK_BOX (box), buttons);
   g_signal_connect_swapped (c->row, "notify::value", G_CALLBACK (on_value), c);

@@ -43,6 +43,8 @@ struct EaselRbg
   int32_t *ft;                     /* CIE Lab's f(t) for t = 0 .. 65536 (Q16) */
   int64_t k0[3][ORDER_TERMS], k[3][ORDER_TERMS];
   int64_t residual;
+  int64_t judged;                  /* the median the automatic tolerance comes from: the surface's, or the clusters' where they judge */
+  int64_t worst;                   /* the ring's 90th percentile distance to the background (delta-E x 64): the hint */
   int auto_tol;
   int tolerance;                   /* the labels' */
   uint8_t *marks;                  /* the fringe's pixels to remove in a round, a bit each */
@@ -646,6 +648,7 @@ easel_rbg_new (const uint32_t *px, const uint8_t *mask, int w, int h, size_t max
         return NULL;
       }
     r->residual = med;
+    r->judged = r->residual;
     r->auto_tol = auto_from (r->residual);
   }
   if (r->ncl > 0)
@@ -675,6 +678,11 @@ easel_rbg_new (const uint32_t *px, const uint8_t *mask, int w, int h, size_t max
           qsort (d, n, sizeof *d, cmp64);
           if (n == 0 || (int64_t) isqrt64 ((uint64_t) d[n / 2]) >= r->residual)
             r->ncl = 0;
+          else
+            {
+              r->judged = (int64_t) isqrt64 ((uint64_t) d[n / 2]);          /* the clusters judge: their median sets it */
+              r->auto_tol = auto_from (r->judged);
+            }
           free (d);
         }
     }
@@ -682,7 +690,32 @@ easel_rbg_new (const uint32_t *px, const uint8_t *mask, int w, int h, size_t max
      the surface fits better (a gradient between colors, line art on it) a subject of the backdrop's own colors would go with it. */
   if (r->line_ok && r->line_mad > (r->residual < 64 ? 64 : r->residual) * (r->residual < 64 ? 64 : r->residual))
     r->line_ok = false;
+  /* The hint (REQ-0035-04): the ring's 90th percentile distance to the background as judged (the surface, the line, the clusters). */
+  {
+    int stride = ring_stride (r), count = 0;
+    size_t cap = 2 * ((size_t) r->cw + r->ch) * (size_t) r->d / (size_t) stride + 2, n = 0;
+    int64_t *d = malloc (cap * sizeof *d);
+
+    if (d == NULL)
+      {
+        easel_rbg_free (r);
+        return NULL;
+      }
+    for (int y = 0; y < r->ch; y++)
+      for (int x = 0; x < r->cw; x++)
+        if (in_ring (r, x, y) && (count++ % stride) == 0 && n < cap)
+          d[n++] = bg_d2 (r, x, y);
+    qsort (d, n, sizeof *d, cmp64);
+    r->worst = n > 0 ? (int64_t) isqrt64 ((uint64_t) d[n * 9 / 10]) : 0;
+    free (d);
+  }
   return r;
+}
+
+bool
+easel_rbg_complex (const EaselRbg *r)
+{
+  return r->worst > 6 * 64;
 }
 
 int
@@ -719,6 +752,12 @@ void
 easel_rbg_lab (const EaselRbg *r, int red, int green, int blue, int16_t out[3])
 {
   to_lab (r, red & 0xFF, green & 0xFF, blue & 0xFF, out);
+}
+
+int64_t
+easel_rbg_judged (const EaselRbg *r)
+{
+  return r->judged;
 }
 
 int64_t

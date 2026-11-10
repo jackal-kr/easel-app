@@ -1271,6 +1271,9 @@ msgstr "Elimină fundalul"
 msgid "Works best on a plain background."
 msgstr "Funcționează cel mai bine pe un fundal uniform."
 
+msgid "This background is complex. Lower the Tolerance, then click pieces to fix them."
+msgstr "Acest fundal este complex. Micșorați Toleranța, apoi faceți clic pe bucăți pentru a le corecta."
+
 msgid "Tolerance"
 msgstr "Toleranță"
 

@@ -193,15 +193,125 @@ noisy_border (void)
   int64_t m;
 
   for (uint32_t i = 0; i < 300 * 200; i++)
-    p[i] = 0xFF000000u | (uint32_t) (200 + (int) ((i * 2654435761u) >> 26) - 32) * 0x010101u;
+    {
+      uint32_t h = i * 2654435761u;                 /* each channel its own noise: a grain the clusters cannot explain either */
+
+      p[i] = 0xFF000000u | (uint32_t) (160 + (int) (h >> 26) - 32) << 16 | (uint32_t) (160 + (int) (h >> 9 & 63) - 32) << 8
+             | (uint32_t) (160 + (int) ((h * 2246822519u) >> 26) - 32);
+    }
   disk (p, 300, 150, 100, 50, RED);
   r = easel_rbg_new (p, NULL, 300, 200, BIG);
-  m = easel_rbg_residual (r);
-  fprintf (stderr, "noisy border: median %.2f delta-E, automatic %d\n", m / 64.0, easel_rbg_auto_tolerance (r));
-  CHECK (m > 4 * 64);
+  m = easel_rbg_judged (r);                     /* the surface's median, or the clusters' where they judge (2026-11-10) */
+  fprintf (stderr, "noisy border: median %.2f delta-E (surface %.2f), automatic %d\n", m / 64.0, easel_rbg_residual (r) / 64.0,
+           easel_rbg_auto_tolerance (r));
+  CHECK (m > 4 * 64 && m <= easel_rbg_residual (r));
   CHECK (easel_rbg_auto_tolerance (r) == (int) (5 + 3 * (m - 195) / 64 > 20 ? 20 : 5 + 3 * (m - 195) / 64));
   easel_rbg_free (r);
   free (p);
+}
+
+/* REQ-0035-04's second line (AS-11): a picture like a selfie, whose dark shirt fills the bottom border, is complex; a disk on white
+   and a gradient are not. */
+static void
+complex_hint (void)
+{
+  uint32_t *p = picture (240, 320, 0);
+  EaselRbg *r;
+
+  for (int y = 0; y < 320; y++)
+    for (int x = 0; x < 240; x++)
+      {
+        uint32_t i = (uint32_t) (y * 240 + x), n = (i * 2654435761u) >> 27;     /* 0 .. 31 */
+        long ex = x - 120, ey = y - 176;
+
+        if (y >= 256)
+          p[i] = 0xFF2D303Au;                                                   /* the shirt, across the bottom fifth */
+        else if (ex * ex * 55 * 55 + ey * ey * 48 * 48 <= 48L * 48 * 55 * 55)
+          p[i] = 0xFFC8A08Cu;                                                   /* the face */
+        else if (y >= 107 && (x < 53 || x >= 187))
+          p[i] = 0xFF000000u | (134 + n) << 16 | (124 + n) << 8 | (24 + n);       /* the foliage */
+        else
+          p[i] = 0xFF96BEEBu;                                                   /* the sky */
+      }
+  r = easel_rbg_new (p, NULL, 240, 320, BIG);
+  fprintf (stderr, "complex: median %.2f delta-E\n", easel_rbg_residual (r) / 64.0);
+  CHECK (easel_rbg_complex (r));
+  easel_rbg_free (r);
+  for (int i = 0; i < 240 * 320; i++)
+    p[i] = WHITE;
+  disk (p, 240, 120, 160, 60, RED);
+  r = easel_rbg_new (p, NULL, 240, 320, BIG);
+  CHECK (!easel_rbg_complex (r));
+  easel_rbg_free (r);
+  /* a plain gradient and a glow (2026-11-10, the hint from the ring's worst tenth): no hint */
+  for (int y = 0; y < 320; y++)
+    for (int x = 0; x < 240; x++)
+      {
+        uint32_t g = (uint32_t) (250 - y * 120 / 320);
+
+        p[y * 240 + x] = 0xFF000000u | g * 0x010101u;
+      }
+  disk (p, 240, 120, 160, 60, BLUE);
+  r = easel_rbg_new (p, NULL, 240, 320, BIG);
+  CHECK (!easel_rbg_complex (r));
+  easel_rbg_free (r);
+  for (int y = 0; y < 320; y++)
+    for (int x = 0; x < 240; x++)
+      {
+        long dx = x - 120, dy = y - 160;
+        double f = sqrt ((double) (dx * dx + dy * dy)) / 200.0, k = 1 - 0.6 * (f > 1 ? 1 : f);
+
+        p[y * 240 + x] = 0xFF000000u | (uint32_t) (240 * k) << 16 | (uint32_t) (220 * k) << 8 | (uint32_t) (200 * k);
+      }
+  disk (p, 240, 120, 160, 60, BLUE);
+  r = easel_rbg_new (p, NULL, 240, 320, BIG);
+  CHECK (!easel_rbg_complex (r));
+  easel_rbg_free (r);
+  /* a busy border (a fifth of the ring under small squares of many colours) on white: the ring's median fits, its worst tenth does
+     not, so the hint shows */
+  for (int i = 0; i < 240 * 320; i++)
+    p[i] = WHITE;
+  for (int k = 0; k < 40; k++)
+    for (int y = 0; y < 6; y++)
+      for (int x = 0; x < 6; x++)
+        {
+          int bx = (k * 37) % 228, by = k % 2 ? 0 : 314;                       /* along the top and bottom edges */
+          uint32_t c = 0xFF000000u | (uint32_t) (k * 53 % 256) << 16 | (uint32_t) (k * 97 % 256) << 8 | (uint32_t) (k * 151 % 256);
+
+          p[(by + y) * 240 + bx + x] = c;
+        }
+  disk (p, 240, 120, 160, 60, RED);
+  r = easel_rbg_new (p, NULL, 240, 320, BIG);
+  fprintf (stderr, "busy border: median %.2f delta-E\n", easel_rbg_residual (r) / 64.0);
+  CHECK (easel_rbg_complex (r));
+  easel_rbg_free (r);
+  free (p);
+}
+
+/* REQ-0035-04's automatic tolerance from the clusters where they judge (2026-11-10, the blind benchmark's rule 1): six vertical
+   stripes of two colours, a white disk; the surface's median is about 12 delta-E (an automatic 20 that removed the disk), the
+   clusters explain the ring, so the automatic tolerance is 5 and the disk is kept, the stripes removed. */
+static void
+cluster_tolerance (void)
+{
+  uint32_t *p = picture (300, 200, 0), *d = picture (300, 200, 0);
+  EaselRbg *r;
+
+  for (int y = 0; y < 200; y++)
+    for (int x = 0; x < 300; x++)
+      p[y * 300 + x] = (x * 6 / 300) % 2 == 0 ? 0xFFE08B95u : 0xFF546E77u;
+  disk (p, 300, 150, 100, 40, WHITE);
+  r = easel_rbg_new (p, NULL, 300, 200, BIG);
+  fprintf (stderr, "stripes: median %.2f delta-E, automatic %d\n", easel_rbg_residual (r) / 64.0, easel_rbg_auto_tolerance (r));
+  CHECK (easel_rbg_residual (r) > 8 * 64);
+  CHECK (easel_rbg_judged (r) < easel_rbg_residual (r));
+  CHECK (easel_rbg_auto_tolerance (r) == 5);
+  CHECK (!easel_rbg_complex (r));                                 /* the clusters explain all of the ring: no hint */
+  easel_rbg_free (r);
+  run (p, NULL, 300, 200, AUTO, d);
+  CHECK (d[100 * 300 + 150] == WHITE && removed (p, d, 5 * 300 + 5) && removed (p, d, 100 * 300 + 60) && removed (p, d, 100 * 300 + 260));
+  free (p);
+  free (d);
 }
 
 #define SKY 0xFF2864A0u                    /* (40, 100, 160) */
@@ -567,6 +677,8 @@ main (void)
   RUN (disk_on_white);
   RUN (gradient_background);
   RUN (noisy_border);
+  RUN (complex_hint);
+  RUN (cluster_tolerance);
   RUN (green_backdrop);
   RUN (line_guards);
   RUN (two_colours);

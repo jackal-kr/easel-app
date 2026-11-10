@@ -1261,6 +1261,9 @@ msgstr "Háttér eltávolítása"
 msgid "Works best on a plain background."
 msgstr "Egyszínű háttéren működik a legjobban."
 
+msgid "This background is complex. Lower the Tolerance, then click pieces to fix them."
+msgstr "Ez a háttér összetett. Csökkentse a Tűréshatárt, majd kattintson a darabokra a javításukhoz."
+
 msgid "Tolerance"
 msgstr "Tűréshatár"
 

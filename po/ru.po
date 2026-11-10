@@ -1271,6 +1271,9 @@ msgstr "Удалить фон"
 msgid "Works best on a plain background."
 msgstr "Лучше всего работает на однотонном фоне."
 
+msgid "This background is complex. Lower the Tolerance, then click pieces to fix them."
+msgstr "Этот фон сложный. Уменьшите Допуск, затем щёлкните по частям, чтобы исправить их."
+
 msgid "Tolerance"
 msgstr "Допуск"
 

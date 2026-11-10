@@ -1271,6 +1271,9 @@ msgstr "Usuń tło"
 msgid "Works best on a plain background."
 msgstr "Działa najlepiej na jednolitym tle."
 
+msgid "This background is complex. Lower the Tolerance, then click pieces to fix them."
+msgstr "To tło jest złożone. Zmniejsz Tolerancję, a następnie kliknij fragmenty, aby je poprawić."
+
 msgid "Tolerance"
 msgstr "Tolerancja"
 

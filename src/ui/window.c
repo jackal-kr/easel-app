@@ -4182,7 +4182,7 @@ remove_background_activated (GSimpleAction *action, GVariant *parameter, gpointe
   self->rbg = s;
   s->shown = easel_rbg_auto_tolerance (s->rbg);
   /* The card in the canvas area's bottom right corner, over the view, as the thumbnail is in its top right (REQ-0035-04). */
-  card = easel_remove_bg_card_new (s->shown, on_rbg_changed, on_rbg_closed, s);
+  card = easel_remove_bg_card_new (s->shown, easel_rbg_complex (s->rbg), on_rbg_changed, on_rbg_closed, s);
   gtk_widget_set_halign (card, GTK_ALIGN_END);
   gtk_widget_set_valign (card, GTK_ALIGN_END);
   gtk_widget_set_margin_end (card, 12);

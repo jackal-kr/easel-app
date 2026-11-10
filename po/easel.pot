@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: easel\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-10 00:16+0100\n"
+"POT-Creation-Date: 2026-11-10 16:40+0100\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -921,6 +921,13 @@ msgstr ""
 
 #: src/ui/remove-bg-card.c:83
 msgid "Tolerance"
+msgstr ""
+
+#. REQ-0035-04, for a background the method explains poorly; "Tolerance" is the row's name, "pieces" the parts a click flips
+#: src/ui/remove-bg-card.c:95
+msgid ""
+"This background is complex. Lower the Tolerance, then click pieces to fix "
+"them."
 msgstr ""
 
 #: src/ui/thumbnail-card.c:91

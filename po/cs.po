@@ -1271,6 +1271,9 @@ msgstr "Odstranit pozadí"
 msgid "Works best on a plain background."
 msgstr "Nejlépe funguje na jednolitém pozadí."
 
+msgid "This background is complex. Lower the Tolerance, then click pieces to fix them."
+msgstr "Toto pozadí je složité. Snižte Toleranci a pak je opravte klepnutím na části."
+
 msgid "Tolerance"
 msgstr "Tolerance"
 

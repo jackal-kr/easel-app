@@ -11,9 +11,11 @@ typedef void (*EaselRemoveBgChanged) (int tolerance, gpointer data);
 typedef void (*EaselRemoveBgClosed) (gboolean ok, int tolerance, gpointer data);
 
 /* The card "Remove Background" (REQ-0035-04): a floating card for a corner of the canvas area, in the look of the font card, with
-   the line "Works best on a plain background.", one row "Tolerance" from 1 to 40 starting at automatic, and Cancel and OK. Enter in
-   the field takes the typed number, then OK. The caller places it and removes it after the answer. */
-GtkWidget *easel_remove_bg_card_new (int automatic, EaselRemoveBgChanged changed, EaselRemoveBgClosed closed, gpointer data);
+   the line "Works best on a plain background.", for a complex background a second line (REQ-0035-04), one row "Tolerance" from 1 to
+   40 starting at automatic, and Cancel and OK. Enter in the field takes the typed number, then OK. The caller places it and removes it
+   after the answer. */
+GtkWidget *easel_remove_bg_card_new (int automatic, gboolean complex, EaselRemoveBgChanged changed, EaselRemoveBgClosed closed,
+                                     gpointer data);
 
 /* Answers as its buttons do (Esc: FALSE; a quit: FALSE); nothing once answered. */
 void easel_remove_bg_card_answer (GtkWidget *card, gboolean ok);

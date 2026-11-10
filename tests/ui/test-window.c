@@ -36856,6 +36856,51 @@ rbg_answer (EaselWindow *win, const char *response)
   wait_for_layout (win);
 }
 
+#define RBG_HINT "This background is complex. Lower the Tolerance, then click pieces to fix them."
+
+/* 0035 AS-11 (REQ-0035-04): the card's second line for a picture like a selfie (its dark shirt across the bottom border), shown and
+   visible; none for a plain backdrop. */
+static void
+rbg_as11_complex_hint (void)
+{
+  EaselWindow *win = window_with ("[new-picture]\nwidth=240\nheight=320\nbackground=#FFFFFF\n");
+  EaselImage *img = (EaselImage *) easel_window_get_picture (win);
+  GtkWidget *card;
+  GtkLabel *hint;
+
+  for (int y = 0; y < 320; y++)
+    for (int x = 0; x < 240; x++)
+      {
+        guint32 i = (guint32) (y * 240 + x), n = (i * 2654435761u) >> 27;
+        long ex = x - 120, ey = y - 176;
+
+        if (y >= 256)
+          img->px[i] = 0xFF2D303Au;                                             /* the shirt */
+        else if (ex * ex * 55 * 55 + ey * ey * 48 * 48 <= 48L * 48 * 55 * 55)
+          img->px[i] = 0xFFC8A08Cu;                                             /* the face */
+        else if (y >= 107 && (x < 53 || x >= 187))
+          img->px[i] = 0xFF000000u | (134 + n) << 16 | (124 + n) << 8 | (24 + n);
+        else
+          img->px[i] = 0xFF96BEEBu;                                             /* the sky */
+      }
+  img->dirty = (EaselRect) { 0, 0, 240, 320 };
+  easel_canvas_update (easel_window_get_canvas (win));
+  card = rbg_open (win);
+  hint = find_label (card, RBG_HINT);
+  g_assert_nonnull (hint);
+  g_assert_true (gtk_widget_get_mapped (GTK_WIDGET (hint)));
+  g_assert_nonnull (find_label (card, "Works best on a plain background."));
+  rbg_answer (win, "cancel");
+  close_windows ();
+
+  win = rbg_window ();
+  card = rbg_open (win);
+  g_assert_nonnull (find_label (card, "Works best on a plain background."));
+  g_assert_null (find_label (card, RBG_HINT));
+  rbg_answer (win, "cancel");
+  rbg_done ();
+}
+
 /* 0035 AS-4, AS-2's pixel rule (REQ-0035-04, -07): the dialog's strings and its number at the automatic 5; the preview already in the
    picture with no step and no mark; Cancel puts it back; again with 20: the preview follows; OK: one step, exact, Undo gives it back;
    the typing rules of the number. */
@@ -38347,6 +38392,7 @@ main (int argc, char **argv)
   g_test_add_func ("/0035/as6_memory_and_quit", rbg_as6_memory_and_quit);
   g_test_add_func ("/0035/as8_help", rbg_as8_help);
   g_test_add_func ("/0035/as9_progress_and_cancel", rbg_as9_progress_and_cancel);
+  g_test_add_func ("/0035/as11_complex_hint", rbg_as11_complex_hint);
   g_test_add_func ("/0036/as1_every_tool", wz_as1_every_tool);
   g_test_add_func ("/0036/as2_cards", wz_as2_cards);
   g_test_add_func ("/0036/as3_held", wz_as3_held);

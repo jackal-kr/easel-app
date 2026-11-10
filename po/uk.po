@@ -1271,6 +1271,9 @@ msgstr "Вилучити тло"
 msgid "Works best on a plain background."
 msgstr "Найкраще працює на однотонному тлі."
 
+msgid "This background is complex. Lower the Tolerance, then click pieces to fix them."
+msgstr "Це тло складне. Зменште Допуск, потім клацніть частини, щоб виправити їх."
+
 msgid "Tolerance"
 msgstr "Допуск"
 

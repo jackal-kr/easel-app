@@ -12763,3 +12763,35 @@ test: ui-0036
   gboolean waiting = self->anchor_pending && !self->anchor_focus;
 --- replace
   gboolean waiting = FALSE;
+
+=== REQ-0035-04 the second line only above 6 delta-E (a plain backdrop has none)
+file: src/core/remove-bg.c
+test: core-remove-bg
+--- find
+  return r->worst > 6 * 64;
+--- replace
+  return r->worst >= 0;
+
+=== REQ-0035-04 the second line from the ring's worst tenth, not its median
+file: src/core/remove-bg.c
+test: core-remove-bg
+--- find
+    r->worst = n > 0 ? (int64_t) isqrt64 ((uint64_t) d[n * 9 / 10]) : 0;
+--- replace
+    r->worst = n > 0 ? (int64_t) isqrt64 ((uint64_t) d[n / 2]) : 0;
+
+=== REQ-0035-04 the second line on a border the background explains poorly
+file: src/core/remove-bg.c
+test: core-remove-bg
+--- find
+  return r->worst > 6 * 64;
+--- replace
+  return r->worst > 20 * 64;
+
+=== REQ-0035-04 the automatic tolerance from the clusters' median where they judge
+file: src/core/remove-bg.c
+test: core-remove-bg
+--- find
+              r->auto_tol = auto_from (r->judged);
+--- replace
+              r->auto_tol = auto_from (r->residual);

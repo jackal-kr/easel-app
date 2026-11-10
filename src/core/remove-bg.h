@@ -45,9 +45,15 @@ EaselRbgResult easel_rbg_preview (const EaselRbg *r, const uint32_t *px, const u
 EaselRbgResult easel_rbg_result (const EaselRbg *r, const uint32_t *px, const uint8_t *mask, uint32_t *dst, size_t *removed,
                                  const volatile int *cancel);
 
+/* Whether the card shows its second line (REQ-0035-04): the ring's 90th percentile distance to the background as judged above 6
+   delta-E, a border the background's model explains poorly in part. */
+bool easel_rbg_complex (const EaselRbg *r);
+
 /* Test hooks: the bytes the analysis holds (all of it is counted against max_bytes), the ring's median residual (delta-E x 64); the
    CIE Lab function f(t) of the table, t and the result in Q16 (t from 0 to 65536); the integer Lab of an sRGB color (L, a, b x 64). */
 size_t easel_rbg_bytes (const EaselRbg *r);
 int64_t easel_rbg_residual (const EaselRbg *r);
+/* Test hook: the median (delta-E x 64) the automatic tolerance comes from: the surface's, or the clusters' where they judge. */
+int64_t easel_rbg_judged (const EaselRbg *r);
 int32_t easel_rbg_lab_f (const EaselRbg *r, int t);
 void easel_rbg_lab (const EaselRbg *r, int red, int green, int blue, int16_t out[3]);
