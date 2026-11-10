@@ -86,6 +86,24 @@ Constitution: P7 as REQ-0037-09; the exception of ADR-0007 over 2 000 000 pixels
   Result (first round, 2026-11-10, JOD's clip on his selfie): the card opened at 12 and lost the lower face, beard and shirt (fixed in 0035's stability check, T110); the pieces were all or nothing on that photo (a known limit, left to the brushes); presses kept across a Tolerance change made Tolerance 1 remove everything (REQ-0037-04 changed: presses dropped on a Tolerance change; `pc_as6_tolerance` failed first at "'pc_removed (img, 120, 60)' should be FALSE", then passes; a mutant for the drop added and killed). Second round (2026-11-10): the eagle's islands and the keyboard, after the fixes: "T005: ok" (JOD).
 
 ## Check
-(written by /sdd-check)
+- Date and commit: 2026-11-10, `996db2d` (the run below); the transparent-pixel change of ADR-0008 came after it, uncommitted.
+- Tests: `tools/isolated.sh meson test` 128 of 128 pass (the cases of this feature: ui-0037's 9 and core `pieces_small`, `pieces_large`);
+  scale 2: 5 of 5; after ADR-0008, 128 of 128 again.
+- Mutants: `tools/mutate.sh --core`: 499 mutants, 496 killed, 0 killed by crash, 2 survived, 1 accepted (149 s).
+- Warnings: 0. Commits: no AI trailers since `5c1cb53`.
+- Scenarios: AS-1 to AS-4, AS-6 to AS-8 ui `/0037/...`; AS-5 ui `as5_keyboard` + T005; AS-9 ui `as9_memory` + `perf-0035`; AS-10 core
+  `pieces_large` (no ui case, F3); AS-11 T005 ("T005: ok", JOD).
+- Task results: T001 to T004 as written above, none a characterization; T005: first round on JOD's selfie (three changes, see its
+  Result), second round "T005: ok" (JOD).
+- F1 (user-visible): with the card open and the focus on the canvas, F7 does nothing: the card's key branch takes every key it does not
+  handle before the keyboard pointer's keys, so REQ-0037-03's "F7 announces the marker's place and the color the preview shows" is not
+  met. Open: a task, to let F7 through to the keyboard pointer, with a ui case (red first).
+- F2: REQ-0037-03's keys with no test: Shift+Space, Ctrl+Space, Ctrl+Shift+Space, the Menu key and Shift+F10 doing nothing, Up and
+  Down not changing the Tolerance on the canvas, F7 (F1). The code does them (but F7). Open: cases with F1's task.
+- F3: AS-10 names a ui verification; only the core test checks a picture over 2 000 000 pixels. Open: a ui case, or AS-10 to name the
+  core alone (a wording fix, JOD's).
+- F4: REQ-0037-08 counts the presses in REQ-0035-09's 1 GB; the code compares the presses' array alone with the transform limit, not
+  added to the analysis. 8 bytes a press; not user-visible. Known gap.
 - Survivor, accepted: REQ-0037-04 "a press on a pressed piece adds a press instead of removing the earlier": equivalent since the presses are dropped on a Tolerance change (2026-11-10; two presses on one piece flip it twice, as none); before: the pixels differed only when a later Tolerance split that piece (two presses on one piece cancel either way, three leave one flip either way).
-- Survivor, accepted: REQ-0037-02 "a fully transparent pixel comes back with a kept piece": equivalent; such a pixel is in no piece up to 2 000 000 pixels, and over that both kinds give it back as it was (its alpha is already 0).
+- Survivor, accepted: REQ-0037-02 "a fully transparent pixel comes back with a kept piece": up to 2 000 000 pixels such a pixel is in no piece; over that, with ADR-0008, the mutant writes 0 over a pixel that was transparent before the card instead of leaving it, which is invisible either way (2026-11-10; before: both kinds gave it back as it was).
+- Verdict: not yet implemented; F1 is a user-visible miss of REQ-0037-03.
