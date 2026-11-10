@@ -184,7 +184,7 @@ gradient_background (void)
   free (d);
 }
 
-/* REQ-0035-04's automatic tolerance on a noisy border: 5 + 2 for each whole delta-E of the median above 2, so above 5 here. */
+/* REQ-0035-04's automatic tolerance on a noisy border: 5 + 3 per delta-E of the median above 3.05, rounded down, so above 5 here. */
 static void
 noisy_border (void)
 {
@@ -197,8 +197,9 @@ noisy_border (void)
   disk (p, 300, 150, 100, 50, RED);
   r = easel_rbg_new (p, NULL, 300, 200, BIG);
   m = easel_rbg_residual (r);
-  CHECK (m > 3 * 64);
-  CHECK (easel_rbg_auto_tolerance (r) == (int) (5 + 2 * ((m - 128) / 64) > 20 ? 20 : 5 + 2 * ((m - 128) / 64)));
+  fprintf (stderr, "noisy border: median %.2f delta-E, automatic %d\n", m / 64.0, easel_rbg_auto_tolerance (r));
+  CHECK (m > 4 * 64);
+  CHECK (easel_rbg_auto_tolerance (r) == (int) (5 + 3 * (m - 195) / 64 > 20 ? 20 : 5 + 3 * (m - 195) / 64));
   easel_rbg_free (r);
   free (p);
 }
@@ -284,6 +285,97 @@ thin_lines (void)
   free (d);
 }
 
+/* REQ-0035-03 (a, b), JOD's green-backdrop case drawn here (no photo in the repository): a green backdrop lit more in the middle (a glow
+   of the same green, brighter) and darker in the corners, a grey block touching the bottom border (a shirt) and two skin-colored bars
+   touching the top (raised arms). The block and the arms are kept, the glow and the corners removed. */
+static void
+green_backdrop (void)
+{
+  int w = 480, h = 270;
+  uint32_t *p = picture (w, h, 0), *d = picture (w, h, 0);
+
+  for (int y = 0; y < h; y++)
+    for (int x = 0; x < w; x++)
+      {
+        /* the glow: 1 + 0.8 e^(-r^2 / 0.2025), r measured to the middle in half-sizes; the corners: down to 0.55 */
+        double u = (x - w / 2.0) / (w / 2.0), v = (y - h * 0.45) / (h / 2.0), cu = (x - w / 2.0) / (w / 2.0),
+               cv = (y - h / 2.0) / (h / 2.0), corner = sqrt (cu * cu + cv * cv) - 0.6, light;
+
+        light = (1 + 0.8 * exp (-(u * u + v * v) / 0.2025)) * (1 - 0.45 * (corner < 0 ? 0 : corner > 0.8 ? 1 : corner / 0.8));
+        p[y * w + x] = 0xFF000000u | (uint32_t) (40 * light) << 16 | (uint32_t) (120 * light) << 8 | (uint32_t) (60 * light);
+        if (x > w * 34 / 100 && x < w * 66 / 100 && y > h * 55 / 100)
+          p[y * w + x] = 0xFF69705Bu;                                      /* the grey block, (105, 112, 88) */
+        else if (y < h / 2 && (abs (x - w * 41 / 100) < w / 40 || abs (x - w * 59 / 100) < w / 40))
+          p[y * w + x] = 0xFFE1AF91u;                                      /* the arms, (225, 175, 145) */
+      }
+  run (p, NULL, w, h, AUTO, d);
+  CHECK (d[(h - 5) * w + w / 2] == 0xFF69705Bu && d[(h * 70 / 100) * w + w * 40 / 100] == 0xFF69705Bu);   /* the block, kept */
+  CHECK (d[5 * w + w * 41 / 100] == 0xFFE1AF91u);                          /* an arm at the top border, kept */
+  CHECK (removed (p, d, (size_t) (h * 45 / 100) * w + w / 2 - 70));        /* the glow, beside the head's place */
+  CHECK (removed (p, d, (size_t) (h * 40 / 100) * w + w * 25 / 100));
+  CHECK (removed (p, d, 2 * (size_t) w + 2) && removed (p, d, (size_t) (h - 3) * w + w - 3));   /* the dark corners */
+  free (p);
+  free (d);
+}
+
+/* (b) The colour line's guards. A white disk on a mid blue backdrop lit unevenly, at Tolerance 8 (where the line's brighter end reaches white): a white cell is the surface's
+   alone, never the line's. Line art in a darker shade of the color between a two-color gradient's ends: the surface explains the
+   gradient better than one color under more or less light, so the line does not judge and the strokes stay. */
+static void
+line_guards (void)
+{
+  int w = 300, h = 200;
+  uint32_t *p = picture (w, h, 0), *d = picture (w, h, 0);
+
+  for (int y = 0; y < h; y++)
+    for (int x = 0; x < w; x++)
+      {
+        int l = 80 + 20 * y / h;                                          /* 80 % to 100 % of (150, 180, 215) */
+
+        p[y * w + x] = 0xFF000000u | (uint32_t) (150 * l / 100) << 16 | (uint32_t) (180 * l / 100) << 8 | (uint32_t) (215 * l / 100);
+      }
+  disk (p, w, 150, 100, 40, 0xFFFFFFFFu);
+  run (p, NULL, w, h, 8, d);
+  CHECK (d[100 * w + 150] == 0xFFFFFFFFu && removed (p, d, 5 * (size_t) w + 5));   /* white, at Tolerance 8 */
+  for (int y = 0; y < h; y++)
+    for (int x = 0; x < w; x++)
+      p[y * w + x] = 0xFF000000u | (uint32_t) (250 - 100 * x / w) << 16 | (uint32_t) (150 - 100 * x / w) << 8 | (uint32_t) (50 + 100 * x / w);
+  for (int x = 40; x < 260; x++)
+    for (int k = 0; k < 4; k++)
+      p[(60 + k) * w + x] = p[(140 + k) * w + x] = 0xFF643232u;           /* strokes of (100, 50, 50) */
+  for (int y = 64; y < 140; y++)
+    for (int k = 0; k < 4; k++)
+      p[y * w + 150 + k] = 0xFF643232u;
+  run (p, NULL, w, h, AUTO, d);
+  CHECK (d[61 * w + 100] == 0xFF643232u && d[141 * w + 200] == 0xFF643232u && d[100 * w + 151] == 0xFF643232u);
+  CHECK (removed (p, d, 5 * (size_t) w + 5));
+  free (p);
+  free (d);
+}
+
+/* (c') A backdrop of two colors, blue on the left and orange on the right, with a dark green figure standing across the split: both
+   halves are removed and the figure kept; the ring's two colors explain it better than one smooth surface. */
+static void
+two_colours (void)
+{
+  int w = 320, h = 200;
+  uint32_t *p = picture (w, h, 0), *d = picture (w, h, 0);
+
+  for (int y = 0; y < h; y++)
+    for (int x = 0; x < w; x++)
+      p[y * w + x] = x < w / 2 ? 0xFF3C6EC8u : 0xFFF0963Cu;
+  for (int y = 84; y < h; y++)
+    for (int x = 130; x < 190; x++)
+      p[y * w + x] = 0xFF1E5A32u;                                         /* the figure's body, to the bottom */
+  disk (p, w, 160, 60, 22, 0xFF1E5A32u);                                  /* its head */
+  run (p, NULL, w, h, AUTO, d);
+  CHECK (d[150 * w + 160] == 0xFF1E5A32u && d[60 * w + 160] == 0xFF1E5A32u);
+  CHECK (removed (p, d, 100 * (size_t) w + 40) && removed (p, d, 100 * (size_t) w + 280));
+  CHECK (removed (p, d, 20 * (size_t) w + 150) && removed (p, d, 20 * (size_t) w + 170));   /* both sides of the split, near it */
+  free (p);
+  free (d);
+}
+
 /* (e) Fully transparent pixels stay as they were and are no seeds; a picture all transparent has no ring: nothing removed. */
 static void
 transparent (void)
@@ -361,6 +453,17 @@ clamp_and_same (void)
   run (p, NULL, 160, 120, 40, a);
   run (p, NULL, 160, 120, 99, b);
   CHECK (memcmp (a, b, 160 * 120 * 4) == 0);
+  {
+    /* a blue disk on yellow, about 200 delta-E apart: at 40 the disk is still four tolerances from the background and stays; an
+       unheld 99 would remove it */
+    uint32_t *q = picture (160, 120, 0xFFFFFF00u), *c = picture (160, 120, 0);
+
+    disk (q, 160, 80, 60, 30, 0xFF0000FFu);
+    run (q, NULL, 160, 120, 99, c);
+    CHECK (c[60 * 160 + 80] == 0xFF0000FFu && removed (q, c, 5));
+    free (q);
+    free (c);
+  }
   run (p, NULL, 160, 120, 1, a);
   run (p, NULL, 160, 120, -3, b);
   CHECK (memcmp (a, b, 160 * 120 * 4) == 0);
@@ -423,6 +526,7 @@ large_shape (void)
   free (m);
 }
 
+
 static size_t
 heap_in_use (void)
 {
@@ -463,6 +567,9 @@ main (void)
   RUN (disk_on_white);
   RUN (gradient_background);
   RUN (noisy_border);
+  RUN (green_backdrop);
+  RUN (line_guards);
+  RUN (two_colours);
   RUN (soft_edge);
   RUN (thin_lines);
   RUN (transparent);

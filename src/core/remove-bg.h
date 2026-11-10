@@ -27,8 +27,8 @@ typedef enum
 EaselRbg *easel_rbg_new (const uint32_t *px, const uint8_t *mask, int w, int h, size_t max_bytes);
 void easel_rbg_free (EaselRbg *r);
 
-/* REQ-0035-04's automatic tolerance: 5 while the ring's median distance to the first fit is at most 2 delta-E, then 2 more for each
-   whole delta-E above, at most 20. */
+/* REQ-0035-04's automatic tolerance: 5 while the ring's median distance to the surface is at most 3.05 delta-E, then 3 more for each
+   delta-E above (rounded down), at most 20. */
 int easel_rbg_auto_tolerance (const EaselRbg *r);
 
 /* The side of a copy block in pixels (1 when the copy is the pixels themselves), and the copy's size. */

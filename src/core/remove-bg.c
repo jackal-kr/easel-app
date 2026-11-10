@@ -6,8 +6,14 @@
 
 typedef __int128 i128;
 
-enum { ORDER_TERMS = 10, SEED_FAR = 4, BUCKETS = 1024, AUTO_FLOOR = 5, AUTO_KNEE = 2, AUTO_MAX = 20, FIT_SAMPLES = 8192 };
+enum { ORDER_TERMS = 10, SEED_FAR = 4, BUCKETS = 1024, AUTO_FLOOR = 5, AUTO_KNEE64 = 195, AUTO_SLOPE = 3, AUTO_MAX = 20, FIT_SAMPLES = 8192 };
 enum { NONE = 0, BACK = 1, SUBJECT = 2, ABSENT = 3 };
+/* (a) The robust fit: the ring's samples beyond ROBUST_K times their median error (at least 1 delta-E) dropped and the surface refitted,
+   ROBUST_ROUNDS times. (b) The colour line: its reach toward darker past the ring's own, in % of the ring's range, and toward brighter
+   the least Lab chroma of a cell that it judges (2026-11-10, ADR-0007). */
+enum { ROBUST_K = 3, ROBUST_ROUNDS = 3, LINE_DARK_MARGIN = 25, LINE_BRIGHT_MARGIN = 400, LINE_MIN_CHROMA = 12 };
+/* (c') The ring's color clusters (2026-11-10): at most CL_K, each CL_SHARE % of the ring or more. */
+enum { CL_K = 6, CL_SHARE = 10 };
 /* The fringe (REQ-0035-03 g): how far from the blend's line a mixed pixel may lie, as a part of the line's length; the step in color
    below which the color inward has settled, in quarters of the tolerance; its rounds, and how far inward it looks, in pixels. Chosen on the eagle photo,
    the six test pictures and the five wallpapers (docs/reference/0035/fringe-sheet.png). */
@@ -23,6 +29,13 @@ struct EaselRbg
   size_t n;                        /* the copy's cells */
   int16_t *lab;                    /* L, a, b x 64 a cell */
   uint8_t *present;                /* the cell stands for pixels */
+  uint8_t *rgb;                    /* the cell's mean color, 3 bytes */
+  int64_t lm[3], lv[3], llo, lhi;  /* (b) the colour line: a point (x 256), its unit direction (x 65536), its reach along it (x 256) */
+  bool line_ok;                    /* the line judges: a colored backdrop the line explains at least as well as the surface */
+  int64_t line_lim;                /* while fitting the surface: only the ring's samples this near the line (0: all) */
+  int64_t line_mad;                /* the line's median distance squared on the ring, at least 1 delta-E squared */
+  int ncl;                         /* the ring's color clusters that judge (0: none, the surface explains the ring better) */
+  int16_t cl[CL_K][3];
   uint16_t *edge;                  /* the edge strength, 0 .. BUCKETS - 1 */
   uint8_t *label;                  /* NONE, BACK, SUBJECT, ABSENT */
   int32_t *next;                   /* the watershed's queues, then the regions' numbers */
@@ -35,6 +48,8 @@ struct EaselRbg
   uint8_t *marks;                  /* the fringe's pixels to remove in a round, a bit each */
   size_t bytes;
 };
+
+static int64_t line_d2 (const EaselRbg *r, const uint8_t *c);
 
 /* ---- Lab ---- */
 
@@ -171,6 +186,8 @@ fit (const EaselRbg *r, bool refit, int64_t limit2, int64_t (*k)[ORDER_TERMS])
 
         if (!in_ring (r, x, y) || (count++ % stride) != 0)
           continue;
+        if (r->line_lim > 0 && line_d2 (r, r->rgb + 3 * ((size_t) y * r->cw + x)) > r->line_lim)
+          continue;                    /* (b) off the colour line: not the background's, not fitted */
         if (refit)
           {
             surface_at (r, (const int64_t (*)[ORDER_TERMS]) r->k0, x, y, s);
@@ -240,6 +257,64 @@ fit (const EaselRbg *r, bool refit, int64_t limit2, int64_t (*k)[ORDER_TERMS])
     }
 }
 
+/* (b) The distance squared, delta-E x 64, of an RGB color to the colour line: the line's nearest point (held to its reach) and the color
+   compared in Lab. */
+static int64_t
+line_d2 (const EaselRbg *r, const uint8_t *c)
+{
+  int64_t t = 0;
+  int q[3];
+  int16_t lq[3], lc[3];
+
+  for (int k = 0; k < 3; k++)
+    t += ((int64_t) c[k] * 256 - r->lm[k]) * r->lv[k];
+  t >>= 16;                                   /* along the line, x 256 */
+  if (t < r->llo)
+    t = r->llo;
+  if (t > r->lhi)
+    t = r->lhi;
+  for (int k = 0; k < 3; k++)
+    {
+      int64_t v = (r->lm[k] + (t * r->lv[k] >> 16)) / 256;
+
+      q[k] = (int) (v < 0 ? 0 : v > 255 ? 255 : v);
+    }
+  to_lab (r, q[0], q[1], q[2], lq);
+  to_lab (r, c[0], c[1], c[2], lc);
+  return de2 (lc, lq);
+}
+
+/* The distance squared of a cell's color to the background (REQ-0035-03 a): to the surface there, to the colour line when it judges
+   and the cell is colored (a grey or white cell is the surface's alone), or to the nearest of the ring's color clusters when they
+   judge, whichever is least. */
+static int64_t
+bg_d2 (const EaselRbg *r, int cx, int cy)
+{
+  size_t c = (size_t) cy * r->cw + cx;
+  int16_t sf[3];
+  int64_t d;
+
+  surface_at (r, (const int64_t (*)[ORDER_TERMS]) r->k, cx, cy, sf);
+  d = de2 (r->lab + 3 * c, sf);
+  if (r->line_ok
+      && (int64_t) r->lab[3 * c + 1] * r->lab[3 * c + 1] + (int64_t) r->lab[3 * c + 2] * r->lab[3 * c + 2]
+           >= (int64_t) LINE_MIN_CHROMA * 64 * LINE_MIN_CHROMA * 64)
+    {
+      int64_t l = line_d2 (r, r->rgb + 3 * c);
+
+      if (l < d)
+        d = l;
+    }
+  for (int k = 0; k < r->ncl; k++)
+    {
+      int64_t e = de2 (r->lab + 3 * c, r->cl[k]);
+
+      if (e < d)
+        d = e;                                /* near one of the ring's colors (a backdrop of several) */
+    }
+  return d;
+}
+
 static int
 cmp64 (const void *a, const void *b)
 {
@@ -275,10 +350,154 @@ median_residual (const EaselRbg *r, const int64_t (*k)[ORDER_TERMS])
 }
 
 /* REQ-0035-04's mapping: 5 while the median is at most 2 delta-E, then 2 more for each whole delta-E above, at most 20. */
+/* (c') The ring's colors in up to CL_K clusters: k-means from the farthest points (the first from the ring's mean), 12 rounds; a
+   cluster under CL_SHARE % of the ring dropped. */
+static void
+fit_clusters (EaselRbg *r)
+{
+  int stride = ring_stride (r), count = 0;
+  size_t cap = 2 * ((size_t) r->cw + r->ch) * (size_t) r->d / (size_t) stride + 2, n = 0, cnt[CL_K];
+  int16_t (*p)[3] = malloc (cap * sizeof *p), c[CL_K][3];
+  int64_t mean[3] = { 0, 0, 0 };
+  int K = 0;
+
+  r->ncl = 0;
+  if (p == NULL)
+    return;
+  for (int y = 0; y < r->ch; y++)
+    for (int x = 0; x < r->cw; x++)
+      if (in_ring (r, x, y) && (count++ % stride) == 0 && n < cap)
+        memcpy (p[n++], r->lab + 3 * ((size_t) y * r->cw + x), sizeof p[0]);
+  if (n < 30)
+    {
+      free (p);
+      return;
+    }
+  for (size_t i = 0; i < n; i++)
+    for (int k = 0; k < 3; k++)
+      mean[k] += p[i][k];
+  {
+    int16_t m[3] = { (int16_t) (mean[0] / (int64_t) n), (int16_t) (mean[1] / (int64_t) n), (int16_t) (mean[2] / (int64_t) n) };
+
+    for (K = 0; K < CL_K; K++)
+      {
+        int64_t far = -1;
+        size_t at = 0;
+
+        for (size_t i = 0; i < n; i++)
+          {
+            int64_t d = K == 0 ? de2 (p[i], m) : INT64_MAX;
+
+            for (int q = 0; q < K; q++)
+              d = de2 (p[i], c[q]) < d ? de2 (p[i], c[q]) : d;
+            if (d > far)
+              far = d, at = i;
+          }
+        memcpy (c[K], p[at], sizeof c[K]);
+      }
+  }
+  for (int it = 0; it < 12; it++)
+    {
+      int64_t acc[CL_K][3] = { { 0 } };
+
+      memset (cnt, 0, sizeof cnt);
+      for (size_t i = 0; i < n; i++)
+        {
+          int b = 0;
+
+          for (int q = 1; q < K; q++)
+            if (de2 (p[i], c[q]) < de2 (p[i], c[b]))
+              b = q;
+          cnt[b]++;
+          for (int k = 0; k < 3; k++)
+            acc[b][k] += p[i][k];
+        }
+      for (int q = 0; q < K; q++)
+        for (int k = 0; k < 3 && cnt[q]; k++)
+          c[q][k] = (int16_t) (acc[q][k] / (int64_t) cnt[q]);
+    }
+  for (int q = 0; q < K; q++)
+    if (cnt[q] * 100 >= n * CL_SHARE)
+      memcpy (r->cl[r->ncl++], c[q], sizeof c[q]);
+  free (p);
+}
+
+/* (b) The colour line: the ray from black through the ring's median color (more or less light on one color; a median, so a subject on
+   up to half the ring does not move it). Its reach: the ring's samples within ROBUST_K times their median distance, then
+   LINE_DARK_MARGIN % of that range toward darker and LINE_BRIGHT_MARGIN % toward brighter. FALSE when memory cannot be had. */
+static bool
+fit_line (EaselRbg *r)
+{
+  int stride = ring_stride (r), count = 0;
+  size_t cap = 2 * ((size_t) r->cw + r->ch) * (size_t) r->d / (size_t) stride + 2, n = 0, nd = 0;
+  uint8_t (*p)[3] = malloc (cap * sizeof *p), *use = malloc (cap);
+  int64_t *dist = malloc (cap * sizeof *dist), med[3], len, lo = INT64_MAX, hi = INT64_MIN;
+  r->line_ok = false;
+  if (p == NULL || use == NULL || dist == NULL)
+    {
+      free (p), free (use), free (dist);
+      return false;
+    }
+  for (int y = 0; y < r->ch; y++)
+    for (int x = 0; x < r->cw; x++)
+      if (in_ring (r, x, y) && (count++ % stride) == 0 && n < cap)
+        memcpy (p[n++], r->rgb + 3 * ((size_t) y * r->cw + x), 3);
+  for (int k = 0; k < 3; k++)
+    {
+      for (size_t i = 0; i < n; i++)
+        dist[i] = p[i][k];
+      qsort (dist, n, sizeof *dist, cmp64);
+      med[k] = n ? dist[n / 2] : 0;
+    }
+  if (n == 0 || med[0] + med[1] + med[2] == 0)
+    {
+      free (p), free (use), free (dist);
+      return true;                             /* no ring, or a black one: no line */
+    }
+  len = (int64_t) isqrt64 ((uint64_t) (med[0] * med[0] + med[1] * med[1] + med[2] * med[2]));
+  for (int k = 0; k < 3; k++)
+    r->lm[k] = med[k] * 256, r->lv[k] = med[k] * 65536 / len;
+  r->llo = INT64_MIN / 4, r->lhi = INT64_MAX / 4;
+  for (size_t i = 0; i < n; i++)
+    dist[i] = line_d2 (r, p[i]);
+  qsort (dist, n, sizeof *dist, cmp64);
+  {
+    int64_t md = dist[n / 2], lim = (md < 64 * 64 ? 64 * 64 : md) * ROBUST_K * ROBUST_K;
+
+    for (size_t i = 0; i < n; i++)
+      use[i] = line_d2 (r, p[i]) <= lim;
+  }
+  for (size_t i = 0; i < n; i++)
+    if (use[i])
+      {
+        int64_t t = 0;
+
+        for (int k = 0; k < 3; k++)
+          t += ((int64_t) p[i][k] * 256 - r->lm[k]) * r->lv[k];
+        t >>= 16;
+        lo = t < lo ? t : lo, hi = t > hi ? t : hi;
+      }
+  if (lo > hi)
+    lo = hi = 0;
+  r->llo = lo - (hi - lo) * LINE_DARK_MARGIN / 100;
+  r->lhi = hi + (hi - lo) * LINE_BRIGHT_MARGIN / 100;
+  for (size_t i = 0; i < n; i++)
+    if (use[i])
+      dist[nd++] = line_d2 (r, p[i]);
+  qsort (dist, nd, sizeof *dist, cmp64);
+  r->line_mad = nd && dist[nd / 2] > 64 * 64 ? dist[nd / 2] : 64 * 64;
+  r->line_ok = true;
+  free (p), free (use), free (dist);
+  return true;
+}
+
 static int
 auto_from (int64_t median64)
 {
-  int64_t t = AUTO_FLOOR + (median64 > AUTO_KNEE * 64 ? 2 * ((median64 - AUTO_KNEE * 64) / 64) : 0);
+  /* REQ-0035-04 (2026-11-10, on a correct Lab): 5 while the median is at most 3.05 delta-E, then 3 more per delta-E above, rounded
+     down; chosen over the whole test set for the worst subject kept, the knee centred in the window picture 04 needs
+     (docs/reference/0035/methods-comparison.md, the re-tune) */
+  int64_t t = AUTO_FLOOR + (median64 > AUTO_KNEE64 ? AUTO_SLOPE * (median64 - AUTO_KNEE64) / 64 : 0);
 
   return (int) (t > AUTO_MAX ? AUTO_MAX : t);
 }
@@ -298,6 +517,7 @@ easel_rbg_free (EaselRbg *r)
     return;
   free (r->lab);
   free (r->present);
+  free (r->rgb);
   free (r->edge);
   free (r->label);
   free (r->next);
@@ -313,7 +533,7 @@ easel_rbg_new (const uint32_t *px, const uint8_t *mask, int w, int h, size_t max
 {
   EaselRbg *r;
   int s;
-  size_t per_cell = 3 * sizeof (int16_t) + 1 + sizeof (uint16_t) + 1 + sizeof (int32_t) + 2 * sizeof (uint32_t);
+  size_t per_cell = 3 * sizeof (int16_t) + 1 + sizeof (uint16_t) + 1 + sizeof (int32_t) + 2 * sizeof (uint32_t) + 3;
 
   if (w <= 0 || h <= 0)
     return NULL;
@@ -336,6 +556,7 @@ easel_rbg_new (const uint32_t *px, const uint8_t *mask, int w, int h, size_t max
     }
   r->lab = malloc (r->n * 3 * sizeof *r->lab);
   r->present = malloc (r->n);
+  r->rgb = malloc (r->n * 3);
   r->edge = malloc (r->n * sizeof *r->edge);
   r->label = malloc (r->n);
   r->next = malloc (r->n * sizeof *r->next);
@@ -343,7 +564,7 @@ easel_rbg_new (const uint32_t *px, const uint8_t *mask, int w, int h, size_t max
   r->sizes = malloc (r->n * sizeof *r->sizes);
   r->ft = malloc (65537 * sizeof *r->ft);
   r->marks = malloc (((size_t) w * (size_t) h + 7) / 8);
-  if (r->marks == NULL || r->lab == NULL || r->present == NULL || r->edge == NULL || r->label == NULL || r->next == NULL || r->queue == NULL || r->sizes == NULL || r->ft == NULL)
+  if (r->marks == NULL || r->rgb == NULL || r->lab == NULL || r->present == NULL || r->edge == NULL || r->label == NULL || r->next == NULL || r->queue == NULL || r->sizes == NULL || r->ft == NULL)
     {
       easel_rbg_free (r);
       return NULL;
@@ -370,6 +591,8 @@ easel_rbg_new (const uint32_t *px, const uint8_t *mask, int w, int h, size_t max
               cnt++;
             }
         r->present[c] = cnt > 0;
+        r->rgb[3 * c] = (uint8_t) (cnt ? sum[0] / cnt : 0), r->rgb[3 * c + 1] = (uint8_t) (cnt ? sum[1] / cnt : 0);
+        r->rgb[3 * c + 2] = (uint8_t) (cnt ? sum[2] / cnt : 0);
         if (cnt > 0)
           to_lab (r, (int) (sum[0] / cnt), (int) (sum[1] / cnt), (int) (sum[2] / cnt), r->lab + 3 * c);
         else
@@ -394,28 +617,71 @@ easel_rbg_new (const uint32_t *px, const uint8_t *mask, int w, int h, size_t max
         g >>= 6;
         r->edge[c] = (uint16_t) (g >= BUCKETS ? BUCKETS - 1 : g);
       }
-  /* The automatic tolerance (REQ-0035-04): a first estimate from the ring's median distance to the first fit, then the median again
-     against the surface refitted without the cells farther than twice that estimate. */
+  /* (b) The colour line first; the surface is then fitted to the ring's samples on it, so that a subject crossing the ring does not
+     pull it. */
+  if (!fit_line (r))
+    {
+      easel_rbg_free (r);
+      return NULL;
+    }
+  r->line_lim = r->line_ok ? r->line_mad * ROBUST_K * ROBUST_K : 0;
+  fit_clusters (r);
+  /* (a) The surface: fitted, then ROBUST_ROUNDS times refitted without the samples beyond ROBUST_K times the median error (at least
+     1 delta-E); the automatic tolerance (REQ-0035-04) from the last median. Fitted once: the Tolerance does not refit it. */
   fit (r, false, 0, r->k0);
   {
-    int64_t first = median_residual (r, (const int64_t (*)[ORDER_TERMS]) r->k0);
-    int est;
+    int64_t med = median_residual (r, (const int64_t (*)[ORDER_TERMS]) r->k0);
 
-    if (first < 0)
+    for (int round = 0; round < ROBUST_ROUNDS && med >= 0; round++)
+      {
+        int64_t lim = (med < 64 ? 64 : med) * ROBUST_K;
+
+        fit (r, true, lim * lim, r->k);
+        memcpy (r->k0, r->k, sizeof r->k);
+        med = median_residual (r, (const int64_t (*)[ORDER_TERMS]) r->k);
+      }
+    if (med < 0)
       {
         easel_rbg_free (r);
         return NULL;
       }
-    est = auto_from (first);
-    fit (r, true, 4 * (int64_t) est * 64 * est * 64, r->k);
-    r->residual = median_residual (r, (const int64_t (*)[ORDER_TERMS]) r->k);
-    if (r->residual < 0)
-      {
-        easel_rbg_free (r);
-        return NULL;
-      }
+    r->residual = med;
     r->auto_tol = auto_from (r->residual);
   }
+  if (r->ncl > 0)
+    {
+      /* (c') the clusters judge only where they explain the ring better than the surface (their median distance less): a backdrop of
+         several colors, not a gradient a subject on it may share a color with */
+      int stride = ring_stride (r), count = 0;
+      size_t cap = 2 * ((size_t) r->cw + r->ch) * (size_t) r->d / (size_t) stride + 2, n = 0;
+      int64_t *d = malloc (cap * sizeof *d);
+
+      if (d != NULL)
+        {
+          for (int y = 0; y < r->ch; y++)
+            for (int x = 0; x < r->cw; x++)
+              if (in_ring (r, x, y) && (count++ % stride) == 0 && n < cap)
+                {
+                  int64_t best = INT64_MAX;
+
+                  for (int k = 0; k < r->ncl; k++)
+                    {
+                      int64_t e = de2 (r->lab + 3 * ((size_t) y * r->cw + x), r->cl[k]);
+
+                      best = e < best ? e : best;
+                    }
+                  d[n++] = best;
+                }
+          qsort (d, n, sizeof *d, cmp64);
+          if (n == 0 || (int64_t) isqrt64 ((uint64_t) d[n / 2]) >= r->residual)
+            r->ncl = 0;
+          free (d);
+        }
+    }
+  /* (b) The line judges only where it explains the ring at least as well as the surface (one color under more or less light); where
+     the surface fits better (a gradient between colors, line art on it) a subject of the backdrop's own colors would go with it. */
+  if (r->line_ok && r->line_mad > (r->residual < 64 ? 64 : r->residual) * (r->residual < 64 ? 64 : r->residual))
+    r->line_ok = false;
   return r;
 }
 
@@ -494,7 +760,6 @@ easel_rbg_label (EaselRbg *r, int tolerance, const volatile int *cancel)
     tolerance = EASEL_RBG_TOLERANCE_MAX;
   r->tolerance = tolerance;
   t2 = (int64_t) tolerance * 64 * tolerance * 64;
-  fit (r, true, 4 * t2, r->k);
 
   /* (b) the seeds, then the flood in order of edge strength, first in first out within a level */
   for (int b = 0; b < BUCKETS; b++)
@@ -505,7 +770,6 @@ easel_rbg_label (EaselRbg *r, int tolerance, const volatile int *cancel)
     for (int cx = 0; cx < r->cw; cx++)
       {
         size_t c = (size_t) cy * r->cw + cx;
-        int16_t sf[3];
         int64_t d;
 
         if (!r->present[c])
@@ -513,8 +777,7 @@ easel_rbg_label (EaselRbg *r, int tolerance, const volatile int *cancel)
             r->label[c] = ABSENT;
             continue;
           }
-        surface_at (r, (const int64_t (*)[ORDER_TERMS]) r->k, cx, cy, sf);
-        d = de2 (r->lab + 3 * c, sf);
+        d = bg_d2 (r, cx, cy);
         r->label[c] = NONE;
         if (in_ring (r, cx, cy) && d <= t2)
           r->label[c] = BACK;
@@ -555,7 +818,6 @@ easel_rbg_label (EaselRbg *r, int tolerance, const volatile int *cancel)
         size_t c = (size_t) cy * r->cw + cx, nb[4];
         int k;
         bool beside = false;
-        int16_t sf[3];
 
         if (r->label[c] != SUBJECT)
           continue;
@@ -564,13 +826,13 @@ easel_rbg_label (EaselRbg *r, int tolerance, const volatile int *cancel)
           beside = beside || r->label[nb[j]] == BACK;
         if (!beside)
           continue;
-        surface_at (r, (const int64_t (*)[ORDER_TERMS]) r->k, cx, cy, sf);
-        if (de2 (r->lab + 3 * c, sf) <= t2)
+        if (bg_d2 (r, cx, cy) <= t2)
           r->label[c] = NONE;
       }
   for (size_t c = 0; c < r->n; c++)
     if (r->label[c] == NONE)
       r->label[c] = BACK;
+
 
   /* (c) the largest subject region and those a tenth of it or more; then enclosed background under 1 % of the copy filled. next holds
      each cell's region number, sizes each region's size (bit 31: a background region touching the copy's edge or a cell standing for

@@ -12471,10 +12471,10 @@ test: core-remove-bg
 file: src/core/remove-bg.c
 test: core-remove-bg
 --- find
-        if (de2 (r->lab + 3 * c, sf) <= t2)
+        if (bg_d2 (r, cx, cy) <= t2)
           r->label[c] = NONE;
 --- replace
-        if (de2 (r->lab + 3 * c, sf) < 0)
+        if (bg_d2 (r, cx, cy) < 0)
           r->label[c] = NONE;
 
 === REQ-0035-03 the fringe takes pixels that are mostly subject
@@ -12493,6 +12493,71 @@ test: core-remove-bg
 --- replace
             bi = (ptrdiff_t) (y - iy) * w + (x - ix);
 
+=== REQ-0035-03 (a) the surface is not trimmed: a subject on the ring pulls it
+file: src/core/remove-bg.c
+test: core-remove-bg
+--- find
+enum { ROBUST_K = 3, ROBUST_ROUNDS = 3,
+--- replace
+enum { ROBUST_K = 3, ROBUST_ROUNDS = 0,
+
+=== REQ-0035-03 (b) no colour line: a glow of the backdrop's color stays
+file: src/core/remove-bg.c
+test: core-remove-bg
+--- find
+  r->line_ok = true;
+  free (p), free (use), free (dist);
+  return true;
+--- replace
+  r->line_ok = false;
+  free (p), free (use), free (dist);
+  return true;
+
+=== REQ-0035-03 (b) the line judges grey and white cells
+file: src/core/remove-bg.c
+test: core-remove-bg
+--- find
+  if (r->line_ok
+      && (int64_t) r->lab[3 * c + 1] * r->lab[3 * c + 1] + (int64_t) r->lab[3 * c + 2] * r->lab[3 * c + 2]
+           >= (int64_t) LINE_MIN_CHROMA * 64 * LINE_MIN_CHROMA * 64)
+--- replace
+  if (r->line_ok)
+
+=== REQ-0035-03 (b) the line judges where the surface explains the ring better
+file: src/core/remove-bg.c
+test: core-remove-bg
+--- find
+  if (r->line_ok && r->line_mad > (r->residual < 64 ? 64 : r->residual) * (r->residual < 64 ? 64 : r->residual))
+    r->line_ok = false;
+--- replace
+  (void) 0;
+
+=== REQ-0035-03 (c') the ring's color clusters never judge
+file: src/core/remove-bg.c
+test: core-remove-bg
+--- find
+  fit_clusters (r);
+--- replace
+  r->ncl = 0;
+
+=== REQ-0035-03 (c') the clusters judge where the surface explains the ring better
+file: src/core/remove-bg.c
+test: core-remove-bg
+--- find
+          if (n == 0 || (int64_t) isqrt64 ((uint64_t) d[n / 2]) >= r->residual)
+            r->ncl = 0;
+--- replace
+          if (n == 0)
+            r->ncl = 0;
+
+=== REQ-0035-03 (c') a cluster of a few ring cells judges
+file: src/core/remove-bg.c
+test: core-remove-bg
+--- find
+enum { CL_K = 6, CL_SHARE = 10 };
+--- replace
+enum { CL_K = 6, CL_SHARE = 0 };
+
 === REQ-0035-03 the boundary of a large picture is not refined at full size
 file: src/core/remove-bg.c
 test: core-remove-bg
@@ -12509,13 +12574,21 @@ test: core-remove-bg
 --- replace
     (void) 0;
 
-=== REQ-0035-04 the automatic tolerance rises by halves of a delta-E
+=== REQ-0035-04 the automatic tolerance rises by 2 per delta-E, not 3
 file: src/core/remove-bg.c
 test: core-remove-bg
 --- find
-2 * ((median64 - AUTO_KNEE * 64) / 64)
+AUTO_FLOOR = 5, AUTO_KNEE64 = 195, AUTO_SLOPE = 3,
 --- replace
-(2 * (median64 - AUTO_KNEE * 64)) / 64
+AUTO_FLOOR = 5, AUTO_KNEE64 = 195, AUTO_SLOPE = 2,
+
+=== REQ-0035-04 the automatic tolerance's knee at 2 delta-E, not 3.05
+file: src/core/remove-bg.c
+test: core-remove-bg
+--- find
+AUTO_KNEE64 = 195,
+--- replace
+AUTO_KNEE64 = 128,
 
 === REQ-0035-09 the analysis is made above its memory limit
 file: src/core/remove-bg.c
