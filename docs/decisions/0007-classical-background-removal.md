@@ -27,7 +27,7 @@ and 0.74 s at 8000 x 8000, passed five of the six test pictures, and gives the s
    background's share above one half, removed in one round. Judged in RGB, where a soft
    edge's mix is a straight line; the colors taken where they have settled, so that a hard edge's subject is its own color and thin
    lines stay (`docs/reference/0035/fringe-sheet.png`).
-2. A small dialog with one Tolerance value that starts at an automatic one (from the ring's median distance to the surface: 5 while it
+2. (2026-11-10 note: a card in the canvas area's corner, not a dialog; the automatic tolerance from the clusters' median where they judge, else the surface's, then the stability check; the hint from the ring's worst tenth; see spec 0035, REQ-0035-04.) A small dialog with one Tolerance value that starts at an automatic one (from the ring's median distance to the surface: 5 while it
    is at most 3.05 delta-E, then 3 more per delta-E, at most 20; re-tuned 2026-11-10 when the integer Lab's cube root was found wrong), and a live preview made on the copy, OK and Cancel. Applying keeps 0035's
    worker thread, its progress dialog after 0.5 s and Cancel for large pictures.
 3. No model, no ONNX Runtime, no `src/ml`, no build option. ADR-0006's exception to P7.4 is removed: the same picture and Tolerance give
