@@ -377,3 +377,16 @@ What the stability check costs and does: one more label of the copy when the aut
 budget, 100 ms at 1920 x 1080). It turns "everything removed" into "something kept", sometimes too much: the street keeps its
 buildings, the tiger its foliage, the noise and textured backdrops keep most of themselves (removed 15 % and 8 %). Its four worse
 composited runs: two noise backdrops at 3200 and the line art over a horizon (rule 1's, a known limit).
+
+### The stability check made cumulative (2026-11-10, after JOD's T005)
+
+On JOD's selfie the per-step check kept the automatic 12 although the kept share of the copy fell 0.756 (4), 0.530 (7), 0.352
+(10), 0.186 (12), 0.162 (14): no single step halved it, all together quartered it. The check now takes the largest of 4, 7, 10, 14
+that keeps at least half of the share at 4: the selfie opens at 7 (face and beard kept, the shirt lost to the border's seeds). The
+"selfie at 12" listed among the floors when the check was folded was wrong: it is not a pass. Against the per-step rule on the
+composited set: 11 runs change, none better, 10 worse by IoU (bokeh and noise backdrops at 7 or 10 instead of 10 or 14: more of the
+backdrop kept), median IoU 0.956 and 52.4 % above 0.9 as before; on the tuning photos one changes (the blue-haired portrait, 10 to
+7: hair, shoulder and top kept, with a strip of window); every floor holds. The locked photos are spent and were not run again. A
+synthetic with the selfie's gradual loss is in the core test `stability` (grain on the top and bottom edges, four disks 22, 34, 46,
+76 dE from a plain backdrop); a dark block filling the bottom border with a pale shape above did not reproduce it in any variant tried
+(flat colours, a shape shading into the block, a busy backdrop): those are lost at once, not step by step.
