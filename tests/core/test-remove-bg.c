@@ -4,6 +4,8 @@
    again, the memory held against the memory counted, Cancel. */
 
 #include <malloc.h>
+#include <math.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -53,6 +55,84 @@ run (const uint32_t *p, const uint8_t *m, int w, int h, int tol, uint32_t *dst)
   CHECK (easel_rbg_result (r, p, m, dst, &gone, NULL) == EASEL_RBG_DONE);
   easel_rbg_free (r);
   return gone;
+}
+
+/* The oracle (2026-11-10): the integer Lab against an independent reference computed here in doubles with libm, so that a wrong table
+   cannot pass again (the cube root was wrong for 0035's first build and every test passed). The reference: sRGB's own curve, the
+   sRGB to XYZ matrix for D65 and CIE's f(t). */
+static double
+ref_f (double t)
+{
+  return t > 216.0 / 24389.0 ? cbrt (t) : t * 24389.0 / 3132.0 + 4.0 / 29.0;
+}
+
+static void
+ref_lab (int red, int green, int blue, double out[3])
+{
+  double c[3] = { red / 255.0, green / 255.0, blue / 255.0 }, x, y, z;
+
+  for (int k = 0; k < 3; k++)
+    c[k] = c[k] <= 0.04045 ? c[k] / 12.92 : pow ((c[k] + 0.055) / 1.055, 2.4);
+  x = (0.4124564 * c[0] + 0.3575761 * c[1] + 0.1804375 * c[2]) / 0.95047;
+  y = 0.2126729 * c[0] + 0.7151522 * c[1] + 0.0721750 * c[2];
+  z = (0.0193339 * c[0] + 0.1191920 * c[1] + 0.9503041 * c[2]) / 1.08883;
+  out[0] = 116 * ref_f (y) - 16;
+  out[1] = 500 * (ref_f (x) - ref_f (y));
+  out[2] = 200 * (ref_f (y) - ref_f (z));
+}
+
+/* Every entry of f(t), t = 0 .. 65536 in Q16, within one unit of the reference; the Lab of known colors and of 512 colors spread over
+   the cube within 1 delta-E: white 100, 0, 0; black 0; the backdrop green (37, 112, 56) a about -40; pure red, green and blue. */
+static void
+lab_oracle (void)
+{
+  uint32_t *p = picture (8, 8, WHITE);
+  EaselRbg *r = easel_rbg_new (p, NULL, 8, 8, BIG);
+  static const int known[][3] = { { 255, 255, 255 }, { 0, 0, 0 }, { 37, 112, 56 }, { 255, 0, 0 }, { 0, 255, 0 }, { 0, 0, 255 },
+                                   { 128, 128, 128 }, { 225, 175, 145 } };
+  int worst_t = 0;
+  double worst = 0;
+
+  CHECK (r != NULL);
+  for (int t = 0; t <= 65536; t++)
+    {
+      double want = ref_f (t / 65536.0) * 65536.0, got = easel_rbg_lab_f (r, t);
+
+      if (fabs (got - want) > worst)
+        worst = fabs (got - want), worst_t = t;
+    }
+  if (worst > 1.0)
+    fprintf (stderr, "f(t) off by %.1f at t = %d\n", worst, worst_t);
+  CHECK (worst <= 1.0);
+  for (int i = 0; i < 8 + 512; i++)
+    {
+      int rgb[3];
+      int16_t got[3];
+      double want[3], de;
+
+      if (i < 8)
+        rgb[0] = known[i][0], rgb[1] = known[i][1], rgb[2] = known[i][2];
+      else
+        for (int k = 0; k < 3; k++)
+          rgb[k] = (int) (((uint32_t) (i * 3 + k) * 2654435761u) >> 24);
+      easel_rbg_lab (r, rgb[0], rgb[1], rgb[2], got);
+      ref_lab (rgb[0], rgb[1], rgb[2], want);
+      de = sqrt (pow (got[0] / 64.0 - want[0], 2) + pow (got[1] / 64.0 - want[1], 2) + pow (got[2] / 64.0 - want[2], 2));
+      if (de > 1.0)
+        fprintf (stderr, "Lab of (%d, %d, %d): %.1f %.1f %.1f, the reference %.1f %.1f %.1f\n", rgb[0], rgb[1], rgb[2], got[0] / 64.0,
+                 got[1] / 64.0, got[2] / 64.0, want[0], want[1], want[2]);
+      CHECK (de <= 1.0);
+    }
+  {
+    int16_t g[3];
+
+    easel_rbg_lab (r, 37, 112, 56, g);
+    CHECK (g[1] / 64 <= -35 && g[1] / 64 >= -45);                          /* the backdrop green: a about -40 */
+    easel_rbg_lab (r, 255, 255, 255, g);
+    CHECK (abs (g[0] - 100 * 64) <= 32 && abs (g[1]) <= 32 && abs (g[2]) <= 32);
+  }
+  easel_rbg_free (r);
+  free (p);
 }
 
 /* A red disk on white: the automatic tolerance is 5 (a clean ring), the white removed with its color kept, the disk exactly as it was,
@@ -293,7 +373,8 @@ clamp_and_same (void)
 }
 
 /* Over 2 000 000 pixels the copy is made of 2 x 2 blocks: the preview takes each block's label, the result refines the boundary by the
-   nearest neighbouring cell's color, so the disk's edge pixels follow their own colors; away from the edge both agree. */
+   nearest neighbouring cell's color, so the disk's edge pixels follow their own colors; away from the edge both agree. (Until the
+   cube root's fix the preview's edge also differed here; with a correct Lab the fringe evens it out, which ADR-0007 allows.) */
 static void
 large_copy (void)
 {
@@ -313,7 +394,7 @@ large_copy (void)
       CHECK (p[i] == RED ? d[i] == RED : removed (p, d, i));               /* the result exact at full size */
       differ += v[i] != d[i];
     }
-  CHECK (differ > 0);                                                       /* the preview's edge is the blocks' */
+  (void) differ;                                    /* the preview may differ at the edge (ADR-0007), it need not (the fringe evens it out) */
   CHECK (v[500 * (size_t) w + 1200] == RED && removed (p, v, 10));
   easel_rbg_free (r);
   free (p);
@@ -378,6 +459,7 @@ memory_and_cancel (void)
 int
 main (void)
 {
+  RUN (lab_oracle);
   RUN (disk_on_white);
   RUN (gradient_background);
   RUN (noisy_border);

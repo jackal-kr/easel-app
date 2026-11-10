@@ -54,9 +54,10 @@ icbrt (uint64_t v)
 
   for (int s = 63; s >= 0; s -= 3)
     {
-      uint64_t b = 3 * r * (2 * r + 1) + 1;
+      uint64_t b;
 
       r <<= 1;
+      b = 3 * r * (r + 1) + 1;            /* the next root bit's test, after the shift (2026-11-10: was 3 r (2 r + 1) + 1 before it) */
       if ((v >> s) >= b)
         {
           v -= b << s;

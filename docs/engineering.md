@@ -99,6 +99,11 @@ From feature 0002 (`src/core/history`):
   `test-window` refuses to start, and `tools/mutate.sh` refuses to run a mutant of a ui test, while another `easel` or
   `test-window` process exists (the core and io tests do not check).
 - A ui test does not turn the main loop while a synthetic button is held.
+- Every numeric table or conversion in `src/core` (a lookup table, a fixed-point formula, a color space) has an oracle test: its values
+  checked against an independent reference computed in the test (libm in doubles, a standard's own formula), over its whole range
+  or a sweep of it, within a stated tolerance; determinism and behavior tests alone do not count. Why (0035, 2026-11-10): the integer
+  cube root behind Remove Background's Lab was wrong for 64 944 of its 64 956 values, and every test passed, since they checked only
+  that the same pixels came out twice and what a picture looked like; every delta-E threshold had been tuned on the distorted Lab.
 - A dialog's or a card's OK, Apply, Convert or Cancel is tested by activating its real button (`click_response` in
   `tests/ui/test-window.c`: the button found by the response's label, "clicked" emitted), and Esc by the dialog's own close, then
   the main loop is run until the dialog has closed, and only then is the result read. A test never emits the response itself nor

@@ -45,6 +45,9 @@ EaselRbgResult easel_rbg_preview (const EaselRbg *r, const uint32_t *px, const u
 EaselRbgResult easel_rbg_result (const EaselRbg *r, const uint32_t *px, const uint8_t *mask, uint32_t *dst, size_t *removed,
                                  const volatile int *cancel);
 
-/* Test hooks: the bytes the analysis holds (all of it is counted against max_bytes), the ring's median residual (delta-E x 64). */
+/* Test hooks: the bytes the analysis holds (all of it is counted against max_bytes), the ring's median residual (delta-E x 64); the
+   CIE Lab function f(t) of the table, t and the result in Q16 (t from 0 to 65536); the integer Lab of an sRGB color (L, a, b x 64). */
 size_t easel_rbg_bytes (const EaselRbg *r);
 int64_t easel_rbg_residual (const EaselRbg *r);
+int32_t easel_rbg_lab_f (const EaselRbg *r, int t);
+void easel_rbg_lab (const EaselRbg *r, int red, int green, int blue, int16_t out[3]);

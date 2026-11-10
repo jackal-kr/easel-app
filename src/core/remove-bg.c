@@ -45,9 +45,10 @@ icbrt (uint64_t v)
 
   for (int sh = 63; sh >= 0; sh -= 3)
     {
-      uint64_t b = 3 * r * (2 * r + 1) + 1;
+      uint64_t b;
 
       r <<= 1;
+      b = 3 * r * (r + 1) + 1;            /* the next root bit's test, after the shift (2026-11-10: was 3 r (2 r + 1) + 1 before it) */
       if ((v >> sh) >= b)
         {
           v -= b << sh;
@@ -348,7 +349,8 @@ easel_rbg_new (const uint32_t *px, const uint8_t *mask, int w, int h, size_t max
       return NULL;
     }
   for (int t = 0; t <= 65536; t++)
-    r->ft[t] = t > 580 ? (int32_t) icbrt ((uint64_t) t << 32) : (int32_t) ((int64_t) t * 841 / 108 + 4 * 65536 / 29);
+    r->ft[t] = t > 580 ? (int32_t) icbrt ((uint64_t) t << 32)
+                       : (int32_t) (((int64_t) t * 841 * 29 + (int64_t) 4 * 65536 * 108 + 108 * 29 / 2) / (108 * 29));   /* rounded once */
 
   /* the copy: each block's mean over its pixels looked at and not fully transparent */
   for (int cy = 0; cy < r->ch; cy++)
@@ -439,6 +441,18 @@ size_t
 easel_rbg_bytes (const EaselRbg *r)
 {
   return r->bytes;
+}
+
+int32_t
+easel_rbg_lab_f (const EaselRbg *r, int t)
+{
+  return f_of (r, t);
+}
+
+void
+easel_rbg_lab (const EaselRbg *r, int red, int green, int blue, int16_t out[3])
+{
+  to_lab (r, red & 0xFF, green & 0xFF, blue & 0xFF, out);
 }
 
 int64_t
