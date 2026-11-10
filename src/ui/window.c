@@ -3019,6 +3019,21 @@ marker_into_view (EaselWindow *self)
     gtk_adjustment_set_value (v, y0 + EASEL_VIEW_MARGIN);
 }
 
+/* F7: the marker shown, its place and color announced (REQ-0022-13; with Remove Background's card open too, REQ-0037-03). */
+static void
+announce_marker (EaselWindow *self)
+{
+  int x, y;
+  uint32_t c;
+  g_autofree char *text = NULL;
+
+  easel_canvas_marker_show (self->canvas, TRUE);
+  c = easel_canvas_marker_color (self->canvas);
+  easel_canvas_marker_get (self->canvas, &x, &y);
+  text = g_strdup_printf ("%d, %d: #%06X%02X", x, y, (unsigned) (c & 0xFFFFFF), (unsigned) (c >> 24));
+  easel_window_announce (self, text);
+}
+
 /* The keys of the keyboard pointer, with the focus on the canvas: TRUE if taken (REQ-0022-06, -08). */
 static gboolean
 pointer_key (EaselWindow *self, guint keyval, GdkModifierType state, gboolean repeat)
@@ -3033,16 +3048,7 @@ pointer_key (EaselWindow *self, guint keyval, GdkModifierType state, gboolean re
   if (keyval == GDK_KEY_F7)
     {
       if (!repeat)
-        {
-          easel_canvas_marker_show (self->canvas, TRUE);
-          int x, y;
-          uint32_t c = easel_canvas_marker_color (self->canvas);
-          g_autofree char *text = NULL;
-
-          easel_canvas_marker_get (self->canvas, &x, &y);
-          text = g_strdup_printf ("%d, %d: #%06X%02X", x, y, (unsigned) (c & 0xFFFFFF), (unsigned) (c >> 24));
-          easel_window_announce (self, text);
-        }
+        announce_marker (self);
       return TRUE;
     }
   held = easel_canvas_is_key_held (self->canvas);
@@ -4580,7 +4586,8 @@ on_key_pressed (EaselWindow *self, guint keyval, guint keycode, GdkModifierType 
     {
       /* Remove Background's card (REQ-0035-04, REQ-0037-03): Esc is its Cancel; F6, and Tab from its last button, take the keys to the
          canvas and show the marker, Tab or F6 there back to the field; on the canvas the arrows move the marker, Space presses at it
-         (a piece flips), Enter is OK; its field and buttons take their own keys; nothing else acts. */
+         (a piece flips), Enter is OK, F7 says the marker's place and color; its field and buttons take their own keys; nothing else
+         acts. */
       GtkWidget *focus = gtk_root_get_focus (GTK_ROOT (self));
       gboolean on_canvas = focus == GTK_WIDGET (self->canvas);
       gboolean tab = keyval == GDK_KEY_Tab || keyval == GDK_KEY_ISO_Left_Tab || keyval == GDK_KEY_KP_Tab;
@@ -4633,6 +4640,8 @@ on_key_pressed (EaselWindow *self, guint keyval, guint keycode, GdkModifierType 
                                      keyval == GDK_KEY_Up ? -1 : keyval == GDK_KEY_Down ? 1 : 0);
               return GDK_EVENT_STOP;
             }
+          if (keyval == GDK_KEY_F7 && !repeat && (state & (GDK_SHIFT_MASK | GDK_CONTROL_MASK | GDK_ALT_MASK)) == 0)
+            announce_marker (self);                       /* the marker's place and the preview's color (REQ-0022-13) */
           return GDK_EVENT_STOP;
         }
       return focus != NULL && gtk_widget_is_ancestor (focus, self->rbg_card) ? GDK_EVENT_PROPAGATE : GDK_EVENT_STOP;

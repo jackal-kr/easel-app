@@ -37596,6 +37596,105 @@ pc_as5_keyboard (void)
   rbg_done ();
 }
 
+/* 0037 AS-5 (REQ-0037-03, the Check's F1 and F2, 2026-11-10): with the card open and the focus on the canvas, F7 announces the marker's
+   place and the color the preview shows there; Shift+Space, Ctrl+Space, Ctrl+Shift+Space, the Menu key and Shift+F10 do nothing (no
+   flip, no menu); Up and Down move the marker and leave the Tolerance as it is. */
+static void
+pc_as5_keys (void)
+{
+  EaselWindow *win = pc_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  GtkWidget *card = rbg_open (win);
+  AdwSpinRow *row = easel_remove_bg_card_row (card);
+  int mx, my, t = (int) adw_spin_row_get_value (row);
+  static const struct { guint key; GdkModifierType state; } none[] = {
+    { GDK_KEY_space, GDK_SHIFT_MASK }, { GDK_KEY_space, GDK_CONTROL_MASK }, { GDK_KEY_space, GDK_CONTROL_MASK | GDK_SHIFT_MASK },
+    { GDK_KEY_Menu, 0 }, { GDK_KEY_F10, GDK_SHIFT_MASK },
+  };
+  g_autofree char *said = NULL, *want = NULL;
+
+  rbg_settle (win);
+  easel_window_log_announcements (win, TRUE);
+  g_assert_true (key_taken (win, GDK_KEY_F6, 0));
+  key_released (win, GDK_KEY_F6);
+  wait_for_layout (win);
+  g_assert_true (gtk_root_get_focus (GTK_ROOT (win)) == GTK_WIDGET (canvas));
+  for (int i = 0; i < 400; i++)
+    {
+      guint k;
+
+      easel_canvas_marker_get (canvas, &mx, &my);
+      if (mx == 120 && my == 60)
+        break;
+      k = mx != 120 ? (mx < 120 ? GDK_KEY_Right : GDK_KEY_Left) : (my < 60 ? GDK_KEY_Down : GDK_KEY_Up);
+      g_assert_true (key_taken (win, k, 0));
+      key_released (win, k);
+    }
+  g_assert_false (pc_removed (img, 120, 60));                            /* the island, kept by the method */
+  easel_window_take_announcements (win);
+  key_taken (win, GDK_KEY_F7, 0);
+  key_released (win, GDK_KEY_F7);
+  said = easel_window_take_announcements (win);
+  want = g_strdup_printf ("120, 60: #%06X%02X", (unsigned) (easel_image_get (img, 120, 60) & 0xFFFFFF),
+                          (unsigned) (easel_image_get (img, 120, 60) >> 24));
+  g_assert_nonnull (said);
+  g_assert_nonnull (strstr (said, want));
+  for (size_t i = 0; i < G_N_ELEMENTS (none); i++)
+    {
+      key_taken (win, none[i].key, none[i].state);
+      key_released (win, none[i].key);
+      wait_for_layout (win);
+      g_assert_false (pc_removed (img, 120, 60));
+      g_assert_false (canvas_menu_shown (win));
+    }
+  g_assert_true (key_taken (win, GDK_KEY_Up, 0));
+  key_released (win, GDK_KEY_Up);
+  easel_canvas_marker_get (canvas, &mx, &my);
+  g_assert_true (mx == 120 && my == 59);
+  g_assert_true (key_taken (win, GDK_KEY_Down, 0));
+  key_released (win, GDK_KEY_Down);
+  rbg_settle (win);
+  g_assert_cmpint ((int) adw_spin_row_get_value (row), ==, t);
+  easel_window_log_announcements (win, FALSE);
+  rbg_answer (win, "cancel");
+  rbg_done ();
+}
+
+/* 0037 AS-10 (REQ-0037-09; the Check's F3, 2026-11-10): over 2 000 000 pixels (1500 x 1400, 2 x 2 blocks) a real press on an island
+   the method keeps flips it; after the real OK the island's pixels are 0x00000000 and the red block and the white are as the method
+   makes them. */
+static void
+pc_as10_large (void)
+{
+  EaselWindow *win = window_with ("[new-picture]\nwidth=1500\nheight=1400\nbackground=#FFFFFF\n");
+  EaselImage *img = (EaselImage *) easel_window_get_picture (win);
+
+  for (int y = 0; y < 1400; y++)
+    for (int x = 0; x < 1500; x++)
+      {
+        int b = (x - 500) * (x - 500) + (y - 200) * (y - 200);
+
+        if (x >= 100 && x < 400 && y >= 100 && y < 400)
+          img->px[y * 1500 + x] = 0xFFFF0000u;
+        else if (b <= 60 * 60)
+          img->px[y * 1500 + x] = 0xFF1030C0u;
+      }
+  img->dirty = (EaselRect) { 0, 0, 1500, 1400 };
+  easel_canvas_update (easel_window_get_canvas (win));
+  rbg_open (win);
+  rbg_settle (win);
+  g_assert_false (pc_removed (img, 500, 200));                           /* an island the method keeps */
+  pc_press (win, 500, 200);
+  g_assert_true (pc_removed (img, 500, 200));
+  rbg_answer (win, "ok");
+  g_assert_cmphex (easel_image_get (img, 500, 200), ==, 0);
+  g_assert_cmphex (easel_image_get (img, 480, 200), ==, 0);
+  g_assert_cmphex (easel_image_get (img, 250, 250), ==, 0xFFFF0000u);
+  g_assert_cmphex (easel_image_get (img, 1000, 1000), ==, 0);
+  rbg_done ();
+}
+
 /* 0037 AS-6 (REQ-0037-04, 2026-11-10 after T005: presses are dropped when the Tolerance changes): the island pressed to removed comes
    back as the method makes it when the Tolerance changes, and stays so when it comes back; pressed again, it goes; Enter straight
    after a change keeps no press. */
@@ -38779,10 +38878,12 @@ main (int argc, char **argv)
   g_test_add_func ("/0037/as3_selection", pc_as3_selection);
   g_test_add_func ("/0037/as4_nothing_and_transparent", pc_as4_nothing_and_transparent);
   g_test_add_func ("/0037/as5_keyboard", pc_as5_keyboard);
+  g_test_add_func ("/0037/as5_keys", pc_as5_keys);
   g_test_add_func ("/0037/as6_tolerance", pc_as6_tolerance);
   g_test_add_func ("/0037/as7_typed", pc_as7_typed);
   g_test_add_func ("/0037/as8_view", pc_as8_view);
   g_test_add_func ("/0037/as9_memory", pc_as9_memory);
+  g_test_add_func ("/0037/as10_large", pc_as10_large);
   g_test_add_func ("/0036/as1_every_tool", wz_as1_every_tool);
   g_test_add_func ("/0036/as2_cards", wz_as2_cards);
   g_test_add_func ("/0036/as3_held", wz_as3_held);

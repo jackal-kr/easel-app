@@ -1,6 +1,7 @@
 # 0035 Remove background
 
-Status: draft
+Status: implemented
+Reviewed: spec-reviewer, 2026-11-09
 Depends on: 0002, 0005, 0013, 0018, 0019, 0021, 0023, 0034
 
 ## Why

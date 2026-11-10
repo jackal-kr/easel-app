@@ -12956,3 +12956,11 @@ test: core-stroke
   s->color = easel_px_canon (color);           /* P7.7: a fully transparent color draws 0 */
 --- replace
   s->color = color;
+
+=== REQ-0037-03 F7 says nothing while Remove Background's card is open
+file: src/ui/window.c
+test: ui-0037
+--- find
+            announce_marker (self);                       /* the marker's place and the preview's color (REQ-0022-13) */
+--- replace
+            (void) 0;
