@@ -129,3 +129,251 @@ the wallpapers 0.2 to 0.8 %; the twins' line art, the leaf's veins and the cats'
 Small bites remain where pale fur meets the background beside a dark stripe (the tabby, 06) and the blurred wing tips keep a few
 hair-thin streaks. AS-2 at the named tolerances: 04 at 8: 96.3 / 98.6, 05 at 7: 100.0 / 100.0 (unchanged within 0.1). Time: see the spec's Plan. Sheet: `fringe-sheet.png`.
 
+## 0037 B: the background in segments (prototype, 2026-11-10, JOD's request; not in the app)
+
+`classical/classical-v4-segments.c`: the app's method with the background surface fitted in up to three segments of the border ring,
+split by color. One surface first, as now; only when it leaves 10 % of the ring more than 2 automatic tolerances from it are the ring's
+colors split (integer k-means from the farthest points, 3 then 2), a split kept when every segment holds 10 % of the ring, owns one of
+its corners and lies 15 delta-E from the others; each segment its own cubic surface, a cell's distance to the background to the
+nearest one. Sheet: `segments-sheet.png` (the picture, the app, segments; automatic tolerance). The horizons h1 and h2 are synthetic
+(a sky gradient over noisy green ground, a figure across the horizon, a small bird; truth by construction), since the test set has
+none.
+
+| Picture (automatic tolerance) | One surface (the app): kept / removed | Segments: kept / removed |
+|---|---|---|
+| h1 horizon, 1920 x 1080 | 92.9 / 70.3 | 92.9 / 76.1 (2 segments) |
+| h2 horizon, tilted | 92.9 / 71.8 | 92.9 / 74.8 (2) |
+| h3 horizon, 8000 x 8000 | 92.8 / 68.7 | 92.8 / 94.0 (2) |
+| 04 dog's head, pale radial | 98.4 / 93.3 (at 7) | 98.8 / 100.0 (2, at 5) |
+| 01, 02, 03, 05, 06 | as before | the same pixels (1 segment) |
+| the five wallpapers, the eagle | as before | the same pixels (1 segment) |
+
+(The kept share 92.9 on the horizons is the small bird, dropped by REQ-0035-03 c as under a tenth of the figure.)
+
+Time (single-threaded) and the process's peak memory, the picture loaded: 1920 x 1080: analysis and labels 38 ms -> 59 ms, the result
+33 ms -> 32 ms, 32.7 MB -> 33.3 MB; 8000 x 8000: analysis and labels 157 ms -> 220 ms, the result 908 ms -> 904 ms, 724 MB -> 728 MB.
+The opening's preview at 8000 x 8000 (186 to 276 ms with one surface) would come to about 250 to 340 ms: at or over the 0.3 s budget.
+
+What did not work, on the way: splitting every ring whose colors form clusters (the white dog's gradient split in two; extrapolated, a
+segment's surface passed near the dog's white: 37.9 % of it kept); planes instead of cubics for the segments (78.8 %); requiring each
+segment to own a corner (the gradient's two halves both do); each segment its own automatic tolerance (04 fell to 82 to 87 % kept,
+the horizon's ground got 5 as well); background seeds anywhere for segments (79.8 % on h1, 04 at 82 %).
+
+Reading: segments help where a surface cannot follow a step along the border (the horizon at 8000 x 8000, 04's radial), and change
+nothing where one surface suffices. At 1920 x 1080 the horizon's ground stays mostly because of its texture (per-pixel noise above
+tolerance 5): at tolerance 10 one surface removes 100 % of h1 too. So most of a horizon photo's gain comes from the tolerance, not the
+surface; the segments' own gain is the step itself.
+
+## The cube root and the re-tune (2026-11-10)
+
+The integer cube root behind the Lab of every version since v2 was wrong (the step's test computed before the shift, 3 r (2 r + 1) + 1
+for 3 y (y + 1) + 1): 64 944 of the 64 956 values of f(t) were off, the green (37, 112, 56) came out with a* = 0 instead of about -40.
+All the delta-E numbers in the sections above were measured on that Lab. Fixed in the app and the prototypes, with an oracle test
+against libm. On a correct Lab the old automatic rule (5, then 2 per whole delta-E over 2) left picture 04 at 87.1 % kept; every
+picture was then run at every Tolerance from 1 to 40, and the rule chosen for the worst subject kept, the test pictures' background
+removed no lower than before, the photos without truth no fuller than before by more than 2 points:
+
+| Picture | Before the fix (tolerance: kept / removed) | Fix only | Re-tuned (5, then 3 per delta-E over 3.05) |
+|---|---|---|---|
+| 01 white dog | 5: 98.9 / 100.0 | 5: 97.2 / 100.0 | 5: 97.2 / 100.0 |
+| 02 | 5: 100.0 / 99.9 | 5: 100.0 / 99.9 | 5: 100.0 / 99.9 |
+| 03 white cat | 5: 100.0 / 100.0 | 5: 100.0 / 100.0 | 5: 100.0 / 100.0 |
+| 04 dog's head | 7: 98.4 / 93.3 | 7: 87.1 / 96.8 | 6: 97.5 / 95.8 |
+| 05 two cats | 5: 100.0 / 93.9 | 5: 100.0 / 100.0 | 5: 100.0 / 100.0 |
+| 06 | 5: 99.9 / 100.0 | 5: 100.0 / 100.0 | 5: 100.0 / 100.0 |
+| green synthetic, more light | 11: 34.9 / 74.6 | 5: 94.4 / 64.6 | 5: 94.4 / 64.6 |
+| JOD's green-backdrop portrait (shirt and arms / backdrop) | 19: 47.2 / 98.6 | 7: 100.0 / 98.6 | 5: 100.0 / 98.5 |
+| the eagle (share kept) | 5: 12.1 % | 5: 10.9 % | 5: 10.9 % |
+| leaf wallpaper (share kept) | 20: 5.7 % | 11: 7.7 % | 11: 7.7 % |
+| mug wallpaper (share kept) | 13: 15.3 % | 7: 26.8 % | 6: 39.2 % |
+
+Three rules were offered to JOD (floor 3 and 3 per delta-E over 2.5, the best on every picture with a truth but the photos' noise
+left: the eagle 35.7 % kept; floor 5 and 1 per delta-E over 2.5; and this one); he chose this one. Its knee sits in the third of a
+delta-E that picture 04 needs (5 removes 51 %, 7 keeps 87 %), centred, so 04's median (3.55) has 0.17 delta-E either way; the first
+estimate keeps its own fixed rule so that the shown rule does not move the median it reads. No rule fixes the mug: its median (3.62) is
+04's and it needs about twice the tolerance. Sheet: not committed (it shows JOD's photos); the numbers are above.
+
+## v5 folded in (2026-11-10): the robust fit and the colour line
+
+Prototype `classical/` (scratch, not kept; the app's `src/core/remove-bg.c` is the method). On the correct Lab, stage by stage, JOD's
+order; the synthetic green backdrops and the portrait are measured by region (shirt, arms, backdrop):
+
+| Stage | Shirt kept (green synthetic / portrait) | Glow removed (green synthetic) | Test set: worst kept / worst removed | Verdict |
+|---|---|---|---|---|
+| the app, Lab fixed | 91.3 / 100 | 0 | 97.2 / 95.8 | |
+| (a) robust fit | 100 / 100 | 0 | 97.6 / 97.4 | kept |
+| (a) + rejected ring cells as subject seeds | 100 / 100 | 0 | 97.7 / 96.7 (at 2 tolerances: 50.7) | dropped |
+| (a) + (b) colour line | 100 / 100 | 99.7 | 97.6 / 99.4 | kept |
+| (a) + (b) + (c) enclosed regions by color | 100 / 100 | 99.7 | 97.6 / 99.4 | dropped: the portrait's gap 98.6 to 99.0 % at Tolerance 10 only |
+
+The line's guards, each tried by removing it alone on 22 pictures: "only where the line explains the ring at least as well as the
+surface" changes 7 (without it the stingray and the twins' line art go whole, being shades of their backdrops); "only colored cells"
+keeps a white subject on a light colored backdrop (the core test `line_guards`); a cap where a channel saturates changed no picture,
+and "no line on a grey backdrop" made picture 04 worse (100 / 99.4 without it, 98.5 / 97.4 with): both dropped. Also dropped: Otsu's
+tolerance (the white dog at 0 to 26 % at every mapping), the majority filter (nothing gained), lightness weighted below chroma (nothing
+gained), the power method's refit of the line (the same pixels as the ray, and it rotated toward the subject on the portrait).
+
+The knee of the automatic tolerance, swept from 2.6 to 3.6 delta-E: AS-2 holds over the whole range (a plateau of 1 delta-E at least);
+with the robust fit no test picture's median is near the knee any more (the largest, 04, is 0.63); only the leaf (5.1) and a synthetic
+horizon move with it.
+
+Held out (drawn here, truth by construction, not used for any choice): a plain wall 100 / 100; a sky with soft clouds 100 / 94.7; a
+studio grey with a falloff 100 / 100; a two-color gradient 100 / 100; a white backdrop with a soft shadow 100 / 94.8; a textured
+backdrop 0 / 100 at the automatic tolerance 20, 100 / 99.5 at 10 to 12 (a known limit in the spec).
+
+Time (perf-0035, the machine at load 11): 8000 x 8000: the opening with its preview 240 to 280 ms, a Tolerance change 141 to 143 ms,
+the result 0.93 to 0.95 s, the analysis 50 MB; 1920 x 1080: 41 to 46 ms, 19 ms, 45 to 47 ms.
+
+## v6: complex backgrounds (2026-11-10, JOD's request; one round)
+
+`classical/classical-v6.c`, `v6-sheet.png` (synthetic pictures only). New synthetic backdrops, truth by construction: a two-color split,
+stripes, a strong noise texture, a gradient with a horizon, a backdrop the subject partly matches; with the held-out six and the test
+set. Subject kept / background removed, %, at the automatic tolerance:
+
+| Picture | The app before v6 | (1) clusters, kept where they fit the ring better | (1) without that guard | (1) + (2) histograms | (1) + (2) + (3) refits |
+|---|---|---|---|---|---|
+| two-color split | 100 / 57.0 | 100 / 100 | 100 / 100 | 100 / 100 | 100 / 100 |
+| stripes | 100 / 51.9 | 100 / 100 | 100 / 100 | 100 / 100 | 100 / 100 |
+| noise texture | 0 / 59.4 (tolerance 20) | 0 / 100 | 0 / 100 | 0 / 94.0 | 0 / 94.0 |
+| horizon | 100 / 74.0 | 100 / 100 | 100 / 100 | 100 / 100 | 100 / 100 |
+| partly matching | 89.9 / 100 | 79.2 / 100 | 79.2 / 100 | 79.2 / 100 | 79.2 / 100 |
+| held-out sky | 100 / 94.7 | 100 / 94.7 | 100 / 100 | 100 / 89.2 | |
+| held-out white backdrop | 100 / 94.8 | 100 / 94.8 | 100 / 94.8 | 100 / 95.6 | |
+| 01 white dog | 97.6 / 100 | 97.6 / 100 | 28.1 / 100 | 93.8 / 93.9 | 29.5 / 100 |
+| 03 white cat | 100 / 100 | 100 / 100 | 100 / 100 | 100 / 100 | 100 / 100 |
+| the twins' line art (share kept) | 28.3 | 28.3 | 0.0 | 50.5 | 0.0 |
+| thin lines (core test) | intact | intact | intact | intact | intact |
+
+The rest of the test set, the wall, the studio, the gradient and the photos (wallpapers, the eagle, the portrait) are the same pixels
+with the kept clusters (the mug 14.3 -> 13.9 % kept). Kept: (1) with the guard. Dropped: the histograms (2) and their refits (3), which
+bring nothing the clusters do not and cost the white dog (93.8 %, under JOD's 97 %); a corner rule for the clusters (it lost the
+stripes). The partly matching backdrop loses the shirt's part in the backdrop's own green (a press brings it back, Remove Background:
+pieces); the noise texture keeps its known limit (the automatic tolerance 20 loses the subject; 10 to 12 is right). Texture and
+superpixels were not tried: after the clusters, no backdrop here fails for want of them but the noise texture, already a documented
+limit with a working Tolerance.
+
+Time (single-threaded) and memory: 1920 x 1080, the analysis 50 -> 52 ms, the result 28 ms, 34.7 -> 35.1 MB; 8000 x 8000, the analysis
+192 -> 210 ms, the result 0.84 -> 0.83 s, 731 -> 733 MB (the process, the picture loaded).
+
+## The centre prior, the ring sides and the confidence hint (2026-11-10)
+
+A selfie (a hat over a garden; the dark shirt fills the whole bottom border; JOD's photo, kept local) loses its lower face, beard
+and shirt at the automatic 12. Cause: the ring's bottom edge is the shirt, so it is seeded as background and the robust surface takes
+it in (residual 5.41 dE, the colour line off, no clusters). The v6 clusters play no part. A synthetic equivalent (a dark block
+filling the bottom border with a lighter shape above it) keeps 0.0 %; it is AS-11's picture.
+
+**Centre prior, dropped** (a disc 5 % of the shorter side round the centre, seeded as subject, never as background). The floors break:
+
+| Picture | Now | Prior | Prior, only where farther than T |
+|---|---|---|---|
+| t5 two cats (AS-2) | 100.0 / 100.0 | 100.0 / 91.7 | 100.0 / 91.7 |
+| t6 (AS-2) | 100.0 / 100.0 | 100.0 / 89.3 | 100.0 / 100.0 |
+| t2 (AS-2) | 100.0 / 99.9 | 100.0 / 94.5 | 100.0 / 99.9 |
+| held-out studio | 100.0 / 100.0 | 100.0 / 83.7 | 100.0 / 83.7 |
+| held-out white | 100.0 / 94.8 | 100.0 / 83.8 | 100.0 / 94.8 |
+| held-out sky | 100.0 / 94.7 | 100.0 / 91.6 | 100.0 / 94.7 |
+| noise (synthetic) | 0.0 / 100.0 | 69.2 / 89.2 | 69.2 / 89.2 |
+| textured (held-out) | 0.0 / 100.0 | 100.0 / 99.6 | 100.0 / 99.6 |
+| synthetic selfie | 0.0 / 99.8 | 23.0 / 100.0 | 23.0 / 100.0 |
+| selfie (kept share) | 18.6 % | 34.7 % (upper face) | 34.7 % |
+
+Unchanged: t1 white dog 97.6, t3 white cat 100.0, t4, split, stripes, horizon, match, wall, gradient, thin lines intact. The centre is
+background in t5 (the gap between the cats) and in studio (the bright middle of the gradient); the prior keeps it. On the selfie it
+brings back the upper face only; the beard and shirt stay removed, since they still touch the background seeds on the border.
+
+**Confidence.** The number of border clusters does not separate the cases: the plain wall has 6 and split 5, both 100 / 100. The ring's
+residual does: above 3 dE for split (3.88), the selfie (5.41), textured (11.4), noise (25.4), the synthetic selfie (26.1); at or under
+2.16 for the other pictures, the eagle (1.36) included. Match (2.16, 79.2 kept) is a miss of it, accepted. Adopted: the card's second line above 3 dE (REQ-0035-04, AS-11).
+
+**0037 on the selfie.** At 12 the removed area (face, beard, shirt, sky, foliage, house) is one connected piece: one press on the face
+brings back all of it but a spot by the eye. The press cannot separate the face from the foliage.
+
+**The eagle.** JOD's eagle at automatic 5 leaves cloud islands; 7 is clean. A mild miss of the automatic rule, no change.
+
+**Ring sides, dropped** (one round: a frame side is not background when more than half of its colours lie farther than 10 dE from
+every colour of the other three sides combined). On the selfie no side qualifies: the bottom side's share of such colours is 0.0 %,
+since the shirt also runs up the lower ends of the left and right sides (top 0.1, left 0.1, right 5.1 %). The synthetic selfie is the
+same (0.0 / 0.0 / 0.4 / 0.3 %). It changes nothing on the selfie, so it was not run over the rest. A subject that fills a side also
+reaches the two sides beside it; telling it from the backdrop needs the user's marks (Keep this / Remove this).
+
+## A blind composited benchmark (2026-11-10, local only)
+
+The core frozen at sha256 `818cf0ab…a771b` of `src/core/remove-bg.c` (on commit `46f9ab5` plus the uncommitted work), no change made
+for the set. 13 subjects (the nine cut-outs of the test set's sources and four synthetic: a head and shoulders across the bottom edge,
+colour blocks, line art, a pale vase) on 12 backdrops generated in code (plain, linear, glow, vignette, two-colour split, horizon,
+stripes, noise, bokeh, busy pattern, soft clouds, paper) at 800 x 600, 1600 x 1200 and 3200 x 2400: 468 runs at the automatic
+tolerance, the masks exact (the cut-outs' alpha at one half). Kept is the subject kept, removed the background removed, both away
+from a 4-pixel band round the true edge; IoU over all pixels. Nothing of it is in the repository; the generator and the sheet stay
+local.
+
+| Backdrop | Median IoU | Worst IoU | IoU > 0.9 | Hint shown |
+|---|---|---|---|---|
+| plain | 0.991 | 0.369 | 85 % | 0 % |
+| linear | 0.991 | 0.328 | 85 % | 0 % |
+| glow | 0.993 | 0.386 | 92 % | 0 % |
+| vignette | 0.994 | 0.386 | 92 % | 0 % |
+| paper | 0.995 | 0.377 | 92 % | 0 % |
+| split | 0.990 | 0.000 | 72 % | 8 % |
+| stripes | 0.966 | 0.000 | 62 % | 8 % |
+| horizon | 0.362 | 0.111 | 10 % | 5 % |
+| clouds | 0.344 | 0.000 | 31 % | 8 % |
+| busy | 0.292 | 0.035 | 0 % | 0 % |
+| bokeh | 0.175 | 0.000 | 0 % | 46 % |
+| noise | 0.000 | 0.000 | 3 % | 100 % |
+| all | 0.932 | 0.000 | 52 % | 15 % |
+
+The hint (median above 3 dE) shows on 65 of the 225 runs under 0.9 (29 %), on 3 of the 243 above, on none of the 39 plain ones.
+The 225 runs under 0.9, sorted: known limits of 0035: the hole showing the background (the line-drawn dog whose open interior
+shows the backdrop, and the gap between legs, 41), the textured backdrop (35), the horizon's ground (29: 0037's band, item I's
+texture), soft clouds (21, far worse than the 95 % the edge case states), a subject in the backdrop's own shade (line art on dark
+stripes, 3). New: (A) a subject that fills a border side (the head and shoulders, 24; the selfie's case, 0038's Keep stroke);
+(B) two colours each near half of the ring (split, stripes, 6): the surface's median falls between them, the automatic tolerance
+jumps to 20 and the subject goes, which side of half depending on the size; (C) a busy pattern of many small colours (33): the
+ring's median is the base color, so the hint stays off and every piece of another colour stays; (D) blurred multicolour bokeh (33).
+
+What it can claim: on smooth backdrops (plain, gradients, glow, vignette, paper) the method keeps a cut-out subject well (median
+IoU 0.99, 85 to 92 % above 0.9), independent of the picture's size; the hint never shows on a plain backdrop. What it cannot claim:
+it is not photographs (the subjects are pasted with their own alpha, no shadow, no blur, no light from the scene); the cut-outs are
+the test set's own animals; the backdrops' kinds and parameters were chosen here and their share of the set decides the totals
+(52 % above 0.9 says nothing of a user's pictures); and the head and shoulders and the line drawing are hard cases by design. The
+hint misses most failures that are not texture. Rules proposed from it are for JOD to decide; none is made to pass the set.
+
+JOD's own 24 photos (local only, never shown before, run once with the frozen core): 5 good (flowers on black, a candle, a tiger
+on sky, a clown on dark, a portrait on grey), 10 removed whole at an automatic 16 to 20 (busy or textured scenes: gardens, a street,
+foliage, a field, a car under trees, a bar), the rest partial (a subject that fills a border side: faces, a close-up panda; bokeh).
+The hint shows on 16 of the 19 failures and on none of the 5 good. On photos the main failure is the automatic tolerance driven to
+20 by a busy border, which removes everything.
+
+Three rules tried against the frozen core, one round each (JOD 2026-11-10, "show me all"): (1) the automatic tolerance from the
+clusters' median when they judge: composited 22 runs better, 2 worse (line art over a horizon), share above 0.9 52 to 53 %; photos 8
+changed, none worse (the astronaut 0 to 31 % kept, the close-up panda 0 to 43 %); every test-set floor as before. (2) The hint from the
+ring's 90th percentile distance above 6 dE: 80 % of the composited failures (from 29 %), 13 of 243 good runs, no plain one; on the
+photos 19 of 19 failures but 2 of 5 good. (3) Clusters from 3 % of the ring: rejected, it breaks the floors (the split, stripes and
+horizon synthetics lose their subject, the studio and match pictures too) and empties three more photos.
+
+### Rules 1 and 2 folded, and a stability check prototyped (2026-11-10)
+
+Rule 1 (the automatic tolerance from the clusters' median where they judge) and rule 2 (the hint from the ring's 90th percentile
+above 6 dE) are folded into 0035. Every floor holds: AS-2's six at automatic 5 (97.6 / 100 worst), the white dog 97.6, the white cat
+100, thin lines intact, the core tests. Rule 3 stays rejected (above). A grey-grain backdrop now gets a low automatic tolerance (the
+clusters explain grain of one hue; the core's noisy-border test moved to a colour grain to keep testing the formula's slope).
+
+JOD's photos split for this round (stratified by the frozen core's labels; the split and its seed in the local scratch notes only):
+12 for tuning, 12 locked and run once at the end. The stability check (prototype, not folded): when the automatic tolerance is above
+7, the kept share of the copy is taken at 4 and at the automatic tolerance; only if it more than halves, at 7, 10 and 14 in turn, and
+the tolerance becomes the last one before the first step that more than halves it. The same picks as the full ladder on every run.
+
+| | Frozen core | Rule 1 | Rule 1 + stability |
+|---|---|---|---|
+| Composited: median IoU / share above 0.9 | 0.932 / 51.9 % | 0.960 / 52.8 % | 0.956 / 52.4 % |
+| Composited: runs left empty (IoU < 0.01) | 57 | 35 | 3 |
+| Composited: runs worse than the frozen core by 0.05 | - | 2 | 4 |
+| Tuning 12: removed whole / good | 6 / 2 | 4 / 2 | 0 / 3 |
+| Locked 12 (run once): removed whole / good | 5 / 3 | 4 / 3 | 0 / 3 (the horse nearly) |
+| Floors (AS-2, dogs, cats, thin lines, core tests) | hold | hold | hold |
+
+What the stability check costs and does: one more label of the copy when the automatic tolerance is above 7 (about 110 ms at
+8000 x 8000, 30 ms at 1920 x 1080), four more when a collapse must be found (about 440 ms at 8000 x 8000, over the 0.3 s preview
+budget, 100 ms at 1920 x 1080). It turns "everything removed" into "something kept", sometimes too much: the street keeps its
+buildings, the tiger its foliage, the noise and textured backdrops keep most of themselves (removed 15 % and 8 %). Its four worse
+composited runs: two noise backdrops at 3200 and the line art over a horizon (rule 1's, a known limit).

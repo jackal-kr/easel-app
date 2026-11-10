@@ -111,6 +111,25 @@ Order suggestion: A and B first, C after the graphics path audit, D with file in
 ### G. "Keep this" and "Remove this" brushes for Remove Background (optional, later; JOD, 2026-11-09)
 - Two brushes in Remove Background's card: what the user paints with "Keep this" becomes subject seeds, with "Remove this" background
   seeds, for the same watershed (ADR-0007), so a subject the colors alone miss (the stingray, line art) can be kept by a few strokes.
+- First design notes (JOD, 2026-11-10):
+  - Two toggle buttons in the card, "Keep this" and "Remove this", none on at the start; with one on, a drag on the picture paints a
+    stroke of a fixed size in screen pixels (shown as a translucent band, green and red, both outlined for contrast) instead of the
+    piece presses of Remove Background: pieces; with none on, presses flip pieces as before.
+  - The strokes become the watershed's markers (ADR-0007): every copy cell a "Keep" stroke covers is a subject seed, every "Remove"
+    cell a background seed, overriding the color seeds; the flood then runs as now, so one stroke across a subject the colors miss
+    keeps all of it up to its edges. A cell under both: the later stroke wins.
+  - Kept, like the presses, as picture pixels, so a Tolerance change keeps them; the preview after a stroke within 0.3 s at any size.
+  - No undo step inside the card; Cancel drops them, OK keeps the result as one step. Open: an eraser for strokes, the stroke's size
+    control, and the keyboard path (the marker painting with Space held).
+
+### H. Soft edges for Remove Background (optional, later; JOD, 2026-11-10)
+- Partial transparency from the color-mixing estimate of the fringe (REQ-0035-03 g): a boundary pixel's alpha from its share of the
+  subject, instead of kept or removed whole. Off by default (a setting in the card); P7.1 would then need its own wording.
+
+### I. A texture channel for Remove Background (optional, later; JOD, 2026-11-10)
+- Besides color, a local texture measure (how much the color varies around a cell) in the edge strength and the distance to the
+  background, so a textured ground (grass, gravel) is told from a smooth subject without a high Tolerance (0037's horizon prototype:
+  the ground stayed mostly for its texture).
 
 ### Done or merged
 - Toolbox icons and selection icons more consistent and readable: A, spec 0029, implemented 2026-11-07.
