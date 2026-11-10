@@ -975,7 +975,7 @@ test: core-fill
 file: src/core/fill.c
 test: core-fill
 --- find
-      while (xr < img->width - 1 && row[xr + 1] == target)
+      while (xr < img->width - 1 && easel_px_same (row[xr + 1], target))
 --- replace
       while (xr < img->width - 1 && (row[xr + 1] & 0x00FFFFFFu) == (target & 0x00FFFFFFu))
 
@@ -3178,12 +3178,12 @@ test: core-selection
 file: src/core/selection.c
 test: core-selection
 --- find
-      ok = easel_change_log_set (&l, img, i, j, color);
+        ok = easel_change_log_set (&l, img, i, j, easel_px_canon (color));   /* P7.7 */
   if (!ok)
     {
       easel_change_log_restore (&l, img);
 --- replace
-      ok = easel_change_log_set (&l, img, i, j, color);
+        ok = easel_change_log_set (&l, img, i, j, easel_px_canon (color));   /* P7.7 */
   if (!ok)
     {
 
@@ -7062,19 +7062,19 @@ file: src/core/text-put.c
 test: core-text-put
 --- find
       if (ink->mask[i])
-        return ink->color[i];
+        return easel_px_canon (ink->color[i]);   /* P7.7 */
 --- replace
-      return ink->color[i];
+      return easel_px_canon (ink->color[i]);   /* P7.7 */
 
 === REQ-0017-16 an Opaque box is not filled with the background
 file: src/core/text-put.c
 test: core-text-put
 --- find
   if (opaque && x >= bx && x < bx + bw && y >= by && y < by + bh)
-    return background;
+    return easel_px_canon (background);
 --- replace
   if (0)
-    return background;
+    return easel_px_canon (background);
 
 === REQ-0017-16 the Opaque fill reaches one pixel past the box
 file: src/core/text-put.c
@@ -7088,9 +7088,9 @@ test: core-text-put
 file: src/core/text-put.c
 test: core-text-put
 --- find
-        return ink->color[i];
+        return easel_px_canon (ink->color[i]);   /* P7.7 */
 --- replace
-        return ink->color[i] | 0xFF000000u;
+        return easel_px_canon (ink->color[i]) | 0xFF000000u;
 
 === REQ-0017-16 a put-down that changes no pixel adds a step
 file: src/core/text-put.c
@@ -9346,23 +9346,23 @@ test: core-transform
 file: src/core/transform.c
 test: core-transform
 --- find
-        px[i] = img->px[i] ^ 0x00FFFFFFu;
+        px[i] = (img->px[i] >> 24) != 0 ? img->px[i] ^ 0x00FFFFFFu : img->px[i];
 --- replace
-        px[i] = img->px[i] ^ 0xFFFFFFFFu;
+        px[i] = (img->px[i] >> 24) != 0 ? img->px[i] ^ 0xFFFFFFFFu : img->px[i];
 
 === REQ-0018-05 Invert Colors keeps the blue channel
 file: src/core/transform.c
 test: core-transform
 --- find
-        px[i] = img->px[i] ^ 0x00FFFFFFu;
+        px[i] = (img->px[i] >> 24) != 0 ? img->px[i] ^ 0x00FFFFFFu : img->px[i];
 --- replace
-        px[i] = img->px[i] ^ 0x00FFFF00u;
+        px[i] = (img->px[i] >> 24) != 0 ? img->px[i] ^ 0x00FFFF00u : img->px[i];
 
 === REQ-0018-06 Clear Image clears to transparent in the buffer
 file: src/core/transform.c
 test: core-transform
 --- find
-        px[i] = background;
+        px[i] = easel_px_canon (background);
 --- replace
         px[i] = 0;
 
@@ -9371,10 +9371,10 @@ file: src/core/transform.c
 test: core-transform
 --- find
     case EASEL_OP_CLEAR:
-      return background;
+      return easel_px_canon (background);
 --- replace
     case EASEL_OP_CLEAR:
-      return background & 0xFFFFFFFEu;
+      return easel_px_canon (background) & 0xFFFFFFFEu;
 
 === REQ-0018-09 a command that changes nothing adds a step
 file: src/core/transform.c
@@ -9873,16 +9873,16 @@ test: core-selection
 file: src/core/selection.c
 test: core-selection
 --- find
-    npx[i] = f->px[i] ^ 0x00FFFFFFu;
+    npx[i] = f->px[i] ^ ((f->px[i] >> 24) != 0 ? 0x00FFFFFFu : 0);
 --- replace
-    npx[i] = f->px[i] ^ 0xFFFFFFFFu;
+    npx[i] = f->px[i] ^ ((f->px[i] >> 24) != 0 ? 0xFFFFFFFFu : 0);
 
 === REQ-0018-05 Invert Colors of a float leaves the lifted pixels
 file: src/core/selection.c
 test: core-selection
 --- find
       for (size_t i = 0; i < n_orig; i++)
-        norig[i] = f->orig_px[i] ^ 0x00FFFFFFu;
+        norig[i] = f->orig_px[i] ^ ((f->orig_px[i] >> 24) != 0 ? 0x00FFFFFFu : 0);
 --- replace
       for (size_t i = 0; i < n_orig; i++)
         norig[i] = f->orig_px[i];
@@ -10038,7 +10038,7 @@ test: core-selection
 file: src/core/selection.c
 test: core-selection
 --- find
-          f->orig_px[i] ^= 0x00FFFFFFu;
+          f->orig_px[i] ^= (f->orig_px[i] >> 24) != 0 ? 0x00FFFFFFu : 0;
 --- replace
           f->orig_px[i] ^= 0;
 
@@ -10046,7 +10046,7 @@ test: core-selection
 file: src/core/selection.c
 test: core-selection
 --- find
-        f->px[i] ^= 0x00FFFFFFu;
+        f->px[i] ^= (f->px[i] >> 24) != 0 ? 0x00FFFFFFu : 0;           /* fully transparent: untouched (P7.7) */
 --- replace
         f->px[i] ^= 0;
 
@@ -10656,16 +10656,16 @@ test: core-view
 file: src/core/figure.c
 test: core-figure-apply
 --- find
-    if (!easel_change_log_set (l, img, x, y, color))
+    if (!easel_change_log_set (l, img, x, y, easel_px_canon (color)))   /* P7.7 */
 --- replace
-    if (!easel_change_log_set (l, img, x, y, (color >> 24) == 0x80 ? 0xFFFF8080u : color))
+    if (!easel_change_log_set (l, img, x, y, (color >> 24) == 0x80 ? 0xFFFF8080u : easel_px_canon (color)))
 === REQ-0025-01 a text foreground of #00000000 is written as white
 file: src/core/text-put.c
 test: core-text-put
 --- find
-        return ink->color[i];
+        return easel_px_canon (ink->color[i]);   /* P7.7 */
 --- replace
-        return ink->color[i] == 0 ? 0xFFFFFFFFu : ink->color[i];
+        return ink->color[i] == 0 ? 0xFFFFFFFFu : easel_px_canon (ink->color[i]);
 === REQ-0025-02 an edge is rounded down, not to the nearest device pixel
 file: src/core/view.c
 test: ui-0025
@@ -12337,10 +12337,10 @@ file: src/core/black-white.c
 test: core-black-white
 --- find
           if ((row[x] >> 24) == 0)
-            {
+            continue;                                   /* fully transparent: untouched, no share in or out (P7.7) */
 --- replace
           if ((row[x] >> 24) == 0 && 0)
-            {
+            continue;
 
 === REQ-0034-03 the whole picture's step is always a log
 file: src/core/transform.c
@@ -12432,18 +12432,6 @@ test: ui-0034
 
 
 # ---- Remove background (0035, ADR-0007): the classical method ----
-
-=== REQ-0035-07 a removed pixel loses its color
-file: src/core/remove-bg.c
-test: core-remove-bg
---- find
-          if (lab == BACK)
-            {
-              dst[i] = px[i] & 0x00FFFFFFu;
---- replace
-          if (lab == BACK)
-            {
-              dst[i] = 0;
 
 === REQ-0035-02 a pixel outside the selection's shape is removed
 file: src/core/remove-bg.c
@@ -12675,11 +12663,11 @@ test: core-remove-bg
 --- find
             if (!looked_at (mask, i) || (px[i] >> 24) == 0)
               continue;
-            dst[i] = (r->next[c] & 1) ? px[i] & 0x00FFFFFFu : px[i];
+            dst[i] = (r->next[c] & 1) ? 0 : px[i];                   /* removed: 0x00000000 (P7.7) */
 --- replace
             if (!looked_at (mask, i))
               continue;
-            dst[i] = (r->next[c] & 1) ? px[i] & 0x00FFFFFFu : px[i];
+            dst[i] = (r->next[c] & 1) ? 0 : px[i];                   /* removed: 0x00000000 (P7.7) */
 
 === REQ-0037-04 every two pixels are in one piece
 file: src/core/remove-bg.c
@@ -12920,3 +12908,51 @@ test: ui-0037
     s->n_presses = 0;            /* the presses are the pieces of one Tolerance: a new one drops them (REQ-0037-04, 2026-11-10) */
 --- replace
     (void) 0;
+
+=== REQ-0007-05 a fully transparent pixel is equal only to the same red, green and blue
+file: src/core/image.h
+test: core-fill ui-0035
+--- find
+  return a == b || ((a >> 24) == 0 && (b >> 24) == 0);
+--- replace
+  return a == b;
+
+=== REQ-0007-05 a fill over fully transparent pixels of several hidden colors is undone to the clicked one
+file: src/core/fill.c
+test: core-fill
+--- find
+              w.mixed = w.mixed || row[i] != target;
+--- replace
+              w.mixed = false;
+
+=== REQ-0035-07 a removed pixel keeps its color under alpha 0
+file: src/core/remove-bg.c
+test: core-remove-bg ui-0035
+--- find
+          dst[i] = 0;                                   /* removed: 0x00000000 (P7.7) */
+--- replace
+          dst[i] = px[i] & 0x00FFFFFFu;
+
+=== REQ-0018-05 Invert Colors changes a fully transparent pixel
+file: src/core/transform.c
+test: core-transform
+--- find
+        return (p >> 24) != 0 ? p ^ 0x00FFFFFFu : p;   /* fully transparent: untouched (P7.7) */
+--- replace
+        return p ^ 0x00FFFFFFu;
+
+=== REQ-0034-06 Black and White converts a fully transparent pixel
+file: src/core/black-white.c
+test: core-black-white
+--- find
+        if (in_shape (mrow, (size_t) x) && (row[x] >> 24) != 0)   /* fully transparent: untouched (P7.7) */
+--- replace
+        if (in_shape (mrow, (size_t) x))
+
+=== REQ-0006-05 a fully transparent color draws its hidden color (P7.7)
+file: src/core/stroke.c
+test: core-stroke
+--- find
+  s->color = easel_px_canon (color);           /* P7.7: a fully transparent color draws 0 */
+--- replace
+  s->color = color;

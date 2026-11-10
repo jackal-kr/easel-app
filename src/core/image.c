@@ -30,6 +30,7 @@ easel_image_new (int width, int height, uint32_t fill)
   img->width = width;
   img->height = height;
   img->dirty = (EaselRect) { 0, 0, 0, 0 };
+  fill = easel_px_canon (fill);               /* P7.7 */
   for (size_t i = 0; i < n; i++)
     img->px[i] = fill;
   return img;
@@ -114,7 +115,7 @@ easel_image_resize (EaselImage *img, int width, int height, uint32_t fill)
           from = kept_w;
         }
       for (int x = from; x < width; x++)
-        row[x] = fill;
+        row[x] = easel_px_canon (fill);        /* P7.7 */
     }
   free (img->px);
   img->px = px;

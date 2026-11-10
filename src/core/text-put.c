@@ -14,10 +14,10 @@ value_at (const EaselImage *img, int x, int y, int bx, int by, int bw, int bh, c
       size_t i = (size_t) (y - ink->y) * (size_t) ink->w + (size_t) (x - ink->x);
 
       if (ink->mask[i])
-        return ink->color[i];
+        return easel_px_canon (ink->color[i]);   /* P7.7 */
     }
   if (opaque && x >= bx && x < bx + bw && y >= by && y < by + bh)
-    return background;
+    return easel_px_canon (background);
   return easel_image_get (img, x, y);
 }
 

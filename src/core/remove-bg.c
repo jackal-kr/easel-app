@@ -882,7 +882,7 @@ easel_rbg_flips (EaselRbg *r, const uint32_t *px, const uint8_t *mask, uint32_t 
 
             if (!looked_at (mask, i) || (px[i] >> 24) == 0)
               continue;
-            dst[i] = (r->next[c] & 1) ? px[i] & 0x00FFFFFFu : px[i];
+            dst[i] = (r->next[c] & 1) ? 0 : px[i];                   /* removed: 0x00000000 (P7.7) */
             gone += ((dst[i] >> 24) == 0) - was;
           }
     }
@@ -1237,7 +1237,7 @@ fringe_round (const EaselRbg *r, const uint32_t *px, const uint8_t *mask, uint32
     if (r->marks[byte] != 0)
       for (size_t i = byte * 8; i < byte * 8 + 8 && i < (size_t) w * (size_t) h; i++)
         if (r->marks[byte] >> (i & 7) & 1)
-          dst[i] = px[i] & 0x00FFFFFFu;
+          dst[i] = 0;                                   /* removed: 0x00000000 (P7.7) */
   return marked;
 }
 
@@ -1275,7 +1275,7 @@ easel_rbg_preview (const EaselRbg *r, const uint32_t *px, const uint8_t *mask, u
           dst[i] = px[i];
           if (row[cx] == BACK && (px[i] >> 24) != 0 && looked_at (mask, i))
             {
-              dst[i] = px[i] & 0x00FFFFFFu;
+              dst[i] = 0;                               /* removed: 0x00000000 (P7.7) */
               gone++;
             }
           if (++in == r->s)
@@ -1354,7 +1354,7 @@ easel_rbg_result (const EaselRbg *r, const uint32_t *px, const uint8_t *mask, ui
             }
           if (lab == BACK)
             {
-              dst[i] = px[i] & 0x00FFFFFFu;
+              dst[i] = 0;                               /* removed: 0x00000000 (P7.7) */
               gone++;
             }
         }

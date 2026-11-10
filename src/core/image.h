@@ -20,6 +20,21 @@ typedef struct
   EaselRect dirty;        /* empty when x1 <= x0 */
 } EaselImage;
 
+/* P7.7 (ADR-0008): the value an operation writes for color: 0x00000000 when color is fully transparent, whatever red, green and blue
+   it holds. */
+static inline uint32_t
+easel_px_canon (uint32_t color)
+{
+  return (color >> 24) != 0 ? color : 0;
+}
+
+/* Fill's sameness (REQ-0007-05, P7.7): equal in all four channels, or both fully transparent. */
+static inline bool
+easel_px_same (uint32_t a, uint32_t b)
+{
+  return a == b || ((a >> 24) == 0 && (b >> 24) == 0);
+}
+
 /* Returns NULL if a size is not positive or memory runs out. */
 EaselImage *easel_image_new (int width, int height, uint32_t fill);
 void easel_image_free (EaselImage *img);

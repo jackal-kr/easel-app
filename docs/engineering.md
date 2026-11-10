@@ -99,6 +99,9 @@ From feature 0002 (`src/core/history`):
   `test-window` refuses to start, and `tools/mutate.sh` refuses to run a mutant of a ui test, while another `easel` or
   `test-window` process exists (the core and io tests do not check).
 - A ui test does not turn the main loop while a synthetic button is held.
+- A fully transparent pixel is written as 0x00000000 (P7.7, ADR-0008): code that makes a pixel's alpha 0 writes 0, not the color with
+  alpha 0 (`easel_px_canon`), and a test of it compares with 0, not with the alpha alone. Why (0035, 2026-11-10): Remove Background kept
+  the removed pixels' colors under alpha 0, and Fill, which compares all four channels, filled only patches of the removed area.
 - Every numeric table or conversion in `src/core` (a lookup table, a fixed-point formula, a color space) has an oracle test: its values
   checked against an independent reference computed in the test (libm in doubles, a standard's own formula), over its whole range
   or a sweep of it, within a stated tolerance; determinism and behavior tests alone do not count. Why (0035, 2026-11-10): the integer

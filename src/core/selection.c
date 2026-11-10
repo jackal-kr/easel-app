@@ -384,7 +384,7 @@ easel_selection_clear (EaselImage *img, EaselHistory *history, int x, int y, int
   for (int j = y; ok && j < y + h; j++)
     for (int i = x; ok && i < x + w; i++)
       if (mask == NULL || mask[(size_t) (j - y) * w + (i - x)] != 0)
-        ok = easel_change_log_set (&l, img, i, j, color);
+        ok = easel_change_log_set (&l, img, i, j, easel_px_canon (color));   /* P7.7 */
   if (!ok)
     {
       easel_change_log_restore (&l, img);
@@ -968,10 +968,10 @@ invert_float (EaselFloat *f, size_t max_bytes)
     {
       /* No copy uses either image: they are inverted where they are, which allocates nothing and cannot fail. */
       for (size_t i = 0; i < n_cur; i++)
-        f->px[i] ^= 0x00FFFFFFu;
+        f->px[i] ^= (f->px[i] >> 24) != 0 ? 0x00FFFFFFu : 0;           /* fully transparent: untouched (P7.7) */
       if (stretched)
         for (size_t i = 0; i < n_orig; i++)
-          f->orig_px[i] ^= 0x00FFFFFFu;
+          f->orig_px[i] ^= (f->orig_px[i] >> 24) != 0 ? 0x00FFFFFFu : 0;
       return EASEL_SELECTION_DONE;
     }
   /* The new images: a mask is copied for an image that goes to the copies, else the float keeps the one it has. */
@@ -1000,13 +1000,13 @@ invert_float (EaselFloat *f, size_t max_bytes)
         goto no_memory;
     }
   for (size_t i = 0; i < n_cur; i++)
-    npx[i] = f->px[i] ^ 0x00FFFFFFu;
+    npx[i] = f->px[i] ^ ((f->px[i] >> 24) != 0 ? 0x00FFFFFFu : 0);
   if (nmask != NULL)
     memcpy (nmask, f->mask, n_cur);
   if (stretched)
     {
       for (size_t i = 0; i < n_orig; i++)
-        norig[i] = f->orig_px[i] ^ 0x00FFFFFFu;
+        norig[i] = f->orig_px[i] ^ ((f->orig_px[i] >> 24) != 0 ? 0x00FFFFFFu : 0);
       if (norig_mask != NULL)
         memcpy (norig_mask, f->orig_mask, n_orig);
     }

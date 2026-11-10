@@ -36,6 +36,20 @@ as16_click_sets_one_pixel (void)
   easel_image_free (img);
 }
 
+/* P7.7 (2026-11-10, ADR-0008): a fully transparent color draws 0x00000000, whatever red, green and blue it holds. */
+static void
+transparent_color_is_zero (void)
+{
+  EaselImage *img = easel_image_new (20, 10, WHITE);
+  EaselStroke *s = easel_stroke_begin (img, 2, 5, 0x00FF0000u);
+
+  easel_stroke_to (s, 12, 5);
+  easel_stroke_end (s, NULL);
+  CHECK (easel_image_get (img, 2, 5) == 0x00000000u && easel_image_get (img, 12, 5) == 0x00000000u);
+  CHECK (count (img, 0x00FF0000u) == 0);
+  easel_image_free (img);
+}
+
 static void
 as18_line_is_8_connected (void)
 {
@@ -449,7 +463,10 @@ as8_color_eraser (void)
   easel_image_free (img);
 
   /* All four channels: a fully transparent pixel with other color channels is not the transparent foreground. */
-  img = easel_image_new (20, 20, 0x00FF0000u);
+  img = easel_image_new (20, 20, 0);
+  for (int y = 0; y < 20; y++)
+    for (int x = 0; x < 20; x++)
+      easel_image_set (img, x, y, 0x00FF0000u);              /* hidden colors, as an older picture may hold */
   easel_image_set (img, 5, 5, 0x00000000u);
   {
     uint32_t clear = 0x00000000u;
@@ -491,5 +508,6 @@ main (void)
   RUN (as5_slanted_brush);
   RUN (as7_eraser);
   RUN (as8_color_eraser);
+  RUN (transparent_color_is_zero);
   return 0;
 }

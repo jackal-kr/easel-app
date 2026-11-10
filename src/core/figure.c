@@ -955,7 +955,7 @@ paint_run (EaselImage *img, EaselChangeLog *l, int y, int x_from, int x_to, uint
   if (x_to > img->width - 1)
     x_to = img->width - 1;
   for (int x = x_from; x <= x_to; x++)
-    if (!easel_change_log_set (l, img, x, y, color))
+    if (!easel_change_log_set (l, img, x, y, easel_px_canon (color)))   /* P7.7 */
       return false;
   return true;
 }

@@ -23380,8 +23380,8 @@ as3_turn_keeps_view (void)
   write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
 }
 
-/* AS-4 (REQ-0018-05, REQ-0018-09): Invert Colors (the action the menu calls) on an all transparent picture is one step and marks the
-   title though nothing visible changed; the pixels are #FFFFFF00; again, #00000000; Undo takes one back. */
+/* AS-4 (REQ-0018-05, REQ-0018-09; 2026-11-10, P7.7): Invert Colors (Ctrl+I, the action the menu calls) on an all transparent picture
+   changes nothing: no step, no mark; with one opaque pixel in it, that pixel alone is inverted, one step; Undo takes it back. */
 static void
 as4_invert_transparent_step (void)
 {
@@ -23395,16 +23395,19 @@ as4_invert_transparent_step (void)
   g_assert_cmphex (img->px[0], ==, 0x00000000u);
   g_assert_false (easel_window_get_modified (win));
   g_assert_true (key_taken (win, GDK_KEY_i, GDK_CONTROL_MASK));                    /* Ctrl+I, no text box open: Invert Colors */
-  g_assert_cmphex (img->px[0], ==, 0x00FFFFFFu);
-  g_assert_cmphex (img->px[23], ==, 0x00FFFFFFu);
-  g_assert_false (key_taken (win, GDK_KEY_i, GDK_CONTROL_MASK | GDK_SHIFT_MASK) && img->px[0] != 0x00FFFFFFu);   /* Shift+Ctrl+I is not it */
-  g_assert_cmphex (img->px[0], ==, 0x00FFFFFFu);
+  g_assert_cmphex (img->px[0], ==, 0x00000000u);
+  g_assert_cmphex (img->px[23], ==, 0x00000000u);
+  g_assert_false (easel_window_get_modified (win));                               /* nothing changed: no step, no mark */
+  g_assert_false (action_enabled (win, "undo"));
+  img->px[5] = 0xFF102030u;
+  g_assert_false (key_taken (win, GDK_KEY_i, GDK_CONTROL_MASK | GDK_SHIFT_MASK) && img->px[5] != 0xFF102030u);   /* Shift+Ctrl+I is not it */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "invert", NULL);
+  g_assert_cmphex (img->px[5], ==, 0xFFEFDFCFu);
+  g_assert_cmphex (img->px[0], ==, 0x00000000u);
   g_assert_true (easel_window_get_modified (win));
   g_assert_true (action_enabled (win, "undo"));
-  g_action_group_activate_action (G_ACTION_GROUP (win), "invert", NULL);
-  g_assert_cmphex (img->px[0], ==, 0x00000000u);
   g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
-  g_assert_cmphex (img->px[0], ==, 0x00FFFFFFu);
+  g_assert_cmphex (img->px[5], ==, 0xFF102030u);
   close_windows ();
   write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
 }
@@ -36906,6 +36909,79 @@ rbg_as11_complex_hint (void)
   rbg_done ();
 }
 
+/* An 80 x 60 picture for P7.7: a white backdrop with faint noise (three grey levels, 253 to 255) and a red rectangle from (20, 15) to
+   (59, 44); Remove Background removes the backdrop, whose pixels held different colors. */
+static EaselWindow *
+rbg_noise_window (void)
+{
+  EaselWindow *win = window_with ("[new-picture]\nwidth=80\nheight=60\nbackground=#FFFFFF\n");
+  EaselImage *img = (EaselImage *) easel_window_get_picture (win);
+
+  for (int y = 0; y < 60; y++)
+    for (int x = 0; x < 80; x++)
+      img->px[y * 80 + x] = x >= 20 && x < 60 && y >= 15 && y < 45 ? 0xFFFF0000u
+                                                                    : 0xFF000000u | (uint32_t) (255 - (x * 7 + y * 13) % 3) * 0x010101u;
+  img->dirty = (EaselRect) { 0, 0, 80, 60 };
+  easel_canvas_update (easel_window_get_canvas (win));
+  return win;
+}
+
+/* 0035 AS-12 (REQ-0035-07, P7.7, ADR-0008; JOD's candle, 2026-11-10): after the real OK, Fill with the real tool at a removed pixel
+   fills the whole removed backdrop, not patches of its hidden colors. */
+static void
+rbg_as12_fill_after_ok (void)
+{
+  EaselWindow *win = rbg_noise_window ();
+  const EaselImage *img = easel_window_get_picture (win);
+  const uint32_t olive = 0xFF808000u;
+  int clear = 0;
+
+  rbg_open (win);
+  rbg_answer (win, "ok");
+  for (int i = 0; i < 80 * 60; i++)
+    clear += (img->px[i] >> 24) == 0;
+  g_assert_cmpint (clear, ==, 80 * 60 - 40 * 30);
+  easel_canvas_set_colors (easel_window_get_canvas (win), olive, 0xFFFFFFFFu);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "tool", g_variant_new_string ("fill"));
+  click_at (win, 1000, 5, 5);
+  g_assert_cmpint (count_color (img, olive), ==, 80 * 60 - 40 * 30);   /* the whole removed backdrop */
+  g_assert_cmphex (easel_image_get (img, 30, 30), ==, 0xFFFF0000u);
+  rbg_done ();
+}
+
+/* 0035 AS-12: the removed pixels are 0, 0, 0, 0 in a saved PNG. */
+static void
+rbg_as12_png_zeros (void)
+{
+  EaselWindow *win = rbg_noise_window ();
+  const EaselImage *img = easel_window_get_picture (win);
+  g_autofree char *dir = g_dir_make_tmp ("easel-rbg-XXXXXX", NULL), *path = g_build_filename (dir, "removed.png", NULL);
+  g_autoptr (GError) error = NULL;
+  g_autoptr (GdkPixbuf) saved = NULL;
+  int transparent = 0;
+
+  rbg_open (win);
+  rbg_answer (win, "ok");
+  g_assert_true (easel_picture_save (img, path, EASEL_FORMAT_PNG, 90, &error));
+  saved = gdk_pixbuf_new_from_file (path, &error);
+  g_assert_no_error (error);
+  for (int y = 0; y < 60; y++)
+    for (int x = 0; x < 80; x++)
+      {
+        const guchar *q = gdk_pixbuf_read_pixels (saved) + y * gdk_pixbuf_get_rowstride (saved) + x * 4;
+
+        if (q[3] == 0)
+          {
+            transparent++;
+            g_assert_true (q[0] == 0 && q[1] == 0 && q[2] == 0);
+          }
+      }
+  g_assert_cmpint (transparent, ==, 80 * 60 - 40 * 30);
+  g_unlink (path);
+  g_rmdir (dir);
+  rbg_done ();
+}
+
 /* 0035 AS-4, AS-2's pixel rule (REQ-0035-04, -07): the dialog's strings and its number at the automatic 5; the preview already in the
    picture with no step and no mark; Cancel puts it back; again with 20: the preview follows; OK: one step, exact, Undo gives it back;
    the typing rules of the number. */
@@ -36933,7 +37009,7 @@ rbg_as4_dialog (void)
   g_assert_cmpfloat_with_epsilon (area.size.height - (card.origin.y + card.size.height), 12, 0.5);
   g_assert_cmpint ((int) adw_spin_row_get_value (row), ==, 5);
   rbg_settle (win);
-  g_assert_cmphex (easel_image_get (img, 5, 5), ==, 0x00FFFFFFu);          /* the preview: removed, the color kept */
+  g_assert_cmphex (easel_image_get (img, 5, 5), ==, 0x00000000u);          /* the preview: removed, 0 (P7.7) */
   g_assert_cmphex (easel_image_get (img, 30, 30), ==, 0xFFFF0000u);
   g_assert_false (action_enabled (win, "undo"));
   g_assert_false (easel_window_get_modified (win));
@@ -36954,12 +37030,12 @@ rbg_as4_dialog (void)
       g_assert_cmpint ((int) adw_spin_row_get_value (row), ==, typing[i].then);
     }
   rbg_settle (win);
-  g_assert_cmphex (easel_image_get (img, 5, 5), ==, 0x00FFFFFFu);          /* the preview for 20 */
+  g_assert_cmphex (easel_image_get (img, 5, 5), ==, 0x00000000u);          /* the preview for 20 */
   g_assert_cmphex (easel_image_get (img, 30, 30), ==, 0xFFFF0000u);
   rbg_answer (win, "ok");
   for (int i = 0; i < 80 * 60; i++)
-    g_assert_true (img->px[i] == before[i] || img->px[i] == (before[i] & 0x00FFFFFFu));
-  g_assert_cmphex (easel_image_get (img, 5, 5), ==, 0x00FFFFFFu);
+    g_assert_true (img->px[i] == before[i] || img->px[i] == 0);
+  g_assert_cmphex (easel_image_get (img, 5, 5), ==, 0x00000000u);
   g_assert_true (easel_window_get_modified (win));
   g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
   g_assert_cmpint (memcmp (img->px, before, 80 * 60 * 4), ==, 0);
@@ -37031,7 +37107,7 @@ rbg_as4_real_ok (void)
         }
       else
         {
-          g_assert_cmphex (easel_image_get (img, 2, 2), ==, 0x00FFFFFFu);
+          g_assert_cmphex (easel_image_get (img, 2, 2), ==, 0x00000000u);
           g_assert_cmphex (easel_image_get (img, W / 2, H / 2), ==, 0xFFFF0000u);
           g_assert_true (easel_window_get_modified (win));
           g_assert_cmpstr (gtk_window_get_title (GTK_WINDOW (win)), ==, "• Untitled – Easel");
@@ -37070,7 +37146,7 @@ rbg_as3_selections (void)
   rbg_answer (win, "ok");
   g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating) && floating);
   g_assert_true (easel_canvas_put_down (canvas));
-  g_assert_cmphex (easel_image_get (img, 15, 30), ==, 0x00FFFFFFu);        /* white inside: removed */
+  g_assert_cmphex (easel_image_get (img, 15, 30), ==, 0x00000000u);        /* white inside: removed */
   g_assert_cmphex (easel_image_get (img, 30, 30), ==, 0xFFFF0000u);        /* red inside: kept */
   g_assert_cmphex (easel_image_get (img, 75, 30), ==, 0xFFFFFFFFu);        /* outside: as it was */
   g_assert_cmphex (easel_image_get (img, 30, 2), ==, 0xFFFFFFFFu);
@@ -38696,6 +38772,8 @@ main (int argc, char **argv)
   g_test_add_func ("/0035/as8_help", rbg_as8_help);
   g_test_add_func ("/0035/as9_progress_and_cancel", rbg_as9_progress_and_cancel);
   g_test_add_func ("/0035/as11_complex_hint", rbg_as11_complex_hint);
+  g_test_add_func ("/0035/as12_fill_after_ok", rbg_as12_fill_after_ok);
+  g_test_add_func ("/0035/as12_png_zeros", rbg_as12_png_zeros);
   g_test_add_func ("/0037/as1_presses", pc_as1_presses);
   g_test_add_func ("/0037/as2_cancel", pc_as2_cancel);
   g_test_add_func ("/0037/as3_selection", pc_as3_selection);

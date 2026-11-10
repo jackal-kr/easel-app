@@ -184,15 +184,18 @@ as4_invert (void)
 
   CHECK (img != NULL && clear != NULL && h != NULL);
   img->px[0] = 0x78123456u;
-  img->px[1] = 0x00000000u;
+  img->px[1] = 0x00ABCDEFu;                                  /* fully transparent: untouched (2026-11-10, ADR-0008) */
   img->px[2] = 0xFFFFFFFFu;
   CHECK (easel_image_transform (img, h, EASEL_OP_INVERT, 0, BIG) == EASEL_TRANSFORM_DONE);
-  CHECK (img->px[0] == 0x78EDCBA9u && img->px[1] == 0x00FFFFFFu && img->px[2] == 0xFF000000u);
+  CHECK (img->px[0] == 0x78EDCBA9u && img->px[1] == 0x00ABCDEFu && img->px[2] == 0xFF000000u);
   CHECK (easel_image_transform (img, h, EASEL_OP_INVERT, 0, BIG) == EASEL_TRANSFORM_DONE);
-  CHECK (img->px[0] == 0x78123456u && img->px[1] == 0u && img->px[2] == 0xFFFFFFFFu);
+  CHECK (img->px[0] == 0x78123456u && img->px[1] == 0x00ABCDEFu && img->px[2] == 0xFFFFFFFFu);
   CHECK (easel_history_undo (h, img) && img->px[0] == 0x78EDCBA9u);
-  CHECK (easel_image_transform (clear, h, EASEL_OP_INVERT, 0, BIG) == EASEL_TRANSFORM_DONE);
-  CHECK (clear->px[0] == 0x00FFFFFFu && clear->px[15] == 0x00FFFFFFu);
+  CHECK (easel_image_transform (clear, h, EASEL_OP_INVERT, 0, BIG) == EASEL_TRANSFORM_NOTHING);   /* all transparent: nothing */
+  CHECK (clear->px[0] == 0x00000000u && clear->px[15] == 0x00000000u);
+  /* Clear with a fully transparent background writes 0x00000000, not its hidden color (2026-11-10, ADR-0008). */
+  CHECK (easel_image_transform (img, h, EASEL_OP_CLEAR, 0x00112233u, BIG) == EASEL_TRANSFORM_DONE);
+  CHECK (img->px[0] == 0 && img->px[1] == 0 && img->px[2] == 0);
   easel_history_free (h);
   easel_image_free (clear);
   easel_image_free (img);

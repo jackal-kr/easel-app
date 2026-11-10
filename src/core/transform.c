@@ -164,9 +164,13 @@ new_value (const EaselImage *img, EaselOp op, EaselOrient o, uint32_t background
   switch (op)
     {
     case EASEL_OP_INVERT:
-      return img->px[(size_t) y * (size_t) img->width + (size_t) x] ^ 0x00FFFFFFu;
+      {
+        uint32_t p = img->px[(size_t) y * (size_t) img->width + (size_t) x];
+
+        return (p >> 24) != 0 ? p ^ 0x00FFFFFFu : p;   /* fully transparent: untouched (P7.7) */
+      }
     case EASEL_OP_CLEAR:
-      return background;
+      return easel_px_canon (background);
     default:
       easel_orient_source (o, img->width, img->height, x, y, &sx, &sy);
       return img->px[(size_t) sy * (size_t) img->width + (size_t) sx];
@@ -235,10 +239,10 @@ easel_image_transform (EaselImage *img, EaselHistory *h, EaselOp op, uint32_t ba
       return EASEL_TRANSFORM_NO_MEMORY;
     if (op == EASEL_OP_INVERT)
       for (size_t i = 0; i < total; i++)
-        px[i] = img->px[i] ^ 0x00FFFFFFu;
+        px[i] = (img->px[i] >> 24) != 0 ? img->px[i] ^ 0x00FFFFFFu : img->px[i];
     else if (op == EASEL_OP_CLEAR)
       for (size_t i = 0; i < total; i++)
-        px[i] = background;
+        px[i] = easel_px_canon (background);
     else
       easel_orient_pixels (img->px, w, hgt, o, px);
     if (!easel_history_push_buffer (h, w, hgt, img->px))

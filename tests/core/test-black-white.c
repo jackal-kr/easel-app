@@ -48,14 +48,12 @@ reference (uint32_t *px, const uint8_t *mask, int w, int h, EaselBw how)
       {
         int i = y * w + x, white;
 
-        if (mask != NULL && !mask[i])
-          continue;
+        if ((mask != NULL && !mask[i]) || (px[i] >> 24) == 0)
+          continue;                                  /* outside, or fully transparent: untouched (2026-11-10, ADR-0008) */
         if (how == EASEL_BW_THRESHOLD)
           white = v[i] >= 128000;
         else if (how == EASEL_BW_ORDERED)
           white = 128 * v[i] >= 255000LL * (2 * matrix[y % 8][x % 8] + 1);
-        else if ((px[i] >> 24) == 0)
-          white = brightness (px[i]) >= 128000;        /* by its own Y alone, no share in or out */
         else
           {
             static const int sx[4] = { 1, -1, 0, 1 }, sy[4] = { 0, 1, 1, 1 }, k[4] = { 7, 3, 5, 1 };
@@ -159,7 +157,7 @@ as6_shape_and_transparent (void)
   CHECK (px[1] == GRAY (128, 255) && px[2] == GRAY (128, 255) && px[4] == GRAY (128, 255) && px[5] == GRAY (128, 255));
   row[0] = GRAY (128, 255), row[1] = GRAY (128, 0), row[2] = GRAY (128, 255), row[3] = GRAY (128, 255);
   CHECK (easel_bw_convert (row, NULL, 4, 1, EASEL_BW_DIFFUSION));
-  CHECK (row[0] == W_ && row[1] == 0x00FFFFFFu && row[2] == W_ && row[3] == B_);
+  CHECK (row[0] == W_ && row[1] == GRAY (128, 0) && row[2] == W_ && row[3] == B_);
   for (int i = 0; i < 4; i++)
     row[i] = GRAY (128, 255);
   CHECK (easel_bw_convert (row, NULL, 4, 1, EASEL_BW_DIFFUSION));
@@ -256,7 +254,7 @@ picture_step (void)
       else
         CHECK (counted == (size_t) 300 * 200 * 4 + 64);           /* most changed: the old buffer */
       for (int i = 0; i < 300 * 200; i++)
-        CHECK ((img->px[i] & 0x00FFFFFFu) == 0 || (img->px[i] & 0x00FFFFFFu) == 0x00FFFFFFu);
+        CHECK ((img->px[i] >> 24) == 0 || (img->px[i] & 0x00FFFFFFu) == 0 || (img->px[i] & 0x00FFFFFFu) == 0x00FFFFFFu);
       CHECK (easel_history_undo (h, img));
       CHECK (memcmp (img->px, before->px, (size_t) 300 * 200 * sizeof (uint32_t)) == 0);
       easel_history_free (h);

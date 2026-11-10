@@ -147,7 +147,7 @@ stroke_alloc (EaselImage *img, int x, int y, uint32_t color, EaselFootprint f, c
       return NULL;
     }
   s->img = img;
-  s->color = color;
+  s->color = easel_px_canon (color);           /* P7.7: a fully transparent color draws 0 */
   s->footprint = f;
   s->has_only = only != NULL;
   s->only = only ? *only : 0;

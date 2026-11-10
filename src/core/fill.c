@@ -17,6 +17,9 @@ typedef struct
   size_t n_seeds, cap_seeds;
   EaselSpan *spans;
   size_t n_spans, cap_spans;
+  uint32_t *olds;         /* a fully transparent target: each filled pixel's value before, in the spans' order (P7.7) */
+  size_t n_olds, cap_olds;
+  bool mixed;             /* some of them differ from the target in red, green or blue */
   size_t max_bytes;       /* what each of the two buffers may hold on its own; SIZE_MAX unless a test lowers it */
 } Work;
 
@@ -59,7 +62,7 @@ seed_row (Work *w, const EaselImage *img, int y, int xl, int xr, uint32_t target
     return true;
   for (int x = xl; x <= xr; x++)
     {
-      bool is_target = img->px[(size_t) y * (size_t) img->width + (size_t) x] == target;
+      bool is_target = easel_px_same (img->px[(size_t) y * (size_t) img->width + (size_t) x], target);
 
       if (is_target && !in_run && !push_seed (w, x, y))
         return false;
@@ -71,9 +74,11 @@ seed_row (Work *w, const EaselImage *img, int y, int xl, int xr, uint32_t target
 static void
 undo_spans (EaselImage *img, const Work *w, uint32_t target)
 {
+  size_t k = 0;
+
   for (size_t i = 0; i < w->n_spans; i++)
     for (uint32_t x = w->spans[i].x0; x <= w->spans[i].x1; x++)
-      easel_image_set (img, (int) x, (int) w->spans[i].y, target);
+      easel_image_set (img, (int) x, (int) w->spans[i].y, k < w->n_olds ? w->olds[k++] : target);
 }
 
 EaselFillResult
@@ -93,8 +98,9 @@ easel_fill_capped (EaselImage *img, EaselHistory *history, int x, int y, uint32_
     *changed = 0;
   if (x < 0 || y < 0 || x >= img->width || y >= img->height)
     return EASEL_FILL_NOTHING;
+  color = easel_px_canon (color);              /* P7.7: a fully transparent color writes 0 */
   target = img->px[(size_t) y * (size_t) img->width + (size_t) x];
-  if (target == color)
+  if (easel_px_same (target, color))
     return EASEL_FILL_NOTHING;
 
   /* A filled pixel has `color`, which is not the target, so it is never taken again: no visited bitmap is needed. */
@@ -106,15 +112,29 @@ easel_fill_capped (EaselImage *img, EaselHistory *history, int x, int y, uint32_
       int xl = s.x, xr = s.x;
       const uint32_t *row = img->px + (size_t) s.y * (size_t) img->width;
 
-      if (row[s.x] != target)
+      if (!easel_px_same (row[s.x], target))
         continue;
-      while (xl > 0 && row[xl - 1] == target)
+      while (xl > 0 && easel_px_same (row[xl - 1], target))
         xl--;
-      while (xr < img->width - 1 && row[xr + 1] == target)
+      while (xr < img->width - 1 && easel_px_same (row[xr + 1], target))
         xr++;
       if (!grow (&w, (void **) &w.spans, &w.cap_spans, w.n_spans, sizeof *w.spans))
         goto no_memory;
       w.spans[w.n_spans++] = (EaselSpan) { (uint32_t) s.y, (uint32_t) xl, (uint32_t) xr };
+      if ((target >> 24) == 0)
+        {
+          /* every fully transparent pixel is the target: keep each one's value, so that Undo gives back its hidden color */
+          for (int i = xl; i <= xr; i++)
+            {
+              if (!grow (&w, (void **) &w.olds, &w.cap_olds, w.n_olds, sizeof *w.olds))
+                {
+                  w.n_spans--;
+                  goto no_memory;
+                }
+              w.olds[w.n_olds++] = row[i];
+              w.mixed = w.mixed || row[i] != target;
+            }
+        }
       for (int i = xl; i <= xr; i++)
         easel_image_set (img, i, s.y, color);
       pixels += (size_t) (xr - xl + 1);
@@ -123,7 +143,25 @@ easel_fill_capped (EaselImage *img, EaselHistory *history, int x, int y, uint32_
     }
   free (w.seeds);
   w.seeds = NULL;
-  if (history != NULL)
+  if (history != NULL && w.mixed)
+    {
+      /* fully transparent pixels of several hidden colors: one change each, so that Undo is exact */
+      EaselChange *ch = pixels <= w.max_bytes / sizeof *ch ? malloc (pixels * sizeof *ch) : NULL;
+      size_t k = 0;
+
+      if (ch == NULL)
+        goto no_memory;
+      for (size_t i = 0; i < w.n_spans; i++)
+        for (uint32_t sx = w.spans[i].x0; sx <= w.spans[i].x1; sx++, k++)
+          ch[k] = (EaselChange) { w.spans[i].y * (uint32_t) img->width + sx, w.olds[k], color };
+      if (!easel_history_push (history, ch, pixels))
+        {
+          free (ch);
+          goto no_memory;
+        }
+      free (w.spans);
+    }
+  else if (history != NULL)
     {
       /* The history takes the spans, or refuses for lack of memory: then the picture goes back. */
       if (!easel_history_push_fill (history, target, color, w.spans, w.n_spans))
@@ -131,6 +169,7 @@ easel_fill_capped (EaselImage *img, EaselHistory *history, int x, int y, uint32_
     }
   else
     free (w.spans);
+  free (w.olds);
   if (changed != NULL)
     *changed = pixels;
   return EASEL_FILL_DONE;
@@ -139,5 +178,6 @@ no_memory:
   undo_spans (img, &w, target);
   free (w.seeds);
   free (w.spans);
+  free (w.olds);
   return EASEL_FILL_NO_MEMORY;
 }

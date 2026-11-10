@@ -185,6 +185,7 @@ easel_ss_make (const uint32_t *src, const uint8_t *mask, int w, int h, int W, in
   int *tables = malloc (n * sizeof *tables);
   int *from_x, *from_y, *shift_h, *shift_v;
 
+  background = easel_px_canon (background);   /* P7.7: a fully transparent background is written as 0 */
   if (tables == NULL)
     return false;
   from_x = tables;

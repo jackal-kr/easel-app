@@ -88,27 +88,50 @@ as6_fill_ring (void)
   easel_image_free (img);
 }
 
-/* AS-7: the match is exact in all four channels, and the new value is exactly the color. */
+/* AS-7: the match is exact in all four channels, except that every fully transparent pixel is one color whatever red, green and
+   blue it holds (2026-11-10, ADR-0008); the new value is exactly the color, a fully transparent color written as 0x00000000. */
 static void
 as7_fill_exact (void)
 {
-  EaselImage *img = easel_image_new (5, 1, 0x00000000u);
+  EaselImage *img = easel_image_new (6, 1, 0x00000000u);
   size_t changed = 0;
 
   CHECK (img != NULL);
-  easel_image_set (img, 2, 0, 0x00FF0000u);                                /* transparent, but not the same pixel */
+  easel_image_set (img, 2, 0, 0x00FF0000u);                                /* transparent with a hidden color: the same */
+  easel_image_set (img, 3, 0, 0x00ABCDEFu);
+  easel_image_set (img, 4, 0, 0x80000000u);                                /* same rgb as 0, other alpha: not the same */
   CHECK (easel_fill (img, NULL, 0, 0, 0xFF000080u, &changed) == EASEL_FILL_DONE);
-  CHECK (changed == 2);
-  CHECK (easel_image_get (img, 0, 0) == 0xFF000080u && easel_image_get (img, 1, 0) == 0xFF000080u);
-  CHECK (easel_image_get (img, 2, 0) == 0x00FF0000u && easel_image_get (img, 3, 0) == 0x00000000u);
-  /* Same rgb, other alpha: not equal. */
-  easel_image_set (img, 4, 0, 0x80000000u);
-  CHECK (easel_fill (img, NULL, 3, 0, BLUE, &changed) == EASEL_FILL_DONE && changed == 1);
-  CHECK (easel_image_get (img, 4, 0) == 0x80000000u);
-  /* A transparent fill color writes exactly that value. */
-  CHECK (easel_fill (img, NULL, 0, 0, 0x00000000u, &changed) == EASEL_FILL_DONE);
-  CHECK (easel_image_get (img, 0, 0) == 0x00000000u && easel_image_get (img, 1, 0) == 0x00000000u);
+  CHECK (changed == 4);
+  for (int x = 0; x < 4; x++)
+    CHECK (easel_image_get (img, x, 0) == 0xFF000080u);
+  CHECK (easel_image_get (img, 4, 0) == 0x80000000u && easel_image_get (img, 5, 0) == 0x00000000u);
+  CHECK (easel_fill (img, NULL, 4, 0, BLUE, &changed) == EASEL_FILL_DONE && changed == 1);
+  CHECK (easel_image_get (img, 4, 0) == BLUE);
+  /* A fully transparent fill color writes 0x00000000, whatever red, green and blue it holds. */
+  CHECK (easel_fill (img, NULL, 0, 0, 0x00FF00FFu, &changed) == EASEL_FILL_DONE && changed == 4);
+  for (int x = 0; x < 4; x++)
+    CHECK (easel_image_get (img, x, 0) == 0x00000000u);
+  /* ... and on a fully transparent area it is the color already there: nothing changes. */
+  easel_image_set (img, 1, 0, 0x00123456u);
+  CHECK (easel_fill (img, NULL, 0, 0, 0x00ABCDEFu, &changed) == EASEL_FILL_NOTHING && changed == 0);
+  CHECK (easel_image_get (img, 1, 0) == 0x00123456u);
   easel_image_free (img);
+  {
+    /* Undo of a fill over fully transparent pixels of several hidden colors gives each its own back. */
+    EaselImage *t = easel_image_new (3, 1, 0);
+    EaselHistory *h = easel_history_new (1u << 20);
+
+    CHECK (t != NULL && h != NULL);
+    easel_image_set (t, 0, 0, 0x00112233u);                               /* hidden colors, as an older picture may hold */
+    easel_image_set (t, 1, 0, 0x00445566u);
+    easel_image_set (t, 2, 0, 0x00000000u);
+    CHECK (easel_fill (t, h, 0, 0, BLUE, &changed) == EASEL_FILL_DONE && changed == 3);
+    CHECK (easel_history_undo (h, t));
+    CHECK (easel_image_get (t, 0, 0) == 0x00112233u && easel_image_get (t, 1, 0) == 0x00445566u && easel_image_get (t, 2, 0) == 0);
+    CHECK (easel_history_redo (h, t) && easel_image_get (t, 1, 0) == BLUE);
+    easel_history_free (h);
+    easel_image_free (t);
+  }
 }
 
 /* AS-8: the color already there, or a point outside, changes nothing and adds no step. */

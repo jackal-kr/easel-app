@@ -37,10 +37,12 @@ disk (uint32_t *p, int w, int cx, int cy, int rad, uint32_t c)
         p[(size_t) y * w + x] = c;
 }
 
+/* A pixel the method removed: exactly 0x00000000 (P7.7, ADR-0008, 2026-11-10; before: alpha 0 with its color kept). */
 static bool
 removed (const uint32_t *before, const uint32_t *after, size_t i)
 {
-  return (after[i] >> 24) == 0 && (after[i] & 0x00FFFFFFu) == (before[i] & 0x00FFFFFFu);
+  (void) before;
+  return after[i] == 0;
 }
 
 /* The whole result for a tolerance (AUTO: the automatic one) into dst; returns the pixels removed. */

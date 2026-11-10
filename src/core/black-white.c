@@ -56,10 +56,7 @@ diffuse (uint32_t *px, const uint8_t *mask, int w, int h)
           if (!in_shape (mrow, (size_t) x))
             continue;
           if ((row[x] >> 24) == 0)
-            {
-              row[x] = black_or_white (row[x], brightness (row[x]) >= 128000);   /* by its own Y, no share in or out */
-              continue;
-            }
+            continue;                                   /* fully transparent: untouched, no share in or out (P7.7) */
           v = brightness (row[x]) + cur[x];
           white = v >= 128000;
           e = v - (white ? 255000 : 0);
@@ -102,7 +99,7 @@ easel_bw_convert (uint32_t *px, const uint8_t *mask, int w, int h, EaselBw how)
       const uint8_t *mrow = mask != NULL ? mask + (size_t) y * (size_t) w : NULL;
 
       for (int x = 0; x < w; x++)
-        if (in_shape (mrow, (size_t) x))
+        if (in_shape (mrow, (size_t) x) && (row[x] >> 24) != 0)   /* fully transparent: untouched (P7.7) */
           {
             int32_t yv = brightness (row[x]);
             bool white = how == EASEL_BW_THRESHOLD ? yv >= 128000

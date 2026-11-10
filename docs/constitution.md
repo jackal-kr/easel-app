@@ -17,6 +17,9 @@ the plan against it). Changing a principle needs an ADR in `docs/decisions/`. JO
   4. The same input gives the same pixels: a letter is the same bitmap wherever it falls in a line, and a shape's pixels depend only on its integer coordinates, not on the zoom, the scroll or the screen scale.
   5. Overlays (outline, handles, caret, grid, tint) are drawn in screen space and never change a picture pixel. The tint and the grid let the pixels show through; the outline, the handles and the caret cover pixels only with thin lines and small marks.
   6. Coordinates are integer picture pixels, so a drag from A to B makes the same figure at any zoom.
+  7. Every operation that makes a pixel fully transparent writes 0x00000000 (red, green, blue and alpha all 0); Fill treats every
+     fully transparent pixel as one color; saving writes the pixels as they are, and opening reads a fully transparent pixel as 0,
+     as it has since feature 0005 (ADR-0008, JOD, 2026-11-10).
 
 ## Process
 - **S1** Specs are the source of truth; code is derived. When code and spec disagree, one is wrong: decide which, fix the spec first.
