@@ -37520,8 +37520,9 @@ pc_as5_keyboard (void)
   rbg_done ();
 }
 
-/* 0037 AS-6 (REQ-0037-04): the island pressed to removed stays so when the Tolerance changes and comes back; a press on it again
-   removes that press. */
+/* 0037 AS-6 (REQ-0037-04, 2026-11-10 after T005: presses are dropped when the Tolerance changes): the island pressed to removed comes
+   back as the method makes it when the Tolerance changes, and stays so when it comes back; pressed again, it goes; Enter straight
+   after a change keeps no press. */
 static void
 pc_as6_tolerance (void)
 {
@@ -37535,13 +37536,15 @@ pc_as6_tolerance (void)
   g_assert_true (pc_removed (img, 120, 60));
   adw_spin_row_set_value (row, t + 1);
   rbg_settle (win);
-  g_assert_true (pc_removed (img, 120, 60));
+  g_assert_false (pc_removed (img, 120, 60));                            /* the press dropped: the island as the method keeps it */
   adw_spin_row_set_value (row, t);
   rbg_settle (win);
-  g_assert_true (pc_removed (img, 120, 60));
-  pc_press (win, 125, 60);
   g_assert_false (pc_removed (img, 120, 60));
-  rbg_answer (win, "cancel");
+  pc_press (win, 120, 60);
+  g_assert_true (pc_removed (img, 120, 60));
+  adw_spin_row_set_value (row, t + 1);                                   /* and OK at once, before a preview */
+  rbg_answer (win, "ok");
+  g_assert_false (pc_removed (img, 120, 60));
   rbg_done ();
 }
 

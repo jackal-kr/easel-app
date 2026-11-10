@@ -12912,3 +12912,11 @@ test: core-remove-bg
   if (r->labeled && r->tolerance == tolerance)
 --- replace
   if (r->tolerance == tolerance)
+
+=== REQ-0037-04 the presses stay when the Tolerance changes
+file: src/ui/window.c
+test: ui-0037
+--- find
+    s->n_presses = 0;            /* the presses are the pieces of one Tolerance: a new one drops them (REQ-0037-04, 2026-11-10) */
+--- replace
+    (void) 0;

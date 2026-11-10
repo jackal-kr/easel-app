@@ -3968,12 +3968,14 @@ on_rbg_idle (gpointer data)
   return G_SOURCE_REMOVE;
 }
 
-/* A change of the number: its preview when the main loop is next idle, so that a run of changes makes one. */
+/* A change of the number: the presses dropped, its preview when the main loop is next idle, so that a run of changes makes one. */
 static void
 on_rbg_changed (int tolerance, gpointer data)
 {
   struct RbgSession *s = data;
 
+  if (tolerance != s->shown)
+    s->n_presses = 0;            /* the presses are the pieces of one Tolerance: a new one drops them (REQ-0037-04, 2026-11-10) */
   s->shown = tolerance;
   if (s->idle == 0)
     s->idle = g_idle_add (on_rbg_idle, s);
@@ -4137,7 +4139,8 @@ on_rbg_closed (gboolean ok, int tolerance, gpointer data)
 }
 
 /* A press on the picture while the card is open (REQ-0037-01, -04, -05): the typed number taken and a preview due made first; then a
-   press on a piece an earlier press flipped removes that press, else the press is kept; the preview again, the flip announced. */
+   press on a piece an earlier press flipped removes that press, else the press is kept until the Tolerance changes; the preview again,
+   the flip announced. */
 static void
 on_rbg_press (int x, int y, gpointer data)
 {
