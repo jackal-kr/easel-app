@@ -56,6 +56,10 @@ Input: feature number or name from `docs/specs/INDEX.md`.
    settings (0037: at Tolerance 1 one press removed everything).
    A rule that leaves a value the user cannot see (a color under alpha 0) is checked against every tool that reads that value (0035,
    ADR-0008: Fill filled patches of a removed backdrop).
+   A way to take back an input (Ctrl+Z, a toggle) says what comes back with it when that input had removed or overridden others (0038:
+   a stroke's Ctrl+Z forgot the presses it had dropped).
+   A rule of order between two inputs ("the later wins") is stated for every pixel each input changes, not only the pixel where it was
+   made (0038: a press flips a whole piece).
 4. Take behavior from XP Paint knowledge, jspaint (behavior, not code), JOD's descriptions and `docs/reference`; never from the
    source code of an existing implementation. If behavior is unknown or has several reasonable answers, do not decide:
    add `- [NEEDS CLARIFICATION: question and the options you see]`. A number in a requirement, a scenario or an edge case that comes

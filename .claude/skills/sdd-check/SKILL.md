@@ -21,7 +21,8 @@ description: Step 3 of the loop, also usable any time. Read-only check of a feat
    in the code against the spec, and list what the code does that the spec does not state (0017's F2, two memory dialogs, and F8,
    the paste reader's sizes, had this shape).
 4. Constitution: layering, warnings, tests shipped with the change, no AI trailers in commits.
-5. Read `git diff` for correctness: pixel bounds and overflow, GTK object lifetime, one undo step per user-visible edit.
+5. First give the diff and the spec, not your conclusions, to one review agent in the background (0038: it found four bugs a user would
+   see that every test missed); check each of its findings in the code before it counts. Then read `git diff` for correctness: pixel bounds and overflow, GTK object lifetime, one undo step per user-visible edit.
    A step or buffer kept under a memory budget is checked for the memory held (capacity) against the memory counted, not only the length; every function that pushes a log to the history, and every allocation the feature adds that the limit counts, has its own such test.
 6. Report findings ranked by severity with file and id references, then a one-line verdict. If clean and JOD agrees, propose
    `Status: implemented` and any lines worth adding to `docs/learning-log.md`.

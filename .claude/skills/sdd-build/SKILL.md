@@ -37,6 +37,10 @@ Precondition: `Status: accepted` in the spec. Otherwise stop and say so.
      report), then the smallest code that passes; a ui test of anything that
      moves the view also checks where the picture is drawn, by rendering the window; a new case also passes when run alone;
    - a step or buffer kept under a memory budget has a test that compares the memory held (capacity) with the memory counted, not only the length, and so does every allocation a task adds that the limit counts (a list that gains a column, a flag array);
+   - a key the feature handles that is also an application accelerator (Ctrl+Z, Ctrl+A) is tested with that accelerator's action
+     enabled (a picture with undo steps), through the action it activates: the accelerator takes the key first (0038 F1);
+   - a size given on the screen in logical pixels gets one case at scale 2 (`ui-NNNN-scale2`): the zoom counts device pixels (0038 F2);
+   - a memory test that separates two allocations sets its limit between their sizes, and each break is seen to fail at its own one;
    - a test of an input rule calls the function the signal callback calls, with the event's modifier state, never a function deeper down;
    - a numeric table or conversion in src/core gets an oracle test against an independent reference (libm, a standard's formula) over its range, not only determinism (0035: a wrong cube root passed every test);
    - a dialog's or card's OK, Apply or Cancel is tested by activating its real button (and Esc by its real close), reading the result
