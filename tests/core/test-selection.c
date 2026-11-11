@@ -2094,6 +2094,495 @@ stretch_with_orientation (void)
     }
 }
 
+/* ---- 0041 T002: the marked crop (REQ-0041-02, -05, -06, -07) ---- */
+
+/* A w x h picture whose pixels are all different and none symmetric to another, so a crop from the wrong place or in the wrong order shows. */
+static EaselImage *
+distinct_picture (int w, int h)
+{
+  EaselImage *img = easel_image_new (w, h, WHITE);
+
+  CHECK (img != NULL);
+  for (size_t i = 0; i < (size_t) w * h; i++)
+    img->px[i] = 0xFF000000u | (uint32_t) ((i + 1) * 2654435761u >> 8);
+  return img;
+}
+
+/* The crop is the old picture's rectangle, exactly: pixel (i, j) of it is the old pixel (x + i, y + j). */
+static void
+check_is_cut (const EaselImage *img, const EaselImage *old, int x, int y, int w, int h)
+{
+  CHECK (img->width == w && img->height == h);
+  for (int j = 0; j < h; j++)
+    for (int i = 0; i < w; i++)
+      CHECK (img->px[(size_t) j * w + i] == old->px[(size_t) (y + j) * old->width + x + i]);
+}
+
+static void
+check_same (const EaselImage *a, const EaselImage *b)
+{
+  CHECK (a->width == b->width && a->height == b->height);
+  CHECK (memcmp (a->px, b->px, (size_t) a->width * a->height * sizeof a->px[0]) == 0);
+}
+
+/* AS-2 (core part): a 100 x 60 piece of a 300 x 200 picture at (40, 30): every pixel the old one shifted, one step that Undo and Redo
+   give back exactly, counted as 4 bytes a removed pixel plus the step's 64, and held as counted (REQ-0041-04, REQ-0002-16). */
+static void
+crop_marked_offset (void)
+{
+  EaselImage *img = distinct_picture (300, 200), *old = copy_of (img), *cut;
+  EaselHistory *h = easel_history_new ((size_t) 512 << 20);
+  size_t before, held, counted, removed = (size_t) 300 * 200 - 100 * 60;
+
+  CHECK (h != NULL);
+  before = heap_in_use ();
+  CHECK (easel_selection_crop (NULL, img, h, 40, 30, 100, 60, 0xFF00FF00u, SIZE_MAX) == EASEL_SELECTION_DONE);
+  held = heap_in_use () - before + (size_t) 300 * 200 * 4 - (size_t) 100 * 60 * 4;      /* less the buffer swapped for the old one */
+  check_is_cut (img, old, 40, 30, 100, 60);
+  counted = easel_history_bytes (h);
+  CHECK (counted == removed * 4 + easel_history_change_log_bytes (0));
+  printf ("  held %zu bytes, counted %zu\n", held, counted);
+  CHECK (held <= counted + counted / 100 + 4096);
+  cut = copy_of (img);
+  CHECK (easel_history_undo (h, img));
+  check_same (img, old);
+  CHECK (!easel_history_can_undo (h) && easel_history_can_redo (h));
+  CHECK (easel_history_redo (h, img));
+  check_same (img, cut);
+  easel_image_free (cut);
+  easel_image_free (old);
+  easel_history_free (h);
+  easel_image_free (img);
+}
+
+/* AS-3 (core part): the rectangle of a Free-Form selection is cropped whole, the pixels outside its shape kept: a picture of two
+   colors in a checker, a crop of the box (10, 10) to (59, 49) keeps both. */
+static void
+crop_free_form_box (void)
+{
+  EaselImage *img = easel_image_new (80, 60, WHITE), *old;
+  EaselHistory *h = easel_history_new ((size_t) 512 << 20);
+  int reds = 0;
+
+  CHECK (img != NULL && h != NULL);
+  for (int y = 0; y < 60; y++)
+    for (int x = 0; x < 80; x++)
+      img->px[y * 80 + x] = (x + y) % 3 == 0 ? RED : (x > y ? BLUE : WHITE);       /* a triangle's worth of one color, the rest of others */
+  old = copy_of (img);
+  CHECK (easel_selection_crop (NULL, img, h, 10, 10, 50, 40, YELLOW, SIZE_MAX) == EASEL_SELECTION_DONE);
+  check_is_cut (img, old, 10, 10, 50, 40);
+  for (int i = 0; i < 50 * 40; i++)
+    reds += img->px[i] == RED;
+  CHECK (reds > 100);
+  easel_image_free (old);
+  easel_history_free (h);
+  easel_image_free (img);
+}
+
+/* AS-5 (core part): the rectangle of the whole picture changes nothing and adds no step (REQ-0041-05, as REQ-0004-24); a 1 x 1 piece
+   is a 1 x 1 picture. */
+static void
+crop_whole_is_nothing (void)
+{
+  EaselImage *img = distinct_picture (30, 20), *old = copy_of (img);
+  EaselHistory *h = easel_history_new ((size_t) 512 << 20);
+
+  CHECK (h != NULL);
+  CHECK (easel_selection_crop (NULL, img, h, 0, 0, 30, 20, WHITE, SIZE_MAX) == EASEL_SELECTION_NOTHING);
+  check_same (img, old);
+  CHECK (!easel_history_can_undo (h) && easel_history_bytes (h) == 0);
+  CHECK (easel_selection_crop (NULL, img, h, 7, 5, 1, 1, WHITE, SIZE_MAX) == EASEL_SELECTION_DONE);
+  check_is_cut (img, old, 7, 5, 1, 1);
+  CHECK (easel_history_undo (h, img));
+  check_same (img, old);
+  easel_image_free (old);
+  easel_history_free (h);
+  easel_image_free (img);
+}
+
+/* AS-6 (core part), REQ-0041-06: an allocation above max_bytes, or one that cannot be had, leaves the picture and the history as they were.
+   Each allocation is counted by itself (the removed pixels, the new picture), as the put-down's and a transform's are. */
+static void
+crop_no_memory (void)
+{
+  EaselImage *img = distinct_picture (20, 20), *old = copy_of (img);
+  EaselHistory *h = easel_history_new ((size_t) 512 << 20);
+  size_t kept, removed = (size_t) (400 - 19 * 19) * 4, buffer = (size_t) 19 * 19 * 4;    /* 156 and 1444 bytes */
+
+  CHECK (h != NULL && removed < buffer);
+  /* the removed pixels do not fit */
+  CHECK (easel_selection_crop (NULL, img, h, 0, 0, 19, 19, WHITE, removed - 1) == EASEL_SELECTION_NO_MEMORY);
+  check_same (img, old);
+  CHECK (!easel_history_can_undo (h) && easel_history_bytes (h) == 0);
+  /* they do, the new picture does not */
+  CHECK (easel_selection_crop (NULL, img, h, 0, 0, 19, 19, WHITE, buffer - 1) == EASEL_SELECTION_NO_MEMORY);
+  check_same (img, old);
+  CHECK (!easel_history_can_undo (h) && easel_history_bytes (h) == 0);
+  /* each fits alone: the crop is made */
+  CHECK (easel_selection_crop (NULL, img, h, 0, 0, 19, 19, WHITE, buffer) == EASEL_SELECTION_DONE);
+  check_is_cut (img, old, 0, 0, 19, 19);
+  CHECK (easel_history_undo (h, img));
+  check_same (img, old);
+  /* a picture of no side, or of more than EASEL_IMAGE_MAX_SIZE, cannot be made: nothing changes */
+  CHECK (easel_selection_crop (NULL, img, h, 0, 0, 0, 5, WHITE, SIZE_MAX) == EASEL_SELECTION_NO_MEMORY);
+  CHECK (easel_selection_crop (NULL, img, h, 0, 0, 5, 0, WHITE, SIZE_MAX) == EASEL_SELECTION_NO_MEMORY);
+  CHECK (easel_selection_crop (NULL, img, h, 0, 0, EASEL_IMAGE_MAX_SIZE + 1, 5, WHITE, SIZE_MAX) == EASEL_SELECTION_NO_MEMORY);
+  CHECK (easel_selection_crop (NULL, img, h, 0, 0, 5, EASEL_IMAGE_MAX_SIZE + 1, WHITE, SIZE_MAX) == EASEL_SELECTION_NO_MEMORY);
+  check_same (img, old);
+  /* with no history to refuse it, the size rule is the function's own */
+  CHECK (easel_selection_crop (NULL, img, NULL, 0, 0, 0, 5, WHITE, SIZE_MAX) == EASEL_SELECTION_NO_MEMORY);
+  CHECK (easel_selection_crop (NULL, img, NULL, 0, 0, EASEL_IMAGE_MAX_SIZE + 1, 5, WHITE, SIZE_MAX) == EASEL_SELECTION_NO_MEMORY);
+  check_same (img, old);
+  /* the other order: the removed pixels (1536 bytes) are more than the new picture (64 bytes), so each check stands alone */
+  kept = easel_history_bytes (h);                          /* the undone crop above stays redoable */
+  CHECK (easel_selection_crop (NULL, img, h, 8, 8, 4, 4, WHITE, (size_t) (400 - 16) * 4 - 1) == EASEL_SELECTION_NO_MEMORY);
+  check_same (img, old);
+  CHECK (!easel_history_can_undo (h) && easel_history_can_redo (h) && easel_history_bytes (h) == kept);
+  CHECK (easel_selection_crop (NULL, img, h, 8, 8, 4, 4, WHITE, (size_t) (400 - 16) * 4) == EASEL_SELECTION_DONE);
+  check_is_cut (img, old, 8, 8, 4, 4);
+  CHECK (easel_history_undo (h, img));
+  check_same (img, old);
+  /* a real shortage: the address space limited to a little above what is in use, a picture of 13 MB to build */
+  {
+    enum { N = 1800 };
+    struct rlimit lim, was;
+    EaselImage *big = distinct_picture (N, N), *big_old = copy_of (big);
+    EaselHistory *h2 = easel_history_new ((size_t) 512 << 20);
+
+    CHECK (h2 != NULL && getrlimit (RLIMIT_AS, &was) == 0);
+    lim = was;
+    lim.rlim_cur = address_space () + 4 * 1024 * 1024;
+    CHECK (setrlimit (RLIMIT_AS, &lim) == 0);
+    CHECK (easel_selection_crop (NULL, big, h2, 0, 0, N - 1, N - 1, WHITE, SIZE_MAX) == EASEL_SELECTION_NO_MEMORY);
+    CHECK (setrlimit (RLIMIT_AS, &was) == 0);
+    check_same (big, big_old);
+    CHECK (!easel_history_can_undo (h2) && easel_history_bytes (h2) == 0);
+    easel_history_free (h2);
+    easel_image_free (big_old);
+    easel_image_free (big);
+  }
+  easel_image_free (old);
+  easel_history_free (h);
+  easel_image_free (img);
+}
+
+/* The builder for a rectangle that hangs past the edges (a floating crop's, 0041 T003): the part inside the picture is the old pixels, the
+   rest fill, a fully transparent fill #00000000 (P7.7); the removed pixels are those outside the rectangle; Undo and Redo give both back. */
+static void
+crop_hangs_fill (void)
+{
+  static const struct { int x, y, w, h; uint32_t fill; } cases[] = {
+    { 10, 5, 12, 9, 0xFF00FF00u }, { -4, -2, 9, 7, 0xFF0000FFu }, { -6, -3, 30, 20, 0xFF00FFFFu }, { 40, 30, 4, 4, 0xFFFF00FFu },
+    { -3, 4, 8, 3, 0x00123456u }, { 15, -5, 6, 30, 0xFFFFFF00u },
+  };
+
+  for (size_t c = 0; c < sizeof cases / sizeof cases[0]; c++)
+    {
+      EaselImage *img = distinct_picture (17, 11), *old = copy_of (img), *cut;
+      EaselHistory *h = easel_history_new ((size_t) 512 << 20);
+      int x = cases[c].x, y = cases[c].y, w = cases[c].w, hh = cases[c].h;
+      uint32_t fill = (cases[c].fill >> 24) != 0 ? cases[c].fill : 0;
+
+      CHECK (h != NULL);
+      CHECK (easel_selection_crop (NULL, img, h, x, y, w, hh, cases[c].fill, SIZE_MAX) == EASEL_SELECTION_DONE);
+      CHECK (img->width == w && img->height == hh);
+      for (int j = 0; j < hh; j++)
+        for (int i = 0; i < w; i++)
+          {
+            int ox = x + i, oy = y + j;
+            uint32_t want = ox >= 0 && oy >= 0 && ox < 17 && oy < 11 ? old->px[oy * 17 + ox] : fill;
+
+            CHECK (img->px[j * w + i] == want);
+          }
+      cut = copy_of (img);
+      CHECK (easel_history_undo (h, img));
+      check_same (img, old);
+      CHECK (easel_history_redo (h, img));
+      check_same (img, cut);
+      easel_image_free (cut);
+      easel_image_free (old);
+      easel_history_free (h);
+      easel_image_free (img);
+    }
+}
+
+/* ---- 0041 T003: the floating crop (REQ-0041-03, -04, -07) ---- */
+
+#define GREEN 0xFF00FF00u
+#define BLACK 0xFF000000u
+
+/* The pixels where a new picture differs from the plain cut of the old one (its pixels inside, fill outside), counted from the picture
+   the crop made and the old one: what the change log must hold (REQ-0041-04). */
+static size_t
+differing_from_cut (const EaselImage *old, const EaselImage *now, int x, int y, uint32_t fill)
+{
+  size_t n = 0;
+
+  for (int j = 0; j < now->height; j++)
+    for (int i = 0; i < now->width; i++)
+      {
+        int ox = x + i, oy = y + j;
+        uint32_t cut = ox >= 0 && oy >= 0 && ox < old->width && oy < old->height ? old->px[(size_t) oy * old->width + ox]
+                                                                                    : ((fill >> 24) != 0 ? fill : 0);
+
+        n += now->px[(size_t) j * now->width + i] != cut;
+      }
+  return n;
+}
+
+/* AS-4: a 20 x 20 floating selection of black pixels moved to (90, 90) of a 100 x 100 white picture, hanging 10 pixels past the right and
+   bottom edges: the crop is 20 x 20 and all black, the pixels outside the picture too; Undo gives the picture as before the lift (it was
+   never touched while the selection floated); the step is counted as 4 bytes a removed pixel plus the charge of its log of the 400
+   pixels that differ from the plain cut (REQ-0041-03, -04). */
+static void
+crop_float_hanging (void)
+{
+  EaselImage *img = easel_image_new (100, 100, WHITE), *old, *cut;
+  EaselHistory *h = easel_history_new ((size_t) 512 << 20);
+  EaselFloat f = { 0 };
+
+  CHECK (img != NULL && h != NULL);
+  for (int y = 10; y < 30; y++)
+    for (int x = 10; x < 30; x++)
+      img->px[y * 100 + x] = BLACK;
+  old = copy_of (img);
+  CHECK (easel_selection_lift (&f, img, 10, 10, 20, 20, NULL, false, YELLOW, SIZE_MAX) == EASEL_SELECTION_DONE);
+  f.x = f.y = 90;
+  CHECK (easel_selection_crop (&f, img, h, 90, 90, 20, 20, 0xFFFF0000u, SIZE_MAX) == EASEL_SELECTION_DONE);
+  CHECK (img->width == 20 && img->height == 20);
+  for (int i = 0; i < 400; i++)
+    CHECK (img->px[i] == BLACK);
+  CHECK (easel_history_bytes (h) == (size_t) (10000 - 100) * 4 + easel_history_change_log_bytes (400));
+  CHECK (differing_from_cut (old, img, 90, 90, 0xFFFF0000u) == 400);
+  cut = copy_of (img);
+  CHECK (easel_history_undo (h, img));
+  check_same (img, old);
+  CHECK (easel_history_redo (h, img));
+  check_same (img, cut);
+  easel_image_free (cut);
+  easel_image_free (old);
+  easel_float_free (&f);
+  easel_history_free (h);
+  easel_image_free (img);
+}
+
+/* AS-8: a 100 x 100 green picture, red as the fill, a Free-Form triangle of blue pixels floating so that its box (80, 20) to (119, 59) hangs 20
+   pixels past the right edge: the triangle's pixels blue, those outside it and inside the old picture green, those outside both red. */
+static void
+crop_float_shape_fill (void)
+{
+  EaselImage *img = easel_image_new (100, 100, GREEN), *old;
+  EaselHistory *h = easel_history_new ((size_t) 512 << 20);
+  EaselFloat f = { 0 };
+  uint8_t mask[40 * 40];
+  const uint32_t RED_FILL = 0xFFFF0000u;
+
+  CHECK (img != NULL && h != NULL);
+  for (int y = 10; y < 50; y++)
+    for (int x = 10; x < 50; x++)
+      img->px[y * 100 + x] = BLUE;
+  for (int j = 0; j < 40; j++)
+    for (int i = 0; i < 40; i++)
+      mask[j * 40 + i] = i <= j;                           /* the pixels at and under the diagonal */
+  old = copy_of (img);
+  CHECK (easel_selection_lift (&f, img, 10, 10, 40, 40, mask, false, YELLOW, SIZE_MAX) == EASEL_SELECTION_DONE);
+  f.x = 80;
+  f.y = 20;
+  CHECK (easel_selection_crop (&f, img, h, 80, 20, 40, 40, RED_FILL, SIZE_MAX) == EASEL_SELECTION_DONE);
+  CHECK (img->width == 40 && img->height == 40);
+  for (int j = 0; j < 40; j++)
+    for (int i = 0; i < 40; i++)
+      {
+        int ox = 80 + i;
+        uint32_t want = i <= j ? BLUE : (ox < 100 ? GREEN : RED_FILL);
+
+        CHECK (img->px[j * 40 + i] == want);
+      }
+  CHECK (easel_history_bytes (h) == (size_t) (10000 - 20 * 40) * 4 + easel_history_change_log_bytes (differing_from_cut (old, img, 80, 20, RED_FILL)));
+  CHECK (easel_history_undo (h, img));
+  check_same (img, old);
+  easel_image_free (old);
+  easel_float_free (&f);
+  easel_history_free (h);
+  easel_image_free (img);
+}
+
+/* Inside the old picture the crop is what the float's lay gives (the picture, the hole, the copies, then the float: what the view shows and
+   the put-down writes, REQ-0041-07); outside it the float's own pixels over the fill, the copies there left out. */
+static void
+crop_float_equals_lay (void)
+{
+  EaselImage *img = distinct_picture (60, 40), *old = copy_of (img), *lay;
+  EaselHistory *h = easel_history_new ((size_t) 512 << 20);
+  EaselFloat f = { 0 };
+  const uint32_t FILL = 0xFF123456u;
+  int x = 40, y = 25, w = 30, hh = 25;                      /* the float's box, hanging past the right and bottom edges */
+
+  CHECK (h != NULL);
+  CHECK (easel_selection_lift (&f, img, 5, 5, w, hh, NULL, false, YELLOW, SIZE_MAX) == EASEL_SELECTION_DONE);
+  f.x = 20;
+  f.y = 10;
+  CHECK (easel_selection_stamp (&f, SIZE_MAX));             /* a copy inside the picture ... */
+  f.x = 56;
+  f.y = 30;
+  CHECK (easel_selection_stamp (&f, SIZE_MAX));             /* ... and one hanging past the edges, which the crop does not have */
+  f.x = x;
+  f.y = y;
+  lay = copy_of (img);
+  easel_selection_lay (&f, true, old, 0, 0, 60, 40, lay->px, 60);
+  CHECK (easel_selection_crop (&f, img, h, x, y, w, hh, FILL, SIZE_MAX) == EASEL_SELECTION_DONE);
+  CHECK (img->width == w && img->height == hh);
+  for (int j = 0; j < hh; j++)
+    for (int i = 0; i < w; i++)
+      {
+        int ox = x + i, oy = y + j;
+        uint32_t want = ox < 60 && oy < 40 ? lay->px[oy * 60 + ox] : f.px[j * w + i];     /* outside: the float's own, whole here */
+
+        CHECK (img->px[j * w + i] == want);
+      }
+  CHECK (easel_history_undo (h, img));
+  check_same (img, old);
+  easel_image_free (lay);
+  easel_image_free (old);
+  easel_float_free (&f);
+  easel_history_free (h);
+  easel_image_free (img);
+}
+
+/* REQ-0041-04: Redo gives the same pixels, the fill outside the old picture the step's own. */
+static void
+crop_redo_keeps_fill (void)
+{
+  EaselImage *img = easel_image_new (30, 20, WHITE), *first;
+  EaselHistory *h = easel_history_new ((size_t) 512 << 20);
+  EaselFloat f = { 0 };
+  uint8_t mask[10 * 10];
+
+  CHECK (img != NULL && h != NULL);
+  for (int k = 0; k < 100; k++)
+    mask[k] = (k % 10) + (k / 10) < 12;                      /* a corner cut off */
+  CHECK (easel_selection_lift (&f, img, 0, 0, 10, 10, mask, true, YELLOW, SIZE_MAX) == EASEL_SELECTION_DONE);
+  f.x = 25;
+  f.y = 15;
+  CHECK (easel_selection_crop (&f, img, h, 25, 15, 10, 10, 0xFF800000u, SIZE_MAX) == EASEL_SELECTION_DONE);
+  first = copy_of (img);
+  CHECK (img->px[0] == WHITE && img->px[9 * 10 + 9] == 0xFF800000u);     /* in the picture the float's, outside the shape and the picture the fill */
+  CHECK (easel_history_undo (h, img) && img->width == 30);
+  CHECK (easel_history_redo (h, img));
+  check_same (img, first);
+  CHECK (easel_history_undo (h, img) && easel_history_redo (h, img));
+  check_same (img, first);
+  easel_image_free (first);
+  easel_float_free (&f);
+  easel_history_free (h);
+  easel_image_free (img);
+}
+
+/* REQ-0002-16: the memory a floating crop's step holds is the memory the budget counts (the removed pixels and the log, each at its length). */
+static void
+crop_float_step_holds_what_it_counts (void)
+{
+  EaselImage *img = easel_image_new (600, 600, WHITE);
+  EaselHistory *h = easel_history_new ((size_t) 512 << 20);
+  EaselFloat f = { 0 };
+  size_t before, held, counted;
+
+  CHECK (img != NULL && h != NULL);
+  for (int y = 0; y < 600; y++)
+    for (int x = 0; x < 600; x++)
+      img->px[y * 600 + x] = (x & 1) ? RED : WHITE;
+  CHECK (easel_selection_lift (&f, img, 0, 0, 513, 512, NULL, false, YELLOW, SIZE_MAX) == EASEL_SELECTION_DONE);
+  f.x = f.y = 300;
+  before = heap_in_use ();
+  CHECK (easel_selection_crop (&f, img, h, 300, 300, 513, 512, BLUE, SIZE_MAX) == EASEL_SELECTION_DONE);
+  held = heap_in_use () - before + (size_t) 600 * 600 * 4 - (size_t) 513 * 512 * 4;
+  counted = easel_history_bytes (h);
+  printf ("  held %zu bytes, counted %zu\n", held, counted);
+  CHECK (held <= counted + counted / 100 + 4096);
+  easel_float_free (&f);
+  easel_history_free (h);
+  easel_image_free (img);
+}
+
+/* REQ-0041-06: the log is the third allocation, counted by itself: a rectangle that holds the whole picture removes nothing, the new picture is
+   1936 bytes and the log of its 400 changed pixels (the float's) 4800; one byte less and the crop is refused with the picture, the history and the float as
+   they were. */
+static void
+crop_float_no_memory (void)
+{
+  EaselImage *img = easel_image_new (20, 20, WHITE), *old;
+  EaselHistory *h = easel_history_new ((size_t) 512 << 20);
+  EaselFloat f = { 0 };
+
+  CHECK (img != NULL && h != NULL);
+  CHECK (easel_selection_lift (&f, img, 0, 0, 20, 20, NULL, true, YELLOW, SIZE_MAX) == EASEL_SELECTION_DONE);
+  for (int i = 0; i < 400; i++)
+    f.px[i] = BLACK;
+  f.x = f.y = -1;
+  old = copy_of (img);
+  CHECK (easel_selection_crop (&f, img, h, -1, -1, 22, 22, WHITE, 400 * 12 - 1) == EASEL_SELECTION_NO_MEMORY);
+  check_same (img, old);
+  CHECK (!easel_history_can_undo (h) && easel_history_bytes (h) == 0);
+  CHECK (f.x == -1 && f.y == -1 && f.px[0] == BLACK);
+  CHECK (easel_selection_crop (&f, img, h, -1, -1, 22, 22, WHITE, 400 * 12) == EASEL_SELECTION_DONE);
+  CHECK (img->width == 22 && img->height == 22 && img->px[0] == BLACK && img->px[20] == WHITE && img->px[21 * 22 + 21] == WHITE);
+  CHECK (easel_history_bytes (h) == easel_history_change_log_bytes (400));
+  CHECK (easel_history_undo (h, img));
+  check_same (img, old);
+  easel_image_free (old);
+  easel_float_free (&f);
+  easel_history_free (h);
+  easel_image_free (img);
+}
+
+/* A pasted float's fully transparent pixels leave the picture as it is (REQ-0016-05): in the crop too, inside the old picture (the picture
+   shows) and outside it (the fill shows, since nothing is laid there). */
+static void
+crop_float_paste_skips_clear (void)
+{
+  EaselImage *img = easel_image_new (10, 10, WHITE), *pic = easel_image_new (4, 4, RED);
+  EaselHistory *h = easel_history_new ((size_t) 512 << 20);
+  EaselFloat f = { 0 };
+
+  CHECK (img != NULL && pic != NULL && h != NULL);
+  pic->px[0] = 0;                                           /* (8, 8): inside the picture */
+  pic->px[3] = 0;                                           /* (11, 8): outside it */
+  pic->px[3 * 4 + 3] = 0;                                   /* (11, 11): outside it */
+  CHECK (easel_selection_paste (&f, pic, 8, 8, SIZE_MAX) == EASEL_SELECTION_DONE);
+  CHECK (easel_selection_crop (&f, img, h, 8, 8, 4, 4, GREEN, SIZE_MAX) == EASEL_SELECTION_DONE);
+  CHECK (img->px[0] == WHITE);                              /* the picture's own pixel */
+  CHECK (img->px[1] == RED && img->px[4] == RED);
+  CHECK (img->px[3] == GREEN && img->px[15] == GREEN);      /* the fill where nothing is laid */
+  CHECK (img->px[2 * 4 + 2] == RED);
+  easel_float_free (&f);
+  easel_image_free (pic);
+  easel_history_free (h);
+  easel_image_free (img);
+}
+
+/* A floating selection exactly over the whole picture is not "nothing" to the crop (the caller puts such a one down, REQ-0041-05, but the
+   function never answers NOTHING for a float): one step, the size unchanged, Undo exact. */
+static void
+crop_float_whole (void)
+{
+  EaselImage *img = distinct_picture (12, 9), *old = copy_of (img);
+  EaselHistory *h = easel_history_new ((size_t) 512 << 20);
+  EaselFloat f = { 0 };
+
+  CHECK (h != NULL);
+  CHECK (easel_selection_lift (&f, img, 0, 0, 12, 9, NULL, true, YELLOW, SIZE_MAX) == EASEL_SELECTION_DONE);
+  f.px[5] = BLACK;
+  CHECK (easel_selection_crop (&f, img, h, 0, 0, 12, 9, WHITE, SIZE_MAX) == EASEL_SELECTION_DONE);
+  CHECK (img->width == 12 && img->height == 9 && img->px[5] == BLACK);
+  CHECK (easel_history_bytes (h) == easel_history_change_log_bytes (1));
+  CHECK (easel_history_undo (h, img));
+  check_same (img, old);
+  easel_image_free (old);
+  easel_float_free (&f);
+  easel_history_free (h);
+  easel_image_free (img);
+}
+
 int
 main (void)
 {
@@ -2140,5 +2629,18 @@ main (void)
   RUN (copy_by_rows_matches_oracle);
   RUN (as7_put_down_grown);
   RUN (as7_grown_step_holds_what_it_counts);
+  RUN (crop_marked_offset);
+  RUN (crop_free_form_box);
+  RUN (crop_whole_is_nothing);
+  RUN (crop_no_memory);
+  RUN (crop_hangs_fill);
+  RUN (crop_float_hanging);
+  RUN (crop_float_shape_fill);
+  RUN (crop_float_equals_lay);
+  RUN (crop_redo_keeps_fill);
+  RUN (crop_float_step_holds_what_it_counts);
+  RUN (crop_float_no_memory);
+  RUN (crop_float_paste_skips_clear);
+  RUN (crop_float_whole);
   return 0;
 }

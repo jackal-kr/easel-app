@@ -210,6 +210,19 @@ void easel_selection_lay_range (const EaselFloat *f, size_t first, size_t last, 
 EaselSelectionResult easel_selection_put_down (const EaselFloat *f, bool with_float, EaselImage *img,
                                                EaselHistory *history, size_t max_bytes);
 
+/* Crop to Selection (0041, REQ-0041-02 to -06): the picture becomes the rectangle (x, y, w, h) of itself, as one undo step of the history
+   (easel_history_push_crop): a pixel inside the old picture is its own, one outside it (a rectangle may hang past the edges) is fill, fully
+   transparent as 0 (P7.7). f is NULL for a marked selection (a Free-Form one crops its bounding rectangle, every pixel kept). For a floating
+   selection f is it (its image whole, easel_selection_complete, as for a put-down) and (x, y, w, h) its rectangle: inside the old picture each
+   pixel is what easel_selection_lay gives (the picture, the hole, the copies, the float: what the view shows and the put-down writes), outside
+   it the float's own pixel where its shape has one (a pasted float's fully transparent pixels excepted), else fill; the copies outside the old
+   picture are not in the crop. The step's log holds every pixel that differs from the plain cut. DONE; NOTHING only for a marked rectangle
+   that is the whole picture (no step, no change; a float exactly over it is put down by the caller, REQ-0041-05); NO_MEMORY, the picture, the
+   history and f as they were, if a size is outside 1 to EASEL_IMAGE_MAX_SIZE or an allocation (the removed pixels, the new picture, the log,
+   each counted by itself) is above max_bytes or cannot be had. */
+EaselSelectionResult easel_selection_crop (const EaselFloat *f, EaselImage *img, EaselHistory *history, int x, int y, int w, int h,
+                                           uint32_t fill, size_t max_bytes);
+
 /* Clear Selection on a marked selection (REQ-0013-14): the rectangle (x, y, w, h), inside the picture, or with a mask only the
    pixels of the shape (REQ-0014-09), takes color as one undo step; NOTHING if no pixel changes, NO_MEMORY with the picture as
    before. A float is cleared by easel_selection_put_down without the float. */

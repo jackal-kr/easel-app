@@ -13662,3 +13662,279 @@ test: ui-0021
   adw_about_dialog_set_developer_name (dialog, "JOD");                                   /* REQ-0021-05 (JOD, 2026-11-11) */
 --- replace
   (void) 0;
+
+# ---- the crop step of the history (0041, T001) ----
+
+=== REQ-0041-04 undo of a crop leaves the removed pixels out of order
+file: src/core/history.c
+test: core-history
+--- find
+                    inside ? img->px[(size_t) ny * (size_t) s->new_w + (size_t) nx] : s->removed[r++];
+--- replace
+                    inside ? img->px[(size_t) ny * (size_t) s->new_w + (size_t) nx] : s->removed[s->n_removed - 1 - r++];
+
+=== REQ-0041-04 undo of a crop does not write the float's old values back
+file: src/core/history.c
+test: core-history
+--- find
+                px[(size_t) oy * (size_t) s->old_w + (size_t) ox] = s->changes[i].old_value;
+--- replace
+                px[(size_t) oy * (size_t) s->old_w + (size_t) ox] = s->changes[i].new_value;
+
+=== REQ-0041-04 undo of a crop takes the crop's place from the wrong corner
+file: src/core/history.c
+test: core-history
+--- find
+                int nx = ox - s->crop_x, ny = oy - s->crop_y;
+--- replace
+                int nx = ox - s->crop_x, ny = oy;
+
+=== REQ-0041-04 redo of a crop forgets the step's fill
+file: src/core/history.c
+test: core-history
+--- find
+      uint32_t fill = easel_px_canon (s->fill);
+--- replace
+      uint32_t fill = 0;
+
+=== REQ-0041-04 redo of a crop leaves a fully transparent fill uncanonical
+file: src/core/history.c
+test: core-history
+--- find
+      uint32_t fill = easel_px_canon (s->fill);
+--- replace
+      uint32_t fill = s->fill;
+
+=== REQ-0041-04 redo of a crop does not write the float's new values
+file: src/core/history.c
+test: core-history
+--- find
+            px[s->changes[i].index] = s->changes[i].new_value;
+--- replace
+            px[s->changes[i].index] = s->changes[i].old_value;
+
+=== REQ-0041-04 redo of a crop cuts from the wrong place
+file: src/core/history.c
+test: core-history
+--- find
+                int ox = s->crop_x + nx, oy = s->crop_y + ny;
+                bool inside = ox >= 0 && oy >= 0 && ox < s->old_w && oy < s->old_h;
+--- replace
+                int ox = s->crop_x + nx, oy = s->crop_y;
+                bool inside = ox >= 0 && oy >= 0 && ox < s->old_w && oy < s->old_h;
+
+=== REQ-0041-04 a crop step costs 8 bytes per removed pixel instead of 4
+file: src/core/history.c
+test: core-history
+--- find
+    return s->n_removed * sizeof (uint32_t) + easel_history_change_log_bytes (s->n);
+--- replace
+    return s->n_removed * 8 + easel_history_change_log_bytes (s->n);
+
+=== REQ-0041-04 the change log is charged 16 bytes a change instead of 12
+file: src/core/history.c
+test: core-history
+--- find
+  return n * BYTES_PER_CHANGE + BYTES_PER_STEP;
+--- replace
+  return n * 16 + BYTES_PER_STEP;
+
+=== REQ-0041-04 an ordinary change log's step stops using the one charge function
+file: src/core/history.c
+test: core-history
+--- find
+  return easel_history_change_log_bytes (s->n);
+}
+--- replace
+  return s->n * 16 + BYTES_PER_STEP;
+}
+
+# ---- the marked crop of the picture (0041, T002) ----
+
+=== REQ-0041-05 a crop of the whole picture makes an undo step
+file: src/core/selection.c
+test: core-selection
+--- find
+  if (f == NULL && x == 0 && y == 0 && w == ow && h == oh)
+    return EASEL_SELECTION_NOTHING;
+--- replace
+  if (false)
+    return EASEL_SELECTION_NOTHING;
+
+=== REQ-0041-06 a crop does not count its removed pixels against the limit
+file: src/core/selection.c
+test: core-selection
+--- find
+      if (n_removed * sizeof *removed > max_bytes || (removed = malloc (n_removed * sizeof *removed)) == NULL)
+--- replace
+      if ((removed = malloc (n_removed * sizeof *removed)) == NULL)
+
+=== REQ-0041-06 a crop does not count its new picture against the limit
+file: src/core/selection.c
+test: core-selection
+--- find
+  if ((size_t) w * (size_t) h * sizeof *px > max_bytes || (px = malloc ((size_t) w * (size_t) h * sizeof *px)) == NULL)
+--- replace
+  if ((px = malloc ((size_t) w * (size_t) h * sizeof *px)) == NULL)
+
+=== REQ-0041-02 a crop removes the pixels at the rectangle's left edge too
+file: src/core/selection.c
+test: core-selection
+--- find
+          if (i < n_removed && !(ox >= x && ox < x + w && oy >= y && oy < y + h))     /* bounds-clipped, as every pixel access here */
+--- replace
+          if (i < n_removed && !(ox > x && ox < x + w && oy >= y && oy < y + h))     /* bounds-clipped, as every pixel access here */
+
+=== REQ-0041-02 a crop takes its pixels from the wrong column
+file: src/core/selection.c
+test: core-selection
+--- find
+        memcpy (row + (ix0 - x), img->px + (size_t) oy * (size_t) ow + (size_t) ix0, (size_t) (ix1 - ix0) * sizeof *row);
+--- replace
+        memcpy (row, img->px + (size_t) oy * (size_t) ow + (size_t) ix0, (size_t) (ix1 - ix0) * sizeof *row);
+
+=== REQ-0041-02 a crop takes its pixels from the wrong row
+file: src/core/selection.c
+test: core-selection
+--- find
+        memcpy (row + (ix0 - x), img->px + (size_t) oy * (size_t) ow + (size_t) ix0, (size_t) (ix1 - ix0) * sizeof *row);
+--- replace
+        memcpy (row + (ix0 - x), img->px + (size_t) j * (size_t) ow + (size_t) ix0, (size_t) (ix1 - ix0) * sizeof *row);
+
+=== REQ-0041-03 a crop's outside is not the fill
+file: src/core/selection.c
+test: core-selection
+--- find
+        row[k] = canon;
+--- replace
+        row[k] = 0xFF000000u;
+
+=== REQ-0041-07 a crop's fully transparent fill is not #00000000
+file: src/core/selection.c
+test: core-selection
+--- find
+        row[k] = canon;
+--- replace
+        row[k] = fill;
+
+=== REQ-0041-06 a crop to a picture of no width is made
+file: src/core/selection.c
+test: core-selection
+--- find
+  if (w < 1 || h < 1 || w > EASEL_IMAGE_MAX_SIZE || h > EASEL_IMAGE_MAX_SIZE)
+--- replace
+  if (h < 1 || w > EASEL_IMAGE_MAX_SIZE || h > EASEL_IMAGE_MAX_SIZE)
+
+=== REQ-0041-06 a crop to a picture of more than the largest side is made
+file: src/core/selection.c
+test: core-selection
+--- find
+  if (w < 1 || h < 1 || w > EASEL_IMAGE_MAX_SIZE || h > EASEL_IMAGE_MAX_SIZE)
+--- replace
+  if (w < 1 || h < 1 || h > EASEL_IMAGE_MAX_SIZE)
+
+=== REQ-0041-04 a crop's removed pixels are counted from a wrong overlap
+file: src/core/selection.c
+test: core-selection
+--- find
+  overlap = ix1 > ix0 && iy1 > iy0 ? (size_t) (ix1 - ix0) * (size_t) (iy1 - iy0) : 0;
+--- replace
+  overlap = ix1 > ix0 && iy1 > iy0 ? (size_t) (ix1 - ix0) * (size_t) (ix1 - ix0) : 0;
+
+=== REQ-0041-06 a crop that cannot be recorded still changes the picture
+file: src/core/selection.c
+test: core-selection
+--- find
+  if (history != NULL && !easel_history_push_crop (history, ow, oh, x, y, w, h, fill, removed, n_removed, changes, n_changes))
+    {
+      free (removed);
+      free (changes);
+      free (px);
+      return EASEL_SELECTION_NO_MEMORY;
+    }
+--- replace
+  if (history != NULL && !easel_history_push_crop (history, ow, oh, x, y, w, h, fill, removed, n_removed, changes, n_changes))
+    {
+      free (removed);
+      free (changes);
+      free (px);
+    }
+
+# ---- the floating crop (0041, T003) ----
+
+=== REQ-0041-03 a floating crop leaves out the float's pixels outside the old picture
+file: src/core/selection.c
+test: core-selection
+--- find
+            if (ox >= 0 && ox < ow && oy >= 0 && oy < oh)
+              continue;
+--- replace
+            continue;
+
+=== REQ-0041-03 a floating crop gives a Free-Form float's whole box outside the old picture
+file: src/core/selection.c
+test: core-selection
+--- find
+            if ((cur.mask == NULL || cur.mask[at] != 0) && !(cur.skip_clear && (cur.px[at] >> 24) == 0))
+--- replace
+            if (!(cur.skip_clear && (cur.px[at] >> 24) == 0))
+
+=== REQ-0041-03 a floating crop lays a pasted float's transparent pixels outside the old picture
+file: src/core/selection.c
+test: core-selection
+--- find
+            if ((cur.mask == NULL || cur.mask[at] != 0) && !(cur.skip_clear && (cur.px[at] >> 24) == 0))
+--- replace
+            if (cur.mask == NULL || cur.mask[at] != 0)
+
+=== REQ-0041-07 a floating crop does not lay the hole, the copies and the float inside the old picture
+file: src/core/selection.c
+test: core-selection
+--- find
+          if (f != NULL)
+            easel_selection_lay (f, true, img, ix0, oy, ix1 - ix0, 1, row + (ix0 - x), (size_t) w);
+--- replace
+          if (false)
+            easel_selection_lay (f, true, img, ix0, oy, ix1 - ix0, 1, row + (ix0 - x), (size_t) w);
+
+=== REQ-0041-07 a floating crop lays without the float
+file: src/core/selection.c
+test: core-selection
+--- find
+            easel_selection_lay (f, true, img, ix0, oy, ix1 - ix0, 1, row + (ix0 - x), (size_t) w);
+--- replace
+            easel_selection_lay (f, false, img, ix0, oy, ix1 - ix0, 1, row + (ix0 - x), (size_t) w);
+
+=== REQ-0041-04 a floating crop's log keeps the new value as the old one
+file: src/core/selection.c
+test: core-selection
+--- find
+                  changes[n] = (EaselChange) { (uint32_t) at, cut, px[at] };
+--- replace
+                  changes[n] = (EaselChange) { (uint32_t) at, px[at], px[at] };
+
+=== REQ-0041-04 a floating crop's log holds every pixel, not only those that differ
+file: src/core/selection.c
+test: core-selection
+--- find
+                if (px[at] == cut)
+                  continue;
+--- replace
+                if (false)
+                  continue;
+
+=== REQ-0041-06 a floating crop does not count its change log against the limit
+file: src/core/selection.c
+test: core-selection
+--- find
+              if (n > 0 && (n * sizeof *changes > max_bytes || (changes = malloc (n * sizeof *changes)) == NULL))
+--- replace
+              if (n > 0 && (changes = malloc (n * sizeof *changes)) == NULL)
+
+=== REQ-0041-05 a crop with a floating selection over the whole picture is nothing
+file: src/core/selection.c
+test: core-selection
+--- find
+  if (f == NULL && x == 0 && y == 0 && w == ow && h == oh)
+--- replace
+  if (x == 0 && y == 0 && w == ow && h == oh)

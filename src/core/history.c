@@ -12,6 +12,7 @@ typedef enum
   STEP_FILL,              /* a fill: old_color becomes new_color in every pixel of the spans */
   STEP_GROW,              /* a growth from old_w x old_h to new_w x new_h with fill, then the changes (0016: a paste's put-down) */
   STEP_BUFFER,            /* a whole picture buffer, swapped with the picture's by undo and redo (0018: a turn, a flip, an invert) */
+  STEP_CROP,              /* a crop to a rectangle of the old picture: the sizes, crop_x and crop_y, fill, removed and a change log (0041) */
 } StepKind;
 
 typedef struct
@@ -33,6 +34,8 @@ typedef struct
      so the pixel count, and the bytes the step counts, never change). */
   uint32_t *buf;
   int buf_w, buf_h;
+  /* A crop: where the new picture's top-left pixel was in the old one (old_w, old_h, new_w, new_h, fill, removed and changes as above). */
+  int crop_x, crop_y;
 } Step;
 
 struct _EaselHistory
@@ -99,16 +102,24 @@ current_id (const EaselHistory *h)
   return h->applied == h->first ? 0 : h->steps[h->applied - 1].id;
 }
 
+size_t
+easel_history_change_log_bytes (size_t n)
+{
+  return n * BYTES_PER_CHANGE + BYTES_PER_STEP;
+}
+
 static size_t
 step_bytes (const Step *s)
 {
+  if (s->kind == STEP_CROP)
+    return s->n_removed * sizeof (uint32_t) + easel_history_change_log_bytes (s->n);
   if (s->kind == STEP_RESIZE)
     return s->n_removed * sizeof (uint32_t) + BYTES_PER_STEP;
   if (s->kind == STEP_FILL)
     return s->n_spans * sizeof (EaselSpan) + BYTES_PER_STEP;
   if (s->kind == STEP_BUFFER)
     return (size_t) s->buf_w * (size_t) s->buf_h * sizeof (uint32_t) + BYTES_PER_STEP;
-  return s->n * BYTES_PER_CHANGE + BYTES_PER_STEP;
+  return easel_history_change_log_bytes (s->n);
 }
 
 /* Drops the oldest kept step. The saved state goes with it: the start state (id 0) can no longer be reached once any
@@ -226,6 +237,21 @@ easel_history_push_buffer (EaselHistory *h, int w, int hgt, uint32_t *px)
   return true;
 }
 
+bool
+easel_history_push_crop (EaselHistory *h, int old_w, int old_h, int x, int y, int new_w, int new_h, uint32_t fill, uint32_t *removed,
+                         size_t n_removed, EaselChange *changes, size_t n)
+{
+  if (old_w < 1 || old_h < 1 || new_w < 1 || new_h < 1 || old_w > EASEL_IMAGE_MAX_SIZE || old_h > EASEL_IMAGE_MAX_SIZE
+      || new_w > EASEL_IMAGE_MAX_SIZE || new_h > EASEL_IMAGE_MAX_SIZE)
+    return false;
+  if (n_removed > (SIZE_MAX - BYTES_PER_STEP) / sizeof (uint32_t) || n > (SIZE_MAX - BYTES_PER_STEP) / BYTES_PER_CHANGE
+      || n_removed * sizeof (uint32_t) > SIZE_MAX - BYTES_PER_STEP - n * BYTES_PER_CHANGE || !make_room (h))
+    return false;
+  commit_step (h, (Step) { .kind = STEP_CROP, .old_w = old_w, .old_h = old_h, .new_w = new_w, .new_h = new_h, .crop_x = x, .crop_y = y,
+                           .fill = fill, .removed = removed, .n_removed = n_removed, .changes = changes, .n = n });
+  return true;
+}
+
 EaselResizeResult
 easel_resize_edit (EaselImage *img, EaselHistory *h, int width, int height, uint32_t fill)
 {
@@ -292,6 +318,58 @@ apply_step (Step *s, EaselImage *img, bool undo)
       s->buf_w = w;
       s->buf_h = hgt;
       img->dirty = (EaselRect) { 0, 0, img->width, img->height };
+      return true;
+    }
+
+  if (s->kind == STEP_CROP)
+    {
+      /* The other picture is built in a buffer of its own first, so that no buffer to be had changes nothing. */
+      int to_w = undo ? s->old_w : s->new_w, to_h = undo ? s->old_h : s->new_h;
+      uint32_t *px = malloc ((size_t) to_w * (size_t) to_h * sizeof (uint32_t));
+      uint32_t fill = easel_px_canon (s->fill);
+      size_t r = 0;
+
+      if (px == NULL)
+        return false;
+      if (undo)
+        {
+          /* old pixel (ox, oy): inside the rectangle it is the new picture's (x - crop_x, y - crop_y), else the next removed one */
+          for (int oy = 0; oy < s->old_h; oy++)
+            for (int ox = 0; ox < s->old_w; ox++)
+              {
+                int nx = ox - s->crop_x, ny = oy - s->crop_y;
+                bool inside = nx >= 0 && ny >= 0 && nx < s->new_w && ny < s->new_h;
+
+                px[(size_t) oy * (size_t) s->old_w + (size_t) ox] =
+                    inside ? img->px[(size_t) ny * (size_t) s->new_w + (size_t) nx] : s->removed[r++];
+              }
+          for (size_t i = 0; i < s->n; i++)
+            {
+              int ox = s->crop_x + (int) (s->changes[i].index % (uint32_t) s->new_w);
+              int oy = s->crop_y + (int) (s->changes[i].index / (uint32_t) s->new_w);
+
+              if (ox >= 0 && oy >= 0 && ox < s->old_w && oy < s->old_h)
+                px[(size_t) oy * (size_t) s->old_w + (size_t) ox] = s->changes[i].old_value;
+            }
+        }
+      else
+        {
+          for (int ny = 0; ny < s->new_h; ny++)
+            for (int nx = 0; nx < s->new_w; nx++)
+              {
+                int ox = s->crop_x + nx, oy = s->crop_y + ny;
+                bool inside = ox >= 0 && oy >= 0 && ox < s->old_w && oy < s->old_h;
+
+                px[(size_t) ny * (size_t) s->new_w + (size_t) nx] = inside ? img->px[(size_t) oy * (size_t) s->old_w + (size_t) ox] : fill;
+              }
+          for (size_t i = 0; i < s->n; i++)
+            px[s->changes[i].index] = s->changes[i].new_value;
+        }
+      free (img->px);
+      img->px = px;
+      img->width = to_w;
+      img->height = to_h;
+      img->dirty = (EaselRect) { 0, 0, to_w, to_h };
       return true;
     }
 

@@ -46,6 +46,23 @@ bool easel_history_push_fill (EaselHistory *h, uint32_t old_value, uint32_t new_
 bool easel_history_push_grow (EaselHistory *h, int old_w, int old_h, int new_w, int new_h, uint32_t fill, EaselChange *changes,
                               size_t n);
 
+/* What a step that holds a change log of n changes is charged against the budget: 12 bytes a change plus 64 for the step itself
+   (REQ-0002-16). The one place that arithmetic is written: the history's own accounting, and every caller that says what a log costs
+   (0041: a crop's), use it. */
+size_t easel_history_change_log_bytes (size_t n);
+
+/* A crop of the picture as one step (0041, REQ-0041-04): the picture was old_w x old_h and is now new_w x new_h, the rectangle of the
+   old picture at (x, y) (which may hang past its edges); a new pixel (i, j) is the old pixel (x + i, y + j) where that is inside the old
+   picture, else fill (fully transparent as 0, P7.7), except where `changes` says otherwise: every pixel that differs from that cut,
+   with its index in the new picture, its value in the cut as old_value and its present one as new_value. removed holds the old pixels
+   outside the rectangle, in the row-major order of the old picture. Undo gives the old size and every pixel (the removed ones, the cut's
+   and the log's old values); Redo cuts again with the step's own fill, whatever the caller's has become, and writes the new values; each
+   allocates the new buffer and returns false, changing nothing, if that fails. The step counts 4 bytes a removed pixel plus
+   easel_history_change_log_bytes (n). On success it takes removed and changes (malloc'd, at their length); with n == 0 changes may be
+   NULL. False, no step added, and the caller still owns both: no memory or a size outside 1 to EASEL_IMAGE_MAX_SIZE. */
+bool easel_history_push_crop (EaselHistory *h, int old_w, int old_h, int x, int y, int new_w, int new_h, uint32_t fill, uint32_t *removed,
+                              size_t n_removed, EaselChange *changes, size_t n);
+
 /* A step that keeps a whole picture buffer (0018: a turn, a flip, an invert or a clear of the picture): px, w x hgt, is the picture's
    buffer as it was before the command, which the caller has just replaced by new pixels of its own (and size); on success the history
    owns px. Undo and Redo swap the picture's buffer and size with the step's, allocating nothing, and mark the whole picture dirty. It

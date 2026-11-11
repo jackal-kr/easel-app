@@ -284,6 +284,122 @@ static EaselSelectionResult put_down_with (const EaselFloat *f, bool with_float,
                                            const Growth *growth);
 
 EaselSelectionResult
+easel_selection_crop (const EaselFloat *f, EaselImage *img, EaselHistory *history, int x, int y, int w, int h, uint32_t fill,
+                      size_t max_bytes)
+{
+  int ow = img->width, oh = img->height;
+  int ix0 = x > 0 ? x : 0, ix1 = x + w < ow ? x + w : ow, iy0 = y > 0 ? y : 0, iy1 = y + h < oh ? y + h : oh;
+  size_t overlap, n_removed, i = 0;
+  uint32_t *removed = NULL, *px, canon = easel_px_canon (fill);
+  EaselChange *changes = NULL;
+  size_t n_changes = 0;
+
+  if (w < 1 || h < 1 || w > EASEL_IMAGE_MAX_SIZE || h > EASEL_IMAGE_MAX_SIZE)
+    return EASEL_SELECTION_NO_MEMORY;
+  if (f == NULL && x == 0 && y == 0 && w == ow && h == oh)
+    return EASEL_SELECTION_NOTHING;
+  overlap = ix1 > ix0 && iy1 > iy0 ? (size_t) (ix1 - ix0) * (size_t) (iy1 - iy0) : 0;
+  n_removed = (size_t) ow * (size_t) oh - overlap;
+  /* Everything that can fail comes before anything changes: the removed pixels, the new picture, room in the history. */
+  if (n_removed > 0)
+    {
+      if (n_removed * sizeof *removed > max_bytes || (removed = malloc (n_removed * sizeof *removed)) == NULL)
+        return EASEL_SELECTION_NO_MEMORY;
+      for (int oy = 0; oy < oh; oy++)
+        for (int ox = 0; ox < ow; ox++)
+          if (i < n_removed && !(ox >= x && ox < x + w && oy >= y && oy < y + h))     /* bounds-clipped, as every pixel access here */
+            removed[i++] = img->px[(size_t) oy * (size_t) ow + (size_t) ox];
+    }
+  if ((size_t) w * (size_t) h * sizeof *px > max_bytes || (px = malloc ((size_t) w * (size_t) h * sizeof *px)) == NULL)
+    {
+      free (removed);
+      return EASEL_SELECTION_NO_MEMORY;
+    }
+  for (int j = 0; j < h; j++)
+    {
+      uint32_t *row = px + (size_t) j * (size_t) w;
+      int oy = y + j;
+
+      for (int k = 0; k < w; k++)
+        row[k] = canon;
+      if (oy >= 0 && oy < oh && ix1 > ix0)
+        {
+          /* inside the old picture: what the view shows and the put-down writes (a marked selection: the picture's own pixels) */
+          if (f != NULL)
+            easel_selection_lay (f, true, img, ix0, oy, ix1 - ix0, 1, row + (ix0 - x), (size_t) w);
+          else
+            memcpy (row + (ix0 - x), img->px + (size_t) oy * (size_t) ow + (size_t) ix0, (size_t) (ix1 - ix0) * sizeof *row);
+        }
+    }
+  if (f != NULL)
+    {
+      /* outside it: the float's own pixels over the fill, where its shape has them (the lay writes the picture's places only); the copies
+         left outside the old picture were never in it and are not here either */
+      ImageView cur = current_view (f);
+      int fx0 = f->x > x ? f->x : x, fx1 = f->x + cur.w < x + w ? f->x + cur.w : x + w;
+      int fy0 = f->y > y ? f->y : y, fy1 = f->y + cur.h < y + h ? f->y + cur.h : y + h;
+
+      for (int oy = fy0; oy < fy1; oy++)
+        for (int ox = fx0; ox < fx1; ox++)
+          {
+            size_t at = (size_t) (oy - f->y) * (size_t) cur.w + (size_t) (ox - f->x);
+
+            if (ox >= 0 && ox < ow && oy >= 0 && oy < oh)
+              continue;
+            if ((cur.mask == NULL || cur.mask[at] != 0) && !(cur.skip_clear && (cur.px[at] >> 24) == 0))
+              px[(size_t) (oy - y) * (size_t) w + (size_t) (ox - x)] = cur.px[at];
+          }
+      /* the change log: every pixel that differs from the plain cut of the old picture, counted first, then made at its length */
+      for (int pass = 0; pass < 2; pass++)
+        {
+          size_t n = 0;
+
+          for (int j = 0; j < h; j++)
+            for (int k = 0; k < w; k++)
+              {
+                int ox = x + k, oy = y + j;
+                uint32_t cut = ox >= 0 && oy >= 0 && ox < ow && oy < oh ? img->px[(size_t) oy * (size_t) ow + (size_t) ox] : canon;
+                size_t at = (size_t) j * (size_t) w + (size_t) k;
+
+                if (px[at] == cut)
+                  continue;
+                if (pass == 1 && n < n_changes)
+                  changes[n] = (EaselChange) { (uint32_t) at, cut, px[at] };
+                n++;
+              }
+          if (pass == 0)
+            {
+              n_changes = n;
+              if (n > 0 && (n * sizeof *changes > max_bytes || (changes = malloc (n * sizeof *changes)) == NULL))
+                {
+                  free (removed);
+                  free (px);
+                  return EASEL_SELECTION_NO_MEMORY;
+                }
+            }
+        }
+    }
+  if (history != NULL && !easel_history_push_crop (history, ow, oh, x, y, w, h, fill, removed, n_removed, changes, n_changes))
+    {
+      free (removed);
+      free (changes);
+      free (px);
+      return EASEL_SELECTION_NO_MEMORY;
+    }
+  if (history == NULL)
+    {
+      free (removed);
+      free (changes);
+    }
+  free (img->px);
+  img->px = px;
+  img->width = w;
+  img->height = h;
+  img->dirty = (EaselRect) { 0, 0, 0, 0 };
+  return EASEL_SELECTION_DONE;
+}
+
+EaselSelectionResult
 easel_selection_put_down (const EaselFloat *f, bool with_float, EaselImage *img, EaselHistory *history, size_t max_bytes)
 {
   return put_down_with (f, with_float, img, history, max_bytes, NULL);

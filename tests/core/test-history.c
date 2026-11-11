@@ -462,6 +462,206 @@ as7_grow_step (void)
   easel_image_free (img);
 }
 
+/* ---- 0041 T001: the crop step (REQ-0041-04) ---- */
+
+/* The picture an old w x h one gives when cut to the rectangle (cx, cy, nw, nh), which may hang past its edges: a pixel inside the old
+   picture is its own, one outside is the fill (P7.7: a fully transparent one as 0). Made pixel by pixel from the new place, not as the
+   step makes it. */
+static EaselImage *
+oracle_cut (const EaselImage *old, int cx, int cy, int nw, int nh, uint32_t fill)
+{
+  EaselImage *cut = easel_image_new (nw, nh, 0);
+
+  CHECK (cut != NULL);
+  for (int ny = 0; ny < nh; ny++)
+    for (int nx = 0; nx < nw; nx++)
+      {
+        int ox = cx + nx, oy = cy + ny;
+        uint32_t v = ox >= 0 && oy >= 0 && ox < old->width && oy < old->height ? old->px[(size_t) oy * old->width + ox]
+                                                                                 : ((fill >> 24) != 0 ? fill : 0);
+
+        cut->px[(size_t) ny * nw + nx] = v;
+      }
+  return cut;
+}
+
+static EaselImage *
+copy_of (const EaselImage *img)
+{
+  EaselImage *c = easel_image_new (img->width, img->height, 0);
+
+  CHECK (c != NULL);
+  for (size_t i = 0; i < (size_t) img->width * img->height; i++)
+    c->px[i] = img->px[i];
+  return c;
+}
+
+static void
+same_picture (const EaselImage *a, const EaselImage *b)
+{
+  CHECK (a->width == b->width && a->height == b->height);
+  for (size_t i = 0; i < (size_t) a->width * a->height; i++)
+    CHECK (a->px[i] == b->px[i]);
+}
+
+/* Makes the crop the way a caller does (REQ-0041-03, -04): the picture becomes the cut with `n_float` of its pixels (every `every`-th, from
+   the first) replaced by a float's, the old values being the cut's; the removed pixels are the old ones outside the rectangle, in the
+   row-major order of the old picture; both malloc'd at their length and handed to the history. Returns the picture after the crop. */
+static EaselImage *
+make_crop (EaselImage *img, EaselHistory *h, int cx, int cy, int nw, int nh, uint32_t fill, int every, size_t *n_removed_out,
+           size_t *n_changes_out)
+{
+  EaselImage *old = copy_of (img), *cut = oracle_cut (old, cx, cy, nw, nh, fill), *after;
+  size_t n_removed = 0, n = 0, i = 0;
+  uint32_t *removed;
+  EaselChange *changes;
+
+  for (int y = 0; y < old->height; y++)
+    for (int x = 0; x < old->width; x++)
+      n_removed += !(x >= cx && x < cx + nw && y >= cy && y < cy + nh);
+  for (int k = 0; every > 0 && k < nw * nh; k += every)
+    n++;
+  removed = malloc ((n_removed > 0 ? n_removed : 1) * sizeof *removed);
+  changes = malloc ((n > 0 ? n : 1) * sizeof *changes);
+  CHECK (removed != NULL && changes != NULL);
+  for (int y = 0; y < old->height; y++)
+    for (int x = 0; x < old->width; x++)
+      if (!(x >= cx && x < cx + nw && y >= cy && y < cy + nh))
+        removed[i++] = old->px[(size_t) y * old->width + x];
+  after = copy_of (cut);
+  n = 0;
+  for (int k = 0; every > 0 && k < nw * nh; k += every)
+    {
+      uint32_t nv = 0xFF000000u | (uint32_t) (k * 2654435761u >> 8);
+
+      changes[n++] = (EaselChange) { (uint32_t) k, cut->px[k], nv };
+      after->px[k] = nv;
+    }
+  /* the picture itself becomes the crop, as the caller's own step does before it records */
+  free (img->px);
+  img->px = after->px;
+  img->width = nw;
+  img->height = nh;
+  after->px = NULL;
+  easel_image_free (after);
+  CHECK (easel_history_push_crop (h, old->width, old->height, cx, cy, nw, nh, fill, removed, n_removed, n > 0 ? changes : (free (changes), NULL), n));
+  if (n_removed_out != NULL)
+    *n_removed_out = n_removed;
+  if (n_changes_out != NULL)
+    *n_changes_out = n;
+  easel_image_free (old);
+  after = copy_of (img);
+  easel_image_free (cut);
+  return after;
+}
+
+/* One crop through the step: Undo gives the old size and every pixel back (the removed ones and the float's), Redo the cut with the
+   step's own fill, whatever was done since; the bytes counted are 4 a removed pixel plus the charge of the change log. */
+static void
+crop_case (int ow, int oh, int cx, int cy, int nw, int nh, uint32_t fill, int every)
+{
+  EaselImage *img = easel_image_new (ow, oh, WHITE), *old, *after;
+  EaselHistory *h = easel_history_new (512u * 1024 * 1024);
+  size_t before, n_removed, n_changes;
+  uint32_t first;
+
+  CHECK (img != NULL && h != NULL);
+  for (int i = 0; i < ow * oh; i++)                           /* distinct, asymmetric pixels */
+    img->px[i] = 0xFF000000u | (uint32_t) ((i + 1) * 40503u);
+  first = img->px[0];
+  draw_row (img, h, 0, 0, 0, BLACK);                           /* an earlier step stays undoable through the crop */
+  old = copy_of (img);
+  before = easel_history_bytes (h);
+  after = make_crop (img, h, cx, cy, nw, nh, fill, every, &n_removed, &n_changes);
+  CHECK (easel_history_bytes (h) == before + n_removed * 4 + easel_history_change_log_bytes (n_changes));
+  CHECK (easel_history_can_undo (h) && !easel_history_can_redo (h));
+  CHECK (easel_history_undo (h, img));
+  same_picture (img, old);
+  CHECK (easel_history_can_redo (h));
+  CHECK (easel_history_redo (h, img));
+  same_picture (img, after);
+  CHECK (easel_history_undo (h, img));
+  same_picture (img, old);
+  /* the step before it stays undoable through it */
+  CHECK (easel_history_undo (h, img));
+  CHECK (img->width == ow && img->px[0] == first);
+  CHECK (easel_history_redo (h, img) && easel_history_redo (h, img));
+  same_picture (img, after);
+  easel_history_free (h);
+  easel_image_free (img);
+  easel_image_free (old);
+  easel_image_free (after);
+}
+
+static void
+history_crop_step (void)
+{
+  crop_case (17, 11, 3, 2, 6, 5, 0xFF00FF00u, 0);              /* inside, a marked crop: no change log */
+  crop_case (17, 11, 10, 5, 12, 9, 0xFFFF0000u, 3);            /* hangs past the right and bottom edges */
+  crop_case (17, 11, -4, -2, 9, 7, 0xFF0000FFu, 2);            /* hangs past the left and top edges */
+  crop_case (17, 11, -6, -3, 30, 20, 0xFF00FFFFu, 5);          /* larger than the old picture, all around it */
+  crop_case (17, 11, 40, 30, 4, 4, 0xFFFF00FFu, 1);            /* wholly outside: no old pixel kept */
+  crop_case (17, 11, -3, 4, 8, 3, 0x00123456u, 4);             /* a fully transparent fill is #00000000 (P7.7) */
+  crop_case (1, 1, 0, 0, 1, 1, WHITE, 1);                      /* the smallest */
+}
+
+/* REQ-0041-04: the change log is charged by the one function every change log is charged by, and a log's step by what it says. */
+static void
+history_crop_charge (void)
+{
+  EaselImage *img = easel_image_new (6, 5, WHITE);
+  EaselHistory *h = easel_history_new (512u * 1024 * 1024);
+  size_t b0, b1, b2, b3;
+  EaselChange *a, *c;
+  uint32_t *removed;
+
+  CHECK (img != NULL && h != NULL);
+  CHECK (easel_history_change_log_bytes (0) == 64);
+  CHECK (easel_history_change_log_bytes (1) == 64 + sizeof (EaselChange));
+  CHECK (easel_history_change_log_bytes (1000) == 64 + 1000 * sizeof (EaselChange));
+  /* an ordinary step of 3 changes is charged by it */
+  b0 = easel_history_bytes (h);
+  draw_run (img, h, 0, 3, BLACK);
+  b1 = easel_history_bytes (h);
+  CHECK (b1 - b0 == easel_history_change_log_bytes (3));
+  /* a growth with 2 changes too */
+  CHECK (easel_image_resize (img, 8, 5, WHITE) == EASEL_RESIZE_OK);
+  a = malloc (2 * sizeof *a);
+  CHECK (a != NULL);
+  a[0] = (EaselChange) { 0, BLACK, WHITE };
+  a[1] = (EaselChange) { 7, WHITE, BLACK };
+  CHECK (easel_history_push_grow (h, 6, 5, 8, 5, WHITE, a, 2));
+  b2 = easel_history_bytes (h);
+  CHECK (b2 - b1 == easel_history_change_log_bytes (2));
+  /* a crop to 2 x 2 of the 8 x 5 picture: 36 removed pixels and 1 change */
+  removed = malloc (36 * sizeof *removed);
+  c = malloc (sizeof *c);
+  CHECK (removed != NULL && c != NULL);
+  for (size_t i = 0; i < 36; i++)
+    removed[i] = WHITE;
+  c[0] = (EaselChange) { 0, WHITE, BLACK };
+  CHECK (easel_image_resize (img, 2, 2, WHITE) == EASEL_RESIZE_OK);
+  CHECK (easel_history_push_crop (h, 8, 5, 0, 0, 2, 2, WHITE, removed, 36, c, 1));
+  b3 = easel_history_bytes (h);
+  CHECK (b3 - b2 == 36 * 4 + easel_history_change_log_bytes (1));
+  /* the step above the budget stays alone (REQ-0002-17), and a smaller budget drops older steps first */
+  easel_history_free (h);
+  h = easel_history_new (100);
+  CHECK (h != NULL);
+  removed = malloc (36 * sizeof *removed);
+  CHECK (removed != NULL);
+  for (size_t i = 0; i < 36; i++)
+    removed[i] = WHITE;
+  draw_run (img, h, 0, 1, BLACK);
+  CHECK (easel_image_resize (img, 8, 5, WHITE) == EASEL_RESIZE_OK);
+  CHECK (easel_image_resize (img, 2, 2, WHITE) == EASEL_RESIZE_OK);
+  CHECK (easel_history_push_crop (h, 8, 5, 0, 0, 2, 2, WHITE, removed, 36, NULL, 0));
+  CHECK (easel_history_bytes (h) == 36 * 4 + easel_history_change_log_bytes (0));
+  CHECK (easel_history_can_undo (h));
+  easel_history_free (h);
+  easel_image_free (img);
+}
+
 int
 main (void)
 {
@@ -477,5 +677,7 @@ main (void)
   RUN (as6_fill_step_undo_redo);
   RUN (as6_fill_step_budget);
   RUN (as7_grow_step);
+  RUN (history_crop_step);
+  RUN (history_crop_charge);
   return 0;
 }
