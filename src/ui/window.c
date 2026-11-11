@@ -4220,7 +4220,6 @@ on_rbg_press (int x, int y, gpointer data)
   EaselWindow *self = data;
   struct RbgSession *s = self->rbg;
   size_t i;
-  gboolean found = FALSE;
 
   if (s == NULL || self->removing || self->rbg_card == NULL)
     return;
@@ -4243,15 +4242,8 @@ on_rbg_press (int x, int y, gpointer data)
   i = (size_t) y * s->w + x;
   if ((s->mask != NULL && !s->mask[i]) || (s->orig[i] >> 24) == 0)
     return;                                               /* outside the shape, or transparent before: no piece */
-  for (size_t j = 0; j < s->n_presses && !found; j++)
-    if (easel_rbg_same_piece (s->rbg, x, y, s->presses[j].x, s->presses[j].y))
-      {
-        memmove (s->presses + j, s->presses + j + 1, (s->n_presses - j - 1) * sizeof *s->presses);
-        memmove (s->press_seq + j, s->press_seq + j + 1, (s->n_presses - j - 1) * sizeof *s->press_seq);
-        s->n_presses--;
-        found = TRUE;
-      }
-  if (!found)
+  /* every press is kept as one, also on a piece pressed before: two on one piece cancel (the flips count them), and Ctrl+Z takes back
+     the later first (REQ-0037-04, JOD 2026-11-11) */
     {
       if (s->n_presses == s->cap_presses)
         {

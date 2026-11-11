@@ -38180,6 +38180,37 @@ br_as4_dot_scale2 (void)
   rbg_done ();
 }
 
+/* 0037 AS-12 (REQ-0037-04, JOD 2026-11-11): a second press on a pressed island is a press of its own that cancels the first: the island
+   kept again; Ctrl+Z takes back the second press (removed again), then the first (kept, as the method made it). */
+static void
+pc_as12_second_press_undone (void)
+{
+  EaselWindow *win = pc_window ();
+  const EaselImage *img = easel_window_get_picture (win);
+  GtkWidget *card = rbg_open (win);
+
+  rbg_settle (win);
+  g_assert_false (pc_removed (img, 120, 60));                            /* the method keeps the island */
+  pc_press (win, 120, 60);
+  g_assert_true (pc_removed (img, 120, 60));
+  pc_press (win, 120, 60);
+  g_assert_false (pc_removed (img, 120, 60));                            /* the two presses cancel */
+  gtk_widget_grab_focus (GTK_WIDGET (easel_remove_bg_card_row (card)));
+  g_assert_true (key_taken (win, GDK_KEY_F6, 0));
+  key_released (win, GDK_KEY_F6);
+  g_assert_true (gtk_root_get_focus (GTK_ROOT (win)) == GTK_WIDGET (easel_window_get_canvas (win)));
+  g_assert_true (key_taken (win, GDK_KEY_z, GDK_CONTROL_MASK));
+  key_released (win, GDK_KEY_z);
+  rbg_settle (win);
+  g_assert_true (pc_removed (img, 120, 60));                             /* the second press taken back */
+  g_assert_true (key_taken (win, GDK_KEY_z, GDK_CONTROL_MASK));
+  key_released (win, GDK_KEY_z);
+  rbg_settle (win);
+  g_assert_false (pc_removed (img, 120, 60));                            /* and the first */
+  rbg_answer (win, "cancel");
+  rbg_done ();
+}
+
 /* 0038 AS-8 (REQ-0038-08): the memory made too small after the card opened: a stroke's press (its bands cannot be had) and, the second
    way, a stroke growing past what it holds (its places cannot grow): the message shows, the stroke is dropped and the preview is as
    before it; the card stays. */
@@ -39790,6 +39821,7 @@ main (int argc, char **argv)
   g_test_add_func ("/0038/as12_ctrl_z_with_history", br_as12_ctrl_z_with_history);
   g_test_add_func ("/0038/as12_undo_brings_press_back", br_as12_undo_brings_press_back);
   g_test_add_func ("/0038/as14_stroke_after_press", br_as14_stroke_after_press);
+  g_test_add_func ("/0037/as12_second_press_undone", pc_as12_second_press_undone);
   g_test_add_func ("/0038-scale2/as4_dot_scale2", br_as4_dot_scale2);
   g_test_add_func ("/0037/as1_presses", pc_as1_presses);
   g_test_add_func ("/0037/as2_cancel", pc_as2_cancel);

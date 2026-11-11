@@ -12694,14 +12694,6 @@ test: ui-0037
 --- replace
   (void) 0;
 
-=== REQ-0037-04 a press on a pressed piece adds a press instead of removing the earlier
-file: src/ui/window.c
-test: ui-0037
---- find
-    if (easel_rbg_same_piece (s->rbg, x, y, s->presses[j].x, s->presses[j].y))
---- replace
-    if (0 && easel_rbg_same_piece (s->rbg, x, y, s->presses[j].x, s->presses[j].y))
-
 === REQ-0037-01 a press while the card is open reaches no piece
 file: src/ui/window.c
 test: ui-0037
@@ -13102,6 +13094,14 @@ test: core-jpeg-exif
       return v >= 1 && v <= 8 ? (int) v : 1;
 --- replace
       return v >= 1 && v <= 9 ? (int) v : 1;
+
+=== REQ-0037-04 a press on a pressed piece is not kept, so Ctrl+Z skips it
+file: src/ui/window.c
+test: ui-0037
+--- find
+      s->presses[s->n_presses++] = (EaselRbgPress) { x, y };
+--- replace
+      if (s->n_presses == 0 || !easel_rbg_same_piece (s->rbg, x, y, s->presses[s->n_presses - 1].x, s->presses[s->n_presses - 1].y)) s->presses[s->n_presses++] = (EaselRbgPress) { x, y }; else s->n_presses--;
 
 === REQ-0005-06 an EXIF segment whose length runs beyond the end is kept whole
 file: src/core/jpeg-exif.c
