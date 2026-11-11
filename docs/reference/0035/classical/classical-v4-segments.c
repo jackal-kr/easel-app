@@ -4,8 +4,9 @@
    ring farther than SEG_FAR automatic tolerances from it, the ring's colors are split by integer k-means from the farthest points
    (3, else 2), a split kept when every segment holds SEG_SHARE % of the ring, owns a corner of it and lies SEG_SEP delta-E from the
    others; each segment gets its own cubic surface, and a cell's distance to the background is to the nearest surface. Results:
-   docs/reference/0035/methods-comparison.md, the 0037 section, and segments-sheet.png. Build: cc -O2 -I src/core this file with a
-   driver (the scratch coredrv.c), or link it in place of remove-bg.c. */
+   docs/reference/0035/methods-comparison.md, the 0037 section, and segments-sheet.png (kept locally, not in the repository:
+   it shows third-party wallpapers).
+   Build: cc -O2 -I src/core this file with a driver (the scratch coredrv.c), or link it in place of remove-bg.c. */
 #include "remove-bg.h"
 
 #include <stdlib.h>
@@ -27,7 +28,8 @@ enum { NONE = 0, BACK = 1, SUBJECT = 2, ABSENT = 3 };
 #endif
 /* The fringe (REQ-0035-03 g): how far from the blend's line a mixed pixel may lie, as a part of the line's length; the step in color
    below which the color inward has settled, in quarters of the tolerance; its rounds, and how far inward it looks, in pixels. Chosen on the eagle photo,
-   the six test pictures and the five wallpapers (docs/reference/0035/fringe-sheet.png). */
+   the six test pictures and the five wallpapers (docs/reference/0035/fringe-sheet.png, kept locally, not in the repository:
+   it shows third-party wallpapers). */
 enum { FRINGE_FIT_DIV = 8, FRINGE_SETTLE_Q4 = 2, FRINGE_ROUNDS = 1, FRINGE_REACH = 16 };
 
 /* sRGB to linear light, Q16 (from the sRGB formula, kept as integers), and XYZ from it, each row divided by the D65 white, Q16. */

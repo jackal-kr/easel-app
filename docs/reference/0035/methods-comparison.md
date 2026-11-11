@@ -1,7 +1,7 @@
 # Finding the subject: the classical way against three models
 
 For JOD's choice (2026-11-09): **A** classical only, **B** ONNX Runtime and a permissively licensed model, **C** classical by default with
-a model as an optional add-on. The masks: `methods-sheet.png` (the five wallpapers of `models-sheet.png`, the hard mask over a
+a model as an optional add-on. The masks: `methods-sheet.png` (kept locally, not in the repository: it shows third-party wallpapers) (the five wallpapers of `models-sheet.png` (kept locally, not in the repository: it shows third-party wallpapers), the hard mask over a
 checkerboard). Licences quoted in `model-licences.md`. The classical prototype: `classical/classical-mask.c` (not in the app).
 
 Measured 2026-11-09 on this machine (AMD Ryzen AI 7 PRO 350, 16 threads), the machine busy (load average 9 to 13 during the runs, so
@@ -46,8 +46,8 @@ the Lab edge strength (a bucket queue, first in first out, so deterministic): ba
 subject seeds anywhere at least 4 tolerances from it; (4) the largest subject region kept with any other at least a tenth of its size
 (pictures 05 and 06 have two subjects, so "the largest only" would drop one), enclosed background under 1 % of the picture filled.
 Each stage at its best single tolerance on the six test pictures (delta-E: stages 1 and 2 at 8, stages 3 and 4 at 5). Sheets:
-`classical-v2-sheet.png` (the first prototype and each stage on the six test pictures and the five wallpapers),
-`classical-v2-tolerance.png` (stage 4 on the wallpapers at tolerances 5, 10, 15, 20 and 30).
+`classical-v2-sheet.png` (kept locally, not in the repository: it shows third-party wallpapers) (the first prototype and each stage on the six test pictures and the five wallpapers),
+`classical-v2-tolerance.png` (kept locally, not in the repository: it shows third-party wallpapers) (stage 4 on the wallpapers at tolerances 5, 10, 15, 20 and 30).
 
 Test set, the share of the subject kept / of the background removed, in %, counted 4 pixels from the true mask's edge (AS-2's 95 % rule):
 
@@ -95,7 +95,7 @@ the picture itself when smaller), the surface, the edges and each pixel's distan
 size copies the copy's label where a cell and its eight neighbours agree, and on the boundary takes the label of the neighbouring
 cell nearest in Lab (ties: subject); the preview is the copy's mask repeated. The automatic tolerance comes from the median distance
 of the ring's samples to the fitted surface (the median, so that a subject crossing up to half the ring does not raise it): 5 while
-that median is at most 2 delta-E, then 2 more per delta-E, at most 20. `classical-v2-sheet.png` shows it in its last column with the
+that median is at most 2 delta-E, then 2 more per delta-E, at most 20. `classical-v2-sheet.png` (kept locally, not in the repository: it shows third-party wallpapers) shows it in its last column with the
 tolerance it chose.
 
 Test set, automatic (subject kept / background removed): 01 at 5: 98.9 / 100.0; 02 at 5: 100.0 / 99.9; 03 at 5: 100.0 / 100.0; 04 at 7:
@@ -127,7 +127,7 @@ first removed, so its background is itself a blend and it bites into the subject
 removed with 3 rounds, none with one; the tabby's legs 877 against 506), while it adds little to the eagle (15 203 against 12 727). On the six test pictures it removes 0.0 to 0.9 % of what was kept, a pixel or two along the outline; on
 the wallpapers 0.2 to 0.8 %; the twins' line art, the leaf's veins and the cats' whiskers stay; the eagle loses 4.4 %, its blue band.
 Small bites remain where pale fur meets the background beside a dark stripe (the tabby, 06) and the blurred wing tips keep a few
-hair-thin streaks. AS-2 at the named tolerances: 04 at 8: 96.3 / 98.6, 05 at 7: 100.0 / 100.0 (unchanged within 0.1). Time: see the spec's Plan. Sheet: `fringe-sheet.png`.
+hair-thin streaks. AS-2 at the named tolerances: 04 at 8: 96.3 / 98.6, 05 at 7: 100.0 / 100.0 (unchanged within 0.1). Time: see the spec's Plan. Sheet: `fringe-sheet.png` (kept locally, not in the repository: it shows third-party wallpapers).
 
 ## 0037 B: the background in segments (prototype, 2026-11-10, JOD's request; not in the app)
 
@@ -135,7 +135,7 @@ hair-thin streaks. AS-2 at the named tolerances: 04 at 8: 96.3 / 98.6, 05 at 7: 
 split by color. One surface first, as now; only when it leaves 10 % of the ring more than 2 automatic tolerances from it are the ring's
 colors split (integer k-means from the farthest points, 3 then 2), a split kept when every segment holds 10 % of the ring, owns one of
 its corners and lies 15 delta-E from the others; each segment its own cubic surface, a cell's distance to the background to the
-nearest one. Sheet: `segments-sheet.png` (the picture, the app, segments; automatic tolerance). The horizons h1 and h2 are synthetic
+nearest one. Sheet: `segments-sheet.png` (kept locally, not in the repository: it shows third-party wallpapers) (the picture, the app, segments; automatic tolerance). The horizons h1 and h2 are synthetic
 (a sky gradient over noisy green ground, a figure across the horizon, a small bird; truth by construction), since the test set has
 none.
 

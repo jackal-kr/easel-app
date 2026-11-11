@@ -38,7 +38,8 @@ enum { NONE = 0, BACK = 1, SUBJECT = 2, ABSENT = 3 };
 enum { ROBUST_K = 3, ROBUST_ROUNDS = 3, LINE_DARK_MARGIN = 25, LINE_BRIGHT_MARGIN = 400, LINE_MIN_CHROMA = 12 };
 /* The fringe (REQ-0035-03 g): how far from the blend's line a mixed pixel may lie, as a part of the line's length; the step in color
    below which the color inward has settled, in quarters of the tolerance; its rounds, and how far inward it looks, in pixels. Chosen on the eagle photo,
-   the six test pictures and the five wallpapers (docs/reference/0035/fringe-sheet.png). */
+   the six test pictures and the five wallpapers (docs/reference/0035/fringe-sheet.png, kept locally, not in the repository:
+   it shows third-party wallpapers). */
 enum { FRINGE_FIT_DIV = 8, FRINGE_SETTLE_Q4 = 2, FRINGE_ROUNDS = 1, FRINGE_REACH = 16 };
 
 /* sRGB to linear light, Q16 (from the sRGB formula, kept as integers), and XYZ from it, each row divided by the D65 white, Q16. */

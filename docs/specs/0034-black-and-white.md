@@ -7,7 +7,7 @@ Depends on: 0004, 0013, 0015, 0017, 0018, 0019, 0021, 0023
 ## Why
 XP's Image, Attributes turns a picture to pure black and white (a 1-bit look for printing, faxing or a retro style). JOD
 (2026-11-04, 2026-11-09) wants it as one command beside Invert Colors, with a choice of how colors become black or white: a hard
-threshold, an even dot pattern, or the photo-like error diffusion (the three compared in `docs/reference/black-and-white/conversions.png`).
+threshold, an even dot pattern, or the photo-like error diffusion (the three compared in `docs/reference/black-and-white/conversions-shapes.png`, on a synthetic picture; the sheet with the photo is kept locally, not in the repository: it shows third-party wallpapers).
 Not XP's mode: no palette change, no warning, one undo step (`docs/phase2-plan.md` D).
 
 ## Requirements

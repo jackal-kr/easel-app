@@ -7,7 +7,7 @@ Spec 0035 needs a model that finds the main subjects of a picture, runs on the m
 app, and gives the same pixels on one machine (REQ-0035-07). The constitution keeps `src/core` libc only and asks for a measurement
 before threads (P5), and P7.4 asks for the same pixels everywhere. Measured on this machine (AMD Ryzen AI 7 PRO 350, 16 threads,
 57 GB), ONNX Runtime 1.31 on the CPU, a photo scaled to the size, the mask thresholded at a half and scaled back; peak memory is the
-whole Python process's, so the app's own will be lower. Five system wallpapers compared in `docs/reference/0035/models-sheet.png`.
+whole Python process's, so the app's own will be lower. Five system wallpapers compared in `docs/reference/0035/models-sheet.png` (kept locally, not in the repository: it shows third-party wallpapers).
 
 | Model (license of code / weights) | File | 1920 x 1080: 1 thread / all | 8000 x 8000: 1 thread / all | Peak | Sheet |
 |---|---|---|---|---|---|

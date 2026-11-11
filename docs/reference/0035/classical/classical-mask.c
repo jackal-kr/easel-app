@@ -23,7 +23,8 @@
 #include <sys/resource.h>
 #include <time.h>
 
-/* The four settings, chosen on the five wallpapers of models-sheet.png (-D to try others). */
+/* The four settings, chosen on the five wallpapers of models-sheet.png (kept locally, not in the repository: it shows
+   third-party wallpapers; -D to try others). */
 #ifndef GRAD
 #define GRAD 30
 #endif

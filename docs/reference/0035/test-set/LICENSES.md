@@ -20,3 +20,7 @@ Licenses: CC0 1.0 https://creativecommons.org/publicdomain/zero/1.0/, CC BY 3.0 
 CC BY-SA 3.0 https://creativecommons.org/licenses/by-sa/3.0/, CC BY-SA 4.0 https://creativecommons.org/licenses/by-sa/4.0/.
 Checked 2026-11-09 through the Commons API (extmetadata). Changes: cropped to the subject, scaled, alpha cut at 128, laid on a
 background. Test data only: nothing here is installed or shipped with the app.
+
+The wallpapers used in the prototypes (the sheets `models-sheet.png`, `methods-sheet.png`, `classical-v2-sheet.png`,
+`classical-v2-tolerance.png`, `fringe-sheet.png` and `segments-sheet.png`, and the photo of 0034's `conversions.png`) were the
+stock wallpapers of the developer's system and are not distributed: those sheets are kept locally, not in the repository.
