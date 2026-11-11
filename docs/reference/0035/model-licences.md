@@ -89,8 +89,8 @@ for every model above that names DIS5K, including BEN2 and BiRefNet despite thei
 - Cost: the lite one, ADR-0006: 9.3 / 5.9 s and 12 GB peak at 1920 x 1080: ruled out by the 2 GB budget.
 
 ### BEN2 Base (Prama)
-- Code and weights: https://huggingface.co/PramaLLC/BEN2, front matter "license: mit". The card also says: "For access to our
-  commercial model email us at sales@backgrounderase.com" (the open one is "Base"; a separate commercial model exists).
+- Code and weights: https://huggingface.co/PramaLLC/BEN2, front matter "license: mit". The card also says that access to the
+  commercial model is by contacting the vendor, BackgroundErase (https://backgrounderase.com) (the open one is "Base"; a separate commercial model exists).
 - ONNX: `BEN2_Base.onnx`, 222.9 MB (Hugging Face API).
 - Cost: not measured.
 
@@ -122,7 +122,7 @@ for every model above that names DIS5K, including BEN2 and BiRefNet despite thei
   sidecar withoutbg-open-weights.onnx.json) is distributed under the withoutBG Open Weights license: https://withoutbg.com/open-model/license"
   and "The model is built from third-party components that remain under their own licenses, and your use must also comply with them:
   - DINOv3 (Meta Platforms, Inc.): DINOv3 License … Built with DINOv3. - Depth Anything V2 (small): Apache License 2.0 - BiRefNet
-  (ZhengPeng7): MIT License". "Commercial licensing: contact@withoutbg.com".
+  (ZhengPeng7): MIT License". Commercial licensing is by contacting the vendor, withoutBG (https://withoutbg.com).
 - The licence page https://withoutbg.com/open-model/license: SPDX "Apache-2.0 AND LicenseRef-DINOv3"; "Provide a copy of the DINOv3
   License when you distribute the Model or derivatives to third parties."; "Display "Built with DINOv3" prominently" (an "app About
   screen" among the places named).

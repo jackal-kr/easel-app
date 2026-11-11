@@ -7,3 +7,17 @@ Copyright: 2026 JOD
 License: GPL-3.0-or-later
  On Debian systems, the full text of the license is in
  /usr/share/common-licenses/GPL-3.
+
+Files: docs/reference/0035/test-set/*
+Copyright: The authors of the Wikimedia Commons pictures named in docs/reference/0035/test-set/LICENSES.md
+License: Wikimedia-Commons-per-picture
+Comment: Test data of the source repository only: these pictures (and their masks) are not installed in
+ the deb or in the Flatpak, which hold the program, its data, help pages and translations (tools/package.sh,
+ build-aux/flatpak and meson install nothing from docs/). They are adapted works, and each keeps the license of its
+ source (CC0 1.0, CC BY 3.0, CC BY-SA 3.0 or CC BY-SA 4.0), with its author and source in LICENSES.md.
+
+License: Wikimedia-Commons-per-picture
+ Each picture is under the license that docs/reference/0035/test-set/LICENSES.md names for it: CC0 1.0
+ (https://creativecommons.org/publicdomain/zero/1.0/), CC BY 3.0 (https://creativecommons.org/licenses/by/3.0/),
+ CC BY-SA 3.0 (https://creativecommons.org/licenses/by-sa/3.0/) or CC BY-SA 4.0
+ (https://creativecommons.org/licenses/by-sa/4.0/), with the attribution given there.

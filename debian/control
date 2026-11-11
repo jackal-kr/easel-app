@@ -1,7 +1,7 @@
 Source: easel
 Section: graphics
 Priority: optional
-Maintainer: JOD <oleksiy.degtyar@gmail.com>
+Maintainer: JOD <20030596+jackal-kr@users.noreply.github.com>
 Build-Depends: debhelper-compat (= 13), meson (>= 1.0), ninja-build, gettext, libgtk-4-dev, libadwaita-1-dev (>= 1.8), libgdk-pixbuf-2.0-dev, desktop-file-utils, appstream
 Standards-Version: 4.7.0
 Homepage: https://github.com/jackal-kr/easel-app

@@ -6,10 +6,10 @@ Draw and touch up pictures. A simple, native GNOME paint program in the style of
 
 Easel has the classic tools and workflow, built with GTK 4 and libadwaita, so it looks and behaves like a GNOME app: header bar, dark style, native dialogs. Pictures stay exact: hard edges and no surprise smoothing.
 
-**Status:** beta (0.1.0-beta.1). Every feature planned for the first release is in; expect a few rough edges still, and keep copies of pictures you care about.
+**Status:** beta, a pre-release (0.1.0-beta.1). Every feature planned for the first release is in; expect a few rough edges still, and keep copies of pictures you care about.
 
 ## Try it
-Download the Flatpak or the deb from the [latest release](https://github.com/jackal-kr/easel-app/releases/latest).
+Download the Flatpak or the .deb from the [Releases](https://github.com/jackal-kr/easel-app/releases) page (a beta is a pre-release, so GitHub's "latest" link does not list it).
 
     flatpak install --user easel-0.1.0-beta.1.flatpak       # any distribution
     sudo apt install ./easel_0.1.0-beta.1_amd64.deb          # Ubuntu 26.10, x86-64
@@ -35,7 +35,7 @@ Needs GTK 4.16 or newer, libadwaita 1.8 or newer, Meson and a C compiler.
     meson test -C build --print-errorlogs
 
 ## How it is made
-Easel is built spec first: every feature has a specification in `docs/specs/` and tests that check it, and the code follows from them. See [how we work](docs/how-we-work.md), the [product](docs/product.md) and [constitution](docs/constitution.md) documents, and the [feature list](docs/specs/INDEX.md).
+Easel is built spec first: every feature has a specification in `docs/specs/` and tests that check it, and the code follows from them. See [how we work](docs/how-we-work.md), the [product](docs/product.md) and [constitution](docs/constitution.md) documents, and the [feature list](docs/specs/INDEX.md). The code is written by an AI assistant (Claude) from those specs, under the instructions in [CLAUDE.md](CLAUDE.md); the owner checks each feature by using the app, not by reading every line.
 
 ## Credits and license
 Inspired by Paint in Windows XP. How its classic tools behave was also studied in [JS Paint](https://github.com/1j01/jspaint) by Isaiah Odhner (MIT); no code is copied.
