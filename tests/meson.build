@@ -125,6 +125,8 @@ executable('probe-text-hinting', 'probe/probe-text-hinting.c', dependencies: eas
 # Feature 0025, T001: the picture built at device size against the renderer's scaling, at a fractional zoom: edges under any renderer
 # (probe-edge-drawing edges, through tools/isolated.sh) and the cost of a frame (probe-edge-drawing frames, in the real session).
 executable('probe-edge-drawing', 'probe/probe-edge-drawing.c', dependencies: easel_ui_dep)
+# The README's and the metadata's screenshot, made again for a release (through tools/isolated.sh).
+executable('probe-screenshot', 'probe/probe-screenshot.c', dependencies: easel_ui_dep)
 # Feature 0018, T001: the memory peak and time of each command on the whole picture, one command a process: probe-transform-memory rot90 8000.
 executable('probe-transform-memory', 'probe/probe-transform-memory.c', dependencies: easel_core_dep)
 # Feature 0017's risk R6: what Writer and Firefox do with rich text on the clipboard: `own` (a click) and `read NAME`.
