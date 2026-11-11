@@ -1309,3 +1309,12 @@ msgstr "Odstraňuje se pozadí"
 
 msgid "Could Not Remove the Background"
 msgstr "Pozadí nelze odstranit"
+
+msgid "Sharp edges"
+msgstr "Ostré hrany"
+
+msgid "Smooth edges"
+msgstr "Hladké hrany"
+
+msgid "Smooth shapes and brushes"
+msgstr "Hladké tvary a štětce"

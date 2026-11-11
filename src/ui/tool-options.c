@@ -4,6 +4,8 @@
 
 #include "magnifier.h"
 #include "tool-options.h"
+
+#include "cover.h"
 #include "i18n.h"
 
 enum { SIGNAL_PRESET_CHANGED, N_SIGNALS };
@@ -15,6 +17,7 @@ typedef struct
   EaselFootprint footprint;
   int mode;                  /* -1 for a size preset, 0 for Opaque, 1 for Transparent (the Eraser's and the selection's alike) */
   gboolean spray;            /* the Airbrush's disc: only its pixels whose x + y is even (REQ-0030-03) */
+  const gboolean *smooth;    /* a Brush preset: the options' Sharp or Smooth, which decides how a click paints (REQ-0039-11) */
 } PresetData;
 
 
@@ -45,6 +48,7 @@ struct _EaselToolOptions
   gboolean select_transparent;   /* the selection's own mode (REQ-0013-02) */
   gboolean text_transparent;     /* the Text tool's own mode, Transparent at each start (REQ-0017-02) */
   gboolean busy;
+  gboolean smooth;               /* Sharp or Smooth (0039): the Brush's cells show what a click paints (REQ-0039-11) */
 };
 
 G_DEFINE_FINAL_TYPE (EaselToolOptions, easel_tool_options, GTK_TYPE_BOX)
@@ -84,6 +88,23 @@ draw_preset (GtkDrawingArea *area, cairo_t *cr, int width, int height, gpointer 
     int size = p->footprint.size, x0 = (width - size) / 2, y0 = (height - size) / 2;
 
     cairo_set_antialias (cr, CAIRO_ANTIALIAS_NONE);
+    if (p->smooth != NULL && *p->smooth)
+      {
+        /* each pixel of what a click paints with Smooth, mixed into the cell's background by its points (REQ-0039-11): the text
+           color at that share, laid over the background as REQ-0039-06 mixes an opaque color over an opaque one */
+        for (int row = 0; row < size; row++)
+          for (int col = 0; col < size; col++)
+            {
+              unsigned n = easel_cover_footprint (p->footprint, col, row);
+
+              if (n == 0)
+                continue;
+              cairo_set_source_rgba (cr, color.red, color.green, color.blue, n / 256.0);
+              cairo_rectangle (cr, x0 + col, y0 + row, 1, 1);
+              cairo_fill (cr);
+            }
+        return;
+      }
     cairo_set_source_rgb (cr, color.red, color.green, color.blue);
     for (int row = 0; row < size; row++)
       for (int col = 0; col < size; col++)
@@ -341,6 +362,59 @@ add_width_buttons (GtkBox *box, GtkLabel **labels)
     }
 }
 
+static GtkWidget *new_grid (void);
+
+/* Sharp or Smooth (REQ-0039-01): a line at 45 degrees in the text color, of whole logical pixels in steps of 2, or with blended
+   edges; the cell's size is the Eraser's mode cells'. */
+static void
+draw_edges (GtkDrawingArea *area, cairo_t *cr, int width, int height, gpointer data)
+{
+  gboolean smooth = GPOINTER_TO_INT (data);
+  GdkRGBA color;
+  int x0 = (width - 16) / 2, y0 = (height - 16) / 2;
+
+  gtk_widget_get_color (GTK_WIDGET (area), &color);
+  gdk_cairo_set_source_rgba (cr, &color);
+  if (!smooth)
+    {
+      cairo_set_antialias (cr, CAIRO_ANTIALIAS_NONE);
+      for (int k = 0; k < 8; k++)
+        cairo_rectangle (cr, x0 + 2 * k, y0 + 14 - 2 * k, 2, 2);
+      cairo_fill (cr);
+      return;
+    }
+  cairo_set_line_width (cr, 2);
+  cairo_move_to (cr, x0 + 0.5, y0 + 15.5);
+  cairo_line_to (cr, x0 + 15.5, y0 + 0.5);
+  cairo_stroke (cr);
+}
+
+/* The well of the two cells, Sharp then Smooth, bound to win.smooth: one choice for the seven tools, so every page has its own
+   pair and the action keeps them alike (REQ-0039-01). */
+static GtkWidget *
+new_smooth_well (void)
+{
+  static const char *const tips[2] = { N_ ("Sharp edges"), N_ ("Smooth edges") };
+  GtkWidget *grid = new_grid ();
+
+  for (int i = 0; i < 2; i++)
+    {
+      GtkWidget *button = gtk_toggle_button_new (), *area = gtk_drawing_area_new ();
+
+      make_cell (button);
+      gtk_widget_set_tooltip_text (button, _ (tips[i]));
+      gtk_accessible_update_property (GTK_ACCESSIBLE (button), GTK_ACCESSIBLE_PROPERTY_LABEL, _ (tips[i]), -1);
+      gtk_drawing_area_set_content_width (GTK_DRAWING_AREA (area), 22);
+      gtk_drawing_area_set_content_height (GTK_DRAWING_AREA (area), 22);
+      gtk_drawing_area_set_draw_func (GTK_DRAWING_AREA (area), draw_edges, GINT_TO_POINTER (i), NULL);
+      gtk_button_set_child (GTK_BUTTON (button), area);
+      gtk_actionable_set_action_name (GTK_ACTIONABLE (button), "win.smooth");
+      gtk_actionable_set_action_target_value (GTK_ACTIONABLE (button), g_variant_new_boolean (i == 1));
+      gtk_grid_attach (GTK_GRID (grid), button, i, 0, 1, 1);
+    }
+  return grid;
+}
+
 /* A well: a sunken box for one group of options (REQ-0030-01, -05, -16); its look is in style.css. */
 static GtkWidget *
 new_well_box (void)
@@ -371,6 +445,7 @@ new_shape_box (gboolean with_fill_styles, GtkLabel **width_labels)
     }
   add_width_buttons (GTK_BOX (widths), width_labels);
   gtk_box_append (GTK_BOX (box), widths);
+  gtk_box_append (GTK_BOX (box), new_smooth_well ());
   return box;
 }
 
@@ -421,8 +496,11 @@ build_presets (EaselToolOptions *self)
       int column, row;
 
       brush_place (i, &column, &row);
-      self->brush[i] = add_size_button (self, GTK_GRID (brush_grid), column, row, name, preset_data (easel_brush_presets[i], -1),
-                                        12, 16, &self->brush_label[i], i ? self->brush[0] : NULL);
+      PresetData *data = preset_data (easel_brush_presets[i], -1);
+
+      data->smooth = &self->smooth;
+      self->brush[i] = add_size_button (self, GTK_GRID (brush_grid), column, row, name, data, 12, 16, &self->brush_label[i],
+                                        i ? self->brush[0] : NULL);
     }
   for (int k = 0; k < 3; k++)
     {
@@ -491,7 +569,14 @@ build_presets (EaselToolOptions *self)
     gtk_toggle_button_set_active (self->gradient[0], TRUE);
     self->groups[8] = gradient_grid;
   }
-  self->groups[0] = brush_grid;
+  {
+    /* the Brush's presets, then Sharp | Smooth (REQ-0039-01) */
+    GtkWidget *brush_box = gtk_box_new (GTK_ORIENTATION_VERTICAL, 6);
+
+    gtk_box_append (GTK_BOX (brush_box), brush_grid);
+    gtk_box_append (GTK_BOX (brush_box), new_smooth_well ());
+    self->groups[0] = brush_box;
+  }
   self->groups[1] = air_grid;
   self->groups[2] = eraser_box;
   self->groups[4] = new_shape_box (FALSE, self->width_label[0]);          /* Line: the widths */
@@ -722,4 +807,22 @@ easel_tool_options_set_start (EaselToolOptions *self, int brush, int airbrush, i
   self->eraser_index = eraser;
   self->transparent = transparent;
   sync_selection (self);
+}
+
+/* A cell's drawing area draws again: GTK keeps a child's drawing until the child itself asks for a new one. */
+static void
+redraw_areas (GtkWidget *w)
+{
+  if (GTK_IS_DRAWING_AREA (w))
+    gtk_widget_queue_draw (w);
+  for (GtkWidget *c = gtk_widget_get_first_child (w); c != NULL; c = gtk_widget_get_next_sibling (c))
+    redraw_areas (c);
+}
+
+void
+easel_tool_options_set_smooth (EaselToolOptions *self, gboolean smooth)
+{
+  self->smooth = smooth;
+  for (int i = 0; i < EASEL_BRUSH_N_PRESETS; i++)
+    redraw_areas (GTK_WIDGET (self->brush[i]));
 }

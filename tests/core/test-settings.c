@@ -385,6 +385,23 @@ as36_syntax_rules (void)
   check_defaults (&s);
 }
 
+/* 0039 AS-2 (REQ-0039-03): `[drawing] smooth`: Smooth only for `true` (in any case, as the other booleans); missing, `false` and any
+   other value are Sharp; the created file holds `smooth=false`. */
+static void
+settings_smooth (void)
+{
+  CHECK (parse ("[drawing]\nsmooth=true\n").smooth);
+  CHECK (parse ("[drawing]\nsmooth=TRUE\n").smooth);
+  CHECK (!parse ("[drawing]\nsmooth=yes\n").smooth);
+  CHECK (!parse ("[drawing]\nsmooth=false\n").smooth);
+  CHECK (!parse ("[drawing]\nsmooth=\n").smooth);
+  CHECK (!parse ("[drawing]\nsmooth=true\nsmooth=bad\n").smooth);
+  CHECK (!parse ("[text]\nsmooth=true\n").smooth);
+  CHECK (!parse ("").smooth);
+  CHECK (strstr (easel_settings_default_text, "fill-style=outline\nsmooth=false\n") != NULL);
+  CHECK (!parse (easel_settings_default_text).smooth);
+}
+
 int
 main (void)
 {
@@ -402,5 +419,6 @@ main (void)
   RUN (as7_size_limits);
   RUN (as36_syntax_rules);
   RUN (as6_toolbox_width_key);
+  RUN (settings_smooth);
   return 0;
 }

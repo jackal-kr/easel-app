@@ -47,6 +47,9 @@ Precondition: `Status: accepted` in the spec. Otherwise stop and say so.
      format says, and is fuzzed again with the crash files as seeds (beta gate: the first EXIF guard missed both);
    - a test of an input rule calls the function the signal callback calls, with the event's modifier state, never a function deeper down;
    - a numeric table or conversion in src/core gets an oracle test against an independent reference (libm, a standard's formula) over its range, not only determinism (0035: a wrong cube root passed every test);
+   - a random oracle's inputs include the empty and the single case (no points, one point, zero length) (0039: 2000 figures passed, a polygon with no corner crashed);
+   - a check that something stays the same (a size, a least height, a width) compares with the state before the change or the tool at start, not only the new cases with one another (0039: every tool's least height rose alike and the test passed);
+   - a full or gate run that takes minutes has nothing built in its build folder beside it (0039: a background gate ran binaries rebuilt under it);
    - a dialog's or card's OK, Apply or Cancel is tested by activating its real button (and Esc by its real close), reading the result
      only after the dialog has closed, never by emitting the response or calling the apply function (0035: OK kept nothing, its tests passed);
    - a modifier that decides an action (Ctrl, Shift) is read from the event of the press, and the manual check lists each such action

@@ -107,6 +107,7 @@ const char easel_settings_default_text[] =
   "eraser-mode=opaque\n"
   "line-width=1\n"
   "fill-style=outline\n"
+  "smooth=false\n"
   "magnifier=2\n";
 
 static const char *const brush_names[] = {
@@ -176,6 +177,7 @@ easel_settings_defaults (EaselSettings *s)
   s->eraser_transparent = false;
   s->line_width = 1;
   s->fill_style = EASEL_FILL_OUTLINE;
+  s->smooth = false;
   s->magnifier = 2;
   s->text_size = EASEL_TEXT_SIZE_DEFAULT;
   s->text_bold = s->text_italic = s->text_underline = s->text_strike = false;
@@ -317,6 +319,8 @@ apply (EaselSpan section, EaselSpan key, EaselSpan value, void *data)
         s->eraser = (i = index_of (value, eraser_values, 4)) >= 0 ? i : 2;
       else if (easel_span_is (key, "eraser-mode"))
         s->eraser_transparent = easel_span_is (value, "transparent");
+      else if (easel_span_is (key, "smooth") && !parse_true_false (value, &s->smooth))
+        s->smooth = false;                                               /* Sharp for any other value (REQ-0039-03) */
       else if (easel_span_is (key, "fill-style"))
         s->fill_style = (i = index_of (value, fill_names, 3)) >= 0 ? (EaselFillStyle) i : EASEL_FILL_OUTLINE;
       else if (easel_span_is (key, "line-width") || easel_span_is (key, "magnifier"))

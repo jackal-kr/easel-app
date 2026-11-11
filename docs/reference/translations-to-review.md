@@ -5,6 +5,25 @@ one menu page share a letter (0035 Check F1, kept by `/0023-lang/as14_menu_mnemo
 underscore marks the letter. A word is wrong, or a letter hard to type on your keyboard: say which, and the letter is moved again
 (the test says whether the new one is free).
 
+## 0039 Smooth shapes and brushes (2026-11-11): 3 strings, and one Help sentence
+
+The two cells' tooltips (also their accessible names) and the Preferences switch. No mnemonics. Help: one sentence at the end of the
+tools' first paragraph, in each language, naming Line, Curve, Brush and Preferences by the words of the app.
+
+| Language | Sharp edges | Smooth edges | Smooth shapes and brushes |
+|---|---|---|---|
+| cs | Ostré hrany | Hladké hrany | Hladké tvary a štětce |
+| de | Scharfe Kanten | Glatte Kanten | Glatte Formen und Pinsel |
+| es | Bordes nítidos | Bordes suaves | Formas y pinceles suaves |
+| fr | Bords nets | Bords lissés | Formes et pinceaux lissés |
+| hu | Éles szélek | Simított szélek | Simított alakzatok és ecsetek |
+| it | Bordi netti | Bordi smussati | Forme e pennelli smussati |
+| pl | Ostre krawędzie | Wygładzone krawędzie | Wygładzone kształty i pędzle |
+| pt | Bordas nítidas | Bordas suaves | Formas e pincéis suaves |
+| ro | Margini clare | Margini netede | Forme și pensule netede |
+| ru | Резкие края | Сглаженные края | Сглаженные фигуры и кисти |
+| uk | Різкі краї | Згладжені краї | Згладжені фігури та пензлі |
+
 ## Russian (ru): 26 strings
 
 | English | Before | Now |

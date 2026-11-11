@@ -165,6 +165,11 @@ From feature 0002 (`src/core/history`):
 - **Code that can abort the process** (a failed allocation in GLib, gdk-pixbuf or glycin) is tested in a subprocess
   (`g_test_trap_subprocess`, as `as19_save_without_memory` and `as8_open_without_memory` do), so that an abort is a failed
   assertion of the test and not a crash of the run.
+- **Translations:** the catalogs in `po/` are kept by hand (no source references, no wrapping): a new string is added to each by
+  hand and the template is regenerated with `ninja -C build easel-pot`; a full `easel-update-po` rewraps every file and guesses fuzzy
+  matches (0039).
+- **Redrawing a child:** a widget's `gtk_widget_queue_draw` does not redraw its children's drawings; a drawing area that depends on a
+  state is asked itself (0039: the Brush cells).
 - **Which allocations can fail softly:** `malloc`, `realloc` and GLib's `g_try_*` return NULL; `g_new`, `g_malloc`, `g_strdup` and
   `g_strndup` abort. A spec sentence for a memory failure names only a path that can return NULL, and a NULL test after an aborting
   allocation is dead code (0017 F2: a copy's dialog for a `g_strndup` that cannot fail softly).

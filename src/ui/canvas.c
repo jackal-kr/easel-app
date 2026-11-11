@@ -118,6 +118,7 @@ struct _EaselCanvas
   uint32_t shape_draw, shape_other;             /* the colors of the press, kept until the release (REQ-0010-06) */
   int shape_width;                              /* 1 to 5, and the fill style: set by the window from its two actions */
   EaselFigureStyle shape_style;
+  gboolean smooth;                              /* Smooth chosen (0039): figures and Brush strokes by coverage */
   /* A pending curve or polygon (0011): from its first press until it is put down or dropped. */
   gboolean pending;
   gboolean pend_held;                           /* a stage's button is held */
@@ -4180,8 +4181,10 @@ current_figure (EaselCanvas *self)
                          : self->tool == EASEL_TOOL_RECTANGLE ? EASEL_FIGURE_RECTANGLE
                          : self->tool == EASEL_TOOL_ROUNDED_RECTANGLE ? EASEL_FIGURE_ROUNDED : EASEL_FIGURE_ELLIPSE;
 
-  return (EaselFigure) { kind, self->shape_x0, self->shape_y0, self->shape_x1, self->shape_y1, self->shape_width,
-                         self->shape_style, NULL };
+  EaselFigure f = { kind, self->shape_x0, self->shape_y0, self->shape_x1, self->shape_y1, self->shape_width, self->shape_style, NULL };
+
+  f.smooth = self->smooth;
+  return f;
 }
 
 static GdkRGBA
@@ -4249,6 +4252,52 @@ figure_run_color (const EaselFigure *f, const EaselFigureRun *run, uint32_t draw
   return TRUE;
 }
 
+/* A smooth figure over the picture (REQ-0039-09 (3)): each run's pixels in the color the put-down gives them,
+   easel_figure_cover_color over the picture's pixel; a run whose drawn parts cover all its points does not depend on the
+   picture and is one rectangle, any other pixel is its own. At a zoom where a device pixel holds many rows, one row in step. */
+static void
+append_cover_preview (EaselCanvas *self, GtkSnapshot *snapshot, const EaselFigure *f, int row0, int row1, uint32_t draw,
+                      uint32_t other, gboolean by_edges, const graphene_rect_t *picture)
+{
+  double scale = easel_canvas_get_scale (self), l = self->zoom / (100.0 * scale);
+  size_t max = easel_figure_cover_max_runs (f);
+  g_autofree EaselCoverRun *runs = g_try_new (EaselCoverRun, max);
+  int step = (row1 - row0 + 1) / 3000 + 1;
+
+  if (runs == NULL)
+    return;
+  for (int y = row0; y <= row1; y += step)
+    {
+      size_t n = easel_figure_cover_row (f, y, runs, max);
+
+      for (size_t i = 0; i < n; i++)
+        {
+          const EaselCoverRun *run = &runs[i];
+          unsigned drawn = f->style == EASEL_FIGURE_OUTLINE ? run->out : (unsigned) run->out + run->in;
+          int x0 = MAX (run->x0, 0), x1 = MIN (run->x1, self->img->width - 1);
+
+          if (drawn == 0)
+            continue;
+          for (int x = x0; x <= x1; x++)
+            {
+              int xe = drawn == 256 ? x1 : x;                    /* a whole run, or one pixel */
+              uint32_t color = easel_figure_cover_color (f, run, easel_image_get (self->img, x, y), draw, other);
+              graphene_rect_t r = GRAPHENE_RECT_INIT ((float) (x * l), (float) (y * l), (float) ((xe - x + 1) * l), (float) (step * l));
+
+              if (by_edges)
+                {
+                  int ax = view_edge (self, x), ay = view_edge (self, y);
+
+                  r = GRAPHENE_RECT_INIT ((float) (ax / scale), (float) (ay / scale), (float) ((view_edge (self, xe + 1) - ax) / scale),
+                                          (float) ((view_edge (self, y + step) - ay) / scale));
+                }
+              append_shape_run (snapshot, &r, picture, color);
+              x = xe;
+            }
+        }
+    }
+}
+
 static void
 append_shape_preview (EaselCanvas *self, GtkSnapshot *snapshot)
 {
@@ -4280,6 +4329,12 @@ append_shape_preview (EaselCanvas *self, GtkSnapshot *snapshot)
     return;
   if (!easel_figure_prepare (&f, row0, row1))
     return;
+  if (f.smooth)
+    {
+      append_cover_preview (self, snapshot, &f, row0, row1, draw, other, by_edges, &picture);
+      easel_figure_release (&f);
+      return;
+    }
   runs = malloc (easel_figure_max_runs (&f) * sizeof *runs);
   if (runs == NULL)
     {
@@ -4754,7 +4809,28 @@ compose_pixels (EaselCanvas *self, int x0, int y0, int w, int h, uint32_t *px)
     for (int j = 0; j < h; j++)
       for (int i = 0; i < w; i++)
         px[(gsize) j * w + i] = text_box_pixel (self, x0 + i, y0 + j, px[(gsize) j * w + i], bx, by, bw, bh);
-  if (shown_figure (self, &f, &draw, &other) && easel_figure_prepare (&f, y0, y0 + h - 1))
+  if (shown_figure (self, &f, &draw, &other) && f.smooth && easel_figure_prepare (&f, y0, y0 + h - 1))
+    {
+      EaselCoverRun *runs = malloc (easel_figure_cover_max_runs (&f) * sizeof *runs);
+
+      /* the same colors as the put-down, over what is composed so far (REQ-0039-09 (3)) */
+      if (runs != NULL)
+        for (int y = y0; y < y0 + h; y++)
+          {
+            size_t n = easel_figure_cover_row (&f, y, runs, easel_figure_cover_max_runs (&f));
+
+            for (size_t r = 0; r < n; r++)
+              for (int x = MAX (runs[r].x0, x0); x <= MIN (runs[r].x1, x0 + w - 1); x++)
+                {
+                  uint32_t *p = &px[(gsize) (y - y0) * w + (x - x0)];
+
+                  *p = easel_figure_cover_color (&f, &runs[r], *p, draw, other);
+                }
+          }
+      free (runs);
+      easel_figure_release (&f);
+    }
+  else if (shown_figure (self, &f, &draw, &other) && !f.smooth && easel_figure_prepare (&f, y0, y0 + h - 1))
     {
       EaselFigureRun *runs = malloc (easel_figure_max_runs (&f) * sizeof *runs);
 
@@ -5618,6 +5694,13 @@ easel_canvas_set_shape_options (EaselCanvas *self, int width, int style)
 }
 
 void
+easel_canvas_set_smooth (EaselCanvas *self, gboolean smooth)
+{
+  self->smooth = smooth;
+  gtk_widget_queue_draw (GTK_WIDGET (self));     /* a pending curve or polygon follows the choice at once (REQ-0039-02) */
+}
+
+void
 easel_canvas_set_shape_memory_limit (EaselCanvas *self, size_t max_bytes)
 {
   self->shape_max_bytes = max_bytes;
@@ -5751,6 +5834,21 @@ curve_line_start (EaselCanvas *self, guint button, int px, int py)
   gtk_widget_queue_draw (GTK_WIDGET (self));
 }
 
+/* The runs of a row of the waiting curve for its hit area: its pixels, or with Smooth every pixel it covers at all (REQ-0039-08);
+   runs has room for easel_figure_cover_max_runs of them then. */
+static size_t
+curve_hit_row (const EaselFigure *f, int row, EaselFigureRun *runs, size_t max, EaselCoverRun *cr)
+{
+  size_t n, m = 0;
+
+  if (!f->smooth)
+    return easel_figure_row (f, row, runs, max);
+  n = easel_figure_cover_row (f, row, cr, max);
+  for (size_t k = 0; k < n; k++)
+    runs[m++] = (EaselFigureRun) { cr[k].x0, cr[k].x1, false };
+  return m;
+}
+
 /* Is the canvas point (x, y) on the waiting curve (REQ-0033-01): within 4 logical pixels of the square of a pixel it draws inside
    the picture, the squares measured on screen with the view's edges (so below 100 % by REQ-0031-01's rule)? */
 static gboolean
@@ -5760,7 +5858,10 @@ curve_hit (EaselCanvas *self, double x, double y)
   double scale = easel_canvas_get_scale (self), reach = 4.0;
   int px, py, r, y0, y1;
   gboolean hit = FALSE;
-  EaselFigureRun runs[8];
+  EaselFigureRun fixed[8], *runs = fixed;
+  g_autofree EaselFigureRun *more = NULL;
+  g_autofree EaselCoverRun *cr = NULL;
+  size_t max = G_N_ELEMENTS (fixed);
 
   to_pixel (self, x, y, &px, &py);
   r = (int) ceil (reach / logical_per_pixel (self)) + 2;
@@ -5768,9 +5869,20 @@ curve_hit (EaselCanvas *self, double x, double y)
   y1 = MIN (py + r, self->img->height - 1);
   if (y0 > y1 || !easel_figure_prepare (&f, y0, y1))
     return FALSE;
+  if (f.smooth)
+    {
+      max = easel_figure_cover_max_runs (&f);
+      runs = more = g_try_new (EaselFigureRun, max);
+      cr = g_try_new (EaselCoverRun, max);
+      if (more == NULL || cr == NULL)
+        {
+          easel_figure_release (&f);
+          return FALSE;
+        }
+    }
   for (int row = y0; row <= y1 && !hit; row++)
     {
-      size_t n = easel_figure_row (&f, row, runs, G_N_ELEMENTS (runs));
+      size_t n = curve_hit_row (&f, row, runs, max, cr);
       double top = view_edge (self, row) / scale, bottom = view_edge (self, row + 1) / scale;
 
       for (size_t k = 0; k < n && !hit; k++)
@@ -5912,10 +6024,12 @@ set_pending (EaselCanvas *self, gboolean pending)
 static EaselFigure
 pending_figure (EaselCanvas *self)
 {
+  EaselFigure f = { EASEL_FIGURE_CURVE, 0, 0, 0, 0, self->shape_width, self->shape_style, NULL, self->pend_pts, 4, FALSE };
+
   if (self->pend_polygon)
-    return (EaselFigure) { EASEL_FIGURE_POLYGON, 0, 0, 0, 0, self->shape_width, self->shape_style, NULL, self->poly, self->poly_n,
-                           FALSE };
-  return (EaselFigure) { EASEL_FIGURE_CURVE, 0, 0, 0, 0, self->shape_width, self->shape_style, NULL, self->pend_pts, 4, FALSE };
+    f = (EaselFigure) { EASEL_FIGURE_POLYGON, 0, 0, 0, 0, self->shape_width, self->shape_style, NULL, self->poly, self->poly_n, FALSE };
+  f.smooth = self->smooth;
+  return f;
 }
 
 /* A corner is added to the polygon: false if the memory cannot be had. */
@@ -6852,6 +6966,9 @@ easel_canvas_press_timed (EaselCanvas *self, guint button, double x, double y, g
     }
   else if (self->tool == EASEL_TOOL_PENCIL)
     self->stroke = easel_stroke_begin (self->img, px, py, button == GDK_BUTTON_PRIMARY ? self->foreground : self->background);
+  else if (self->tool == EASEL_TOOL_BRUSH && self->smooth)
+    self->stroke = easel_stroke_begin_smooth (self->img, px, py, button == GDK_BUTTON_PRIMARY ? self->foreground : self->background,
+                                              self->footprint);       /* by coverage (REQ-0039-05 (e)) */
   else if (self->tool == EASEL_TOOL_BRUSH)
     self->stroke = easel_stroke_begin_stamp (self->img, px, py,
                                              button == GDK_BUTTON_PRIMARY ? self->foreground : self->background,

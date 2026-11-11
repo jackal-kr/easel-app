@@ -3,6 +3,9 @@
 #include <stdbool.h>
 #include <stdlib.h>
 
+#include <string.h>
+
+#include "cover.h"
 #include "stroke.h"
 
 /* Pointer positions are far smaller; the clamp only keeps an absurd input from walking billions of steps. */
@@ -24,7 +27,21 @@ struct _EaselStroke
   int x, y;
   EaselChange *log;       /* each changed pixel once, in change order; becomes the undo step */
   size_t n_log, log_cap;
+  /* Smooth (0039): for every pixel the stroke has touched, which of its 256 points the path so far covers, in tiles of 16 x 16
+     pixels made when first touched, with the pixel's place in the log; NULL for the other strokes. */
+  struct SmoothTile **tiles;
+  int tiles_w, tiles_h;
+  size_t n_tiles, max_tiles;
 };
+
+/* 16 x 16 pixels: each pixel's points, 16 rows of 16 bits, and its log entry (-1 before it changes): 9 KB. */
+struct SmoothTile
+{
+  uint16_t points[256][16];
+  int32_t slot[256];
+};
+
+static void smooth_segment (EaselStroke *s, int x0, int y0, int x1, int y1);
 
 static int
 clamp_coord (int v)
@@ -234,9 +251,153 @@ easel_stroke_to (EaselStroke *s, int x, int y)
     return;
   x = clamp_coord (x);
   y = clamp_coord (y);
-  line (s, s->x, s->y, x, y);
+  if (s->tiles != NULL)
+    smooth_segment (s, s->x, s->y, x, y);
+  else
+    line (s, s->x, s->y, x, y);
   s->x = x;
   s->y = y;
+}
+
+/* The tile of pixel (x, y), inside the picture; made when first needed; NULL if it cannot be had. */
+static struct SmoothTile *
+smooth_tile (EaselStroke *s, int x, int y)
+{
+  struct SmoothTile **t = &s->tiles[(size_t) (y / 16) * (size_t) s->tiles_w + (size_t) (x / 16)];
+
+  if (*t == NULL && s->n_tiles < s->max_tiles)
+    {
+      *t = calloc (1, sizeof **t);
+      if (*t != NULL)
+        {
+          memset ((*t)->slot, 0xFF, sizeof (*t)->slot);
+          s->n_tiles++;
+        }
+    }
+  return *t;
+}
+
+/* The pixel (x, y) takes value; its log entry is made the first time it changes, then its new value is updated (each pixel is
+   logged once, with its value before the stroke). */
+static void
+smooth_set (EaselStroke *s, struct SmoothTile *t, int k, int x, int y, uint32_t value)
+{
+  size_t index = (size_t) y * (size_t) s->img->width + (size_t) x;
+
+  if (t->slot[k] < 0)
+    {
+      if (s->img->px[index] == value)
+        return;
+      if (s->n_log == s->log_cap)
+        {
+          size_t cap = s->log_cap ? s->log_cap * 2 : 256;
+          EaselChange *log = cap > SIZE_MAX / sizeof *log || cap > INT32_MAX ? NULL : realloc (s->log, cap * sizeof *log);
+
+          if (log == NULL)
+            return;                                        /* not drawn: it could not be restored */
+          s->log = log;
+          s->log_cap = cap;
+        }
+      t->slot[k] = (int32_t) s->n_log;
+      s->log[s->n_log++] = (EaselChange) { (uint32_t) index, s->img->px[index], value };
+    }
+  else
+    s->log[t->slot[k]].new_value = value;
+  easel_image_set (s->img, x, y, value);
+}
+
+/* The footprint swept from (x0, y0) to (x1, y1) (REQ-0039-05 (e)): its points are added to each pixel's, and every pixel it
+   reaches is mixed again from its value before the stroke by all the points of the path so far (REQ-0039-07). */
+static void
+smooth_segment (EaselStroke *s, int x0, int y0, int x1, int y1)
+{
+  EaselImage *img = s->img;
+  int reach = s->footprint.size + 1;
+  int top = (y0 < y1 ? y0 : y1) - reach, bottom = (y0 < y1 ? y1 : y0) + reach;
+
+  if (top < 0)
+    top = 0;
+  if (bottom > img->height - 1)
+    bottom = img->height - 1;
+  for (int y = top; y <= bottom; y++)
+    {
+      int64_t lo = INT64_MAX, hi = INT64_MIN;
+
+      for (int j = 0; j < 16; j++)
+        {
+          int64_t ca, cb;
+
+          if (!easel_cover_sweep (s->footprint, x0, y0, x1, y1, 32 * (int64_t) y + 2 * j + 1, &ca, &cb))
+            continue;
+          if (ca < 0)
+            ca = 0;
+          if (cb > 16 * (int64_t) img->width - 1)
+            cb = 16 * (int64_t) img->width - 1;
+          for (int64_t x = ca / 16; ca <= cb && x <= cb / 16; x++)
+            {
+              struct SmoothTile *t = smooth_tile (s, (int) x, y);
+              int from = ca > 16 * x ? (int) (ca - 16 * x) : 0, to = cb < 16 * x + 15 ? (int) (cb - 16 * x) : 15;
+
+              if (t == NULL)
+                continue;                                  /* left as it is (REQ-0039-08) */
+              t->points[(y % 16) * 16 + x % 16][j] |= (uint16_t) (((1u << (to + 1)) - 1) & ~((1u << from) - 1));
+              lo = x < lo ? x : lo;
+              hi = x > hi ? x : hi;
+            }
+        }
+      for (int64_t x = lo; x <= hi; x++)
+        {
+          struct SmoothTile *t = s->tiles[(size_t) (y / 16) * (size_t) s->tiles_w + (size_t) (x / 16)];
+          int k = (y % 16) * 16 + (int) (x % 16);
+          unsigned n = 0;
+          uint32_t before;
+
+          if (t == NULL)
+            continue;
+          for (int j = 0; j < 16; j++)
+            n += (unsigned) __builtin_popcount (t->points[k][j]);
+          if (n == 0)
+            continue;
+          before = t->slot[k] >= 0 ? s->log[t->slot[k]].old_value : easel_image_get (img, (int) x, y);
+          smooth_set (s, t, k, (int) x, y, easel_cover_mix (before, s->color, n, 0, 0));
+        }
+    }
+}
+
+EaselStroke *
+easel_stroke_begin_smooth (EaselImage *img, int x, int y, uint32_t color, EaselFootprint f)
+{
+  EaselStroke *s = stroke_alloc (img, x, y, color, f, NULL);
+
+  if (s == NULL)
+    return NULL;
+  s->tiles_w = (img->width + 15) / 16;
+  s->tiles_h = (img->height + 15) / 16;
+  s->max_tiles = SIZE_MAX;
+  s->tiles = calloc ((size_t) s->tiles_w * (size_t) s->tiles_h + 1, sizeof *s->tiles);
+  if (s->tiles == NULL)
+    {
+      free (s);
+      return NULL;
+    }
+  smooth_segment (s, s->x, s->y, s->x, s->y);
+  return s;
+}
+
+void
+easel_stroke_limit_tiles (EaselStroke *s, size_t max_tiles)
+{
+  s->max_tiles = max_tiles;
+}
+
+static void
+free_tiles (EaselStroke *s)
+{
+  if (s->tiles == NULL)
+    return;
+  for (size_t i = 0; i < (size_t) s->tiles_w * (size_t) s->tiles_h; i++)
+    free (s->tiles[i]);
+  free (s->tiles);
 }
 
 /* Puts every changed pixel back, newest first. */
@@ -272,6 +433,7 @@ easel_stroke_end (EaselStroke *s, EaselHistory *history)
     }
   free (s->log);
   free (s->disc);
+  free_tiles (s);
   free (s);
   return changed;
 }
@@ -282,5 +444,6 @@ easel_stroke_cancel (EaselStroke *s)
   restore (s);
   free (s->log);
   free (s->disc);
+  free_tiles (s);
   free (s);
 }

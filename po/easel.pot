@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: easel\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-10 20:27+0100\n"
+"POT-Creation-Date: 2026-11-11 11:29+0100\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -58,32 +58,32 @@ msgid ""
 "picture."
 msgstr ""
 
-#: src/ui/attributes-dialog.c:115 src/ui/preferences-dialog.c:484
+#: src/ui/attributes-dialog.c:115 src/ui/preferences-dialog.c:485
 #: src/ui/stretch-skew-dialog.c:292
 msgid "Width"
 msgstr ""
 
-#: src/ui/attributes-dialog.c:116 src/ui/preferences-dialog.c:485
+#: src/ui/attributes-dialog.c:116 src/ui/preferences-dialog.c:486
 #: src/ui/stretch-skew-dialog.c:293
 msgid "Height"
 msgstr ""
 
 #. Added as Cancel, Fit, Resize: side by side they read so, stacked (the long labels) the suggested one is on top.
 #: src/ui/attributes-dialog.c:121 src/ui/grid-dialog.c:93
-#: src/ui/preferences-dialog.c:874 src/ui/stretch-skew-dialog.c:308
+#: src/ui/preferences-dialog.c:879 src/ui/stretch-skew-dialog.c:308
 #: src/ui/black-white-dialog.c:78 src/ui/remove-bg-card.c:123
-#: src/ui/window.c:607 src/ui/window.c:938 src/ui/window.c:4069
-#: src/ui/window.c:5746
+#: src/ui/window.c:607 src/ui/window.c:938 src/ui/window.c:4122
+#: src/ui/window.c:5837
 msgid "_Cancel"
 msgstr ""
 
-#: src/ui/attributes-dialog.c:121 src/ui/preferences-dialog.c:873
+#: src/ui/attributes-dialog.c:121 src/ui/preferences-dialog.c:878
 #: src/ui/stretch-skew-dialog.c:308 src/ui/remove-bg-card.c:123
-#: src/ui/window.c:3695
+#: src/ui/window.c:3714
 msgid "_OK"
 msgstr ""
 
-#: src/ui/canvas.c:420
+#: src/ui/canvas.c:423
 #, c-format
 msgid "Picture, %d by %d pixel"
 msgid_plural "Picture, %d by %d pixels"
@@ -131,7 +131,7 @@ msgstr ""
 msgid "Axonometric"
 msgstr ""
 
-#: src/ui/grid-dialog.c:93 src/ui/preferences-dialog.c:875
+#: src/ui/grid-dialog.c:93 src/ui/preferences-dialog.c:880
 msgid "_Apply"
 msgstr ""
 
@@ -161,7 +161,7 @@ msgstr ""
 msgid "Print…"
 msgstr ""
 
-#: src/ui/help.c:13 src/ui/preferences-dialog.c:855
+#: src/ui/help.c:13 src/ui/preferences-dialog.c:860
 msgid "Preferences"
 msgstr ""
 
@@ -309,7 +309,7 @@ msgstr ""
 #: src/ui/help.c:49 src/ui/help.c:50 src/ui/help.c:51 src/ui/help.c:52
 #: src/ui/help.c:53 src/ui/help.c:54 src/ui/help.c:55 src/ui/help.c:56
 #: src/ui/help.c:57 src/ui/help.c:58 src/ui/help.c:59 src/ui/help.c:60
-#: src/ui/help.c:61 src/ui/preferences-dialog.c:656
+#: src/ui/help.c:61 src/ui/preferences-dialog.c:657
 msgid "Tools"
 msgstr ""
 
@@ -366,7 +366,7 @@ msgid "Say the marker's place and color"
 msgstr ""
 
 #: src/ui/help.c:63 src/ui/help.c:64 src/ui/help.c:65 src/ui/help.c:66
-#: src/ui/help.c:67 src/ui/preferences-dialog.c:520
+#: src/ui/help.c:67 src/ui/preferences-dialog.c:521
 msgid "Colors"
 msgstr ""
 
@@ -396,23 +396,23 @@ msgstr ""
 #: src/ui/help.c:81 src/ui/help.c:82 src/ui/help.c:83 src/ui/help.c:84
 #: src/ui/help.c:85 src/ui/help.c:86 src/ui/help.c:87 src/ui/help.c:88
 #: src/ui/help.c:89 src/ui/help.c:90 src/ui/help.c:91
-#: src/ui/preferences-dialog.c:657 src/ui/window.c:3247 src/ui/window.ui:270
+#: src/ui/preferences-dialog.c:658 src/ui/window.c:3266 src/ui/window.ui:270
 msgid "Text"
 msgstr ""
 
-#: src/ui/help.c:69 src/ui/preferences-dialog.c:677
+#: src/ui/help.c:69 src/ui/preferences-dialog.c:682
 msgid "Bold"
 msgstr ""
 
-#: src/ui/help.c:70 src/ui/preferences-dialog.c:678
+#: src/ui/help.c:70 src/ui/preferences-dialog.c:683
 msgid "Italic"
 msgstr ""
 
-#: src/ui/help.c:71 src/ui/preferences-dialog.c:679
+#: src/ui/help.c:71 src/ui/preferences-dialog.c:684
 msgid "Underline"
 msgstr ""
 
-#: src/ui/help.c:72 src/ui/preferences-dialog.c:680
+#: src/ui/help.c:72 src/ui/preferences-dialog.c:685
 msgid "Strikethrough"
 msgstr ""
 
@@ -515,277 +515,282 @@ msgstr ""
 msgid "Takes effect the next time Easel starts."
 msgstr ""
 
-#: src/ui/preferences-dialog.c:377
+#: src/ui/preferences-dialog.c:378
 msgid "Use Default"
 msgstr ""
 
-#: src/ui/preferences-dialog.c:424
+#: src/ui/preferences-dialog.c:425
 msgid "Canvas color"
 msgstr ""
 
-#: src/ui/preferences-dialog.c:477
+#: src/ui/preferences-dialog.c:478
 msgid "Size and color"
 msgstr ""
 
-#: src/ui/preferences-dialog.c:481
+#: src/ui/preferences-dialog.c:482
 msgid "Automatic size"
 msgstr ""
 
-#: src/ui/preferences-dialog.c:505
+#: src/ui/preferences-dialog.c:506
 msgid "System"
 msgstr ""
 
-#: src/ui/preferences-dialog.c:505
+#: src/ui/preferences-dialog.c:506
 msgid "Light"
 msgstr ""
 
-#: src/ui/preferences-dialog.c:505
+#: src/ui/preferences-dialog.c:506
 msgid "Dark"
 msgstr ""
 
-#: src/ui/preferences-dialog.c:508 src/ui/preferences-dialog.c:515
+#: src/ui/preferences-dialog.c:509 src/ui/preferences-dialog.c:516
 msgid "Style"
 msgstr ""
 
-#: src/ui/preferences-dialog.c:509
+#: src/ui/preferences-dialog.c:510
 msgid "Workspace"
 msgstr ""
 
-#: src/ui/preferences-dialog.c:510
+#: src/ui/preferences-dialog.c:511
 msgid "Selection"
 msgstr ""
 
-#: src/ui/preferences-dialog.c:511
+#: src/ui/preferences-dialog.c:512
 msgid "Palette"
 msgstr ""
 
-#: src/ui/preferences-dialog.c:513
+#: src/ui/preferences-dialog.c:514
 msgid "Reset Palette"
 msgstr ""
 
-#: src/ui/preferences-dialog.c:516
+#: src/ui/preferences-dialog.c:517
 msgid "Workspace color"
 msgstr ""
 
-#: src/ui/preferences-dialog.c:517
+#: src/ui/preferences-dialog.c:518
 msgid "Workspace color, dark"
 msgstr ""
 
-#: src/ui/preferences-dialog.c:518
+#: src/ui/preferences-dialog.c:519
 msgid "Tint strength"
 msgstr ""
 
-#: src/ui/preferences-dialog.c:538 src/ui/preferences-dialog.c:552
+#: src/ui/preferences-dialog.c:539 src/ui/preferences-dialog.c:553
 msgid "Language"
 msgstr ""
 
-#: src/ui/preferences-dialog.c:539
+#: src/ui/preferences-dialog.c:540
 msgid "Panels"
 msgstr ""
 
-#: src/ui/preferences-dialog.c:543
+#: src/ui/preferences-dialog.c:544
 msgid "System default"
 msgstr ""
 
-#: src/ui/preferences-dialog.c:555 src/ui/window.ui:529
+#: src/ui/preferences-dialog.c:556 src/ui/window.ui:529
 msgid "Tool Box"
 msgstr ""
 
-#: src/ui/preferences-dialog.c:556 src/ui/window.ui:533
+#: src/ui/preferences-dialog.c:557 src/ui/window.ui:533
 msgid "Color Box"
 msgstr ""
 
-#: src/ui/preferences-dialog.c:557 src/ui/window.ui:537
+#: src/ui/preferences-dialog.c:558 src/ui/window.ui:537
 msgid "Status Bar"
 msgstr ""
 
-#: src/ui/preferences-dialog.c:558
+#: src/ui/preferences-dialog.c:559
 msgid "Frame time"
 msgstr ""
 
-#: src/ui/preferences-dialog.c:590
+#: src/ui/preferences-dialog.c:591
 msgid "Automatic"
 msgstr ""
 
-#: src/ui/preferences-dialog.c:606
+#: src/ui/preferences-dialog.c:607
 msgid "Font"
 msgstr ""
 
-#: src/ui/preferences-dialog.c:640
+#: src/ui/preferences-dialog.c:641
 msgid "Circle, 7 pixels"
 msgstr ""
 
-#: src/ui/preferences-dialog.c:640
+#: src/ui/preferences-dialog.c:641
 msgid "Circle, 4 pixels"
 msgstr ""
 
-#: src/ui/preferences-dialog.c:640
+#: src/ui/preferences-dialog.c:641
 msgid "Circle, 1 pixel"
 msgstr ""
 
-#: src/ui/preferences-dialog.c:640
+#: src/ui/preferences-dialog.c:641
 msgid "Square, 8 pixels"
 msgstr ""
 
-#: src/ui/preferences-dialog.c:640
+#: src/ui/preferences-dialog.c:641
 msgid "Square, 5 pixels"
 msgstr ""
 
-#: src/ui/preferences-dialog.c:640
+#: src/ui/preferences-dialog.c:641
 msgid "Square, 2 pixels"
 msgstr ""
 
-#: src/ui/preferences-dialog.c:641
+#: src/ui/preferences-dialog.c:642
 msgid "Slash, 8 pixels"
 msgstr ""
 
-#: src/ui/preferences-dialog.c:641
+#: src/ui/preferences-dialog.c:642
 msgid "Slash, 5 pixels"
 msgstr ""
 
-#: src/ui/preferences-dialog.c:641
+#: src/ui/preferences-dialog.c:642
 msgid "Slash, 2 pixels"
 msgstr ""
 
-#: src/ui/preferences-dialog.c:641
+#: src/ui/preferences-dialog.c:642
 msgid "Backslash, 8 pixels"
 msgstr ""
 
-#: src/ui/preferences-dialog.c:641
+#: src/ui/preferences-dialog.c:642
 msgid "Backslash, 5 pixels"
 msgstr ""
 
-#: src/ui/preferences-dialog.c:641
+#: src/ui/preferences-dialog.c:642
 msgid "Backslash, 2 pixels"
 msgstr ""
 
-#: src/ui/preferences-dialog.c:643
+#: src/ui/preferences-dialog.c:644
 msgid "9 pixels"
 msgstr ""
 
-#: src/ui/preferences-dialog.c:643
+#: src/ui/preferences-dialog.c:644
 msgid "16 pixels"
 msgstr ""
 
-#: src/ui/preferences-dialog.c:643
+#: src/ui/preferences-dialog.c:644
 msgid "24 pixels"
 msgstr ""
 
-#: src/ui/preferences-dialog.c:645 src/ui/preferences-dialog.c:649
-#: src/ui/tool-options.c:328
+#: src/ui/preferences-dialog.c:646 src/ui/preferences-dialog.c:650
+#: src/ui/tool-options.c:349
 msgid "4 pixels"
 msgstr ""
 
-#: src/ui/preferences-dialog.c:645
+#: src/ui/preferences-dialog.c:646
 msgid "6 pixels"
 msgstr ""
 
-#: src/ui/preferences-dialog.c:645
+#: src/ui/preferences-dialog.c:646
 msgid "8 pixels"
 msgstr ""
 
-#: src/ui/preferences-dialog.c:645
+#: src/ui/preferences-dialog.c:646
 msgid "10 pixels"
 msgstr ""
 
-#: src/ui/preferences-dialog.c:647
+#: src/ui/preferences-dialog.c:648
 msgid "Opaque"
 msgstr ""
 
-#: src/ui/preferences-dialog.c:647
+#: src/ui/preferences-dialog.c:648
 msgid "Transparent"
 msgstr ""
 
-#: src/ui/preferences-dialog.c:649 src/ui/tool-options.c:328
+#: src/ui/preferences-dialog.c:650 src/ui/tool-options.c:349
 msgid "1 pixel"
 msgstr ""
 
-#: src/ui/preferences-dialog.c:649 src/ui/tool-options.c:328
+#: src/ui/preferences-dialog.c:650 src/ui/tool-options.c:349
 msgid "2 pixels"
 msgstr ""
 
-#: src/ui/preferences-dialog.c:649 src/ui/tool-options.c:328
+#: src/ui/preferences-dialog.c:650 src/ui/tool-options.c:349
 msgid "3 pixels"
 msgstr ""
 
-#: src/ui/preferences-dialog.c:649 src/ui/tool-options.c:328
+#: src/ui/preferences-dialog.c:650 src/ui/tool-options.c:349
 msgid "5 pixels"
 msgstr ""
 
-#: src/ui/preferences-dialog.c:651 src/ui/tool-options.c:365
+#: src/ui/preferences-dialog.c:652 src/ui/tool-options.c:439
 msgid "Outline"
 msgstr ""
 
-#: src/ui/preferences-dialog.c:651 src/ui/tool-options.c:365
+#: src/ui/preferences-dialog.c:652 src/ui/tool-options.c:439
 msgid "Outline and fill"
 msgstr ""
 
-#: src/ui/preferences-dialog.c:651 src/ui/tool-options.c:365
-#: src/ui/window.c:3245 src/ui/window.ui:195
+#: src/ui/preferences-dialog.c:652 src/ui/tool-options.c:439
+#: src/ui/window.c:3264 src/ui/window.ui:195
 msgid "Fill"
 msgstr ""
 
-#: src/ui/preferences-dialog.c:658
+#: src/ui/preferences-dialog.c:659
 msgid "History"
 msgstr ""
 
-#: src/ui/preferences-dialog.c:659
+#: src/ui/preferences-dialog.c:660
 msgid "Saving"
 msgstr ""
 
-#: src/ui/preferences-dialog.c:668 src/ui/window.c:3244 src/ui/window.ui:240
+#: src/ui/preferences-dialog.c:669 src/ui/window.c:3263 src/ui/window.ui:240
 msgid "Brush"
 msgstr ""
 
-#: src/ui/preferences-dialog.c:669 src/ui/window.c:3244 src/ui/window.ui:255
+#: src/ui/preferences-dialog.c:670 src/ui/window.c:3263 src/ui/window.ui:255
 msgid "Airbrush"
 msgstr ""
 
-#: src/ui/preferences-dialog.c:670
+#: src/ui/preferences-dialog.c:671
 msgid "Eraser size"
 msgstr ""
 
-#: src/ui/preferences-dialog.c:671
+#: src/ui/preferences-dialog.c:672
 msgid "Eraser mode"
 msgstr ""
 
-#: src/ui/preferences-dialog.c:672
+#: src/ui/preferences-dialog.c:673
 msgid "Line and shape width"
 msgstr ""
 
-#: src/ui/preferences-dialog.c:673
+#: src/ui/preferences-dialog.c:674
 msgid "Fill style"
 msgstr ""
 
-#: src/ui/preferences-dialog.c:674
+#. a switch where the group's other rows are choices; like them, the start-up choice (REQ-0039-03)
+#: src/ui/preferences-dialog.c:676
+msgid "Smooth shapes and brushes"
+msgstr ""
+
+#: src/ui/preferences-dialog.c:679
 msgid "Magnifier level"
 msgstr ""
 
-#: src/ui/preferences-dialog.c:676
+#: src/ui/preferences-dialog.c:681
 msgid "Size"
 msgstr ""
 
-#: src/ui/preferences-dialog.c:681
+#: src/ui/preferences-dialog.c:686
 msgid "Undo memory"
 msgstr ""
 
-#: src/ui/preferences-dialog.c:682
+#: src/ui/preferences-dialog.c:687
 msgid "JPEG quality"
 msgstr ""
 
-#: src/ui/preferences-dialog.c:858
+#: src/ui/preferences-dialog.c:863
 msgid "Appearance"
 msgstr ""
 
-#: src/ui/preferences-dialog.c:859
+#: src/ui/preferences-dialog.c:864
 msgid "Interface"
 msgstr ""
 
-#: src/ui/preferences-dialog.c:860
+#: src/ui/preferences-dialog.c:865
 msgid "New Picture"
 msgstr ""
 
-#: src/ui/preferences-dialog.c:861 src/ui/window.c:3001
+#: src/ui/preferences-dialog.c:866 src/ui/window.c:3020
 msgid "Drawing"
 msgstr ""
 
@@ -950,83 +955,91 @@ msgstr ""
 msgid "Thumbnail"
 msgstr ""
 
-#: src/ui/tool-options.c:103
+#: src/ui/tool-options.c:124
 #, c-format
 msgid "Eraser, %d pixel"
 msgid_plural "Eraser, %d pixels"
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/ui/tool-options.c:105
+#: src/ui/tool-options.c:126
 #, c-format
 msgid "Spray, %d pixel"
 msgid_plural "Spray, %d pixels"
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/ui/tool-options.c:107
+#: src/ui/tool-options.c:128
 #, c-format
 msgid "Circle, %d pixel"
 msgid_plural "Circle, %d pixels"
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/ui/tool-options.c:109
+#: src/ui/tool-options.c:130
 #, c-format
 msgid "Square, %d pixel"
 msgid_plural "Square, %d pixels"
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/ui/tool-options.c:111
+#: src/ui/tool-options.c:132
 #, c-format
 msgid "Slash, %d pixel"
 msgid_plural "Slash, %d pixels"
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/ui/tool-options.c:112
+#: src/ui/tool-options.c:133
 #, c-format
 msgid "Backslash, %d pixel"
 msgid_plural "Backslash, %d pixels"
 msgstr[0] ""
 msgstr[1] ""
 
+#: src/ui/tool-options.c:397
+msgid "Sharp edges"
+msgstr ""
+
+#: src/ui/tool-options.c:397
+msgid "Smooth edges"
+msgstr ""
+
 #. The modes are a well of their own below, side by side (REQ-0030-04).
-#: src/ui/tool-options.c:448
+#: src/ui/tool-options.c:526
 msgid "Opaque: erase to the background color"
 msgstr ""
 
-#: src/ui/tool-options.c:450
+#: src/ui/tool-options.c:528
 msgid "Transparent: erase to transparency"
 msgstr ""
 
-#: src/ui/tool-options.c:459
+#: src/ui/tool-options.c:537
 msgid "Opaque: keep background color"
 msgstr ""
 
-#: src/ui/tool-options.c:461
+#: src/ui/tool-options.c:539
 msgid "Transparent: moving or clearing leaves a transparent hole"
 msgstr ""
 
-#: src/ui/tool-options.c:469
+#: src/ui/tool-options.c:547
 msgid "Opaque: fill the text box with the background color"
 msgstr ""
 
-#: src/ui/tool-options.c:471
+#: src/ui/tool-options.c:549
 msgid "Transparent: only the text"
 msgstr ""
 
 #. Gradient's types, in the status bar's preset part as the sizes are (REQ-0032-13).
-#: src/ui/tool-options.c:488 src/ui/tool-options.c:687
+#: src/ui/tool-options.c:566 src/ui/tool-options.c:772
 msgid "Linear"
 msgstr ""
 
-#: src/ui/tool-options.c:489 src/ui/tool-options.c:688
+#: src/ui/tool-options.c:567 src/ui/tool-options.c:773
 msgid "Radial"
 msgstr ""
 
-#: src/ui/tool-options.c:490 src/ui/tool-options.c:689
+#: src/ui/tool-options.c:568 src/ui/tool-options.c:774
 msgid "Reflected"
 msgstr ""
 
@@ -1044,8 +1057,8 @@ msgstr ""
 msgid "%s – Easel"
 msgstr ""
 
-#: src/ui/window.c:493 src/ui/window.c:2526 src/ui/window.c:3705
-#: src/ui/window.c:3947
+#: src/ui/window.c:493 src/ui/window.c:2545 src/ui/window.c:3724
+#: src/ui/window.c:3981
 msgid "Close"
 msgstr ""
 
@@ -1132,15 +1145,15 @@ msgstr ""
 msgid "Could Not Open “%s”"
 msgstr ""
 
-#: src/ui/window.c:1189 src/ui/window.c:5556
+#: src/ui/window.c:1189 src/ui/window.c:5647
 msgid "The file cannot be read."
 msgstr ""
 
-#: src/ui/window.c:1192 src/ui/window.c:5552
+#: src/ui/window.c:1192 src/ui/window.c:5643
 msgid "This is not a picture the app can open."
 msgstr ""
 
-#: src/ui/window.c:1195 src/ui/window.c:5546
+#: src/ui/window.c:1195 src/ui/window.c:5637
 msgid "The picture is bigger than 10000 pixels in width or height."
 msgstr ""
 
@@ -1245,393 +1258,393 @@ msgstr ""
 msgid "Drag to pan. Ctrl+wheel zooms."
 msgstr ""
 
-#: src/ui/window.c:2477
+#: src/ui/window.c:2496
 msgid "Zoom"
 msgstr ""
 
-#: src/ui/window.c:2507
+#: src/ui/window.c:2526
 msgid "Zoom Out (Ctrl+-)"
 msgstr ""
 
-#: src/ui/window.c:2508
+#: src/ui/window.c:2527
 msgid "Zoom In (Ctrl+=)"
 msgstr ""
 
-#: src/ui/window.c:2523
+#: src/ui/window.c:2542
 #, c-format
 msgid "There is not enough memory for a picture of %d × %d pixel."
 msgid_plural "There is not enough memory for a picture of %d × %d pixels."
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/ui/window.c:2533
+#: src/ui/window.c:2552
 msgid "Could Not Resize the Picture"
 msgstr ""
 
-#: src/ui/window.c:2593
+#: src/ui/window.c:2612
 msgid "Could Not Invert the Colors"
 msgstr ""
 
-#: src/ui/window.c:2594
+#: src/ui/window.c:2613
 msgid "Could Not Clear the Picture"
 msgstr ""
 
-#: src/ui/window.c:2595
+#: src/ui/window.c:2614
 msgid "Could Not Flip the Picture"
 msgstr ""
 
-#: src/ui/window.c:2596
+#: src/ui/window.c:2615
 msgid "Could Not Rotate the Picture"
 msgstr ""
 
-#: src/ui/window.c:2598 src/ui/window.c:3806 src/ui/window.c:3850
-#: src/ui/window.c:3945 src/ui/window.c:5275 src/ui/window.c:5277
-#: src/ui/window.c:5279 src/ui/window.c:5281 src/ui/window.c:5283
-#: src/ui/window.c:5285
+#: src/ui/window.c:2617 src/ui/window.c:3825 src/ui/window.c:3869
+#: src/ui/window.c:3979 src/ui/window.c:5366 src/ui/window.c:5368
+#: src/ui/window.c:5370 src/ui/window.c:5372 src/ui/window.c:5374
+#: src/ui/window.c:5376
 msgid "There is not enough memory for this change."
 msgstr ""
 
-#: src/ui/window.c:2999
+#: src/ui/window.c:3018
 msgid "Space to finish, Esc to cancel"
 msgstr ""
 
-#: src/ui/window.c:3001
+#: src/ui/window.c:3020
 msgid "Done"
 msgstr ""
 
-#: src/ui/window.c:3001
+#: src/ui/window.c:3020
 msgid "Cancelled"
 msgstr ""
 
-#: src/ui/window.c:3191
+#: src/ui/window.c:3210
 #, c-format
 msgid "Foreground %s"
 msgstr ""
 
-#: src/ui/window.c:3191
+#: src/ui/window.c:3210
 #, c-format
 msgid "Background %s"
 msgstr ""
 
-#: src/ui/window.c:3218
+#: src/ui/window.c:3237
 msgid "Text box open"
 msgstr ""
 
-#: src/ui/window.c:3218
+#: src/ui/window.c:3237
 msgid "Text box closed"
 msgstr ""
 
-#: src/ui/window.c:3224
+#: src/ui/window.c:3243
 #, c-format
 msgid "Selection %d by %d"
 msgstr ""
 
-#: src/ui/window.c:3229
+#: src/ui/window.c:3248
 msgid "Selection put down"
 msgstr ""
 
-#: src/ui/window.c:3229
+#: src/ui/window.c:3248
 msgid "Selection removed"
 msgstr ""
 
-#: src/ui/window.c:3237
+#: src/ui/window.c:3256
 msgid "Polygon closed"
 msgstr ""
 
-#: src/ui/window.c:3244 src/ui/window.ui:105
+#: src/ui/window.c:3263 src/ui/window.ui:105
 msgid "Pan"
 msgstr ""
 
-#: src/ui/window.c:3244 src/ui/window.ui:225
+#: src/ui/window.c:3263 src/ui/window.ui:225
 msgid "Pencil"
 msgstr ""
 
-#: src/ui/window.c:3244 src/ui/window.ui:165
+#: src/ui/window.c:3263 src/ui/window.ui:165
 msgid "Eraser"
 msgstr ""
 
-#: src/ui/window.c:3245 src/ui/window.ui:120
+#: src/ui/window.c:3264 src/ui/window.ui:120
 msgid "Magnifier"
 msgstr ""
 
-#: src/ui/window.c:3245 src/ui/window.ui:180
+#: src/ui/window.c:3264 src/ui/window.ui:180
 msgid "Pick Color"
 msgstr ""
 
-#: src/ui/window.c:3245 src/ui/window.ui:285
+#: src/ui/window.c:3264 src/ui/window.ui:285
 msgid "Line"
 msgstr ""
 
-#: src/ui/window.c:3245 src/ui/window.ui:315
+#: src/ui/window.c:3264 src/ui/window.ui:315
 msgid "Rectangle"
 msgstr ""
 
-#: src/ui/window.c:3246 src/ui/window.ui:330
+#: src/ui/window.c:3265 src/ui/window.ui:330
 msgid "Rounded Rectangle"
 msgstr ""
 
-#: src/ui/window.c:3246 src/ui/window.ui:345
+#: src/ui/window.c:3265 src/ui/window.ui:345
 msgid "Ellipse"
 msgstr ""
 
-#: src/ui/window.c:3246 src/ui/window.ui:300
+#: src/ui/window.c:3265 src/ui/window.ui:300
 msgid "Curve"
 msgstr ""
 
-#: src/ui/window.c:3246 src/ui/window.ui:360
+#: src/ui/window.c:3265 src/ui/window.ui:360
 msgid "Polygon"
 msgstr ""
 
-#: src/ui/window.c:3247 src/ui/window.ui:210
+#: src/ui/window.c:3266 src/ui/window.ui:210
 msgid "Gradient"
 msgstr ""
 
-#: src/ui/window.c:3247 src/ui/window.ui:135
+#: src/ui/window.c:3266 src/ui/window.ui:135
 msgid "Select"
 msgstr ""
 
-#: src/ui/window.c:3247 src/ui/window.ui:150
+#: src/ui/window.c:3266 src/ui/window.ui:150
 msgid "Free-Form Select"
 msgstr ""
 
-#: src/ui/window.c:3319
+#: src/ui/window.c:3338
 msgid "Could Not Open Help"
 msgstr ""
 
-#: src/ui/window.c:3319
+#: src/ui/window.c:3338
 msgid "The help page could not be opened."
 msgstr ""
 
-#: src/ui/window.c:3321 src/ui/window.c:3421
+#: src/ui/window.c:3340 src/ui/window.c:3440
 msgid "OK"
 msgstr ""
 
-#: src/ui/window.c:3419
+#: src/ui/window.c:3438
 msgid "Could Not Print"
 msgstr ""
 
-#: src/ui/window.c:3419
+#: src/ui/window.c:3438
 msgid "The picture could not be printed."
 msgstr ""
 
 #. so that the dialog's Orientation shows what the page is (a probe, T009)
-#: src/ui/window.c:3617
+#: src/ui/window.c:3636
 msgid "Picture"
 msgstr ""
 
-#: src/ui/window.c:3693
+#: src/ui/window.c:3712
 msgid "Language Changes at Next Start"
 msgstr ""
 
-#: src/ui/window.c:3693
+#: src/ui/window.c:3712
 msgid ""
 "Your changes are kept. The new language shows the next time Easel starts."
 msgstr ""
 
-#: src/ui/window.c:3702
+#: src/ui/window.c:3721
 msgid "Could Not Save the Preferences"
 msgstr ""
 
-#: src/ui/window.c:3703
+#: src/ui/window.c:3722
 msgid ""
 "The changes apply until Easel closes where they can, but settings.ini could "
 "not be written."
 msgstr ""
 
-#: src/ui/window.c:3806
+#: src/ui/window.c:3825
 msgid "Could Not Stretch or Skew the Picture"
 msgstr ""
 
-#: src/ui/window.c:3850
+#: src/ui/window.c:3869
 msgid "Could Not Convert the Picture"
 msgstr ""
 
-#: src/ui/window.c:3945 src/ui/window.c:5285
+#: src/ui/window.c:3979 src/ui/window.c:5376
 msgid "Could Not Remove the Background"
 msgstr ""
 
-#: src/ui/window.c:4064
+#: src/ui/window.c:4117
 msgid "Removing the Background"
 msgstr ""
 
-#: src/ui/window.c:4241
+#: src/ui/window.c:4287
 msgid "Kept"
 msgstr ""
 
-#: src/ui/window.c:4241
+#: src/ui/window.c:4287
 msgid "Removed"
 msgstr ""
 
-#: src/ui/window.c:4526
+#: src/ui/window.c:4611
 msgid "Keep this on"
 msgstr ""
 
-#: src/ui/window.c:4527
+#: src/ui/window.c:4612
 msgid "Remove this on"
 msgstr ""
 
-#: src/ui/window.c:4527
+#: src/ui/window.c:4612
 msgid "Brushes off"
 msgstr ""
 
-#: src/ui/window.c:4739 src/ui/window.c:4753
+#: src/ui/window.c:4824 src/ui/window.c:4838
 msgid "Undone"
 msgstr ""
 
-#: src/ui/window.c:4739 src/ui/window.c:4753
+#: src/ui/window.c:4824 src/ui/window.c:4838
 msgid "Redone"
 msgstr ""
 
-#: src/ui/window.c:5213
+#: src/ui/window.c:5304
 msgid "Could Not Fill"
 msgstr ""
 
-#: src/ui/window.c:5213
+#: src/ui/window.c:5304
 msgid "There is not enough memory to fill this area."
 msgstr ""
 
-#: src/ui/window.c:5230
+#: src/ui/window.c:5321
 msgid "Could Not Draw the Shape"
 msgstr ""
 
-#: src/ui/window.c:5230
+#: src/ui/window.c:5321
 msgid "There is not enough memory to draw this shape."
 msgstr ""
 
-#: src/ui/window.c:5248
+#: src/ui/window.c:5339
 msgid "Could Not Apply the Gradient"
 msgstr ""
 
-#: src/ui/window.c:5248
+#: src/ui/window.c:5339
 msgid "There is not enough memory to apply this gradient."
 msgstr ""
 
-#: src/ui/window.c:5269
+#: src/ui/window.c:5360
 msgid "Could Not Clear the Selection"
 msgstr ""
 
-#: src/ui/window.c:5269
+#: src/ui/window.c:5360
 msgid "There is not enough memory to clear this selection."
 msgstr ""
 
-#: src/ui/window.c:5271
+#: src/ui/window.c:5362
 msgid "Could Not Make the Selection"
 msgstr ""
 
-#: src/ui/window.c:5271
+#: src/ui/window.c:5362
 msgid "There is not enough memory to make this selection."
 msgstr ""
 
-#: src/ui/window.c:5273
+#: src/ui/window.c:5364
 msgid "Could Not Stretch the Selection"
 msgstr ""
 
-#: src/ui/window.c:5273
+#: src/ui/window.c:5364
 msgid "There is not enough memory to stretch this selection."
 msgstr ""
 
-#: src/ui/window.c:5275
+#: src/ui/window.c:5366
 msgid "Could Not Flip the Selection"
 msgstr ""
 
-#: src/ui/window.c:5277
+#: src/ui/window.c:5368
 msgid "Could Not Rotate the Selection"
 msgstr ""
 
-#: src/ui/window.c:5279
+#: src/ui/window.c:5370
 msgid "Could Not Invert the Selection"
 msgstr ""
 
-#: src/ui/window.c:5281
+#: src/ui/window.c:5372
 msgid "Could Not Stretch or Skew the Selection"
 msgstr ""
 
-#: src/ui/window.c:5283
+#: src/ui/window.c:5374
 msgid "Could Not Convert the Selection"
 msgstr ""
 
-#: src/ui/window.c:5287
+#: src/ui/window.c:5378
 msgid "Could Not Move the Selection"
 msgstr ""
 
-#: src/ui/window.c:5287
+#: src/ui/window.c:5378
 msgid "There is not enough memory to move this selection."
 msgstr ""
 
 #. kind 0: the box's text could not be shown (REQ-0017-07); 1: the put-down's step could not be had (REQ-0017-18)
-#: src/ui/window.c:5297
+#: src/ui/window.c:5388
 msgid "Could Not Add the Text"
 msgstr ""
 
-#: src/ui/window.c:5298
+#: src/ui/window.c:5389
 msgid "There is not enough memory to show this text."
 msgstr ""
 
-#: src/ui/window.c:5298
+#: src/ui/window.c:5389
 msgid "There is not enough memory to add this text."
 msgstr ""
 
-#: src/ui/window.c:5443
+#: src/ui/window.c:5534
 msgid "Could Not Copy the Selection"
 msgstr ""
 
-#: src/ui/window.c:5443
+#: src/ui/window.c:5534
 msgid "There is not enough memory to copy this selection."
 msgstr ""
 
-#: src/ui/window.c:5537
+#: src/ui/window.c:5628
 #, c-format
 msgid "Could Not Paste “%s”"
 msgstr ""
 
-#: src/ui/window.c:5537 src/ui/window.c:5857 src/ui/window.c:5880
+#: src/ui/window.c:5628 src/ui/window.c:5948 src/ui/window.c:5971
 msgid "Could Not Paste"
 msgstr ""
 
-#: src/ui/window.c:5549
+#: src/ui/window.c:5640
 msgid "There is not enough memory to paste this picture."
 msgstr ""
 
-#: src/ui/window.c:5556
+#: src/ui/window.c:5647
 msgid "The clipboard's picture cannot be read."
 msgstr ""
 
-#: src/ui/window.c:5741
+#: src/ui/window.c:5832
 #, c-format
 msgid "The picture is %d × %d pixel; the canvas is %d × %d."
 msgid_plural "The picture is %d × %d pixels; the canvas is %d × %d."
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/ui/window.c:5743
+#: src/ui/window.c:5834
 msgid "Pasted Picture Is Larger Than the Canvas"
 msgstr ""
 
-#: src/ui/window.c:5746
+#: src/ui/window.c:5837
 msgid "_Fit Picture to Canvas"
 msgstr ""
 
-#: src/ui/window.c:5747
+#: src/ui/window.c:5838
 msgid "_Resize Canvas to Picture"
 msgstr ""
 
-#: src/ui/window.c:5857
+#: src/ui/window.c:5948
 msgid "The clipboard's text cannot be read."
 msgstr ""
 
-#: src/ui/window.c:5880
+#: src/ui/window.c:5971
 msgid "There is not enough memory to paste this text."
 msgstr ""
 
-#: src/ui/window.c:5932
+#: src/ui/window.c:6023
 msgid "Could Not Copy the Text"
 msgstr ""
 
-#: src/ui/window.c:5932
+#: src/ui/window.c:6023
 msgid "There is not enough memory to copy this text."
 msgstr ""
 
-#: src/ui/window.c:6015
+#: src/ui/window.c:6106
 msgid "Paste From"
 msgstr ""
 

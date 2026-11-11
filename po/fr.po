@@ -1299,3 +1299,12 @@ msgstr "Suppression de l'arrière-plan"
 
 msgid "Could Not Remove the Background"
 msgstr "Impossible de supprimer l'arrière-plan"
+
+msgid "Sharp edges"
+msgstr "Bords nets"
+
+msgid "Smooth edges"
+msgstr "Bords lissés"
+
+msgid "Smooth shapes and brushes"
+msgstr "Formes et pinceaux lissés"

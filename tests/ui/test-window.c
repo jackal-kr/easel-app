@@ -15,6 +15,7 @@
 #include "canvas.h"
 #include "black-white.h"
 #include "remove-bg-card.h"
+#include "figure.h"
 #include "gradient.h"
 #include "selection.h"
 #include "magnifier.h"
@@ -6936,7 +6937,8 @@ toolbox_panel (EaselWindow *win)
 {
   GtkWidget *grid = gtk_widget_get_parent (find_by_tooltip (GTK_WIDGET (win), _ ("Pan")));
 
-  return gtk_widget_get_parent (gtk_widget_get_parent (grid));
+  /* the grid's column scrolls in a short window (0039 Check F1): the panel holds its scroller */
+  return gtk_widget_get_parent (gtk_widget_get_ancestor (grid, GTK_TYPE_SCROLLED_WINDOW));
 }
 
 /* Every button of the shown options lies inside the toolbox, and a text button's label gets at least its natural width
@@ -39281,6 +39283,612 @@ cursor_sheet_dump (void)
         }
 }
 
+/* ---- 0039 Smooth shapes and brushes ---- */
+
+static gboolean
+smooth_state (EaselWindow *win)
+{
+  g_autoptr (GVariant) v = g_action_group_get_action_state (G_ACTION_GROUP (win), "smooth");
+
+  g_assert_nonnull (v);
+  return g_variant_get_boolean (v);
+}
+
+static void
+set_smooth (EaselWindow *win, gboolean on)
+{
+  g_action_group_change_action_state (G_ACTION_GROUP (win), "smooth", g_variant_new_boolean (on));
+  g_assert_cmpint (smooth_state (win), ==, on);
+}
+
+static EaselWindow *
+smooth_window (int w, int h, const char *tool)
+{
+  g_autofree char *text = g_strdup_printf ("[new-picture]\nwidth=%d\nheight=%d\nbackground=#FFFFFF\n", w, h);
+  EaselWindow *win;
+
+  write_settings (text);
+  win = start_window ();
+  wait_for_layout (win);
+  use_tool (win, tool);
+  wait_for_layout (win);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 100);
+  g_assert_cmpfloat (easel_canvas_get_scale (easel_window_get_canvas (win)), ==, 1.0);
+  return win;
+}
+
+/* Compares the window's render with the expected picture at the zoom now, for every picture pixel whose middle is on the
+   window; returns how many were compared. */
+static int
+render_matches (EaselWindow *win, const EaselImage *want)
+{
+  g_autofree uint32_t *px = NULL;
+  int w, h, cx, cy, n = 0, z = easel_window_get_zoom (win) / 100;
+
+  graphene_rect_t seen;
+
+  wait_for_next_frame (win);
+  px = render_pixels (win, &w, &h, &cx, &cy);
+  /* the part of the window the scrolled view shows, less 20 logical pixels at each edge for its scrollbars */
+  g_assert_true (gtk_widget_compute_bounds (gtk_widget_get_parent (GTK_WIDGET (easel_window_get_canvas (win))), GTK_WIDGET (win),
+                                            &seen));
+  for (int y = 0; y < want->height; y++)
+    for (int x = 0; x < want->width; x++)
+      {
+        int sx = cx + x * z + z / 2, sy = cy + y * z + z / 2;
+
+        if (sx < seen.origin.x + 20 || sy < seen.origin.y + 20 || sx >= seen.origin.x + seen.size.width - 20
+            || sy >= seen.origin.y + seen.size.height - 20 || sx >= w || sy >= h)
+          continue;
+        if (px[(gsize) sy * w + sx] != easel_image_get (want, x, y))
+          g_test_message ("pixel (%d, %d) at %d %%: %08X, want %08X", x, y, z * 100, px[(gsize) sy * w + sx],
+                          easel_image_get (want, x, y));
+        g_assert_cmphex (px[(gsize) sy * w + sx], ==, easel_image_get (want, x, y));
+        n++;
+      }
+  return n;
+}
+
+static int
+count_mixed (const EaselImage *img)
+{
+  int n = 0;
+
+  for (int i = 0; i < img->width * img->height; i++)
+    n += img->px[i] != 0xFFFFFFFFu && img->px[i] != 0xFF000000u && img->px[i] != 0xFFFF0000u;
+  return n;
+}
+
+/* 0039 AS-7 (REQ-0039-08, REQ-0039-09): with Smooth, an ellipse's preview shows the pixels put down, at 100 % and at 800 % (the view
+   scrolled to the picture's middle), the picture unchanged until the release, which puts down exactly those pixels. */
+static void
+smooth_as7_preview_is_put_down (void)
+{
+  EaselWindow *win = smooth_window (200, 150, "ellipse");
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  EaselImage *want = easel_image_new (200, 150, 0xFFFFFFFFu);
+  EaselFigure f = { EASEL_FIGURE_ELLIPSE, 60, 50, 140, 100, 2, EASEL_FIGURE_OUTLINE_AND_FILL };
+
+  set_shape_options (win, 2, 1);
+  easel_canvas_set_colors (canvas, 0xFF000000u, 0xFFFF0000u);
+  set_smooth (win, TRUE);
+  f.smooth = true;
+  g_assert_cmpint (easel_figure_apply (want, NULL, &f, 0xFF000000u, 0xFFFF0000u, NULL), ==, EASEL_FIGURE_DONE);
+  g_assert_cmpint (count_mixed (want), >, 100);                            /* the expected picture has blended edges */
+  /* at 100 %, then at 800 % (no zoom while a button is held, 0036: a drag of its own, the first undone) */
+  for (int z = 0; z < 2; z++)
+    {
+      if (z == 1)
+        {
+          g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+          g_assert_cmpint (count_color (img, 0xFFFFFFFFu), ==, 200 * 150);
+          g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-to", g_variant_new_int32 (800));
+          wait_for_layout (win);
+          g_assert_cmpint (easel_window_get_zoom (win), ==, 800);
+        }
+      shape_press_move (win, 1, 60, 50, 140, 100);
+      g_assert_cmpint (count_color (img, 0xFFFFFFFFu), ==, 200 * 150);   /* unchanged while held */
+      if (z == 0)
+        g_assert_cmpint (render_matches (win, want), >, 200 * 150 / 2);
+      else
+        g_assert_cmpint (render_matches (win, want), >, 500);
+      shape_release (win, 1);
+      g_assert_cmpint (memcmp (img->px, want->px, sizeof (uint32_t) * 200 * 150), ==, 0);
+      g_assert_cmpint (render_matches (win, want), >, z == 0 ? 200 * 150 / 2 : 500);
+    }
+  easel_image_free (want);
+  close_windows ();
+}
+
+/* 0039 AS-7 (REQ-0039-08): Esc during a smooth drag draws nothing; one Undo takes a smooth ellipse back. */
+static void
+smooth_as7_esc_and_undo (void)
+{
+  EaselWindow *win = smooth_window (100, 80, "ellipse");
+  const EaselImage *img = easel_window_get_picture (win);
+
+  set_smooth (win, TRUE);
+  shape_press_move (win, 1, 10, 10, 70, 50);
+  press_enter (win, GDK_KEY_Escape);
+  g_assert_false (easel_canvas_is_stroking (easel_window_get_canvas (win)));
+  shape_release (win, 1);
+  g_assert_cmpint (count_color (img, 0xFFFFFFFFu), ==, 100 * 80);
+  g_assert_false (action_enabled (win, "undo"));
+  shape_press_move (win, 1, 10, 10, 70, 50);
+  shape_release (win, 1);
+  g_assert_cmpint (count_mixed (img), >, 20);
+  g_assert_true (easel_window_get_modified (win));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_cmpint (count_color (img, 0xFFFFFFFFu), ==, 100 * 80);
+  g_assert_false (action_enabled (win, "undo"));
+  close_windows ();
+}
+
+/* 0039 AS-7 (REQ-0039-02): a curve waiting with Sharp, then Smooth chosen: it shows smoothed at once, and Enter puts down what it
+   shows. */
+static void
+smooth_as7_pending_switch (void)
+{
+  EaselWindow *win = smooth_window (300, 200, "curve");
+  const EaselImage *img = easel_window_get_picture (win);
+  g_autofree uint32_t *sharp = NULL, *soft = NULL, *done = NULL;
+  int w, h, cx, cy, differ = 0;
+
+  g_assert_false (smooth_state (win));
+  curve_drag (win, 10, 40, 50, 60);
+  curve_drag (win, 30, 50, 30, 20);                                         /* a grab bends it */
+  g_assert_true (easel_canvas_is_pending (easel_window_get_canvas (win)));
+  wait_for_next_frame (win);
+  sharp = render_pixels (win, &w, &h, &cx, &cy);
+  set_smooth (win, TRUE);
+  g_assert_true (easel_canvas_is_pending (easel_window_get_canvas (win)));
+  wait_for_next_frame (win);
+  soft = render_pixels (win, &w, &h, &cx, &cy);
+  for (int y = 0; y < 100; y++)
+    for (int x = 0; x < 80; x++)
+      differ += rendered_pixel (sharp, w, cx, cy, x, y) != rendered_pixel (soft, w, cx, cy, x, y);
+  g_assert_cmpint (differ, >, 20);
+  g_assert_cmpint (count_color (img, 0xFFFFFFFFu), ==, 300 * 200);
+  press_enter (win, GDK_KEY_Return);
+  g_assert_false (easel_canvas_is_pending (easel_window_get_canvas (win)));
+  g_assert_cmpint (count_mixed (img), >, 20);
+  wait_for_next_frame (win);
+  done = render_pixels (win, &w, &h, &cx, &cy);
+  assert_same_render (soft, done, w, cx, cy);
+  for (int y = 0; y < 100; y++)
+    for (int x = 0; x < 80; x++)
+      g_assert_cmphex (rendered_pixel (done, w, cx, cy, x, y), ==, easel_image_get (img, x, y));
+  close_windows ();
+}
+
+/* 0039 AS-7 (REQ-0039-08, REQ-0033-01): a press on a pixel only Smooth covers grabs the waiting curve: the line from (10, 10) to
+   (20, 20), 5 pixels, covers (23, 20) with 200 points with Smooth and not at all with Sharp; at 800 % the middle of (24, 20) is
+   4 logical pixels from (23, 20)'s square and 12 from Sharp's nearest. */
+static void
+smooth_as7_curve_hit (void)
+{
+  EaselWindow *win = smooth_window (300, 200, "curve");
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  EaselFigure f = { EASEL_FIGURE_LINE, 10, 10, 20, 20, 5, EASEL_FIGURE_OUTLINE };
+  EaselCoverRun runs[128];
+  size_t n;
+  int covered = 0;
+
+  f.smooth = true;
+  n = easel_figure_cover_row (&f, 20, runs, G_N_ELEMENTS (runs));
+  for (size_t k = 0; k < n; k++)
+    covered |= runs[k].x0 <= 23 && runs[k].x1 >= 23 && runs[k].out == 200;
+  g_assert_true (covered);
+  set_shape_options (win, 5, 0);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-to", g_variant_new_int32 (800));
+  wait_for_layout (win);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 800);
+  set_smooth (win, TRUE);
+  curve_drag (win, 10, 10, 20, 20);
+  g_assert_true (curve_still_after_click (win, 24.5, 20.5));
+  easel_canvas_drop (canvas);
+  set_smooth (win, FALSE);
+  curve_drag (win, 10, 10, 20, 20);
+  g_assert_false (curve_still_after_click (win, 24.5, 20.5));
+  close_windows ();
+}
+
+/* 0039 AS-10 (REQ-0039-08): without the memory, a smooth ellipse shows "Could Not Draw the Shape" and changes nothing. */
+static void
+smooth_as10_no_memory (void)
+{
+  EaselWindow *win = smooth_window (100, 80, "ellipse");
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  AdwAlertDialog *dialog;
+
+  set_smooth (win, TRUE);
+  easel_canvas_set_shape_memory_limit (canvas, 1000);
+  shape_press_move (win, 1, 5, 5, 90, 70);
+  shape_release (win, 1);
+  easel_canvas_set_shape_memory_limit (canvas, SIZE_MAX);
+  wait_for_dialogs (win, 1);
+  dialog = open_alert (win);
+  g_assert_nonnull (dialog);
+  g_assert_cmpstr (adw_alert_dialog_get_heading (dialog), ==, "Could Not Draw the Shape");
+  g_assert_cmpint (count_color (img, 0xFFFFFFFFu), ==, 100 * 80);
+  g_assert_false (action_enabled (win, "undo"));
+  adw_dialog_close (ADW_DIALOG (dialog));
+  wait_for_dialogs (win, 0);
+  close_windows ();
+}
+
+/* 0039 AS-1 (REQ-0039-01, -02): Line shows a well Sharp | Smooth below its widths, Sharp chosen, with its tooltips and names;
+   Smooth chosen there is chosen for the other six tools; Pencil, Airbrush, Eraser, Fill, Gradient, Text and Select show none; the
+   toolbox keeps its width. */
+static void
+smooth_as1_well_shared (void)
+{
+  static const char *const with[] = { "rectangle", "ellipse", "curve", "polygon", "rounded-rectangle", "brush", "line" };
+  static const char *const without[] = { "pencil", "airbrush", "eraser", "fill", "gradient", "text", "select" };
+  EaselWindow *win = smooth_window (100, 80, "pan");
+  GtkWidget *sharp, *soft, *well;
+  int toolbox_w = gtk_widget_get_width (gtk_widget_get_parent (GTK_WIDGET (easel_window_get_tool_options (win))));
+  int min_h, min_h_tool;
+
+  /* Pan, the tool at start, shows no options: the window's least height with it is the one every tool keeps (0039 Check F1:
+     a scrollbar of the options' own raised it by 58 pixels for every tool alike, which a comparison between tools missed) */
+  gtk_widget_measure (GTK_WIDGET (win), GTK_ORIENTATION_VERTICAL, -1, &min_h, NULL, NULL, NULL);
+
+  use_tool (win, "line");
+  wait_for_layout (win);
+  sharp = find_mapped_by_tooltip (GTK_WIDGET (win), "Sharp edges");
+  soft = find_mapped_by_tooltip (GTK_WIDGET (win), "Smooth edges");
+  g_assert_true (GTK_IS_TOGGLE_BUTTON (sharp) && GTK_IS_TOGGLE_BUTTON (soft));
+  well = gtk_widget_get_parent (sharp);
+  g_assert_true (gtk_widget_get_parent (soft) == well && gtk_widget_has_css_class (well, "options-well"));
+  g_assert_true (gtk_toggle_button_get_active (GTK_TOGGLE_BUTTON (sharp)));
+  g_assert_false (gtk_toggle_button_get_active (GTK_TOGGLE_BUTTON (soft)));
+  /* side by side, Sharp first, below the widths */
+  {
+    graphene_rect_t a, b, wd;
+    GtkWidget *width5 = find_mapped_by_tooltip (GTK_WIDGET (win), "5 pixels");
+
+    g_assert_true (gtk_widget_compute_bounds (sharp, GTK_WIDGET (win), &a) && gtk_widget_compute_bounds (soft, GTK_WIDGET (win), &b));
+    g_assert_true (gtk_widget_compute_bounds (width5, GTK_WIDGET (win), &wd));
+    g_assert_cmpfloat (a.origin.y, ==, b.origin.y);
+    g_assert_cmpfloat (a.origin.x, <, b.origin.x);
+    g_assert_cmpfloat (a.origin.y, >, wd.origin.y + wd.size.height);
+  }
+  g_signal_emit_by_name (soft, "clicked");
+  g_assert_true (smooth_state (win));
+  for (guint i = 0; i < G_N_ELEMENTS (with); i++)
+    {
+      GtkWidget *cell;
+
+      use_tool (win, with[i]);
+      wait_for_layout (win);
+      cell = find_mapped_by_tooltip (GTK_WIDGET (win), "Smooth edges");
+      g_assert_nonnull (cell);
+      g_assert_true (gtk_toggle_button_get_active (GTK_TOGGLE_BUTTON (cell)));
+      g_assert_false (gtk_toggle_button_get_active (GTK_TOGGLE_BUTTON (find_mapped_by_tooltip (GTK_WIDGET (win), "Sharp edges"))));
+      g_assert_cmpint (gtk_widget_get_width (gtk_widget_get_parent (GTK_WIDGET (easel_window_get_tool_options (win)))), ==, toolbox_w);
+      /* the column scrolls in a short window; the window's minimum height does not grow (REQ-0008-07, 0006's edge case) */
+      gtk_widget_measure (GTK_WIDGET (win), GTK_ORIENTATION_VERTICAL, -1, &min_h_tool, NULL, NULL, NULL);
+      g_assert_cmpint (min_h_tool, ==, min_h);
+    }
+  /* In the shortest window, Ellipse's options are cut, and the wheel over the toolbox's column scrolls it (0006's edge case) */
+  {
+    GtkScrolledWindow *holder;
+    GtkAdjustment *v;
+    g_autoptr (GListModel) controllers = NULL;
+    gboolean handled = FALSE;
+
+    use_tool (win, "ellipse");
+    gtk_window_set_default_size (GTK_WINDOW (win), gtk_widget_get_width (GTK_WIDGET (win)), min_h);
+    wait_for_layout (win);
+    wait_for_layout (win);
+    holder = GTK_SCROLLED_WINDOW (gtk_widget_get_ancestor (GTK_WIDGET (easel_window_get_tool_options (win)), GTK_TYPE_SCROLLED_WINDOW));
+    holder = GTK_SCROLLED_WINDOW (gtk_widget_get_ancestor (gtk_widget_get_parent (GTK_WIDGET (holder)), GTK_TYPE_SCROLLED_WINDOW));
+    v = gtk_scrolled_window_get_vadjustment (holder);
+    g_assert_cmpfloat (gtk_adjustment_get_upper (v), >, gtk_adjustment_get_page_size (v));
+    g_assert_cmpfloat (gtk_adjustment_get_value (v), ==, 0);
+    controllers = gtk_widget_observe_controllers (GTK_WIDGET (holder));
+    for (guint k = 0; k < g_list_model_get_n_items (controllers); k++)
+      {
+        g_autoptr (GtkEventController) c = g_list_model_get_item (controllers, k);
+
+        if (GTK_IS_EVENT_CONTROLLER_SCROLL (c))
+          g_signal_emit_by_name (c, "scroll", 0.0, 3.0, &handled);
+      }
+    g_assert_cmpfloat (gtk_adjustment_get_value (v), >, 0);
+    gtk_window_set_default_size (GTK_WINDOW (win), 1024, 768);
+    wait_for_layout (win);
+  }
+  for (guint i = 0; i < G_N_ELEMENTS (without); i++)
+    {
+      use_tool (win, without[i]);
+      wait_for_layout (win);
+      g_assert_null (find_mapped_by_tooltip (GTK_WIDGET (win), "Smooth edges"));
+      g_assert_null (find_mapped_by_tooltip (GTK_WIDGET (win), "Sharp edges"));
+    }
+  /* nothing changes in the picture or the history, and nothing is written (REQ-0039-03) */
+  g_assert_false (easel_window_get_modified (win));
+  g_assert_false (action_enabled (win, "undo"));
+  close_windows ();
+}
+
+static void
+wait_for_smooth (EaselWindow *win, gboolean on)
+{
+  gint64 deadline = g_get_monotonic_time () + 2 * G_USEC_PER_SEC;
+
+  while (smooth_state (win) != on && g_get_monotonic_time () < deadline)
+    g_main_context_iteration (NULL, FALSE);
+}
+
+/* 0039 AS-1 (REQ-0039-01): the cells' accessible names are their tooltips (a suite with GTK's accessibility on). */
+static void
+smooth_as1_names (void)
+{
+  EaselWindow *win = smooth_window (100, 80, "brush");
+
+  assert_label (find_mapped_by_tooltip (GTK_WIDGET (win), "Sharp edges"), "Sharp edges");
+  assert_label (find_mapped_by_tooltip (GTK_WIDGET (win), "Smooth edges"), "Smooth edges");
+  close_windows ();
+}
+
+/* 0039 AS-1 (REQ-0039-02): Tab from the last width reaches Sharp, then Smooth; Space (the button's activation) chooses. */
+static void
+smooth_as1_keyboard (void)
+{
+  EaselWindow *win = smooth_window (100, 80, "ellipse");
+  GtkWidget *width5 = find_mapped_by_tooltip (GTK_WIDGET (win), "5 pixels");
+  GtkWidget *sharp = find_mapped_by_tooltip (GTK_WIDGET (win), "Sharp edges"), *soft = find_mapped_by_tooltip (GTK_WIDGET (win), "Smooth edges");
+
+  g_assert_nonnull (width5);
+  gtk_widget_grab_focus (width5);
+  g_assert_true (gtk_root_get_focus (GTK_ROOT (win)) == width5);
+  g_assert_true (gtk_widget_child_focus (GTK_WIDGET (win), GTK_DIR_TAB_FORWARD));
+  g_assert_true (gtk_root_get_focus (GTK_ROOT (win)) == sharp);
+  g_assert_true (gtk_widget_child_focus (GTK_WIDGET (win), GTK_DIR_TAB_FORWARD));
+  g_assert_true (gtk_root_get_focus (GTK_ROOT (win)) == soft);
+  /* a button's activation (Space) clicks it after a short delay of GTK's: wait for the state asked for */
+  gtk_widget_activate (soft);
+  wait_for_smooth (win, TRUE);
+  g_assert_true (smooth_state (win));
+  gtk_widget_grab_focus (sharp);
+  gtk_widget_activate (sharp);
+  wait_for_smooth (win, FALSE);
+  g_assert_false (smooth_state (win));
+  close_windows ();
+}
+
+/* 0039 AS-1 (REQ-0039-02): while a button is held for a shape, a click on Smooth changes nothing; after the release it does. */
+static void
+smooth_as1_ignored_while_held (void)
+{
+  EaselWindow *win = smooth_window (100, 80, "ellipse");
+  GtkWidget *soft = find_mapped_by_tooltip (GTK_WIDGET (win), "Smooth edges");
+  const EaselImage *img = easel_window_get_picture (win);
+
+  g_assert_nonnull (soft);
+  shape_press_move (win, 1, 10, 10, 60, 40);
+  g_assert_true (easel_canvas_is_stroking (easel_window_get_canvas (win)));
+  g_signal_emit_by_name (soft, "clicked");
+  g_assert_false (smooth_state (win));
+  shape_release (win, 1);
+  g_assert_cmpint (count_mixed (img), ==, 0);                               /* put down Sharp */
+  wait_for_layout (win);
+  g_signal_emit_by_name (soft, "clicked");
+  g_assert_true (smooth_state (win));
+  g_assert_true (gtk_toggle_button_get_active (GTK_TOGGLE_BUTTON (soft)));
+  close_windows ();
+}
+
+/* The core's smooth Brush stroke through the n pointer pixels xy on a white picture of the window's size. */
+static EaselImage *
+smooth_brush_reference (const EaselImage *like, EaselFootprint f, const int *xy, int n)
+{
+  EaselImage *img = easel_image_new (like->width, like->height, 0xFFFFFFFFu);
+  EaselStroke *st = easel_stroke_begin_smooth (img, xy[0], xy[1], 0xFF000000u, f);
+
+  for (int k = 1; k < n; k++)
+    easel_stroke_to (st, xy[2 * k], xy[2 * k + 1]);
+  easel_stroke_end (st, NULL);
+  return img;
+}
+
+/* 0039 AS-7 (REQ-0039-08, REQ-0039-09 (4)): a smooth Brush drag with the view scrolled in the middle of it, and a zoom asked for then
+   (refused while the button is held, 0036), gives the pixels of the core's stroke, as an undisturbed drag does; one Undo. */
+static void
+smooth_as7_brush_scroll_zoom (void)
+{
+  EaselWindow *win = smooth_window (2000, 1500, "brush");
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  GtkScrolledWindow *scroller = GTK_SCROLLED_WINDOW (gtk_widget_get_ancestor (GTK_WIDGET (canvas), GTK_TYPE_SCROLLED_WINDOW));
+  EaselFootprint f = { EASEL_SHAPE_CIRCLE, 7 };
+  static const int xy[6] = { 40, 40, 200, 90, 60, 160 };
+  EaselImage *want = smooth_brush_reference (img, f, xy, 3);
+  double x, y;
+
+  set_smooth (win, TRUE);
+  gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (find_mapped_by_tooltip (GTK_WIDGET (win), "Circle, 7 pixels")), TRUE);
+  g_assert_true (gtk_toggle_button_get_active (GTK_TOGGLE_BUTTON (find_mapped_by_tooltip (GTK_WIDGET (win), "Circle, 7 pixels"))));
+  canvas_point (win, 40.5, 40.5, &x, &y);
+  easel_canvas_press (canvas, 1, x, y);
+  canvas_point (win, 200.5, 90.5, &x, &y);
+  easel_canvas_motion (canvas, x, y);
+  gtk_adjustment_set_value (gtk_scrolled_window_get_vadjustment (scroller), 120);
+  gtk_adjustment_set_value (gtk_scrolled_window_get_hadjustment (scroller), 80);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-to", g_variant_new_int32 (200));
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 100);
+  canvas_point (win, 60.5, 160.5, &x, &y);
+  easel_canvas_motion (canvas, x, y);
+  easel_canvas_release (canvas, 1);
+  g_assert_cmpint (count_mixed (want), >, 50);
+  g_assert_cmpint (memcmp (img->px, want->px, sizeof (uint32_t) * 2000 * 1500), ==, 0);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_cmpint (count_color (img, 0xFFFFFFFFu), ==, 2000 * 1500);
+  g_assert_false (action_enabled (win, "undo"));
+  easel_image_free (want);
+  close_windows ();
+}
+
+/* 0039 AS-7 (REQ-0039-08, REQ-0007-18): a smooth Brush stroke whose release is lost ends with the coverage last shown, one step. */
+static void
+smooth_as7_lost_release (void)
+{
+  EaselWindow *win = smooth_window (200, 150, "brush");
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  EaselFootprint f = { EASEL_SHAPE_CIRCLE, 4 };
+  static const int xy[4] = { 20, 20, 120, 70 };
+  EaselImage *want = smooth_brush_reference (img, f, xy, 2);
+  double x, y;
+
+  set_smooth (win, TRUE);
+  g_assert_true (gtk_toggle_button_get_active (GTK_TOGGLE_BUTTON (find_mapped_by_tooltip (GTK_WIDGET (win), "Circle, 4 pixels"))));
+  canvas_point (win, 20.5, 20.5, &x, &y);
+  easel_canvas_press (canvas, 1, x, y);
+  canvas_point (win, 120.5, 70.5, &x, &y);
+  easel_canvas_motion (canvas, x, y);
+  easel_canvas_buttons_released (canvas);                                  /* the release lost */
+  g_assert_false (easel_canvas_is_stroking (canvas));
+  g_assert_cmpint (memcmp (img->px, want->px, sizeof (uint32_t) * 200 * 150), ==, 0);
+  g_assert_true (action_enabled (win, "undo"));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_cmpint (count_color (img, 0xFFFFFFFFu), ==, 200 * 150);
+  easel_image_free (want);
+  close_windows ();
+}
+
+/* The cell of the circle of 4 as rendered: its 4 x 4 footprint pixels (the middle of the drawing area's content), and the color
+   of the cell just beside them. */
+static void
+render_circle4_cell (EaselWindow *win, uint32_t out[4][4], uint32_t *beside)
+{
+  GtkWidget *cell = find_mapped_by_tooltip (GTK_WIDGET (win), "Circle, 4 pixels");
+  GtkWidget *area;
+  graphene_rect_t r;
+  g_autofree uint32_t *px = NULL;
+  int w, h, cx, cy, x0, y0;
+
+  g_assert_nonnull (cell);
+  area = gtk_widget_get_first_child (gtk_button_get_child (GTK_BUTTON (cell)));
+  if (!GTK_IS_DRAWING_AREA (area))
+    area = gtk_button_get_child (GTK_BUTTON (cell));
+  g_assert_true (GTK_IS_DRAWING_AREA (area));
+  wait_for_next_frame (win);
+  px = render_pixels (win, &w, &h, &cx, &cy);
+  g_assert_true (gtk_widget_compute_bounds (area, GTK_WIDGET (win), &r));
+  x0 = (int) r.origin.x + (gtk_widget_get_width (area) - 4) / 2;
+  y0 = (int) r.origin.y + (gtk_widget_get_height (area) - 4) / 2;
+  for (int row = 0; row < 4; row++)
+    for (int col = 0; col < 4; col++)
+      out[row][col] = px[(gsize) (y0 + row) * w + x0 + col];
+  *beside = px[(gsize) (y0 + 1) * w + x0 - 2];
+}
+
+static gboolean
+within_one (uint32_t a, uint32_t b)
+{
+  for (int sh = 0; sh < 32; sh += 8)
+    if (abs ((int) (a >> sh & 0xFF) - (int) (b >> sh & 0xFF)) > 1)
+      return FALSE;
+  return TRUE;
+}
+
+/* 0039 AS-11 (REQ-0039-11): with Smooth the circle of 4's cell shows what a click paints: each pixel the mix of the cell's background
+   and the text color by its points (81, 235, 256), within 1 a channel; with Sharp again `.##.` `####` `####` `.##.`. */
+static void
+smooth_as11_cells (void)
+{
+  EaselWindow *win = smooth_window (100, 80, "brush");
+  EaselFootprint four = { EASEL_SHAPE_CIRCLE, 4 };
+  GtkWidget *cell = find_mapped_by_tooltip (GTK_WIDGET (win), "Circle, 4 pixels");
+  uint32_t got[4][4], bg, fg;
+  GdkRGBA c;
+
+  g_assert_nonnull (cell);
+  gtk_widget_get_color (gtk_button_get_child (GTK_BUTTON (cell)), &c);
+  fg = 0xFF000000u | (uint32_t) lround (c.red * 255) << 16 | (uint32_t) lround (c.green * 255) << 8 | (uint32_t) lround (c.blue * 255);
+  set_smooth (win, TRUE);
+  render_circle4_cell (win, got, &bg);
+  g_assert_cmphex (bg >> 24, ==, 0xFF);
+  for (int row = 0; row < 4; row++)
+    for (int col = 0; col < 4; col++)
+      {
+        uint32_t want = easel_cover_mix (bg, fg, easel_cover_footprint (four, col, row), 0, 0);
+
+        if (!within_one (got[row][col], want))
+          g_test_message ("smooth cell (%d, %d): %08X, want %08X", col, row, got[row][col], want);
+        g_assert_true (within_one (got[row][col], want));
+      }
+  g_assert_false (within_one (got[0][0], bg));                             /* a corner is blended, not left out */
+  set_smooth (win, FALSE);
+  render_circle4_cell (win, got, &bg);
+  for (int row = 0; row < 4; row++)
+    for (int col = 0; col < 4; col++)
+      {
+        gboolean ink = easel_footprint_has (four, col, row);
+
+        if (!within_one (got[row][col], ink ? fg : bg))
+          g_test_message ("sharp cell (%d, %d): %08X, want %08X", col, row, got[row][col], ink ? fg : bg);
+        g_assert_true (within_one (got[row][col], ink ? fg : bg));
+      }
+  close_windows ();
+}
+
+/* 0039 AS-2 (REQ-0039-03): `smooth=true` starts with Smooth, `smooth=yes` and no key with Sharp; Preferences' switch "Smooth shapes
+   and brushes" comes after Fill style, turned on and applied writes `smooth=true` and leaves the panel's choice; turned on and
+   cancelled writes nothing; choosing Smooth in the panel writes nothing. */
+static void
+smooth_as2_preferences (void)
+{
+  static const char *const starts[][2] = { { "[drawing]\nsmooth=true\n", "1" }, { "[drawing]\nsmooth=yes\n", "0" }, { "[view]\n", "0" } };
+  EaselWindow *win;
+  AdwDialog *d;
+  GtkWidget *row, *fill, *mag;
+
+  for (guint i = 0; i < G_N_ELEMENTS (starts); i++)
+    {
+      write_settings (starts[i][0]);
+      win = start_window ();
+      wait_for_layout (win);
+      g_assert_cmpint (smooth_state (win), ==, starts[i][1][0] == '1');
+      close_windows ();
+    }
+  write_settings ("[drawing]\nsmooth=false\n");
+  win = start_window ();
+  wait_for_layout (win);
+  /* the panel's choice writes nothing */
+  set_smooth (win, TRUE);
+  g_assert_true (settings_has ("smooth=false"));
+  set_smooth (win, FALSE);
+  d = open_preferences (win);
+  row = pref_row (d, "Smooth shapes and brushes");
+  g_assert_true (ADW_IS_SWITCH_ROW (row));
+  g_assert_false (adw_switch_row_get_active (ADW_SWITCH_ROW (row)));
+  g_assert_cmpstr (adw_action_row_get_subtitle (ADW_ACTION_ROW (row)), ==, "Takes effect the next time Easel starts.");
+  fill = pref_row (d, "Fill style");
+  mag = pref_row (d, "Magnifier level");
+  g_assert_true (gtk_widget_get_parent (fill) == gtk_widget_get_parent (row));
+  g_assert_true (gtk_widget_get_next_sibling (fill) == row && gtk_widget_get_next_sibling (row) == mag);
+  /* Cancel: nothing written */
+  set_switch (d, "Smooth shapes and brushes", TRUE);
+  press_prefs (win, d, "_Cancel");
+  wait_for_no_dialog (win);
+  g_assert_true (settings_has ("smooth=false"));
+  g_assert_false (smooth_state (win));
+  /* Apply: written, the panel's choice as it was */
+  d = open_preferences (win);
+  set_switch (d, "Smooth shapes and brushes", TRUE);
+  press_prefs (win, d, "_Apply");
+  g_assert_true (settings_has ("smooth=true"));
+  g_assert_false (smooth_state (win));
+  close_preferences (win, d);
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\n");
+}
+
 int
 main (int argc, char **argv)
 {
@@ -39821,6 +40429,19 @@ main (int argc, char **argv)
   g_test_add_func ("/0038/as12_ctrl_z_with_history", br_as12_ctrl_z_with_history);
   g_test_add_func ("/0038/as12_undo_brings_press_back", br_as12_undo_brings_press_back);
   g_test_add_func ("/0038/as14_stroke_after_press", br_as14_stroke_after_press);
+  g_test_add_func ("/0039/as1_well_shared", smooth_as1_well_shared);
+  g_test_add_func ("/0039/as1_keyboard", smooth_as1_keyboard);
+  g_test_add_func ("/0039-a11y/as1_names", smooth_as1_names);
+  g_test_add_func ("/0039/as1_ignored_while_held", smooth_as1_ignored_while_held);
+  g_test_add_func ("/0039/as7_preview_is_put_down", smooth_as7_preview_is_put_down);
+  g_test_add_func ("/0039/as7_esc_and_undo", smooth_as7_esc_and_undo);
+  g_test_add_func ("/0039/as7_pending_switch", smooth_as7_pending_switch);
+  g_test_add_func ("/0039/as7_curve_hit", smooth_as7_curve_hit);
+  g_test_add_func ("/0039/as10_no_memory", smooth_as10_no_memory);
+  g_test_add_func ("/0039/as7_brush_scroll_zoom", smooth_as7_brush_scroll_zoom);
+  g_test_add_func ("/0039/as7_lost_release", smooth_as7_lost_release);
+  g_test_add_func ("/0039/as11_cells", smooth_as11_cells);
+  g_test_add_func ("/0039/as2_preferences", smooth_as2_preferences);
   g_test_add_func ("/0037/as12_second_press_undone", pc_as12_second_press_undone);
   g_test_add_func ("/0038-scale2/as4_dot_scale2", br_as4_dot_scale2);
   g_test_add_func ("/0037/as1_presses", pc_as1_presses);

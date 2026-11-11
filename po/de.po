@@ -1299,3 +1299,12 @@ msgstr "Hintergrund wird entfernt"
 
 msgid "Could Not Remove the Background"
 msgstr "Hintergrund konnte nicht entfernt werden"
+
+msgid "Sharp edges"
+msgstr "Scharfe Kanten"
+
+msgid "Smooth edges"
+msgstr "Glatte Kanten"
+
+msgid "Smooth shapes and brushes"
+msgstr "Glatte Formen und Pinsel"

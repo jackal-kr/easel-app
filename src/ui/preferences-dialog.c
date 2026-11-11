@@ -234,7 +234,7 @@ on_switch_changed (AdwSwitchRow *row, GParamSpec *pspec, Bound *b)
     b->apply (b->p);
 }
 
-static void
+static AdwSwitchRow *
 add_switch (Prefs *p, AdwPreferencesGroup *group, const char *title, bool *flag, const char *on, const char *off, const char *section, const char *key,
             Apply apply)
 {
@@ -249,6 +249,7 @@ add_switch (Prefs *p, AdwPreferencesGroup *group, const char *title, bool *flag,
   adw_switch_row_set_active (row, *flag);
   g_signal_connect_data (row, "notify::active", G_CALLBACK (on_switch_changed), b, (GClosureNotify) (void (*) (void)) g_free, 0);
   adw_preferences_group_add (group, GTK_WIDGET (row));
+  return row;
 }
 
 /* ---- what applies at once ---- */
@@ -671,6 +672,10 @@ build_drawing (Prefs *p, AdwPreferencesPage *page)
   add_choice (p, tools, _ ("Eraser mode"), mode_labels, mode_names, &p->eraser_mode, NEXT_START, "drawing", "eraser-mode", sync_eraser_mode);
   add_choice (p, tools, _ ("Line and shape width"), width_labels, width_names, &p->line_width_index, NEXT_START, "drawing", "line-width", sync_line_width);
   add_choice (p, tools, _ ("Fill style"), fill_labels, fill_names, (int *) &s->fill_style, NEXT_START, "drawing", "fill-style", NULL);
+  /* a switch where the group's other rows are choices; like them, the start-up choice (REQ-0039-03) */
+  adw_action_row_set_subtitle (ADW_ACTION_ROW (add_switch (p, tools, _ ("Smooth shapes and brushes"), &s->smooth, "true", "false", "drawing",
+                                                           "smooth", NULL)),
+                               NEXT_START);
   add_choice (p, tools, _ ("Magnifier level"), level_labels, level_names, &p->magnifier_index, NEXT_START, "drawing", "magnifier", sync_magnifier);
   add_font (p, text);
   add_number (p, text, _ ("Size"), EASEL_TEXT_SIZE_MIN, EASEL_TEXT_SIZE_MAX, &s->text_size, "pt", NULL, "text", "size", NULL);

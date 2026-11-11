@@ -1309,3 +1309,12 @@ msgstr "Удаление фона"
 
 msgid "Could Not Remove the Background"
 msgstr "Не удалось удалить фон"
+
+msgid "Sharp edges"
+msgstr "Резкие края"
+
+msgid "Smooth edges"
+msgstr "Сглаженные края"
+
+msgid "Smooth shapes and brushes"
+msgstr "Сглаженные фигуры и кисти"

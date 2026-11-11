@@ -8,6 +8,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "cover.h"
 #include "history.h"
 #include "image.h"
 
@@ -39,6 +40,7 @@ typedef struct
   const int *pts;          /* a curve: the start, the two control points and the end, as x, y pairs (8 ints); x0..y1 are unused */
   size_t n_pts;            /* the number of points in pts (4 for a curve) */
   bool closed;             /* a polygon: closed, with a last side back to the first corner */
+  bool smooth;             /* drawn by coverage (0039, REQ-0039-04), not in whole pixels */
 } EaselFigure;
 
 /* A run of pixels of one row, x0 to x1 both included: the figure's outline or, with inside set, its inside. */
@@ -74,6 +76,16 @@ void easel_figure_bounds (const EaselFigure *f, int *x, int *y, int *w, int *h);
    right part; a Line has one run, all outline, its pen included); none for a row the figure does not cover. The pixels
    are not clipped to any picture. Coordinates are limited to +-1,000,000. Returns the number of runs. */
 size_t easel_figure_row (const EaselFigure *f, int y, EaselFigureRun *runs, size_t max);
+
+/* Smooth (REQ-0039-04, REQ-0039-05): the pixels of the row y that the figure covers at all, left to right, with their points in
+   the outline and in the inside, at most max runs (easel_figure_cover_max_runs, after easel_figure_prepare). Not clipped to any
+   picture. Returns the number of runs, 0 if max is too small. */
+size_t easel_figure_cover_max_runs (const EaselFigure *f);
+size_t easel_figure_cover_row (const EaselFigure *f, int y, EaselCoverRun *runs, size_t max);
+
+/* The color a pixel of a smooth run takes over old, by the figure's style (REQ-0039-04, REQ-0039-06): the outline in draw; the
+   inside not drawn (Outline), in other (Outline and fill) or in draw (Fill). The put-down and the preview both use it. */
+uint32_t easel_figure_cover_color (const EaselFigure *f, const EaselCoverRun *run, uint32_t old, uint32_t draw, uint32_t other);
 
 typedef enum
 {

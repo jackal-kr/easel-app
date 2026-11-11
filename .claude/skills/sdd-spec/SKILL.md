@@ -38,7 +38,12 @@ Input: feature number or name from `docs/specs/INDEX.md`.
    under it, and confirmed, before any spec changes (0012/0032: a misread screencast cost a core change and eleven translations, then a revert).
    A label the feature adds to a set shown together (a menu, a row of buttons, a dialog's responses) has a mnemonic no other label of
    that set uses, in every language; the set's test checks it (0027, 0035).
-   A requirement that says "exact" bounds every quantity it computes with, and the Plan checks that range (0033).
+   A requirement that says "exact" bounds every quantity it computes with, and the Plan checks that range (0033), points the spec
+   derives (a curve's samples, their denominators) included (0039).
+   A shape made as the union of others says what happens at their ends and joins (0039: "sides as Lines, joins rounded").
+   An edge case that limits the window or a layout (a least size, what scrolls) gets a scenario, so that it gets a test (0039: 0006's
+   "the column scrolls" was never built).
+   A prototype that gives the spec's numbers is kept in `docs/reference/proto-NNNN/`, not in a temporary folder (0039: lost in a reboot).
    A drag that shapes something says which part of the shape follows the pointer (a point on it, its peak, its end), shown to JOD on a picture (0033).
    A command specified "as another does" is checked for every rule the other met only by its nature, such as being per pixel (0034).
    A feature that needs a large or optional dependency says what the app does without it; a learned model is judged on inputs whose

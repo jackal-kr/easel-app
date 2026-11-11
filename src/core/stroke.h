@@ -40,6 +40,15 @@ int easel_spray_due (int64_t held_us);
 /* Pixels per spray for a disc: 1 for 9 and 16, 3 for 24 (REQ-0006-08). */
 int easel_spray_pixels (int diameter);
 
+/* The Brush with Smooth (REQ-0039-05 (e), REQ-0039-07): the footprint's shape at (x, y) and, by easel_stroke_to, swept along the
+   straight segment to each new position; each pixel takes the mix (REQ-0039-06) of its color before the stroke and `color` by the
+   points the whole path so far covers. Same end and cancel as the others. NULL if memory runs out. */
+EaselStroke *easel_stroke_begin_smooth (EaselImage *img, int x, int y, uint32_t color, EaselFootprint f);
+
+/* Test hook: a smooth stroke may hold at most max_tiles of its 16 x 16 tiles of points from now on; the pixels of a tile it
+   cannot have are left as they are, as a pixel whose log entry cannot be had is. */
+void easel_stroke_limit_tiles (EaselStroke *s, size_t max_tiles);
+
 /* Draws the line from the previous position to (x, y). */
 void easel_stroke_to (EaselStroke *s, int x, int y);
 

@@ -1309,3 +1309,12 @@ msgstr "Usuwanie tła"
 
 msgid "Could Not Remove the Background"
 msgstr "Nie można usunąć tła"
+
+msgid "Sharp edges"
+msgstr "Ostre krawędzie"
+
+msgid "Smooth edges"
+msgstr "Wygładzone krawędzie"
+
+msgid "Smooth shapes and brushes"
+msgstr "Wygładzone kształty i pędzle"

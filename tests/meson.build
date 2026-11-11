@@ -3,7 +3,7 @@ core_wrap = {
   'stretch-skew': ['-Wl,--wrap=malloc', '-Wl,--wrap=calloc', '-Wl,--wrap=realloc'],
   'settings-edit': ['-Wl,--wrap=malloc'],
 }
-foreach name : ['cursor', 'stretch-skew', 'settings-edit', 'window-extras', 'print-layout', 'catalog', 'figure', 'figure-apply', 'figure-curve', 'figure-polygon', 'figure-step', 'curve-bend', 'black-white', 'remove-bg', 'gradient', 'selection', 'fill', 'footprint', 'format', 'jpeg-exif', 'grid', 'history', 'image', 'lasso', 'lattice', 'magnifier', 'number', 'palette', 'resize', 'settings', 'spray', 'stroke', 'rich-text', 'text-buffer', 'text-put', 'transform', 'view']
+foreach name : ['cursor', 'stretch-skew', 'settings-edit', 'window-extras', 'print-layout', 'catalog', 'figure', 'figure-apply', 'figure-curve', 'figure-polygon', 'figure-step', 'cover', 'stroke-smooth', 'curve-bend', 'black-white', 'remove-bg', 'gradient', 'selection', 'fill', 'footprint', 'format', 'jpeg-exif', 'grid', 'history', 'image', 'lasso', 'lattice', 'magnifier', 'number', 'palette', 'resize', 'settings', 'spray', 'stroke', 'rich-text', 'text-buffer', 'text-put', 'transform', 'view']
   test('core-' + name,
     executable('test-' + name, 'core/test-' + name + '.c', dependencies: easel_core_dep,
                link_args: core_wrap.get(name, [])),
@@ -50,6 +50,7 @@ ui_a11y_env.set('EASEL_TEST_DATA', meson.current_source_dir() / 'data')
 ui_a11y_env.set('EASEL_HELP_PAGE', help_page)
 ui_a11y_env.set('GDK_DEBUG', 'no-portals')
 test('ui-0022', test_window, args: ['-p', '/0022'], env: ui_a11y_env, suite: 'ui', timeout: 180, is_parallel: false)
+test('ui-0039-a11y', test_window, args: ['-p', '/0039-a11y'], env: ui_a11y_env, suite: 'ui', timeout: 120, is_parallel: false)
 
 ui_vulkan_env = environment()
 ui_vulkan_env.set('GSK_RENDERER', 'vulkan')
@@ -83,6 +84,7 @@ test('ui-0034', test_window, args: ['-p', '/0034'], env: ui_a11y_env, suite: 'ui
 test('ui-0035', test_window, args: ['-p', '/0035'], env: ui_env, suite: 'ui', timeout: 300, is_parallel: false)
 test('ui-0037', test_window, args: ['-p', '/0037'], env: ui_env, suite: 'ui', timeout: 300, is_parallel: false)
 test('ui-0038', test_window, args: ['-p', '/0038'], env: ui_env, suite: 'ui', timeout: 300, is_parallel: false)
+test('ui-0039', test_window, args: ['-p', '/0039'], env: ui_env, suite: 'ui', timeout: 300, is_parallel: false)
 test('ui-0036', test_window, args: ['-p', '/0036'], env: ui_env, suite: 'ui', timeout: 300, is_parallel: false)
 journey_uk_env = environment()
 journey_uk_env.set('GSK_RENDERER', 'cairo')
@@ -234,3 +236,4 @@ test('ui-0023-suite-in-english', test_window, args: ['-p', '/0020'], env: suite_
 
 # Remove background (spec 0035, ADR-0007): one result at 8000 x 8000 against 1 s; a benchmark, never in the suite.
 benchmark('perf-0035', executable('perf-0035', 'perf/perf-0035.c', dependencies: easel_core_dep), env: perf_env, timeout: 300)
+benchmark('perf-0039', executable('perf-0039', 'perf/perf-0039.c', dependencies: easel_ui_dep), env: perf_env, timeout: 600)

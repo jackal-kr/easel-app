@@ -161,6 +161,8 @@ void easel_canvas_set_footprint (EaselCanvas *self, EaselFootprint footprint);
 void easel_canvas_set_magnifier_level (EaselCanvas *self, int pct);
 /* The line width (1 to 5) and the fill style (0 outline, 1 outline and fill, 2 fill) of the shape tools (REQ-0010-02). */
 void easel_canvas_set_shape_options (EaselCanvas *self, int width, int style);
+/* Sharp or Smooth for the seven tools of 0039 (REQ-0039-01); a waiting curve or polygon is shown in it at once (REQ-0039-02). */
+void easel_canvas_set_smooth (EaselCanvas *self, gboolean smooth);
 void easel_canvas_set_shift (EaselCanvas *self, gboolean down);
 /* A curve or polygon is pending (0011): shown over the picture, with a stage held or waiting for the next one. */
 gboolean easel_canvas_is_pending (EaselCanvas *self);

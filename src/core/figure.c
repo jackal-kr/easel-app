@@ -153,20 +153,13 @@ on_closed_segment (const int p[8], int qx, int qy)
          && qy >= (p[1] < p[7] ? p[1] : p[7]) && qy <= (p[1] < p[7] ? p[7] : p[1]);
 }
 
-/* The 1-pixel path of the curve of REQ-0011-05, appended to an empty list. */
-static bool
-curve_path (const int pts[8], PxList *out)
+/* N of REQ-0011-05: the length of the path start, first control point, second control point, end, rounded up, at least 1. */
+static long long
+curve_steps (const int p[8])
 {
-  int p[8];
-  PxList samples = { NULL, 0, 0 }, joined = { NULL, 0, 0 };
   double len = 0;
   long long n;
-  bool ok = false;
 
-  for (int k = 0; k < 8; k++)
-    p[k] = clamp_coord (pts[k]);
-  if (on_closed_segment (p, p[2], p[3]) && on_closed_segment (p, p[4], p[5]))
-    return bres_append (out, p[0], p[1], p[6], p[7], true);
   for (int k = 0; k < 3; k++)
     {
       double dx = (double) (p[2 * k + 2] - p[2 * k]), dy = (double) (p[2 * k + 3] - p[2 * k + 1]);
@@ -174,8 +167,23 @@ curve_path (const int pts[8], PxList *out)
       len += sqrt (dx * dx + dy * dy);
     }
   n = (long long) ceil (len);
-  if (n < 1)
-    n = 1;
+  return n < 1 ? 1 : n;
+}
+
+/* The 1-pixel path of the curve of REQ-0011-05, appended to an empty list. */
+static bool
+curve_path (const int pts[8], PxList *out)
+{
+  int p[8];
+  PxList samples = { NULL, 0, 0 }, joined = { NULL, 0, 0 };
+  long long n;
+  bool ok = false;
+
+  for (int k = 0; k < 8; k++)
+    p[k] = clamp_coord (pts[k]);
+  if (on_closed_segment (p, p[2], p[3]) && on_closed_segment (p, p[4], p[5]))
+    return bres_append (out, p[0], p[1], p[6], p[7], true);
+  n = curve_steps (p);
   for (long long i = 0; i <= n; i++)
     {
       int x = curve_coord (p[0], p[2], p[4], p[6], n, i), y = curve_coord (p[1], p[3], p[5], p[7], n, i);
@@ -573,6 +581,10 @@ polygon_row (const EaselFigure *f, int y, EaselFigureRun *runs)
   return n;
 }
 
+/* Smooth Curve and Polygon, below. */
+static bool smooth_prepare (EaselFigure *f, int y_from, int y_to);
+static void smooth_free (void *rows);
+
 bool
 easel_figure_prepare (EaselFigure *f, int y_from, int y_to)
 {
@@ -580,6 +592,8 @@ easel_figure_prepare (EaselFigure *f, int y_from, int y_to)
   int reach = f->width;
 
   f->rows = NULL;
+  if (f->smooth && (f->kind == EASEL_FIGURE_POLYGON || f->kind == EASEL_FIGURE_CURVE))
+    return smooth_prepare (f, y_from, y_to);
   if (f->kind == EASEL_FIGURE_POLYGON)
     return poly_prepare (f, y_from, y_to);
   if (f->kind == EASEL_FIGURE_CURVE)
@@ -629,6 +643,12 @@ easel_figure_release (EaselFigure *f)
 {
   LineRows *r = f->rows;
 
+  if (f->smooth && (f->kind == EASEL_FIGURE_POLYGON || f->kind == EASEL_FIGURE_CURVE))
+    {
+      smooth_free (f->rows);
+      f->rows = NULL;
+      return;
+    }
   if (f->kind == EASEL_FIGURE_POLYGON)
     {
       poly_free (f->rows);
@@ -946,6 +966,417 @@ easel_figure_row (const EaselFigure *f, int y, EaselFigureRun *runs, size_t max)
   return n;
 }
 
+/* Smooth: Rectangle, Rounded Rectangle and Ellipse are the Sharp shapes on a grid 16 times finer (REQ-0039-05 (a)): a sample point
+   of pixel x is the center of the fine pixel 16 x + i, so member and extent answer for points when the box, the radius and the
+   inset are all times 16. At most 3 spans a sample row. */
+enum { BOX_SPANS = 16 * 3 };
+
+static Box
+times16 (Box b)
+{
+  return (Box) { 16 * b.x, 16 * b.y, 16 * b.w, 16 * b.h, 16 * b.r };
+}
+
+static size_t
+box_spans (const EaselFigure *f, int y, EaselCoverSpan *spans)
+{
+  Box outer = outer_box (f), inner;
+  size_t n = 0;
+
+  inner = (Box) { outer.x + f->width, outer.y + f->width, outer.w - 2 * f->width, outer.h - 2 * f->width,
+                  outer.r > f->width ? outer.r - f->width : 0 };
+  outer = times16 (outer);
+  inner = times16 (inner);
+  for (int j = 0; j < 16; j++)
+    {
+      int sy = 16 * y + j, xa, xb, ia, ib;
+
+      if (!extent (f->kind, &outer, sy, &xa, &xb))
+        continue;
+      if (!extent (f->kind, &inner, sy, &ia, &ib))
+        {
+          spans[n++] = (EaselCoverSpan) { xa, xb, 0 };
+          continue;
+        }
+      if (ia > xa)
+        spans[n++] = (EaselCoverSpan) { xa, ia - 1, 0 };
+      spans[n++] = (EaselCoverSpan) { ia, ib, 1 };
+      if (ib < xb)
+        spans[n++] = (EaselCoverSpan) { ib + 1, xb, 0 };
+    }
+  return n;
+}
+
+/* A Line (REQ-0039-05 (b)): one band with its square ends between the centers of its end pixels, moved by 1/2 for an even width. */
+static size_t
+line_spans (const EaselFigure *f, int y, EaselCoverSpan *spans)
+{
+  int64_t sh = f->width % 2 == 0 ? 16 : 0, h = 16 * (int64_t) f->width;
+  int64_t ax = 32 * (int64_t) clamp_coord (f->x0) + 16 + sh, ay = 32 * (int64_t) clamp_coord (f->y0) + 16 + sh;
+  int64_t bx = 32 * (int64_t) clamp_coord (f->x1) + 16 + sh, by = 32 * (int64_t) clamp_coord (f->y1) + 16 + sh;
+  size_t n = 0;
+
+  for (int j = 0; j < 16; j++)
+    if (easel_cover_band (ax, ay, bx, by, h, true, true, 32 * (int64_t) y + 2 * j + 1, &spans[n].a, &spans[n].b))
+      spans[n++].part = 0;
+  return n;
+}
+
+/* Smooth Curve and Polygon (REQ-0039-05 (c), (d)): their outline is made of pieces, in 1/32 pixel: a band along each piece of the
+   path (square ends only at an open path's two ends) and a disk at each join; a closed polygon's region comes from its corners
+   at pixel centers. The pieces are listed per picture row at prepare, so a row costs its own pieces. */
+typedef struct
+{
+  int64_t ax, ay, bx, by;
+  bool disk, end_a, end_b;
+} Piece;
+
+typedef struct
+{
+  Piece *pc;
+  size_t n_pc;
+  int first_row, n_rows;
+  size_t *start;           /* n_rows + 1: where a row's pieces begin in idx */
+  uint32_t *idx;
+  int64_t *corner;         /* a closed polygon with 3 distinct corners or more: its corners (x, y) at pixel centers; else NULL */
+  size_t n_corners;
+  size_t max_spans;        /* the most spans a picture row can give */
+  EaselCoverSpan *spans;   /* the work of one row */
+  EaselCoverEvent *ev;
+  int64_t *iv;             /* a sample row's intervals (a, b pairs), then its crossings (num, den pairs) */
+} Smooth;
+
+static void
+smooth_free (void *rows)
+{
+  Smooth *m = rows;
+
+  if (m == NULL)
+    return;
+  free (m->pc);
+  free (m->start);
+  free (m->idx);
+  free (m->corner);
+  free (m->spans);
+  free (m->ev);
+  free (m->iv);
+  free (m);
+}
+
+/* The coordinate, in 1/32 pixel, of the curve's point at i / n (REQ-0011-05) at pixel centers, taken to the nearest 1/32, a half
+   up (REQ-0039-05 (c)); shifted by the limit so that nothing is negative, as curve_coord. */
+static int64_t
+curve_coord32 (int p0, int p1, int p2, int p3, long long n, long long i)
+{
+  unsigned __int128 d = (unsigned __int128) n * n * n, u = (unsigned __int128) (n - i), t = (unsigned __int128) i;
+  unsigned __int128 num = u * u * u * (unsigned) (p0 + COORD_LIMIT) + 3 * u * u * t * (unsigned) (p1 + COORD_LIMIT)
+                          + 3 * u * t * t * (unsigned) (p2 + COORD_LIMIT) + t * t * t * (unsigned) (p3 + COORD_LIMIT);
+
+  return (int64_t) ((num * 64 + d) / (2 * d)) - 32 * (int64_t) COORD_LIMIT + 16;
+}
+
+static bool
+add_point (int64_t **v, size_t *n, size_t *cap, int64_t x, int64_t y)
+{
+  if (*n > 0 && (*v)[2 * *n - 2] == x && (*v)[2 * *n - 1] == y)
+    return true;                                                         /* a repeat counts once */
+  if (*n == *cap)
+    {
+      size_t c = *cap ? 2 * *cap : 64;
+      int64_t *nv = c > SIZE_MAX / (2 * sizeof *nv) ? NULL : realloc (*v, 2 * c * sizeof *nv);
+
+      if (nv == NULL)
+        return false;
+      *v = nv;
+      *cap = c;
+    }
+  (*v)[2 * *n] = x;
+  (*v)[2 * *n + 1] = y;
+  ++*n;
+  return true;
+}
+
+/* The path's points, in 1/32 pixel, at pixel centers moved by sh: a curve's N + 1 points (or the ends of its Line), a polygon's
+   corners; repeats dropped, and a closed polygon's last corner when it is its first. */
+static bool
+smooth_points (const EaselFigure *f, int64_t sh, int64_t **v, size_t *n)
+{
+  size_t cap = 0;
+
+  *v = NULL;
+  *n = 0;
+  if (f->kind == EASEL_FIGURE_CURVE)
+    {
+      int p[8];
+      long long steps;
+
+      for (int k = 0; k < 8; k++)
+        p[k] = clamp_coord (f->pts[k]);
+      if (on_closed_segment (p, p[2], p[3]) && on_closed_segment (p, p[4], p[5]))
+        return add_point (v, n, &cap, 32 * (int64_t) p[0] + 16 + sh, 32 * (int64_t) p[1] + 16 + sh)
+               && add_point (v, n, &cap, 32 * (int64_t) p[6] + 16 + sh, 32 * (int64_t) p[7] + 16 + sh);
+      steps = curve_steps (p);
+      for (long long i = 0; i <= steps; i++)
+        if (!add_point (v, n, &cap, curve_coord32 (p[0], p[2], p[4], p[6], steps, i) + sh,
+                        curve_coord32 (p[1], p[3], p[5], p[7], steps, i) + sh))
+          return false;
+      return true;
+    }
+  for (size_t k = 0; k < f->n_pts; k++)
+    if (!add_point (v, n, &cap, 32 * (int64_t) clamp_coord (f->pts[2 * k]) + 16 + sh,
+                    32 * (int64_t) clamp_coord (f->pts[2 * k + 1]) + 16 + sh))
+      return false;
+  if (f->closed && *n > 1 && (*v)[0] == (*v)[2 * *n - 2] && (*v)[1] == (*v)[2 * *n - 1])
+    --*n;
+  return true;
+}
+
+/* The picture rows a piece can touch: its points' rows and h (2 h for a square end's corner) around them. */
+static void
+piece_rows (const Piece *p, int64_t h, int64_t *r0, int64_t *r1)
+{
+  int64_t lo = p->ay < p->by ? p->ay : p->by, hi = p->ay < p->by ? p->by : p->ay, reach = p->disk ? h : 2 * h;
+
+  *r0 = (lo - reach) >= 0 ? (lo - reach) / 32 : -((-(lo - reach) + 31) / 32);
+  *r1 = (hi + reach) >= 0 ? (hi + reach) / 32 : -((-(hi + reach) + 31) / 32);
+}
+
+static bool
+smooth_prepare (EaselFigure *f, int y_from, int y_to)
+{
+  Smooth *m = calloc (1, sizeof *m);
+  int64_t sh = f->width % 2 == 0 ? 16 : 0, h = 16 * (int64_t) f->width, *v = NULL;
+  size_t n = 0, sides, most = 0;
+  bool closed = f->kind == EASEL_FIGURE_POLYGON && f->closed;
+
+  if (m == NULL || f->pts == NULL || (f->kind == EASEL_FIGURE_CURVE && f->n_pts < 4) || !smooth_points (f, sh, &v, &n))
+    goto fail;
+  /* the pieces: none without a corner (a pending polygon is shown before its first, 0039 Check F2), one square for a lone
+     point, else the bands of the sides and the disks of the joins */
+  sides = n == 0 ? 0 : n == 1 ? 1 : closed ? n : n - 1;
+  m->pc = calloc (sides + n + 1, sizeof *m->pc);
+  if (m->pc == NULL)
+    goto fail;
+  if (n == 0)
+    ;
+  else if (n == 1)
+    m->pc[m->n_pc++] = (Piece) { v[0], v[1], v[0], v[1], false, true, true };
+  else
+    for (size_t k = 0; k < sides; k++)
+      m->pc[m->n_pc++] = (Piece) { v[2 * k], v[2 * k + 1], v[2 * ((k + 1) % n)], v[2 * ((k + 1) % n) + 1], false,
+                                   !closed && k == 0, !closed && k == sides - 1 };
+  if (n > 1)
+    for (size_t k = closed ? 0 : 1; k < (closed ? n : n - 1); k++)
+      m->pc[m->n_pc++] = (Piece) { v[2 * k], v[2 * k + 1], v[2 * k], v[2 * k + 1], true, false, false };
+  /* the region: the corners at centers, if 3 or more are distinct */
+  if (closed && n >= 3)
+    {
+      size_t distinct = 0;
+
+      for (size_t a = 0; a < n && distinct < 3; a++)
+        {
+          bool seen = false;
+
+          for (size_t b = 0; b < a; b++)
+            seen |= v[2 * a] == v[2 * b] && v[2 * a + 1] == v[2 * b + 1];
+          distinct += !seen;
+        }
+      if (distinct >= 3)
+        {
+          m->corner = malloc (2 * n * sizeof *m->corner);
+          if (m->corner == NULL)
+            goto fail;
+          for (size_t k = 0; k < 2 * n; k++)
+            m->corner[k] = v[k] - sh;
+          m->n_corners = n;
+        }
+    }
+  /* the pieces of each row from y_from to y_to */
+  m->first_row = y_from;
+  m->n_rows = y_to >= y_from ? y_to - y_from + 1 : 0;
+  m->start = calloc ((size_t) m->n_rows + 1, sizeof *m->start);
+  if (m->start == NULL)
+    goto fail;
+  for (int pass = 0; pass < 2; pass++)
+    {
+      for (size_t k = 0; k < m->n_pc; k++)
+        {
+          int64_t r0, r1;
+
+          piece_rows (&m->pc[k], h, &r0, &r1);
+          r0 = r0 < y_from ? y_from : r0;
+          r1 = r1 > y_to ? y_to : r1;
+          for (int64_t r = r0; r <= r1; r++)
+            {
+              if (pass == 0)
+                m->start[r - y_from + 1]++;
+              else
+                m->idx[m->start[r - y_from]++] = (uint32_t) k;
+            }
+        }
+      if (pass == 0)
+        {
+          for (int r = 0; r < m->n_rows; r++)
+            {
+              most = m->start[r + 1] > most ? m->start[r + 1] : most;
+              m->start[r + 1] += m->start[r];
+            }
+          m->idx = malloc ((m->start[m->n_rows] + 1) * sizeof *m->idx);
+          if (m->idx == NULL)
+            goto fail;
+        }
+      else
+        for (int r = m->n_rows; r > 0; r--)
+          m->start[r] = m->start[r - 1];
+    }
+  if (m->n_rows > 0)
+    m->start[0] = 0;
+  /* a sample row: up to `most` outline intervals, and the region's (crossings / 2 + 1) cut by them */
+  m->max_spans = 16 * (2 * most + m->n_corners + 2);
+  m->spans = malloc (m->max_spans * sizeof *m->spans);
+  m->ev = malloc (2 * m->max_spans * sizeof *m->ev);
+  m->iv = malloc (2 * (most + m->n_corners + 1) * sizeof *m->iv);
+  if (m->spans == NULL || m->ev == NULL || m->iv == NULL)
+    goto fail;
+  free (v);
+  f->rows = m;
+  return true;
+fail:
+  free (v);
+  smooth_free (m);
+  return false;
+}
+
+static int
+cmp_pair (const void *a, const void *b)
+{
+  const int64_t *p = a, *q = b;
+
+  return p[0] < q[0] ? -1 : p[0] > q[0];
+}
+
+/* Crossings num / den (den > 0) in increasing order: compared exactly. */
+static int
+cmp_crossing (const void *a, const void *b)
+{
+  const int64_t *p = a, *q = b;
+  __int128 l = (__int128) p[0] * q[1], r = (__int128) q[0] * p[1];
+
+  return l < r ? -1 : l > r;
+}
+
+static int64_t
+floor_div64 (int64_t v, int64_t d)
+{
+  return v >= 0 ? v / d : -((-v + d - 1) / d);
+}
+
+/* The spans of one picture row of a smooth curve or polygon. */
+static size_t
+smooth_spans (const EaselFigure *f, int y)
+{
+  Smooth *m = f->rows;
+  int64_t h = 16 * (int64_t) f->width, k = (int64_t) y - m->first_row;
+  size_t n = 0;
+
+  if (k < 0 || k >= m->n_rows)
+    return 0;
+  for (int j = 0; j < 16; j++)
+    {
+      int64_t q = 32 * (int64_t) y + 2 * j + 1, *iv = m->iv;
+      size_t ni = 0, no, first = n;
+
+      for (size_t e = m->start[k]; e < m->start[k + 1]; e++)
+        {
+          const Piece *p = &m->pc[m->idx[e]];
+          bool hit = p->disk ? easel_cover_disk (p->ax, p->ay, h, q, &iv[2 * ni], &iv[2 * ni + 1])
+                             : easel_cover_band (p->ax, p->ay, p->bx, p->by, h, p->end_a, p->end_b, q, &iv[2 * ni], &iv[2 * ni + 1]);
+
+          ni += hit;
+        }
+      /* the outline: the union of its pieces (REQ-0039-07) */
+      qsort (iv, ni, 2 * sizeof *iv, cmp_pair);
+      for (size_t e = 0; e < ni; e++)
+        if (n > first && iv[2 * e] <= m->spans[n - 1].b + 1)
+          m->spans[n - 1].b = iv[2 * e + 1] > m->spans[n - 1].b ? iv[2 * e + 1] : m->spans[n - 1].b;
+        else
+          m->spans[n++] = (EaselCoverSpan) { iv[2 * e], iv[2 * e + 1], 0 };
+      no = n;
+      if (m->corner == NULL)
+        continue;
+      /* the region by the alternate rule, less the outline */
+      ni = 0;
+      for (size_t c = 0; c < m->n_corners; c++)
+        {
+          const int64_t *a = &m->corner[2 * c], *b = &m->corner[2 * ((c + 1) % m->n_corners)];
+
+          if ((a[1] < q) != (b[1] < q))
+            {
+              int64_t num = a[0] * (b[1] - a[1]) + (q - a[1]) * (b[0] - a[0]), den = b[1] - a[1];
+
+              if (den < 0)
+                num = -num, den = -den;
+              iv[2 * ni] = num;
+              iv[2 * ni + 1] = den;
+              ni++;
+            }
+        }
+      qsort (iv, ni, 2 * sizeof *iv, cmp_crossing);
+      for (size_t c = 0; c + 1 < ni; c += 2)
+        {
+          /* the columns strictly between the two crossings: P = 2 c + 1 > X1 and < X2 */
+          int64_t f1 = floor_div64 (iv[2 * c], iv[2 * c + 1]), c2 = -floor_div64 (-iv[2 * c + 2], iv[2 * c + 3]);
+          int64_t lo = -floor_div64 (-f1, 2), hi = floor_div64 (c2 - 2, 2);
+          size_t o = first;
+
+          while (lo <= hi)
+            {
+              while (o < no && m->spans[o].b < lo)
+                o++;
+              if (o == no || m->spans[o].a > hi)
+                {
+                  m->spans[n++] = (EaselCoverSpan) { lo, hi, 1 };
+                  break;
+                }
+              if (m->spans[o].a > lo)
+                m->spans[n++] = (EaselCoverSpan) { lo, m->spans[o].a - 1, 1 };
+              lo = m->spans[o].b + 1;
+            }
+        }
+    }
+  return n;
+}
+
+size_t
+easel_figure_cover_max_runs (const EaselFigure *f)
+{
+  if (f->kind == EASEL_FIGURE_CURVE || f->kind == EASEL_FIGURE_POLYGON)
+    return f->rows != NULL ? 2 * ((const Smooth *) f->rows)->max_spans + 1 : 1;
+  return 2 * BOX_SPANS + 1;
+}
+
+size_t
+easel_figure_cover_row (const EaselFigure *f, int y, EaselCoverRun *runs, size_t max)
+{
+  EaselCoverSpan spans[BOX_SPANS];
+  EaselCoverEvent ev[2 * BOX_SPANS];
+  size_t n;
+
+  if (max < easel_figure_cover_max_runs (f) || y < -COORD_LIMIT || y > COORD_LIMIT)
+    return 0;
+  if (f->kind == EASEL_FIGURE_CURVE || f->kind == EASEL_FIGURE_POLYGON)
+    {
+      Smooth *m = f->rows;
+
+      if (m == NULL || !f->smooth)
+        return 0;
+      n = smooth_spans (f, y);
+      return easel_cover_count (m->spans, n, m->ev, runs, max);
+    }
+  n = f->kind == EASEL_FIGURE_LINE ? line_spans (f, y, spans) : box_spans (f, y, spans);
+  return easel_cover_count (spans, n, ev, runs, max);
+}
+
 /* Sets the pixels x_from to x_to of the row y (inside the picture) to color, logging each one that changes. */
 static bool
 paint_run (EaselImage *img, EaselChangeLog *l, int y, int x_from, int x_to, uint32_t color)
@@ -960,6 +1391,62 @@ paint_run (EaselImage *img, EaselChangeLog *l, int y, int x_from, int x_to, uint
   return true;
 }
 
+/* The Sharp put-down: each run in its part's color. False if the log or the run buffer cannot be had. */
+static bool
+sharp_apply (EaselImage *img, EaselChangeLog *l, const EaselFigure *f, int y_from, int y_to, uint32_t draw, uint32_t other)
+{
+  size_t max_runs = easel_figure_max_runs (f);
+  EaselFigureRun *runs = malloc (max_runs * sizeof *runs);
+  bool ok = runs != NULL;
+
+  for (int y = y_from; ok && y <= y_to; y++)
+    {
+      size_t n = easel_figure_row (f, y, runs, max_runs);
+
+      for (size_t i = 0; ok && i < n; i++)
+        {
+          if (!runs[i].inside)
+            ok = paint_run (img, l, y, runs[i].x0, runs[i].x1, draw);
+          else if (f->style == EASEL_FIGURE_OUTLINE_AND_FILL)
+            ok = paint_run (img, l, y, runs[i].x0, runs[i].x1, other);
+          else if (f->style == EASEL_FIGURE_FILL_ONLY)
+            ok = paint_run (img, l, y, runs[i].x0, runs[i].x1, draw);
+        }
+    }
+  free (runs);
+  return ok;
+}
+
+uint32_t
+easel_figure_cover_color (const EaselFigure *f, const EaselCoverRun *run, uint32_t old, uint32_t draw, uint32_t other)
+{
+  if (f->style == EASEL_FIGURE_OUTLINE)
+    return easel_cover_mix (old, draw, run->out, 0, 0);
+  if (f->style == EASEL_FIGURE_FILL_ONLY)
+    return easel_cover_mix (old, draw, (unsigned) run->out + run->in, 0, 0);
+  return easel_cover_mix (old, draw, run->out, other, run->in);
+}
+
+/* The Smooth put-down (REQ-0039-04): each covered pixel mixed from its old color by easel_figure_cover_color. */
+static bool
+cover_apply (EaselImage *img, EaselChangeLog *l, const EaselFigure *f, int y_from, int y_to, uint32_t draw, uint32_t other)
+{
+  size_t max_runs = easel_figure_cover_max_runs (f);
+  EaselCoverRun *runs = malloc (max_runs * sizeof *runs);
+  bool ok = runs != NULL;
+
+  for (int y = y_from; ok && y <= y_to; y++)
+    {
+      size_t n = easel_figure_cover_row (f, y, runs, max_runs);
+
+      for (size_t i = 0; ok && i < n; i++)
+        for (int x = runs[i].x0 < 0 ? 0 : runs[i].x0; ok && x <= runs[i].x1 && x < img->width; x++)
+          ok = easel_change_log_set (l, img, x, y, easel_figure_cover_color (f, &runs[i], easel_image_get (img, x, y), draw, other));
+    }
+  free (runs);
+  return ok;
+}
+
 EaselFigureResult
 easel_figure_apply_capped (EaselImage *img, EaselHistory *history, const EaselFigure *figure, uint32_t draw,
                            uint32_t other, size_t *changed, size_t max_bytes)
@@ -967,9 +1454,7 @@ easel_figure_apply_capped (EaselImage *img, EaselHistory *history, const EaselFi
   EaselFigure f = *figure;
   EaselChangeLog l;
   int y_from = 0, y_to = img->height - 1;
-  size_t max_runs;
-  EaselFigureRun *runs;
-  bool ok = true;
+  bool ok;
 
   if (changed != NULL)
     *changed = 0;
@@ -1009,29 +1494,8 @@ easel_figure_apply_capped (EaselImage *img, EaselHistory *history, const EaselFi
     return EASEL_FIGURE_NOTHING;
   if (!easel_figure_prepare (&f, y_from, y_to))
     return EASEL_FIGURE_NO_MEMORY;
-  max_runs = easel_figure_max_runs (&f);
-  runs = malloc (max_runs * sizeof *runs);
-  if (runs == NULL)
-    {
-      easel_figure_release (&f);
-      return EASEL_FIGURE_NO_MEMORY;
-    }
-  for (int y = y_from; ok && y <= y_to; y++)
-    {
-      size_t n = easel_figure_row (&f, y, runs, max_runs);
-
-      for (size_t i = 0; ok && i < n; i++)
-        {
-          if (!runs[i].inside)
-            ok = paint_run (img, &l, y, runs[i].x0, runs[i].x1, draw);
-          else if (f.style == EASEL_FIGURE_OUTLINE_AND_FILL)
-            ok = paint_run (img, &l, y, runs[i].x0, runs[i].x1, other);
-          else if (f.style == EASEL_FIGURE_FILL_ONLY)
-            ok = paint_run (img, &l, y, runs[i].x0, runs[i].x1, draw);
-        }
-    }
+  ok = f.smooth ? cover_apply (img, &l, &f, y_from, y_to, draw, other) : sharp_apply (img, &l, &f, y_from, y_to, draw, other);
   easel_figure_release (&f);
-  free (runs);
   if (!ok)
     {
       easel_change_log_restore (&l, img);

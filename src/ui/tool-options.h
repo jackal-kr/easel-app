@@ -46,6 +46,8 @@ int easel_tool_options_size_index (EaselToolOptions *self, EaselTool tool, int l
 
 /* Gradient's chosen type, Linear at each start and kept for the session (REQ-0032-01, -03). */
 EaselGradientType easel_tool_options_get_gradient_type (EaselToolOptions *self);
+/* Sharp or Smooth (0039): the Brush's cells show each footprint as a click paints it then (REQ-0039-11). */
+void easel_tool_options_set_smooth (EaselToolOptions *self, gboolean smooth);
 /* While a stroke is in progress, choosing a preset is ignored (REQ-0006-03). */
 void easel_tool_options_set_busy (EaselToolOptions *self, gboolean busy);
 

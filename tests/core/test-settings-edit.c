@@ -142,7 +142,7 @@ as13_new_keys_and_defaults (void)
   /* A created file holds them, with their defaults, and reads back the same. */
   CHECK (strstr (easel_settings_default_text, "style=system\n") != NULL);
   CHECK (strstr (easel_settings_default_text, "tint=12\n") != NULL);
-  CHECK (strstr (easel_settings_default_text, "[drawing]\nbrush=circle-4\nairbrush=16\neraser=8\neraser-mode=opaque\nline-width=1\nfill-style=outline\nmagnifier=2\n") != NULL);
+  CHECK (strstr (easel_settings_default_text, "[drawing]\nbrush=circle-4\nairbrush=16\neraser=8\neraser-mode=opaque\nline-width=1\nfill-style=outline\nsmooth=false\nmagnifier=2\n") != NULL);
   easel_settings_parse (easel_settings_default_text, strlen (easel_settings_default_text), &s);
   CHECK (s.brush == 1 && s.airbrush == 1 && s.eraser == 2 && s.magnifier == 2);
 }

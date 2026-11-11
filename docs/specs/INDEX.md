@@ -43,7 +43,7 @@ Vertical slices first (a thin end-to-end feature), breadth later.
 | 0036 | wheel-zoom | Ctrl+wheel and the pinch zoom with every tool as in Pan, not while anything is held | Phase 2 row; JOD, 2026-11-09: the status bar slider was built and dropped ("too much"), the wheel zoom kept; implemented 2026-11-11 |
 | 0037 | remove-background-pieces | In Remove Background's card a click on a piece of the preview toggles it kept or removed (the eagle's cloud islands, a horizon's bands); segments of the border prototyped and left out | Phase 2, item F of `docs/phase2-plan.md`; JOD, 2026-11-10; implemented 2026-11-10 |
 | 0038 | remove-background-brushes | In Remove Background's card two brushes, Keep this and Remove this: strokes become the method's seeds, so a subject the border misleads (a selfie's shirt on the bottom edge) is kept by a few strokes | Phase 2, item G of `docs/phase2-plan.md`; JOD, 2026-11-10; implemented 2026-11-10 |
-| 0039 | smooth-shapes-brushes | Two cells, Sharp and Smooth, shared by Line, Curve, the shapes and Brush: edges mixed by coverage of 16 x 16 points a pixel, each pixel once a figure; the default in Preferences, off | Phase 2, from the Phase 2 list; JOD, 2026-11-10 (accepted) |
+| 0039 | smooth-shapes-brushes | Two cells, Sharp and Smooth, shared by Line, Curve, the shapes and Brush: edges mixed by coverage of 16 x 16 points a pixel, each pixel once a figure; the default in Preferences, off | Phase 2, from the Phase 2 list; JOD, 2026-11-10; implemented 2026-11-11 (the toolbox's column now scrolls in a short window, 0006's edge case) |
 
 ### Phase 2: Modern extras (optional, starts only after the core XP scope is delivered)
 | Feature | One line |

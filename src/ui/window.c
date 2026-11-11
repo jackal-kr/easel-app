@@ -2453,6 +2453,20 @@ fill_style_changed (GSimpleAction *action, GVariant *value, gpointer user_data)
     }
 }
 
+/* Sharp or Smooth (REQ-0039-01, -02): one state for the seven tools, ignored while a button is held, as the width is. */
+static void
+smooth_changed (GSimpleAction *action, GVariant *value, gpointer user_data)
+{
+  EaselWindow *self = user_data;
+
+  if (easel_canvas_is_stroking (self->canvas))
+    return;
+  g_simple_action_set_state (action, value);
+  easel_canvas_set_smooth (self->canvas, g_variant_get_boolean (value));
+  if (self->tool_options != NULL)                     /* the start-up state comes before the panel is made */
+    easel_tool_options_set_smooth (self->tool_options, g_variant_get_boolean (value));
+}
+
 /* View > Zoom (REQ-0008-04): a preset, through the same path as the other zoom commands, which keeps the center still. */
 static void
 zoom_to_activated (GSimpleAction *action, GVariant *parameter, gpointer user_data)
@@ -6201,6 +6215,7 @@ static const GActionEntry win_actions[] = {
   { .name = "magnifier-level", .parameter_type = "i", .state = "200", .change_state = magnifier_level_changed },
   { .name = "line-width", .parameter_type = "i", .state = "1", .change_state = line_width_changed },
   { .name = "fill-style", .parameter_type = "i", .state = "0", .change_state = fill_style_changed },
+  { .name = "smooth", .parameter_type = "b", .state = "false", .change_state = smooth_changed },
   { .name = "grid", .state = "false", .change_state = grid_state_changed },
   { .name = "thumbnail", .state = "false", .change_state = thumbnail_state_changed },
   { .name = "grid-dialog", .activate = grid_dialog_activated },
@@ -6518,6 +6533,7 @@ easel_window_init (EaselWindow *self)
   add_zoom_submenu (self);
   g_action_group_change_action_state (G_ACTION_GROUP (self), "line-width", g_variant_new_int32 (self->settings.line_width));
   g_action_group_change_action_state (G_ACTION_GROUP (self), "fill-style", g_variant_new_int32 ((int) self->settings.fill_style));
+  g_action_group_change_action_state (G_ACTION_GROUP (self), "smooth", g_variant_new_boolean (self->settings.smooth));
   g_action_group_change_action_state (G_ACTION_GROUP (self), "magnifier-level", g_variant_new_int32 (self->settings.magnifier * 100));
   gtk_popover_menu_add_child (GTK_POPOVER_MENU (gtk_menu_button_get_popover (self->view_button)), make_zoom_row (self),
                               "zoom");
@@ -6575,9 +6591,10 @@ easel_window_init (EaselWindow *self)
   /* The options panel sits below the tool buttons and shows only for the tools that have options. */
   self->tool_options = easel_tool_options_new ();
   easel_tool_options_set_start (self->tool_options, self->settings.brush, self->settings.airbrush, self->settings.eraser, self->settings.eraser_transparent);
+  easel_tool_options_set_smooth (self->tool_options, self->settings.smooth);
   {
     /* The panel asks for no width beyond its least: a long name wraps in the width the toolbox has instead of
-       widening it (REQ-0030-10). Nothing scrolls. */
+       widening it (REQ-0030-10). It does not scroll itself: the column it is in does (below). */
     GtkWidget *holder = gtk_scrolled_window_new ();
 
     gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW (holder), GTK_POLICY_NEVER, GTK_POLICY_NEVER);
@@ -6591,6 +6608,22 @@ easel_window_init (EaselWindow *self)
   gtk_widget_set_hexpand (self->toolbox_panel, FALSE);
   gtk_widget_set_halign (GTK_WIDGET (self->tool_options), GTK_ALIGN_CENTER);
   gtk_widget_set_hexpand (self->tools_column, TRUE);             /* a wider toolbox: the column fills it, its line at the right */
+  {
+    /* The column of the tool buttons and the options scrolls in a window too short for both, so that the window's minimum
+       height is the same for every tool (0006's edge case; JOD, 2026-11-11, when 0039's well made the shapes' panel taller
+       still; 0039 Check F1: the options alone had no room left to scroll in). */
+    GtkWidget *column_scroller = gtk_scrolled_window_new ();
+
+    gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW (column_scroller), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
+    gtk_scrolled_window_set_propagate_natural_width (GTK_SCROLLED_WINDOW (column_scroller), TRUE);
+    gtk_scrolled_window_set_propagate_natural_height (GTK_SCROLLED_WINDOW (column_scroller), TRUE);
+    gtk_widget_set_hexpand (column_scroller, TRUE);
+    g_object_ref (self->tools_column);
+    gtk_box_remove (GTK_BOX (self->toolbox_panel), self->tools_column);
+    gtk_scrolled_window_set_child (GTK_SCROLLED_WINDOW (column_scroller), self->tools_column);
+    g_object_unref (self->tools_column);
+    gtk_box_prepend (GTK_BOX (self->toolbox_panel), column_scroller);
+  }
   make_toolbox_edge (self);
   self->toolbox_kept = self->settings.toolbox_width;
   apply_toolbox_width (self);

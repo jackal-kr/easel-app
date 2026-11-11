@@ -102,6 +102,11 @@ Order suggestion: A and B first, C after the graphics path audit, D with file in
 - One finger on a touch screen may pan the view by the scrolled window's kinetic scrolling (REQ-0036-03 says no pan): to try on a
   touch screen (F6, M2 not run).
 
+## From 0039's check (2026-11-11)
+- A smooth Brush stroke holds 36 bytes per touched pixel while drawn (about 2.3 GB for one over all of 8000 x 8000); a leaner store
+  (a count once a pixel is whole) if it is ever seen.
+- With "Always show scrollbars", the toolbox column's scrollbar may widen the toolbox in a short window: a manual look.
+
 ## From the mutation list
 - REQ-0017-14, the popover's scroll guard: survives on GTK 4.24, accepted (JOD, 2026-11-02). Re-decide at packaging-release, when the minimum GTK is chosen.
 

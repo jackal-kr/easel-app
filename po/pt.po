@@ -1299,3 +1299,12 @@ msgstr "A remover o fundo"
 
 msgid "Could Not Remove the Background"
 msgstr "Não foi possível remover o fundo"
+
+msgid "Sharp edges"
+msgstr "Bordas nítidas"
+
+msgid "Smooth edges"
+msgstr "Bordas suaves"
+
+msgid "Smooth shapes and brushes"
+msgstr "Formas e pincéis suaves"

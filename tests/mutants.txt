@@ -1866,9 +1866,9 @@ test: core-figure
 file: src/core/figure.c
 test: core-figure-apply
 --- find
-      size_t n = easel_figure_row (&f, y, runs, max_runs);
+      size_t n = easel_figure_row (f, y, runs, max_runs);
 --- replace
-      size_t n = easel_figure_row (&f, y, runs, 1);
+      size_t n = easel_figure_row (f, y, runs, 1);
 
 === REQ-0011-09 the preview gives a row a run buffer of one
 file: src/ui/canvas.c
@@ -2001,11 +2001,9 @@ test: ui-0011
 file: src/ui/canvas.c
 test: ui-0011
 --- find
-    return (EaselFigure) { EASEL_FIGURE_POLYGON, 0, 0, 0, 0, self->shape_width, self->shape_style, NULL, self->poly, self->poly_n,
-                           FALSE };
+    f = (EaselFigure) { EASEL_FIGURE_POLYGON, 0, 0, 0, 0, self->shape_width, self->shape_style, NULL, self->poly, self->poly_n, FALSE };
 --- replace
-    return (EaselFigure) { EASEL_FIGURE_POLYGON, 0, 0, 0, 0, self->shape_width, self->shape_style, NULL, self->poly, self->poly_n,
-                           TRUE };
+    f = (EaselFigure) { EASEL_FIGURE_POLYGON, 0, 0, 0, 0, self->shape_width, self->shape_style, NULL, self->poly, self->poly_n, TRUE };
 
 === REQ-0011-06 the corner of a held side stays where it was pressed
 file: src/ui/canvas.c
@@ -2254,9 +2252,9 @@ test: ui-0011
 file: src/ui/canvas.c
 test: ui-0011
 --- find
-    return (EaselFigure) { EASEL_FIGURE_POLYGON, 0, 0, 0, 0, self->shape_width, self->shape_style, NULL, self->poly, self->poly_n,
+    f = (EaselFigure) { EASEL_FIGURE_POLYGON, 0, 0, 0, 0, self->shape_width, self->shape_style, NULL, self->poly, self->poly_n, FALSE };
 --- replace
-    return (EaselFigure) { EASEL_FIGURE_POLYGON, 0, 0, 0, 0, 1, self->shape_style, NULL, self->poly, self->poly_n,
+    f = (EaselFigure) { EASEL_FIGURE_POLYGON, 0, 0, 0, 0, 1, self->shape_style, NULL, self->poly, self->poly_n, FALSE };
 
 === REQ-0011-12 a lost focus drops a pending polygon
 file: src/ui/canvas.c
@@ -3886,11 +3884,11 @@ test: ui-0013
 file: src/core/figure.c
 test: core-figure-apply
 --- find
-          else if (f.style == EASEL_FIGURE_FILL_ONLY)
-            ok = paint_run (img, &l, y, runs[i].x0, runs[i].x1, draw);
+          else if (f->style == EASEL_FIGURE_FILL_ONLY)
+            ok = paint_run (img, l, y, runs[i].x0, runs[i].x1, draw);
 --- replace
-          else if (f.style == EASEL_FIGURE_FILL_ONLY)
-            ok = paint_run (img, &l, y, runs[i].x0, runs[i].x1, other);
+          else if (f->style == EASEL_FIGURE_FILL_ONLY)
+            ok = paint_run (img, l, y, runs[i].x0, runs[i].x1, other);
 
 === REQ-0010-20 a figure that runs out of memory leaves its pixels drawn
 file: src/core/figure.c
@@ -13111,3 +13109,318 @@ test: core-jpeg-exif
 --- replace
           if (!whole) { o[n++] = data[at++]; continue; }
           at += seg + 2;
+
+=== REQ-0039-06 the channels are divided by the rounded alpha, not by M
+file: src/core/cover.c
+test: core-cover
+--- find
+      uint64_t v = (2 * num + m) / (2 * m);
+--- replace
+      uint64_t v = (2 * num + alpha * 256) / (2 * alpha * 256);
+
+=== REQ-0039-06 halves round down
+file: src/core/cover.c
+test: core-cover
+--- find
+  uint64_t m = a * rest + ao * n_out + ai * n_in, alpha = (2 * m + 256) / 512;
+--- replace
+  uint64_t m = a * rest + ao * n_out + ai * n_in, alpha = (2 * m + 255) / 512;
+
+=== REQ-0039-06 an alpha of 0 keeps the color (P7.7)
+file: src/core/cover.c
+test: core-cover
+--- find
+    return 0;                                                            /* P7.7 */
+--- replace
+    return c_out & 0xFFFFFF;
+
+=== REQ-0039-05 the corner radius is taken from the fine box, not the pixel box times 16
+file: src/core/figure.c
+test: core-cover
+--- find
+  outer = times16 (outer);
+--- replace
+  outer = times16 (outer); outer.r = outer.w < outer.h ? outer.w / 2 : outer.h / 2; if (outer.r > 128) outer.r = 128;
+
+=== REQ-0039-05 the inside's box is inset by w fine pixels, not by w pixels
+file: src/core/figure.c
+test: core-cover
+--- find
+  inner = times16 (inner);
+--- replace
+  inner = (Box) { outer.x + f->width, outer.y + f->width, outer.w - 2 * f->width, outer.h - 2 * f->width, 16 * inner.r };
+
+=== REQ-0039-04 a span's last sample column is not counted
+file: src/core/cover.c
+test: core-cover
+--- find
+      scratch[2 * k + 1] = (EaselCoverEvent) { spans[k].b + 1, spans[k].part, -1 };
+--- replace
+      scratch[2 * k + 1] = (EaselCoverEvent) { spans[k].b, spans[k].part, -1 };
+
+=== REQ-0039-04 a pixel's partial count is not added
+file: src/core/cover.c
+test: core-cover
+--- find
+          acc[1] += (unsigned) (t - s) * depth[1];
+--- replace
+          acc[1] += 0;
+
+=== REQ-0039-05 an even width's Line is not moved by 1/2
+file: src/core/figure.c
+test: core-cover
+--- find
+  int64_t sh = f->width % 2 == 0 ? 16 : 0, h = 16 * (int64_t) f->width;
+--- replace
+  int64_t sh = 0, h = 16 * (int64_t) f->width;
+
+=== REQ-0039-05 a Line has no square ends
+file: src/core/figure.c
+test: core-cover
+--- find
+    if (easel_cover_band (ax, ay, bx, by, h, true, true, 32 * (int64_t) y + 2 * j + 1, &spans[n].a, &spans[n].b))
+--- replace
+    if (easel_cover_band (ax, ay, bx, by, h, false, false, 32 * (int64_t) y + 2 * j + 1, &spans[n].a, &spans[n].b))
+
+=== REQ-0039-05 a band's half width is rounded up, not down
+file: src/core/cover.c
+test: core-cover
+--- find
+  k = isqrt ((I128) h * h * l2);
+--- replace
+  k = isqrt ((I128) h * h * l2) + 1;
+
+=== REQ-0039-07 the pieces of a curve or polygon are not joined: an overlap counts twice
+file: src/core/figure.c
+test: core-cover
+--- find
+        if (n > first && iv[2 * e] <= m->spans[n - 1].b + 1)
+--- replace
+        if (n > first && iv[2 * e] < m->spans[n - 1].a)
+
+=== REQ-0039-05 the region takes every gap between crossings (not the alternate rule)
+file: src/core/figure.c
+test: core-cover
+--- find
+      for (size_t c = 0; c + 1 < ni; c += 2)
+--- replace
+      for (size_t c = 0; c + 1 < ni; c += 1)
+
+=== REQ-0039-05 a curve's points are taken to 1/16 pixel, not 1/32
+file: src/core/figure.c
+test: core-cover
+--- find
+  return (int64_t) ((num * 64 + d) / (2 * d)) - 32 * (int64_t) COORD_LIMIT + 16;
+--- replace
+  return 2 * (int64_t) ((num * 32 + d) / (2 * d)) - 32 * (int64_t) COORD_LIMIT + 16;
+
+=== REQ-0039-05 a polygon's sides keep square tips at its corners
+file: src/core/figure.c
+test: core-cover
+--- find
+                                   !closed && k == 0, !closed && k == sides - 1 };
+--- replace
+                                   true, true };
+
+=== REQ-0039-04 the Outline style draws the inside in the other color
+file: src/core/figure.c
+test: core-cover
+--- find
+    return easel_cover_mix (old, draw, run->out, 0, 0);
+--- replace
+    return easel_cover_mix (old, draw, run->out, other, run->in);
+
+=== REQ-0039-04 the smooth put-down draws a pixel of a run at the picture's last column too far
+file: src/core/figure.c
+test: core-cover
+--- find
+        for (int x = runs[i].x0 < 0 ? 0 : runs[i].x0; ok && x <= runs[i].x1 && x < img->width; x++)
+--- replace
+        for (int x = runs[i].x0 < 0 ? 0 : runs[i].x0; ok && x <= runs[i].x1 && x < img->width - 1; x++)
+
+=== REQ-0039-09 the preview of a smooth figure is drawn sharp
+file: src/ui/canvas.c
+test: ui-0039
+--- find
+  if (f.smooth)
+    {
+      append_cover_preview (self, snapshot, &f, row0, row1, draw, other, by_edges, &picture);
+--- replace
+  if (f.smooth && FALSE)
+    {
+      append_cover_preview (self, snapshot, &f, row0, row1, draw, other, by_edges, &picture);
+
+=== REQ-0039-09 a partly covered pixel of the preview is drawn in the drawing color
+file: src/ui/canvas.c
+test: ui-0039
+--- find
+              uint32_t color = easel_figure_cover_color (f, run, easel_image_get (self->img, x, y), draw, other);
+--- replace
+              uint32_t color = drawn == 256 ? easel_figure_cover_color (f, run, easel_image_get (self->img, x, y), draw, other) : draw;
+
+=== REQ-0039-08 a press on a pixel the smooth curve covers only in part is off it
+file: src/ui/canvas.c
+test: ui-0039
+--- find
+  if (!f->smooth)
+    return easel_figure_row (f, row, runs, max);
+--- replace
+  if (TRUE)
+    return easel_figure_row (f, row, runs, max);
+
+=== REQ-0039-02 a waiting curve keeps the choice it was drawn with
+file: src/ui/window.c
+test: ui-0039
+--- find
+  easel_canvas_set_smooth (self->canvas, g_variant_get_boolean (value));
+--- replace
+  if (!easel_canvas_is_pending (self->canvas)) easel_canvas_set_smooth (self->canvas, g_variant_get_boolean (value));
+
+=== REQ-0039-08 the put-down of a smooth figure is sharp
+file: src/ui/canvas.c
+test: ui-0039
+--- find
+  EaselFigure f = { kind, self->shape_x0, self->shape_y0, self->shape_x1, self->shape_y1, self->shape_width, self->shape_style, NULL };
+--- replace
+  EaselFigure f = { kind, self->shape_x0, self->shape_y0, self->shape_x1, self->shape_y1, self->shape_width, self->shape_style, NULL }; if (self) return f;
+
+=== REQ-0039-08 a smooth figure whose log cannot grow is drawn in part
+file: src/core/figure.c
+test: ui-0039 core-cover
+--- find
+          ok = easel_change_log_set (l, img, x, y, easel_figure_cover_color (f, &runs[i], easel_image_get (img, x, y), draw, other));
+--- replace
+          easel_change_log_set (l, img, x, y, easel_figure_cover_color (f, &runs[i], easel_image_get (img, x, y), draw, other));
+
+=== REQ-0039-02 Sharp or Smooth chosen while a button is held is taken
+file: src/ui/window.c
+test: ui-0039
+--- find
+  if (easel_canvas_is_stroking (self->canvas))
+    return;
+  g_simple_action_set_state (action, value);
+  easel_canvas_set_smooth (self->canvas, g_variant_get_boolean (value));
+--- replace
+  g_simple_action_set_state (action, value);
+  easel_canvas_set_smooth (self->canvas, g_variant_get_boolean (value));
+
+=== REQ-0039-02 the cells cannot be reached from the keyboard
+file: src/ui/tool-options.c
+test: ui-0039
+--- find
+      gtk_grid_attach (GTK_GRID (grid), button, i, 0, 1, 1);
+    }
+  return grid;
+--- replace
+      gtk_grid_attach (GTK_GRID (grid), button, i, 0, 1, 1);
+      gtk_widget_set_focusable (button, FALSE);
+    }
+  return grid;
+
+=== REQ-0039-01 the Brush shows no Sharp | Smooth well
+file: src/ui/tool-options.c
+test: ui-0039
+--- find
+    gtk_box_append (GTK_BOX (brush_box), new_smooth_well ());
+--- replace
+    gtk_widget_get_first_child (brush_box);
+
+=== REQ-0008-07 the toolbox's column never scrolls: a shape tool raises the window's minimum height
+file: src/ui/window.c
+test: ui-0039
+--- find
+    gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW (column_scroller), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
+--- replace
+    gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW (column_scroller), GTK_POLICY_NEVER, GTK_POLICY_NEVER);
+
+=== REQ-0039-07 a stroke's pixel is mixed from its value in the stroke, not from before it
+file: src/core/stroke.c
+test: core-stroke-smooth
+--- find
+          before = t->slot[k] >= 0 ? s->log[t->slot[k]].old_value : easel_image_get (img, (int) x, y);
+--- replace
+          before = easel_image_get (img, (int) x, y);
+
+=== REQ-0039-05 the Brush circle of 1 is a true circle (208 points), not its square
+file: src/core/cover.c
+test: core-stroke-smooth
+--- find
+  if (f.shape == EASEL_SHAPE_CIRCLE && f.size > 1)
+    {
+      /* a capsule
+--- replace
+  if (f.shape == EASEL_SHAPE_CIRCLE && f.size > 0)
+    {
+      /* a capsule
+
+=== REQ-0039-05 a smooth stroke stamps each position and does not sweep between them
+file: src/core/stroke.c
+test: core-stroke-smooth
+--- find
+    smooth_segment (s, s->x, s->y, x, y);
+--- replace
+    smooth_segment (s, x, y, x, y);
+
+=== REQ-0039-05 a polygon footprint's edges are not swept (only its two ends)
+file: src/core/cover.c
+test: core-stroke-smooth
+--- find
+  for (int k = 0; k < n; k++)
+    {
+      const int64_t *p = &v[2 * k], *r = &v[2 * ((k + 1) % n)];
+--- replace
+  for (int k = 0; k < 0; k++)
+    {
+      const int64_t *p = &v[2 * k], *r = &v[2 * ((k + 1) % n)];
+
+=== REQ-0039-08 the test hook's tile limit is not used
+file: src/core/stroke.c
+test: core-stroke-smooth
+--- find
+  if (*t == NULL && s->n_tiles < s->max_tiles)
+--- replace
+  if (*t == NULL)
+
+=== REQ-0039-05 the "/" footprint is the backslash's
+file: src/core/cover.c
+test: core-stroke-smooth
+--- find
+  if (f.shape == EASEL_SHAPE_SLASH)
+    {
+      /* the points of the box
+--- replace
+  if (f.shape == EASEL_SHAPE_BACKSLASH + 9)
+    {
+      /* the points of the box
+
+=== REQ-0039-05 the Brush paints Sharp with Smooth chosen
+file: src/ui/canvas.c
+test: ui-0039
+--- find
+  else if (self->tool == EASEL_TOOL_BRUSH && self->smooth)
+--- replace
+  else if (self->tool == EASEL_TOOL_BRUSH && self->smooth && FALSE)
+
+=== REQ-0039-11 the Brush's cells stay sharp with Smooth chosen
+file: src/ui/tool-options.c
+test: ui-0039
+--- find
+    if (p->smooth != NULL && *p->smooth)
+--- replace
+    if (p->smooth != NULL && *p->smooth && FALSE)
+
+=== REQ-0039-11 the Brush's cells are not drawn again when the choice changes
+file: src/ui/tool-options.c
+test: ui-0039
+--- find
+    redraw_areas (GTK_WIDGET (self->brush[i]));
+--- replace
+    gtk_widget_queue_draw (GTK_WIDGET (self->brush[i]));
+
+=== REQ-0039-03 Preferences writes the switch under another key
+file: src/ui/preferences-dialog.c
+test: ui-0039
+--- find
+                                                           "smooth", NULL)),
+--- replace
+                                                           "smooth-shapes", NULL)),

@@ -1299,3 +1299,12 @@ msgstr "Háttér eltávolítása folyamatban"
 
 msgid "Could Not Remove the Background"
 msgstr "Nem sikerült eltávolítani a hátteret"
+
+msgid "Sharp edges"
+msgstr "Éles szélek"
+
+msgid "Smooth edges"
+msgstr "Simított szélek"
+
+msgid "Smooth shapes and brushes"
+msgstr "Simított alakzatok és ecsetek"

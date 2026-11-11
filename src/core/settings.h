@@ -73,6 +73,7 @@ typedef struct
   bool eraser_transparent;
   int line_width;         /* 1..5 pixels */
   EaselFillStyle fill_style;
+  bool smooth;            /* `[drawing] smooth`: Smooth at start-up (REQ-0039-03) */
   int magnifier;          /* 1, 2, 4, 6, 8 or 16 */
 } EaselSettings;
 
