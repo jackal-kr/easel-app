@@ -28309,7 +28309,7 @@ as1_shortcuts_key_by_place (void)
   write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
 }
 
-/* AS-5 (REQ-0021-05): the name, the version of the build, the license and both acknowledgements. */
+/* AS-5 (REQ-0021-05): the name, the version of the build, the developer and the website, the license and both acknowledgements. */
 static void
 as5_about (void)
 {
@@ -28322,6 +28322,8 @@ as5_about (void)
   g_assert_cmpstr (adw_about_dialog_get_application_name (ADW_ABOUT_DIALOG (d)), ==, "Easel");
   g_assert_cmpstr (adw_about_dialog_get_version (ADW_ABOUT_DIALOG (d)), ==, easel_build_version ());
   g_assert_cmpint (adw_about_dialog_get_license_type (ADW_ABOUT_DIALOG (d)), ==, GTK_LICENSE_GPL_3_0);
+  g_assert_cmpstr (adw_about_dialog_get_developer_name (ADW_ABOUT_DIALOG (d)), ==, "JOD");                     /* JOD, 2026-11-11 */
+  g_assert_cmpstr (adw_about_dialog_get_website (ADW_ABOUT_DIALOG (d)), ==, "https://github.com/jackal-kr/easel-app");
   for (gsize i = 0; i < easel_about_n_acknowledgements (); i++)
     g_assert_nonnull (easel_about_acknowledgement (i));
   g_assert_cmpuint (easel_about_n_acknowledgements (), ==, 2);

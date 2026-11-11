@@ -8,9 +8,11 @@ Easel is a simple drawing program for GNOME, in the style of Paint in Windows XP
 - **Gradient types:** Linear, Radial and Reflected.
 - **Curve:** bend the line by dragging a point of it, up to two bends; a click away finishes it.
 - **Smooth shapes and brushes:** Line, Curve, the shapes and the Brush can draw with smooth edges (Sharp or Smooth under their options). Off by default; Preferences sets what they start with.
+- **Smooth text:** the Text tool has its own Sharp or Smooth choice: smooth letters keep their crisp shapes with blended edges. Off by default, with its own switch in Preferences.
 - **Zoom with every tool:** Ctrl+wheel and the touchpad pinch zoom at the pointer, whatever tool is chosen.
 - **Clearer tools:** cursors drawn in one style at your desktop's cursor size, and the Brush, Airbrush and Eraser options drawn at their real size. The toolbox can be made wider by dragging its edge.
 - **Below 100 %** the picture stays sharp: no blur when zoomed out.
+- **About Easel** names the developer and links to the project on GitHub.
 - **Fixes:** a damaged photo's EXIF block can no longer crash the app on opening; three spots of undefined behaviour found by sanitizers are gone; a size chosen in an empty text box is no longer lost when you click into the box.
 
 ## Install one of them

@@ -181,6 +181,8 @@ easel_about_dialog_new (void)
   adw_about_dialog_set_application_name (dialog, "Easel");
   adw_about_dialog_set_application_icon (dialog, APP_ID);
   adw_about_dialog_set_version (dialog, VERSION);
+  adw_about_dialog_set_developer_name (dialog, "JOD");                                   /* REQ-0021-05 (JOD, 2026-11-11) */
+  adw_about_dialog_set_website (dialog, "https://github.com/jackal-kr/easel-app");     /* the metainfo's homepage */
   adw_about_dialog_set_license_type (dialog, GTK_LICENSE_GPL_3_0);
   adw_about_dialog_add_acknowledgement_section (dialog, NULL, people);
   return ADW_DIALOG (dialog);

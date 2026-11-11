@@ -13636,3 +13636,11 @@ test: ui-0040
 --- replace
         if (cover > 255)
           gtk_snapshot_append_color (snapshot,
+
+=== REQ-0021-05 About Easel names no developer
+file: src/ui/help.c
+test: ui-0021
+--- find
+  adw_about_dialog_set_developer_name (dialog, "JOD");                                   /* REQ-0021-05 (JOD, 2026-11-11) */
+--- replace
+  (void) 0;

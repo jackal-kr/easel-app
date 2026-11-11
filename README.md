@@ -19,7 +19,7 @@ The Flatpak needs Flathub for the GNOME runtime. The [release notes](docs/releas
 ## What it does
 - **Tools:** Pencil, Brush, Airbrush, Eraser, Fill, Pick Color, Magnifier, Text, Line, Curve, Rectangle, Rounded Rectangle, Ellipse, Polygon, Select and Free-Form Select, plus Pan and Gradient.
 - **Selections:** move, copy, smear, transparent mode, clipboard, flip, rotate, stretch and skew.
-- **Image:** Remove Background (with Keep this and Remove this brushes), Black and White, gradients (Linear, Radial, Reflected), and optional smooth edges for lines, shapes and brushes.
+- **Image:** Remove Background (with Keep this and Remove this brushes), Black and White, gradients (Linear, Radial, Reflected), and optional smooth edges for lines, shapes, brushes and text.
 - **View:** zoom from 10 % to 1600 %, a pixel grid and a thumbnail.
 - **History:** undo and redo within a memory budget you can change.
 - **Files:** open and save PNG, JPEG, BMP, TIFF and WebP; open GIF; print.
