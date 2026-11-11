@@ -460,9 +460,12 @@ join_pieces (const Piece *a, const Piece *c, Piece *out)
       piece_free (out);
       return false;
     }
-  memcpy (out->text, a->text, a->len);
-  memcpy (out->text + a->len, c->text, c->len);
-  memcpy (out->runs, a->runs, a->n * sizeof *out->runs);
+  if (a->len > 0)
+    memcpy (out->text, a->text, a->len);          /* an empty piece's text may be NULL: no copy from it */
+  if (c->len > 0)
+    memcpy (out->text + a->len, c->text, c->len);
+  if (a->n > 0)
+    memcpy (out->runs, a->runs, a->n * sizeof *out->runs);
   for (size_t k = 0; k < c->n; k++)
     {
       out->runs[a->n + k] = c->runs[k];

@@ -292,7 +292,8 @@ sort_unique (Seg *a, size_t n)
 {
   size_t m = 0;
 
-  qsort (a, n, sizeof *a, seg_cmp);
+  if (n > 1)
+    qsort (a, n, sizeof *a, seg_cmp);             /* an empty list may be NULL */
   for (size_t i = 0; i < n; i++)
     if (m == 0 || seg_cmp (&a[m - 1], &a[i]) != 0)
       a[m++] = a[i];

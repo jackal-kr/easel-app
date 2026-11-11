@@ -226,7 +226,7 @@ fit (const EaselRbg *r, bool refit, int64_t limit2, int64_t (*k)[ORDER_TERMS])
     {
       /* too few cells for the cubic: a flat surface, the mean of those there are (none: zero) */
       for (int c = 0; c < 3 && n > 0; c++)
-        k[c][0] = (int64_t) (((i128) rhs[c][0] << 24) / (n * 256 * 256));
+        k[c][0] = (int64_t) (((i128) rhs[c][0] * ((i128) 1 << 24)) / (n * 256 * 256));
       return;
     }
   for (int c = 0; c < 3; c++)
@@ -237,7 +237,7 @@ fit (const EaselRbg *r, bool refit, int64_t limit2, int64_t (*k)[ORDER_TERMS])
         {
           for (int j = 0; j < ORDER_TERMS; j++)
             m[i][j] = a[i][j] / n;
-          m[i][ORDER_TERMS] = ((i128) rhs[c][i] << 24) / n;
+          m[i][ORDER_TERMS] = ((i128) rhs[c][i] * ((i128) 1 << 24)) / n;
         }
       for (int col = 0; col < ORDER_TERMS; col++)
         {
