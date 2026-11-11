@@ -3,7 +3,7 @@ core_wrap = {
   'stretch-skew': ['-Wl,--wrap=malloc', '-Wl,--wrap=calloc', '-Wl,--wrap=realloc'],
   'settings-edit': ['-Wl,--wrap=malloc'],
 }
-foreach name : ['cursor', 'stretch-skew', 'settings-edit', 'window-extras', 'print-layout', 'catalog', 'figure', 'figure-apply', 'figure-curve', 'figure-polygon', 'figure-step', 'curve-bend', 'black-white', 'remove-bg', 'gradient', 'selection', 'fill', 'footprint', 'format', 'grid', 'history', 'image', 'lasso', 'lattice', 'magnifier', 'number', 'palette', 'resize', 'settings', 'spray', 'stroke', 'rich-text', 'text-buffer', 'text-put', 'transform', 'view']
+foreach name : ['cursor', 'stretch-skew', 'settings-edit', 'window-extras', 'print-layout', 'catalog', 'figure', 'figure-apply', 'figure-curve', 'figure-polygon', 'figure-step', 'curve-bend', 'black-white', 'remove-bg', 'gradient', 'selection', 'fill', 'footprint', 'format', 'jpeg-exif', 'grid', 'history', 'image', 'lasso', 'lattice', 'magnifier', 'number', 'palette', 'resize', 'settings', 'spray', 'stroke', 'rich-text', 'text-buffer', 'text-put', 'transform', 'view']
   test('core-' + name,
     executable('test-' + name, 'core/test-' + name + '.c', dependencies: easel_core_dep,
                link_args: core_wrap.get(name, [])),

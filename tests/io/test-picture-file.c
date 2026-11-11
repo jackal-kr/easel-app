@@ -314,6 +314,31 @@ as18_orientation (void)
     }
 }
 
+/* AS-20 (REQ-0005-06, 2026-11-10 at the beta gate): a JPEG whose EXIF block is damaged (exif-damaged.jpg, the 704-byte file fuzzing
+   found: glycin 2.2.1 aborted the process on it) opens as stored, from a file and from bytes, and the process goes on. */
+static void
+as20_damaged_exif (void)
+{
+  g_autofree char *path = data ("exif-damaged.jpg");
+  g_autofree char *bytes = NULL;
+  gsize len = 0;
+  EaselImage *img = open_ok ("exif-damaged.jpg");
+  int w = 0, h = 0;
+
+  g_assert_cmpint (img->width, ==, 32);
+  g_assert_cmpint (img->height, ==, 16);
+  easel_image_free (img);
+  g_assert_true (g_file_get_contents (path, &bytes, &len, NULL));
+  {
+    g_autoptr (GBytes) b = g_bytes_new (bytes, len);
+
+    g_assert_cmpint (easel_picture_open_bytes (b, &img, &w, &h), ==, EASEL_OPEN_OK);
+    g_assert_cmpint (w, ==, 32);
+    g_assert_cmpint (h, ==, 16);
+    easel_image_free (img);
+  }
+}
+
 /* A format that is not installed is "not a picture", as a text file is (REQ-0005-06). */
 static void
 missing_loader_is_not_a_picture (void)
@@ -845,6 +870,7 @@ main (int argc, char **argv)
   g_test_add_func ("/0016/as9_encode_png", as9_encode_png);
   g_test_add_func ("/0016/as9_encode_png_fast", as9_encode_png_fast);
   g_test_add_func ("/0005/as18_orientation", as18_orientation);
+  g_test_add_func ("/0005/as20_damaged_exif", as20_damaged_exif);
   g_test_add_func ("/0005/sniff_sizes_match_decoder", sniff_sizes_match_decoder);
   g_test_add_func ("/0005/sniff_refuses_broken_files", sniff_refuses_broken_files);
   g_test_add_func ("/0005/as10_round_trips", as10_round_trips);

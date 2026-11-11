@@ -8,6 +8,7 @@
 #include <unistd.h>
 
 #include "picture-file.h"
+#include "jpeg-exif.h"
 
 static char *hidden_format;
 
@@ -313,7 +314,33 @@ is_readable_file (const char *path)
   return TRUE;
 }
 
-static EaselOpenResult from_pixbuf (GdkPixbuf *pixbuf, EaselImage **img, int *width, int *height);
+static EaselOpenResult from_pixbuf (GdkPixbuf *pixbuf, int orientation, EaselImage **img, int *width, int *height);
+
+/* A JPEG decoded with its EXIF blocks left out and its orientation read by the core (REQ-0005-06, AS-20): the system's decoder (glycin
+   2.2.1) aborted the whole app on some damaged blocks. NULL with *error set as the decoder sets it, or to INSUFFICIENT_MEMORY. */
+static GdkPixbuf *
+decode_jpeg (const void *data, gsize len, int *orientation, GError **error)
+{
+  g_autoptr (GBytes) plain = NULL;
+  g_autoptr (GInputStream) stream = NULL;
+  uint8_t *out = NULL;
+  size_t out_len = 0;
+  int r = easel_jpeg_without_exif (data, len, &out, &out_len, orientation);
+
+  if (r < 0)
+    {
+      g_set_error_literal (error, GDK_PIXBUF_ERROR, GDK_PIXBUF_ERROR_INSUFFICIENT_MEMORY, "no memory");
+      return NULL;
+    }
+  if (r == 0)
+    {
+      g_set_error_literal (error, GDK_PIXBUF_ERROR, GDK_PIXBUF_ERROR_CORRUPT_IMAGE, "not a JPEG");
+      return NULL;
+    }
+  plain = g_bytes_new_with_free_func (out, out_len, free, out);
+  stream = g_memory_input_stream_new_from_bytes (plain);
+  return gdk_pixbuf_new_from_stream (stream, NULL, error);
+}
 
 EaselOpenResult
 easel_picture_open (const char *path, EaselImage **img, int *width, int *height)
@@ -321,7 +348,7 @@ easel_picture_open (const char *path, EaselImage **img, int *width, int *height)
   g_autoptr (GdkPixbuf) pixbuf = NULL;
   g_autoptr (GError) error = NULL;
   const char *format;
-  int w = 0, h = 0;
+  int w = 0, h = 0, orientation = 0;
 
   *img = NULL;
   *width = *height = 0;
@@ -350,7 +377,17 @@ easel_picture_open (const char *path, EaselImage **img, int *width, int *height)
       return EASEL_OPEN_NO_MEMORY;
     }
 
-  pixbuf = gdk_pixbuf_new_from_file (path, &error);
+  if (g_strcmp0 (format, "jpeg") == 0)
+    {
+      g_autofree char *bytes = NULL;
+      gsize len = 0;
+
+      if (!g_file_get_contents (path, &bytes, &len, &error))
+        return EASEL_OPEN_UNREADABLE;
+      pixbuf = decode_jpeg (bytes, len, &orientation, &error);
+    }
+  else
+    pixbuf = gdk_pixbuf_new_from_file (path, &error);
   if (pixbuf == NULL)
     {
       *width = w;
@@ -361,19 +398,20 @@ easel_picture_open (const char *path, EaselImage **img, int *width, int *height)
       return EASEL_OPEN_NOT_PICTURE;
     }
 
-  return from_pixbuf (g_steal_pointer (&pixbuf), img, width, height);
+  return from_pixbuf (g_steal_pointer (&pixbuf), orientation, img, width, height);
 }
 
 /* One pass into the picture, upright, as 8-bit RGBA; then the decoder's pixels are freed at once, before the caller does anything
    else (Plan, "Memory when opening"). Takes pixbuf. */
 static EaselOpenResult
-from_pixbuf (GdkPixbuf *pixbuf, EaselImage **img, int *width, int *height)
+from_pixbuf (GdkPixbuf *pixbuf, int orientation, EaselImage **img, int *width, int *height)
 {
-  const char *orientation = gdk_pixbuf_get_option (pixbuf, "orientation");
+  const char *tag = gdk_pixbuf_get_option (pixbuf, "orientation");
 
+  /* orientation: the core's reading of a JPEG's tag (1 to 8), or 0 for the decoder's */
   *img = easel_image_from_bytes (gdk_pixbuf_read_pixels (pixbuf), gdk_pixbuf_get_width (pixbuf),
                                  gdk_pixbuf_get_height (pixbuf), gdk_pixbuf_get_rowstride (pixbuf),
-                                 gdk_pixbuf_get_n_channels (pixbuf), orientation ? atoi (orientation) : 1);
+                                 gdk_pixbuf_get_n_channels (pixbuf), orientation > 0 ? orientation : tag ? atoi (tag) : 1);
   if (*img == NULL)
     {
       *width = gdk_pixbuf_get_width (pixbuf);
@@ -397,7 +435,7 @@ easel_picture_open_bytes (GBytes *bytes, EaselImage **img, int *width, int *heig
   gsize len = 0;
   const void *data = g_bytes_get_data (bytes, &len);
   FILE *f;
-  int w = 0, h = 0;
+  int w = 0, h = 0, orientation = 0;
 
   *img = NULL;
   *width = *height = 0;
@@ -410,8 +448,13 @@ easel_picture_open_bytes (GBytes *bytes, EaselImage **img, int *width, int *heig
       *height = h;
       return w > EASEL_IMAGE_MAX_SIZE || h > EASEL_IMAGE_MAX_SIZE ? EASEL_OPEN_TOO_BIG : EASEL_OPEN_NO_MEMORY;
     }
-  stream = g_memory_input_stream_new_from_bytes (bytes);
-  pixbuf = gdk_pixbuf_new_from_stream (stream, NULL, &error);
+  if (g_strcmp0 (format, "jpeg") == 0)
+    pixbuf = decode_jpeg (data, len, &orientation, &error);
+  else
+    {
+      stream = g_memory_input_stream_new_from_bytes (bytes);
+      pixbuf = gdk_pixbuf_new_from_stream (stream, NULL, &error);
+    }
   if (pixbuf == NULL)
     {
       if (g_error_matches (error, GDK_PIXBUF_ERROR, GDK_PIXBUF_ERROR_INSUFFICIENT_MEMORY))
@@ -422,7 +465,7 @@ easel_picture_open_bytes (GBytes *bytes, EaselImage **img, int *width, int *heig
         }
       return EASEL_OPEN_NOT_PICTURE;
     }
-  return from_pixbuf (pixbuf, img, width, height);
+  return from_pixbuf (pixbuf, orientation, img, width, height);
 }
 
 /* ---- saving ---- */

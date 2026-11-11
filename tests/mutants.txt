@@ -204,7 +204,7 @@ test: io-picture-file
 file: src/io/picture-file.c
 test: io-picture-file
 --- find
-orientation ? atoi (orientation) : 1
+orientation > 0 ? orientation : tag ? atoi (tag) : 1
 --- replace
 1
 
@@ -13068,3 +13068,46 @@ test: core-remove-bg
           r->queue[c] = (uint32_t) (after < r->nstrokes ? r->nstrokes - after : 0);
 --- replace
           r->queue[c] = 0;
+
+=== REQ-0005-06 the last EXIF block's orientation decides, not the first's
+file: src/core/jpeg-exif.c
+test: core-jpeg-exif
+--- find
+          if (!found && whole && memcmp (data + at + 4, "Exif\0\0", 6) == 0)
+--- replace
+          if (whole && memcmp (data + at + 4, "Exif\0\0", 6) == 0)
+
+=== REQ-0005-06 an EXIF block is handed to the decoder
+file: src/core/jpeg-exif.c
+test: core-jpeg-exif
+--- find
+      if (len - at >= 8 && data[at] == 0xFF && data[at + 1] == 0xE1 && memcmp (data + at + 4, "Exif", 4) == 0)
+--- replace
+      if (len - at >= 8 && data[at] == 0xFF && data[at + 1] == 0xE2 && memcmp (data + at + 4, "Exif", 4) == 0)
+
+=== REQ-0005-06 a directory that runs beyond its block is still read
+file: src/core/jpeg-exif.c
+test: core-jpeg-exif
+--- find
+  if ((size_t) count * 12 > n - ifd - 2)
+    return 1;
+--- replace
+  if ((size_t) count * 12 > n - ifd - 2 + 4096)
+    return 1;
+
+=== REQ-0005-06 a tag outside 1 to 8 is kept
+file: src/core/jpeg-exif.c
+test: core-jpeg-exif
+--- find
+      return v >= 1 && v <= 8 ? (int) v : 1;
+--- replace
+      return v >= 1 && v <= 9 ? (int) v : 1;
+
+=== REQ-0005-06 an EXIF segment whose length runs beyond the end is kept whole
+file: src/core/jpeg-exif.c
+test: core-jpeg-exif
+--- find
+          at += whole ? seg + 2 : (len - at < 10 ? len - at : 10);
+--- replace
+          if (!whole) { o[n++] = data[at++]; continue; }
+          at += seg + 2;
