@@ -41,6 +41,10 @@ Precondition: `Status: accepted` in the spec. Otherwise stop and say so.
      enabled (a picture with undo steps), through the action it activates: the accelerator takes the key first (0038 F1);
    - a size given on the screen in logical pixels gets one case at scale 2 (`ui-NNNN-scale2`): the zoom counts device pixels (0038 F2);
    - a memory test that separates two allocations sets its limit between their sizes, and each break is seen to fail at its own one;
+   - a list of cases in a spec's paragraph (every hold a lost release ends, every area a wheel works over) gets a test per case, as a
+     requirement's would (0036: the holds were listed, the lost release tested for two, a text box's move left held);
+   - a guard put in front of another program's parser walks the input as that parser does (fill bytes, junk, resync), not as the
+     format says, and is fuzzed again with the crash files as seeds (beta gate: the first EXIF guard missed both);
    - a test of an input rule calls the function the signal callback calls, with the event's modifier state, never a function deeper down;
    - a numeric table or conversion in src/core gets an oracle test against an independent reference (libm, a standard's formula) over its range, not only determinism (0035: a wrong cube root passed every test);
    - a dialog's or card's OK, Apply or Cancel is tested by activating its real button (and Esc by its real close), reading the result

@@ -58,6 +58,10 @@ Input: feature number or name from `docs/specs/INDEX.md`.
    ADR-0008: Fill filled patches of a removed backdrop).
    A way to take back an input (Ctrl+Z, a toggle) says what comes back with it when that input had removed or overridden others (0038:
    a stroke's Ctrl+Z forgot the presses it had dropped).
+   A formula that blends colors is run in the prototype on a fully transparent pixel, an opaque one and a half-covered one, before
+   the spec is accepted (0039: dividing by the rounded alpha turned red over transparent into #FA0000).
+   A feature that adds a way to take back (Ctrl+Z) is checked against every earlier input that removes or cancels another, in this
+   feature and in the ones it extends (0037/0038: a second press erased the first, so Ctrl+Z skipped both).
    A rule of order between two inputs ("the later wins") is stated for every pixel each input changes, not only the pixel where it was
    made (0038: a press flips a whole piece).
 4. Take behavior from XP Paint knowledge, jspaint (behavior, not code), JOD's descriptions and `docs/reference`; never from the

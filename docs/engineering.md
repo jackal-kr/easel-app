@@ -151,6 +151,16 @@ From feature 0002 (`src/core/history`):
   - **At the end of a spec:** `tools/mutate.sh --core`, once, in the background: only the mutants of files under `src/core`. `src/ui/canvas.c` and `src/ui/window.c` are not mutated per spec.
   - **At `/sdd-check`:** the full `meson test` and the scale 2 run through `tools/isolated.sh`, with the result of that core run.
   - **At the phase gate:** one full run of the list (`tools/mutate.sh`), together with the phase's acceptance spec, which also runs once under Vulkan, and its journeys 1 and 4 on a screen of scale 2. Vulkan is a command and not a test of the normal suite: `tools/isolated.sh env GSK_RENDERER=vulkan GTK_A11Y=none GDK_DEBUG=no-portals EASEL_TEST_LANGUAGE=en EASEL_TEST_DATA=$PWD/tests/data build/tests/test-window -k -p /0028`, and journey 15 by `-p /0028-uk` with `LC_ALL=C EASEL_CHOSEN=uk` and no `EASEL_TEST_LANGUAGE`. Scale 2: `tools/isolated.sh --scale 2 meson test -C build ui-0028-scale2`. A clean full run records its commit and the GTK, Pango, Cairo and GNOME Shell versions in `docs/specs/INDEX.md`, and names any that changed since the last record.
+  - **At a release (alpha, beta), after the phase gate's runs** (retro, 2026-11-11: the beta gate found a crash, three spots of
+    undefined behaviour and a private repository that every earlier run missed): a build with `-Db_sanitize=address,undefined
+    -Db_lundef=false` in its own folder (`build-asan`), its core, io and ui suites run with `ASAN_OPTIONS=detect_leaks=0:
+    allocator_may_return_null=1:abort_on_error=1` (the tests that fail an allocation on purpose need it) and `UBSAN_OPTIONS=
+    print_stacktrace=1:halt_on_error=0`; `core-remove-bg`'s heap check fails there by nature (ASan's allocator, not `mallinfo`). Then
+    libFuzzer (clang, `-fsanitize=fuzzer,address,undefined`) over every reader of outside data, 40 minutes each at `nice 19`: the
+    core's settings, palette, pasted HTML, numbers and colors, and a picture opened from a file's bytes, seeded with `tests/data`;
+    a guard written against a crash is fuzzed again with the crash files in the seeds (the first EXIF guard missed fill bytes and
+    junk between segments, the second a block after the scan's start: found by the second and third rounds). `appstreamcli validate` with the network on, so the metadata's links are
+    tried from outside.
   - **A survivor** is one line in the spec's Check section ("survivor, accepted, reason"). It becomes a task only if it shows a user-visible bug.
 - **Code that can abort the process** (a failed allocation in GLib, gdk-pixbuf or glycin) is tested in a subprocess
   (`g_test_trap_subprocess`, as `as19_save_without_memory` and `as8_open_without_memory` do), so that an abort is a failed
