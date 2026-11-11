@@ -117,6 +117,12 @@ Order suggestion: A and B first, C after the graphics path audit, D with file in
 - G1: resizing a waiting shape from the keyboard (a keyboard press never takes a handle, REQ-0022-07); its keys and
   announcements are a design of their own. A keyboard user can move, put down or drop a waiting shape.
 
+## From 0041's check (2026-11-12)
+- The key with a menu open: GTK holds the popup's keys, so only a manual try (the walk of Phase 2).
+- The gates of REQ-0041-01 for the quit prompt, the font card's field and a picture resize drag are reached only through the item's insensitivity (a selection cannot exist then).
+- ui cases for a Ctrl-copy floating selection and an ordinary pasted one cropped (the core has both); a floating selection wholly outside the picture.
+- Help's prose on the Image menu does not name Crop to Selection; the `.pot` references of its two messages are approximate.
+
 ## From the mutation list
 - REQ-0017-14, the popover's scroll guard: survives on GTK 4.24, accepted (JOD, 2026-11-02). Re-decide at packaging-release, when the minimum GTK is chosen.
 

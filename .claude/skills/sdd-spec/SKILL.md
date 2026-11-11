@@ -71,6 +71,8 @@ Input: feature number or name from `docs/specs/INDEX.md`.
    already has (0017: a press at the caret dropped the style chosen for the next text).
    A rule of order between two inputs ("the later wins") is stated for every pixel each input changes, not only the pixel where it was
    made (0038: a press flips a whole piece).
+   A scenario for a lasso or another drawn shape gives the trace and the box that running it gives, never the box worked out by hand (0041 AS-3: 49 x 40 by hand, 50 x 39 by the app).
+   A list of the places where a control's key and its menu item do nothing is tried against the item's own click (a menu open is where the item is clicked, so only the key does nothing: 0041, REQ-0041-01).
 4. Take behavior from XP Paint knowledge, jspaint (behavior, not code), JOD's descriptions and `docs/reference`; never from the
    source code of an existing implementation. If behavior is unknown or has several reasonable answers, do not decide:
    add `- [NEEDS CLARIFICATION: question and the options you see]`. A number in a requirement, a scenario or an edge case that comes

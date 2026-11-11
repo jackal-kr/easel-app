@@ -23,7 +23,7 @@ features (JOD, 2026-10-27).
   at the same place that writes a Latin letter or symbol, so on a Ukrainian or Russian layout the key that reports "ш" is Ctrl+I; this holds
   for the text box's Ctrl+B, Ctrl+I, Ctrl+U, Ctrl+[, Ctrl+] and Ctrl+Shift+F too, but not with Alt (AltGr). While a text box is open Ctrl+I is Italic (REQ-0017-12) and the menu's Invert
   Colors still inverts.
-- REQ-0018-02 (Pointer note, Black and white, 2026-11-09: the selection menu holds Black and White… after Invert Colors, REQ-0034-01, and Remove Background after it, REQ-0035-01.) The selection menu (REQ-0013-17, with Select or Free-Form Select) shall hold in its third section Flip ›, Rotate › and
+- REQ-0018-02 (Pointer note, Crop to selection, 2026-11-11: the selection menu's third section is split after Crop to Selection, REQ-0041-01: Flip, Rotate, Stretch and Skew… and Crop to Selection, a separator, then Invert Colors, Black and White… and Remove Background…, so the menu has four groups.) (Pointer note, Black and white, 2026-11-09: the selection menu holds Black and White… after Invert Colors, REQ-0034-01, and Remove Background after it, REQ-0035-01.) The selection menu (REQ-0013-17, with Select or Free-Form Select) shall hold in its third section Flip ›, Rotate › and
   Invert Colors (Ctrl+I), the same submenus and items as the Image menu (JOD, 2026-10-27, in place of the mock-up's direct Flip items; pointer note, Stretch and Skew, 2026-11-02: both menus also hold its item, REQ-0019-01);
   the canvas menu (REQ-0016-14) shall hold in its third section Clear Image (Shift+Ctrl+N). Each acts as its Image menu item does.
 

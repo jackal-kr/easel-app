@@ -18,6 +18,7 @@ Precondition: `Status: accepted` in the spec. Otherwise stop and say so.
    A style rule that must follow the theme lives in `style.css` or is reloaded on `notify::dark`; a media query in the app's own provider is probed where it is used.
    For a data structure that grows with use, say what it stores per item and what it copies.
    A buffer that grows by doubling and is handed to the history is shrunk to its length first.
+   A Plan's peak-memory figure lists every buffer alive at the peak and adds them (0041: about 1.3 GB said, 1650 MB measured).
    A put-down, cancel or commit is placed at the one function every path to it goes through, and the Plan names that function.
    A risk that says it is "checked in AS-n" names the task that writes the check.
    Data the feature hands to another process is listed in the Plan with who waits for it, a test above a pipe's size, its time at the request, and a two-process probe in the first task that serves it; the Plan names what a seam cannot see (`docs/engineering.md`, Testing).
@@ -94,6 +95,10 @@ Precondition: `Status: accepted` in the spec. Otherwise stop and say so.
      (0035: OK kept nothing; Fill after a removal filled patches; both passed every core test);
    - a layout that holds translated text is checked over every real language, the long test language being a guard, not a proof (0023);
    - a mutant is run against the test that can observe its change; one with no visible effect in the window is pointed at the core test and noted as equivalent for the ui;
+   - a test of an Undo, a restore or a crop uses an input whose result differs from the input itself (a flipped float), or it proves nothing (0041: the unflipped float's crop was the picture, and a budget mutant survived);
+   - a surviving mutant means the case is untested, not that the line is redundant: write the input that needs the line before deleting it (0041: the redraw of a same-size crop, deleted after a survivor, was the check's one user-visible bug);
+   - a test of a gate (what a key or an action does nothing in) first asserts the state that makes the gate the cause (the selection exists, the item is enabled), or it tests only the item's insensitivity (0041: the quit prompt);
+   - the task that adds a menu item carries its translations, mnemonics, Help row and the update of every test that reads the menu's structure (grep the tests for the section strings), so the suites stay green (0041: pulled forward from two later tasks);
    - a survivor is one line in the Check section ("survivor, accepted, reason") and becomes a task only if it shows a user-visible bug;
    - decide routine things yourself and record them; ask JOD only for product decisions or irreversible ones;
    - tick the task and report in one line, and fill its `Result:` line in the spec, written from the test file, never from the task's
