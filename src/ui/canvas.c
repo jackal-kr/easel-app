@@ -268,6 +268,7 @@ struct _EaselCanvas
   double pan_x, pan_y;    /* canvas point under the pointer when the pan began */
   double notch_acc;       /* touchpad scrolling not yet a whole notch */
   double pinch_base;      /* the pinch's scale at the last level change, 1 when it begins */
+  double pinch_last;      /* its latest scale, 1 when none */
   EaselZoomGate zoom_gate; /* the window's word on the wheel's and the pinch's zoom (REQ-0036-01) */
   gpointer zoom_gate_data;
   gboolean anchor_pending;
@@ -6171,6 +6172,8 @@ easel_canvas_buttons_released (EaselCanvas *self)
       self->painting = FALSE;
       self->paint_hook (EASEL_PAINT_END, self->paint_x, self->paint_y, self->paint_data);   /* 0038: ended as released */
     }
+  if (self->text_drag != 0)
+    text_drag_end (self, FALSE);                 /* a text box's move or resize, as released there (0036 Check F1) */
   self->cancelled_button = 0;
 }
 
@@ -6397,6 +6400,11 @@ void
 easel_canvas_press_timed (EaselCanvas *self, guint button, double x, double y, guint32 time_ms)
 {
   int px, py;
+
+  /* Something comes to be held (every press, of a button or of a key): a touchpad's partial notch is dropped and the pinch counts again
+     from its scale now, also when no scale comes during the hold (REQ-0036-02; 0036 Check F2). */
+  self->notch_acc = 0;
+  self->pinch_base = self->pinch_last;
 
   /* Remove Background's card open (REQ-0037-01): the primary press, of the mouse or the marker's Space, goes to the card's hook as the
      picture pixel under it (REQ-0025-02); nothing else of the canvas acts. */
@@ -7340,13 +7348,13 @@ easel_canvas_pointer_left (EaselCanvas *self)
 void
 easel_canvas_pinch_begin (EaselCanvas *self)
 {
-  self->pinch_base = 1.0;
+  self->pinch_base = self->pinch_last = 1.0;
 }
 
 void
 easel_canvas_pinch_end (EaselCanvas *self)
 {
-  self->pinch_base = 1.0;
+  self->pinch_base = self->pinch_last = 1.0;
 }
 
 void
@@ -7356,6 +7364,7 @@ easel_canvas_pinch (EaselCanvas *self, double scale, double view_x, double view_
 
   /* With every tool, as Ctrl+wheel (REQ-0036-01); while something is held nothing zooms, and the count starts again from the scale
      at the release (REQ-0036-02). */
+  self->pinch_last = scale;
   if (self->img == NULL || self->pinch_base <= 0 || !zoom_gate_open (self))
     return;
   if (easel_canvas_is_holding (self))
@@ -7737,7 +7746,7 @@ easel_canvas_init (EaselCanvas *self)
   self->shape_width = 1;
   self->magnifier_level = easel_magnifier_levels[EASEL_MAGNIFIER_DEFAULT];
   self->grid_cell = 1;
-  self->pinch_base = 1.0;
+  self->pinch_base = self->pinch_last = 1.0;
   self->builder = gdk_memory_texture_builder_new ();
   update_cursor (self);
   gtk_widget_set_halign (GTK_WIDGET (self), GTK_ALIGN_START);

@@ -38844,6 +38844,78 @@ wz_no_zoom (EaselWindow *win, const char *what)
   g_assert_cmpint (easel_window_get_zoom (win), ==, 100);
 }
 
+/* 0036 AS-3 (REQ-0036-02, REQ-0007-18; 0036 Check F1): a move of a text box by its band whose release is lost ends as released there:
+   the box stays where it was shown as one edit, the pointer moving with no button down no longer moves it, nothing is held, so
+   Ctrl+wheel zooms. */
+static void
+wz_as3_lost_release_box_move (void)
+{
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  double x, y, x1, y1, x2, y2;
+
+  write_settings (TEXT_SETTINGS);
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  use_tool (win, "text");
+  shape_press_move (win, 1, 50, 50, 149, 89);
+  shape_release (win, 1);
+  g_assert_true (box_is (win, 50, 50, 100, 40));
+  type_keys (win, "ab");
+  canvas_point (win, 75.5, 50, &x, &y);
+  canvas_point (win, 105.5, 70, &x1, &y1);
+  canvas_point (win, 125.5, 90, &x2, &y2);
+  easel_canvas_press (canvas, 1, x, y - 2);
+  easel_canvas_motion (canvas, x1, y1 - 2);
+  g_assert_true (box_is (win, 80, 70, 100, 40));
+  g_assert_true (easel_canvas_is_holding (canvas));
+  easel_canvas_buttons_released (canvas);                                      /* the release lost (REQ-0007-18) */
+  g_assert_false (easel_canvas_is_holding (canvas));
+  easel_canvas_motion (canvas, x2, y2 - 2);                                    /* no button down: the box stays */
+  g_assert_true (box_is (win, 80, 70, 100, 40));
+  g_assert_true (box_text_is (win, "ab"));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_true (box_is (win, 50, 50, 100, 40));                               /* one edit, as a release makes */
+  g_assert_true (easel_canvas_wheel (canvas, GDK_CONTROL_MASK, -1, 100.5, 80.5) == GDK_EVENT_STOP);
+  wait_for_layout (win);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 200);
+  close_windows ();
+}
+
+/* 0036 AS-3 (REQ-0036-02; 0036 Check F2): a touchpad's partial notch is dropped when something comes to be held, and a pinch counts again
+   from its scale at the press, even when no scale comes during the hold: 0.6 of a notch, a Pencil click, 0.6 again: no zoom; a pinch at
+   1.3, a click, then 1.9 (under 1.5 times 1.3): no zoom; 1.96: one level. */
+static void
+wz_as3_partial_dropped_at_press (void)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  double cx, cy;
+
+  wait_for_layout (win);
+  use_pencil (win);
+  canvas_point (win, 20.5, 20.5, &cx, &cy);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 100);
+  g_assert_true (easel_canvas_wheel (canvas, GDK_CONTROL_MASK, -0.6, 100.5, 80.5) == GDK_EVENT_STOP);
+  easel_canvas_press (canvas, 1, cx, cy);
+  easel_canvas_release (canvas, 1);
+  easel_canvas_wheel (canvas, GDK_CONTROL_MASK, -0.6, 100.5, 80.5);
+  wait_for_layout (win);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 100);
+  easel_canvas_pinch_begin (canvas);
+  easel_canvas_pinch (canvas, 1.3, 100.5, 80.5);
+  easel_canvas_press (canvas, 1, cx, cy);
+  easel_canvas_release (canvas, 1);
+  easel_canvas_pinch (canvas, 1.9, 100.5, 80.5);
+  wait_for_layout (win);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 100);
+  easel_canvas_pinch (canvas, 1.96, 100.5, 80.5);
+  easel_canvas_pinch_end (canvas);
+  wait_for_layout (win);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 200);
+  close_windows ();
+}
+
 /* 0036 AS-3 (REQ-0036-02): while a stroke, a line drag, a selection move, a text box drawn, Pan's drag, a resize drag, a held Space
    press or a Fill press is held, nothing zooms; after the release Ctrl+wheel does; the pinch counts again from the release; a lost release of a
    stroke and of Pan's drag ends them; Flip during Pan's drag acts as before. */
@@ -39733,6 +39805,8 @@ main (int argc, char **argv)
   g_test_add_func ("/0036/as1_every_tool", wz_as1_every_tool);
   g_test_add_func ("/0036/as2_cards", wz_as2_cards);
   g_test_add_func ("/0036/as3_held", wz_as3_held);
+  g_test_add_func ("/0036/as3_lost_release_box_move", wz_as3_lost_release_box_move);
+  g_test_add_func ("/0036/as3_partial_dropped_at_press", wz_as3_partial_dropped_at_press);
   g_test_add_func ("/0036/as1_open", wz_as1_open);
   g_test_add_func ("/0036/as5_fast", wz_as5_fast);
   g_test_add_func ("/0033-scale2/as6_on_or_off_scale2", curve_as6_scale2);

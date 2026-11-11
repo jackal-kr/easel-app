@@ -2086,8 +2086,8 @@ on_card_scroll (GtkEventControllerScroll *controller, double dx, double dy, Ease
   GdkModifierType state = gtk_event_controller_get_current_event_state (GTK_EVENT_CONTROLLER (controller));
   double x, y, notches;
 
-  if (!(state & GDK_CONTROL_MASK))
-    return GDK_EVENT_PROPAGATE;
+  if (!(state & GDK_CONTROL_MASK) || dy == 0)
+    return GDK_EVENT_PROPAGATE;                 /* a sideways scroll with Ctrl goes on as without it (0036 Check F3) */
   scroll_point (controller, dy, &x, &y, &notches);
   if (easel_window_card_wheel (self, gtk_event_controller_get_widget (GTK_EVENT_CONTROLLER (controller)), state, notches, x, y))
     return GDK_EVENT_STOP;
@@ -2101,8 +2101,13 @@ on_thumbnail_scroll (GtkEventControllerScroll *controller, double dx, double dy,
   double x, y, notches;
 
   scroll_point (controller, dy, &x, &y, &notches);
-  if (easel_window_card_wheel (self, gtk_event_controller_get_widget (GTK_EVENT_CONTROLLER (controller)), state, notches, x, y))
-    return GDK_EVENT_STOP;
+  /* Ctrl zooms by the vertical part only; a sideways part scrolls the view sideways as without Ctrl (REQ-0036-01; 0036 Check F3) */
+  if (dy != 0 && easel_window_card_wheel (self, gtk_event_controller_get_widget (GTK_EVENT_CONTROLLER (controller)), state, notches, x, y))
+    {
+      if (dx != 0)
+        scroll_view_as_scroller (self, controller, dx, 0);
+      return GDK_EVENT_STOP;
+    }
   scroll_view_as_scroller (self, controller, dx, dy);
   return GDK_EVENT_STOP;
 }

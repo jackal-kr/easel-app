@@ -97,6 +97,11 @@ Order suggestion: A and B first, C after the graphics path audit, D with file in
 - XP's behavior, as remembered and not checked against XP or jspaint: Image, Attributes has a Colors choice of "Black and white" or "Colors". Choosing Black and white warns that the color is lost and cannot be got back, then turns the picture to pure black and white, and the palette shows black, white and dithered patterns in place of colors. Going back to Colors does not bring the colors back.
 - Open question, for its spec: the conversion. A threshold on brightness (at what value, and by which weights), or a dither (which one, and whether it is repeatable, for P7's "the same input gives the same pixels")? What happens to transparency, whether it is one undo step, and whether the palette changes or only the picture.
 
+## From 0036's check (2026-11-11)
+- A Magnifier zoom waiting for its allocation, then Ctrl+Wheel in the same frame, can anchor around a stale point (F5).
+- One finger on a touch screen may pan the view by the scrolled window's kinetic scrolling (REQ-0036-03 says no pan): to try on a
+  touch screen (F6, M2 not run).
+
 ## From the mutation list
 - REQ-0017-14, the popover's scroll guard: survives on GTK 4.24, accepted (JOD, 2026-11-02). Re-decide at packaging-release, when the minimum GTK is chosen.
 

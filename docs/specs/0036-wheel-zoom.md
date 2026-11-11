@@ -1,6 +1,6 @@
 # 0036 Wheel zoom in every tool
 
-Status: accepted
+Status: implemented
 Reviewed: spec-reviewer, 2026-11-09 (the version without the slider; its findings merged, the merged text not reviewed again)
 Depends on: 0001, 0004, 0006, 0007, 0010, 0013, 0017, 0021, 0022, 0031
 
@@ -103,4 +103,34 @@ touchpad; M2 a touch screen (AS-4).
   Result (2026-11-09): through `tools/isolated.sh`, the full suite 128 of 128 and the scale-2 runs 5 of 5. Mutants by REQ (0036-01, -02, -04 with 0001-16, -17, 0004-08, 0008-04, 0010-21): `16 mutants: 15 killed, 0 killed by crash (test gap), 1 inconclusive (no snapshot or skipped), 0 survived, 0 errors in 111 s`, the inconclusive one the gate ignored in the wheel, as at T004 (ui-0036 exits 77 in the tool's session, only for this mutant; killed by hand). `--core` (no core change, for the record): `473 mutants: 468 killed, 0 killed by crash (test gap), 0 inconclusive (no snapshot or skipped), 4 survived, 0 errors, 1 accepted in 175 s`, the four 0023's accepted at its check. Lint 1329, 0 stale. After the gate, AS-5's wording (JOD) and its test in device pixels, ui-0036 green and REQ-0036-04's mutant killed again. The Plan's names as built.
 
 ## Check
-(written by /sdd-check)
+- Date and commit: 2026-11-11, on `f4478f6` with the beta gate's uncommitted fixes (0036 itself is in `5c1cb53`, a restore point
+  shared with Remove Background, so its diff was read from the code that names it).
+- Tests: the full suite (isolated) 130 of 130 on 2026-11-10 before the check's fixes; after them ui-0007, ui-0017, ui-0021, ui-0035,
+  ui-0036, ui-0037, ui-0038, core and io green; the cases of this feature: `/0036/as1_every_tool`, `as1_open`, `as2_cards`, `as3_held`,
+  `as3_lost_release_box_move` and `as3_partial_dropped_at_press` (new), `as5_fast`. Under the sanitizers (ASan, UBSan) all 83 ui
+  suites pass with no report.
+- Mutants: the full list (2026-11-10, the beta gate) left REQ-0036-01's one inconclusive; run again alone with REQ-0036-02 and -04:
+  all killed (77 mutants with the gate's new survivors: 71 killed, 5 survived, 1 accepted; 0036's none).
+- Warnings: 0. Lint and `--names 0036` clean.
+- Scenarios: AS-1 `as1_every_tool`, `as1_open` + M1; AS-2 `as2_cards` + M1 (the font card's own controller); AS-3 `as3_held`,
+  `as3_lost_release_box_move`, `as3_partial_dropped_at_press`; AS-4 M2, not run (no touch screen); AS-5 `as5_fast`.
+- Task results: T001 to T007 have their `Result:` lines; none is a characterization; T006's touch screen (M2) not run.
+
+Findings (a review agent read the code blind; each checked in the code before it counted):
+- F1 (user-visible, fixed): a lost release during a text box's move or resize left the canvas held: Ctrl+Wheel scrolled instead of
+  zooming, the zoom commands were refused until the next click, and the pointer moving with no button down still moved the box.
+  `easel_canvas_buttons_released` now ends it as released. `as3_lost_release_box_move` failed first ("is_holding ... should be FALSE").
+- F2 (user-visible, fixed): a touchpad's partial notch was not dropped when something came to be held (0.6, a click, 0.6 zoomed), and a
+  pinch counted from its old base when no scale came during the hold. Both are reset at every press, the one place every hold begins.
+  `as3_partial_dropped_at_press` failed first (200 for 100).
+- F3 (user-visible, fixed, manual check): Ctrl with a sideways scroll over the thumbnail card was swallowed (no sideways scroll), and
+  over the font card too. Now only the vertical part zooms. No headless test can give a scroll signal the Ctrl state: step 7 of
+  `docs/walkthrough-phase2.md`.
+- F4 (not a defect): a fast pinch moves one level per event: REQ-0004-08 and its core test say so.
+- F5 (open, low): a Magnifier zoom waiting for its allocation, then Ctrl+Wheel in the same frame, can anchor around a stale point.
+- F6 (open, needs M2): one finger on a touch screen may pan through the scrolled window's kinetic scrolling (REQ-0036-03 says no
+  pan); no touch screen at hand.
+- From the gate's mutants (seen here): REQ-0037-04's survivor showed a user-visible gap of 0037 with 0038's Ctrl+Z: a second press on
+  a pressed piece erased the first, so Ctrl+Z skipped both. JOD (2026-11-11): each press is kept and two cancel; REQ-0037-04 changed,
+  0037's AS-12 added, `/0037/as12_second_press_undone` red first, a new mutant killed.
+- Known gaps (also in `docs/phase2-plan.md`): F5, F6.
