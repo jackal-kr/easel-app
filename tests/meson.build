@@ -65,6 +65,8 @@ test('ui-0024', test_window, args: ['-p', '/0024'], env: ui_env, suite: 'ui', ti
 # AS-7 (0024): the desktop's own validators, and AS-8: an install finds its files.
 test('desktop-entry', find_program('desktop-file-validate'), args: [desktop_file], suite: 'core')
 test('metainfo', find_program('appstreamcli'), args: ['validate', '--no-net', metainfo_file], suite: 'core')
+# 0024: one version in meson.build, the deb's changelog and the metainfo's newest release.
+test('version-sync', find_program('python3'), args: [meson.current_source_dir() / 'version-sync.py', meson.project_source_root()], suite: 'core')
 # AS-9 (0024): the Flatpak asks for exactly what REQ-0024-10 says.
 test('flatpak-permissions', find_program('python3'), args: [meson.current_source_dir() / 'flatpak-permissions.py', meson.project_source_root() / 'build-aux/flatpak/io.github.jackal_kr.Easel.yml'], suite: 'core')
 # AS-8 (0024): an install finds its catalogs and Help pages, with no path of the build.

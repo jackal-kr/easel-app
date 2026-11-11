@@ -33578,7 +33578,19 @@ as1_version (void)
   wait_for_layout (win);
   d = visible_dialog (win);
   g_assert_true (ADW_IS_ABOUT_DIALOG (d));
-  g_assert_cmpstr (adw_about_dialog_get_version (ADW_ABOUT_DIALOG (d)), ==, "0.1.0-alpha.1");
+  {
+    /* the project's version, read from meson.build itself (the beta bump of 2026-11-11 had this test pinned to the alpha) */
+    g_autofree char *path = g_build_filename (g_getenv ("EASEL_TEST_DATA"), "..", "..", "meson.build", NULL);
+    g_autofree char *text = NULL;
+    g_autoptr (GRegex) re = g_regex_new ("^  version: '([^']+)',$", G_REGEX_MULTILINE, 0, NULL);
+    g_autoptr (GMatchInfo) m = NULL;
+    g_autofree char *version = NULL;
+
+    g_assert_true (g_file_get_contents (path, &text, NULL, NULL));
+    g_assert_true (g_regex_match (re, text, 0, &m));
+    version = g_match_info_fetch (m, 1);
+    g_assert_cmpstr (adw_about_dialog_get_version (ADW_ABOUT_DIALOG (d)), ==, version);
+  }
   adw_dialog_force_close (d);
   wait_for_no_dialog (win);
   close_windows ();
