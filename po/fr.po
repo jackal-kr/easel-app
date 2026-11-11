@@ -151,6 +151,9 @@ msgstr "Pivoter de 270°"
 msgid "Stretch and Skew…"
 msgstr "Étirer et incliner…"
 
+msgid "Crop to Selection"
+msgstr "Rogner à la sélection"
+
 msgid "Invert Colors"
 msgstr "Inverser les couleurs"
 
@@ -1092,6 +1095,9 @@ msgstr "Pivoter de _270°"
 
 msgid "Stretch and _Skew…"
 msgstr "Étirer et _incliner…"
+
+msgid "Cr_op to Selection"
+msgstr "Ro_gner à la sélection"
 
 msgid "_Invert Colors"
 msgstr "Inverser _les couleurs"

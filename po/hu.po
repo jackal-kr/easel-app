@@ -151,6 +151,9 @@ msgstr "Forgatás 270°-kal"
 msgid "Stretch and Skew…"
 msgstr "Nyújtás és döntés…"
 
+msgid "Crop to Selection"
+msgstr "Körbevágás a kijelölésre"
+
 msgid "Invert Colors"
 msgstr "Színek invertálása"
 
@@ -1092,6 +1095,9 @@ msgstr "Forgatás _270°-kal"
 
 msgid "Stretch and _Skew…"
 msgstr "Nyújtás és _döntés…"
+
+msgid "Cr_op to Selection"
+msgstr "Körbe_vágás a kijelölésre"
 
 msgid "_Invert Colors"
 msgstr "Színek _invertálása"

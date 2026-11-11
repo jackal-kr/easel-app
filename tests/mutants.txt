@@ -13938,3 +13938,399 @@ test: core-selection
   if (f == NULL && x == 0 && y == 0 && w == ow && h == oh)
 --- replace
   if (x == 0 && y == 0 && w == ow && h == oh)
+
+# ---- Crop to Selection's item, menus and key (0041, T005) ----
+
+=== REQ-0041-01 Ctrl+Shift+K is not an accelerator of Crop to Selection
+file: src/ui/application.c
+test: ui-0041
+--- find
+  gtk_application_set_accels_for_action (GTK_APPLICATION (app), "win.crop-to-selection", (const char *[]) { "<Control><Shift>k", NULL });
+--- replace
+  (void) 0;
+
+=== REQ-0041-01 Crop to Selection acts with a dialog, the quit prompt, the color chooser or a button held
+file: src/ui/window.c
+test: ui-0041
+--- find
+  if (!view_actions_allowed (self) || easel_canvas_is_panning (self->canvas) || card_field_focus (self) != NULL)
+    return;
+  r = easel_canvas_crop_to_selection (self->canvas, &w, &h);
+--- replace
+  if (easel_canvas_is_panning (self->canvas) || card_field_focus (self) != NULL)
+    return;
+  r = easel_canvas_crop_to_selection (self->canvas, &w, &h);
+
+=== REQ-0041-01 Crop to Selection is sensitive without a selection
+file: src/ui/window.c
+test: ui-0041
+--- find
+  static const char *selection_actions[] = { "cut", "copy", "copy-to", "crop-to-selection" };
+--- replace
+  static const char *selection_actions[] = { "cut", "copy", "copy-to" };
+
+=== REQ-0041-01 the Shortcuts window names the item differently from its menu
+file: src/ui/help.c
+test: ui-0021
+--- find
+  { N_ ("Image"), N_ ("Crop to Selection"), "<Control><Shift>k", "win.crop-to-selection" },
+--- replace
+  { N_ ("Image"), N_ ("Crop the Selection"), "<Control><Shift>k", "win.crop-to-selection" },
+
+=== REQ-0041-01 the Shortcuts window lists another key for Crop to Selection
+file: src/ui/help.c
+test: ui-0021
+--- find
+  { N_ ("Image"), N_ ("Crop to Selection"), "<Control><Shift>k", "win.crop-to-selection" },
+--- replace
+  { N_ ("Image"), N_ ("Crop to Selection"), "<Control><Shift>j", "win.crop-to-selection" },
+
+=== REQ-0041-05 a crop leaves the selection
+file: src/ui/canvas.c
+test: ui-0041
+--- find
+  shape_free (self);
+  self->sel_state = 0;
+  self->hover_sel = FALSE;
+  self->hover_sel_handle = -1;
+  update_cursor (self);
+  g_signal_emit (self, signals[SIGNAL_PENDING_CHANGED], 0);
+  g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);
+  return EASEL_SELECTION_DONE;
+--- replace
+  shape_free (self);
+  self->hover_sel = FALSE;
+  self->hover_sel_handle = -1;
+  update_cursor (self);
+  g_signal_emit (self, signals[SIGNAL_PENDING_CHANGED], 0);
+  g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);
+  return EASEL_SELECTION_DONE;
+
+=== REQ-0041-04 a crop does not update the history's state in the window
+file: src/ui/window.c
+test: ui-0041
+--- find
+    easel_canvas_update (self->canvas);              /* the size the same: the pixels changed, so the tiles are made again (Check F1) */
+  sync_history_ui (self);
+--- replace
+    easel_canvas_update (self->canvas);              /* the size the same: the pixels changed, so the tiles are made again (Check F1) */
+
+# ---- the marked crop in the window (0041, T006) ----
+
+=== REQ-0041-05 after a crop the view keeps its scroll instead of showing the top-left corner
+file: src/ui/window.c
+test: ui-0041
+--- find
+      gtk_adjustment_set_value (gtk_scrolled_window_get_hadjustment (self->scroller), 0);
+      gtk_adjustment_set_value (gtk_scrolled_window_get_vadjustment (self->scroller), 0);
+--- replace
+      (void) 0;
+
+=== REQ-0041-05 after a crop the view does not scroll to the top on the vertical axis
+file: src/ui/window.c
+test: ui-0041
+--- find
+      gtk_adjustment_set_value (gtk_scrolled_window_get_vadjustment (self->scroller), 0);
+--- replace
+      (void) 0;
+
+=== REQ-0041-05 a crop that changes the size does not rebuild the view
+file: src/ui/window.c
+test: ui-0041
+--- find
+  if (self->picture->width != old_w || self->picture->height != old_h)
+    {
+--- replace
+  if (FALSE)
+    {
+
+=== REQ-0041-05 a floating selection over the whole picture is not put down by a crop
+file: src/ui/canvas.c
+test: ui-0041
+--- find
+      finish_selection (self, FALSE);
+      return self->sel_state == 0 ? EASEL_SELECTION_DONE : EASEL_SELECTION_NOTHING;
+--- replace
+      return EASEL_SELECTION_NOTHING;
+
+# ---- the floating crop in the window (0041, T007) ----
+
+=== REQ-0041-04 a crop of a grown paste is made from the grown picture, so Undo does not return to before the paste
+file: src/ui/canvas.c
+test: ui-0041
+--- find
+  if (self->paste_base != NULL)
+    swap_paste_base (self);
+  r = easel_selection_crop (
+--- replace
+  r = easel_selection_crop (
+
+=== REQ-0041-03 a floating crop is made as a marked one, without the float
+file: src/ui/canvas.c
+test: ui-0041
+--- find
+  r = easel_selection_crop (self->sel_state == 2 ? &self->sel_float : NULL, self->img, self->history, x, y, w, h, self->background,
+--- replace
+  r = easel_selection_crop (NULL, self->img, self->history, x, y, w, h, self->background,
+
+=== REQ-0041-03 a floating crop's outside the old picture is not the background color
+file: src/ui/canvas.c
+test: ui-0041
+--- find
+  r = easel_selection_crop (self->sel_state == 2 ? &self->sel_float : NULL, self->img, self->history, x, y, w, h, self->background,
+--- replace
+  r = easel_selection_crop (self->sel_state == 2 ? &self->sel_float : NULL, self->img, self->history, x, y, w, h, 0xFF808080u,
+
+=== REQ-0041-03 a floating crop takes the box of the marked rectangle, not of the float
+file: src/ui/canvas.c
+test: ui-0041
+--- find
+      x = self->sel_float.x;
+      y = self->sel_float.y;
+      w = self->sel_float.w;
+      h = self->sel_float.h;
+--- replace
+      x = self->sel_float.x;
+      y = self->sel_float.y;
+      w = self->sel_float.w - 1;
+      h = self->sel_float.h;
+
+=== REQ-0041-05 a crop of a grown paste leaves the picture as it was before the paste kept after the crop
+file: src/ui/canvas.c
+test: ui-0041
+--- find
+  drop_paste_base (self);
+  drop_float (self);
+  shape_free (self);
+  self->sel_state = 0;
+  self->hover_sel = FALSE;
+  self->hover_sel_handle = -1;
+  update_cursor (self);
+  g_signal_emit (self, signals[SIGNAL_PENDING_CHANGED], 0);
+  g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);
+  return EASEL_SELECTION_DONE;
+--- replace
+  drop_float (self);
+  shape_free (self);
+  self->sel_state = 0;
+  self->hover_sel = FALSE;
+  self->hover_sel_handle = -1;
+  update_cursor (self);
+  g_signal_emit (self, signals[SIGNAL_PENDING_CHANGED], 0);
+  g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);
+  return EASEL_SELECTION_DONE;
+
+=== REQ-0041-01 the Image menu's item does not crop
+file: src/ui/window.ui
+test: ui-0041 ui-0018
+--- find
+        <attribute name="action">win.crop-to-selection</attribute>
+        <attribute name="accel">&lt;Control&gt;&lt;Shift&gt;k</attribute>
+      </item>
+    </section>
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">_Invert Colors</attribute>
+        <attribute name="action">win.invert</attribute>
+        <attribute name="accel">&lt;Control&gt;i</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">_Black and White…</attribute>
+        <attribute name="action">win.black-white</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">R_emove Background…</attribute>
+        <attribute name="action">win.remove-background</attribute>
+      </item>
+    </section>
+    <section>
+      <item>
+--- replace
+        <attribute name="action">win.stretch-skew</attribute>
+        <attribute name="accel">&lt;Control&gt;&lt;Shift&gt;k</attribute>
+      </item>
+    </section>
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">_Invert Colors</attribute>
+        <attribute name="action">win.invert</attribute>
+        <attribute name="accel">&lt;Control&gt;i</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">_Black and White…</attribute>
+        <attribute name="action">win.black-white</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">R_emove Background…</attribute>
+        <attribute name="action">win.remove-background</attribute>
+      </item>
+    </section>
+    <section>
+      <item>
+
+=== REQ-0041-01 the selection menu's item does not crop
+file: src/ui/window.ui
+test: ui-0041 ui-0018
+--- find
+        <attribute name="action">win.crop-to-selection</attribute>
+        <attribute name="accel">&lt;Control&gt;&lt;Shift&gt;k</attribute>
+      </item>
+    </section>
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">_Invert Colors</attribute>
+        <attribute name="action">win.invert</attribute>
+        <attribute name="accel">&lt;Control&gt;i</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">_Black and White…</attribute>
+        <attribute name="action">win.black-white</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">R_emove Background…</attribute>
+        <attribute name="action">win.remove-background</attribute>
+      </item>
+    </section>
+  </menu>
+--- replace
+        <attribute name="action">win.stretch-skew</attribute>
+        <attribute name="accel">&lt;Control&gt;&lt;Shift&gt;k</attribute>
+      </item>
+    </section>
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">_Invert Colors</attribute>
+        <attribute name="action">win.invert</attribute>
+        <attribute name="accel">&lt;Control&gt;i</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">_Black and White…</attribute>
+        <attribute name="action">win.black-white</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">R_emove Background…</attribute>
+        <attribute name="action">win.remove-background</attribute>
+      </item>
+    </section>
+  </menu>
+
+=== REQ-0041-01 the selection menu's last group is not split after Crop to Selection
+file: src/ui/window.ui
+test: ui-0018
+--- find
+        <attribute name="action">win.crop-to-selection</attribute>
+        <attribute name="accel">&lt;Control&gt;&lt;Shift&gt;k</attribute>
+      </item>
+    </section>
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">_Invert Colors</attribute>
+        <attribute name="action">win.invert</attribute>
+        <attribute name="accel">&lt;Control&gt;i</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">_Black and White…</attribute>
+        <attribute name="action">win.black-white</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">R_emove Background…</attribute>
+        <attribute name="action">win.remove-background</attribute>
+      </item>
+    </section>
+  </menu>
+--- replace
+        <attribute name="action">win.crop-to-selection</attribute>
+        <attribute name="accel">&lt;Control&gt;&lt;Shift&gt;k</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">_Invert Colors</attribute>
+        <attribute name="action">win.invert</attribute>
+        <attribute name="accel">&lt;Control&gt;i</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">_Black and White…</attribute>
+        <attribute name="action">win.black-white</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">R_emove Background…</attribute>
+        <attribute name="action">win.remove-background</attribute>
+      </item>
+    </section>
+  </menu>
+
+# ---- memory of the crop (0041, T008) ----
+
+=== REQ-0041-06 a crop that cannot get its memory shows no dialog
+file: src/ui/window.c
+test: ui-0041
+--- find
+  if (r == EASEL_SELECTION_NO_MEMORY)
+    show_resize_error (self, w, h);
+  if (r != EASEL_SELECTION_DONE)
+    return;
+  if (self->picture->width != old_w || self->picture->height != old_h)
+--- replace
+  if (r != EASEL_SELECTION_DONE)
+    return;
+  if (self->picture->width != old_w || self->picture->height != old_h)
+
+=== REQ-0041-06 the memory dialog names the wrong size
+file: src/ui/canvas.c
+test: ui-0041
+--- find
+  *new_w = w;
+  *new_h = h;
+  if (self->paste_base != NULL)
+--- replace
+  *new_w = w;
+  *new_h = w;
+  if (self->paste_base != NULL)
+
+=== REQ-0041-06 a refused crop of a grown paste leaves the picture as it was before the paste
+file: src/ui/canvas.c
+test: ui-0041
+--- find
+      if (self->paste_base != NULL)
+        swap_paste_base (self);                      /* nothing changed: the grown picture and the float as they were */
+--- replace
+      (void) 0;                                      /* nothing changed: the grown picture and the float as they were */
+
+=== REQ-0002-17 a crop's step larger than the whole budget is dropped, not kept as the only step
+file: src/core/history.c
+test: ui-0041
+--- find
+  while (h->bytes > h->budget && h->len - h->first > 1)
+--- replace
+  while (h->bytes > h->budget && h->len - h->first > 0)
+
+# ---- Check F1: a crop of the same size shows its pixels (0041) ----
+
+=== REQ-0041-05 a floating crop that keeps the picture's size does not make its tiles again
+file: src/ui/window.c
+test: ui-0041
+--- find
+  else
+    easel_canvas_update (self->canvas);              /* the size the same: the pixels changed, so the tiles are made again (Check F1) */
+--- replace
+  else
+    (void) 0;
+
+=== REQ-0041-05 a crop does not mark the new picture as changed
+file: src/core/selection.c
+test: ui-0041
+--- find
+  img->dirty = (EaselRect) { 0, 0, w, h };           /* the whole new picture shows again: a crop of the same size needs its tiles made too (0041 Check F1) */
+--- replace
+  img->dirty = (EaselRect) { 0, 0, 0, 0 };
+
+# ---- Check G3: a float's crop over its own hole (0041) ----
+
+=== REQ-0041-03 a float's crop shows no hole where the float's own place was
+file: src/core/selection.c
+test: core-selection
+--- find
+          if (f->hole && in_shape (&hole, f->hx, f->hy, x, y))
+            v = f->hole_color;
+--- replace
+          if (false)
+            v = f->hole_color;

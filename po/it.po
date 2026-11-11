@@ -151,6 +151,9 @@ msgstr "Ruota di 270°"
 msgid "Stretch and Skew…"
 msgstr "Allunga e inclina…"
 
+msgid "Crop to Selection"
+msgstr "Ritaglia sulla selezione"
+
 msgid "Invert Colors"
 msgstr "Inverti i colori"
 
@@ -1092,6 +1095,9 @@ msgstr "Ruota di _270°"
 
 msgid "Stretch and _Skew…"
 msgstr "_Allunga e inclina…"
+
+msgid "Cr_op to Selection"
+msgstr "Ritaglia s_ulla selezione"
 
 msgid "_Invert Colors"
 msgstr "In_verti i colori"

@@ -23258,7 +23258,7 @@ as1_image_menus (void)
   i0 = describe_section (im, 0);
   i1 = describe_section (im, 1);
   i2 = describe_section (im, 2);
-  g_assert_cmpstr (i0, ==, "_Flip|(null); _Rotate|(null); Stretch and _Skew…|win.stretch-skew");       /* its item: REQ-0019-01 */
+  g_assert_cmpstr (i0, ==, "_Flip|(null); _Rotate|(null); Stretch and _Skew…|win.stretch-skew; Cr_op to Selection|win.crop-to-selection");       /* its item: REQ-0019-01; 0041 adds Crop to Selection after it */
   g_assert_cmpstr (i1, ==, "_Invert Colors|win.invert; _Black and White…|win.black-white; R_emove Background…|win.remove-background");   /* 0034, 0035 (before: Invert Colors alone, then without Remove Background) */
   g_assert_cmpstr (i2, ==, "Attributes…|win.attributes; _Clear Image|win.clear-image");
   section0 = g_menu_model_get_item_link (im, 0, G_MENU_LINK_SECTION);
@@ -23880,21 +23880,25 @@ as1_selection_menu (void)
   GtkPopoverMenu *menu = easel_window_get_selection_menu (win);
   GMenuModel *sel = gtk_popover_menu_get_menu_model (menu);
   g_autoptr (GMenuModel) section = NULL, flip = NULL, rotate = NULL;
-  g_autofree char *s2 = NULL, *f = NULL, *r = NULL, *accel = NULL;
+  g_autofree char *s2 = NULL, *s3 = NULL, *f = NULL, *r = NULL, *accel = NULL;
+  g_autoptr (GMenuModel) section3 = NULL;
 
-  g_assert_cmpint (g_menu_model_get_n_items (sel), ==, 3);
+  /* 0041 splits the last section after Crop to Selection, as the Image menu's first and second sections are: four sections in all (before: three). */
+  g_assert_cmpint (g_menu_model_get_n_items (sel), ==, 4);
   s2 = describe_section (sel, 2);
+  s3 = describe_section (sel, 3);
+  g_assert_cmpstr (s2, ==, "_Flip|(null); _Rotate|(null); Stretch and _Skew…|win.stretch-skew; Cr_op to Selection|win.crop-to-selection");
   /* 0034 adds Black and White after Invert Colors (before: the section ended with Invert Colors). */
-  g_assert_cmpstr (s2, ==, "_Flip|(null); _Rotate|(null); Stretch and _Skew…|win.stretch-skew; _Invert Colors|win.invert; "
-                           "_Black and White…|win.black-white; R_emove Background…|win.remove-background");   /* 0035 adds Remove Background (before: ended with Black and White) */
+  g_assert_cmpstr (s3, ==, "_Invert Colors|win.invert; _Black and White…|win.black-white; R_emove Background…|win.remove-background");   /* 0035 adds Remove Background (before: ended with Black and White) */
   section = g_menu_model_get_item_link (sel, 2, G_MENU_LINK_SECTION);
+  section3 = g_menu_model_get_item_link (sel, 3, G_MENU_LINK_SECTION);
   flip = g_menu_model_get_item_link (section, 0, G_MENU_LINK_SUBMENU);
   rotate = g_menu_model_get_item_link (section, 1, G_MENU_LINK_SUBMENU);
   f = describe_section (flip, 0);
   r = describe_section (rotate, 0);
   g_assert_cmpstr (f, ==, "Flip _Horizontal|win.flip-horizontal; Flip _Vertical|win.flip-vertical");
   g_assert_cmpstr (r, ==, "Rotate _90°|win.rotate-90; Rotate 1_80°|win.rotate-180; Rotate _270°|win.rotate-270");
-  g_assert_true (g_menu_model_get_item_attribute (section, 3, "accel", "s", &accel));
+  g_assert_true (g_menu_model_get_item_attribute (section3, 0, "accel", "s", &accel));   /* Invert Colors: the first item of the section after Crop (0041) */
   g_assert_cmpstr (accel, ==, "<Control>i");
   /* it opens on a selection of either tool */
   use_select (win);
@@ -36505,15 +36509,14 @@ bw_as1_menus_and_dialog (void)
   const EaselImage *img = easel_window_get_picture (win);
   GMenuModel *im = menu_of (easel_window_get_image_button (win));
   GMenuModel *sel = gtk_popover_menu_get_menu_model (easel_window_get_selection_menu (win));
-  g_autofree char *i1 = describe_section (im, 1), *s2 = describe_section (sel, 2), *accel = NULL;
+  g_autofree char *i1 = describe_section (im, 1), *s2 = describe_section (sel, 3), *accel = NULL;       /* the selection menu's Invert Colors section: the fourth since 0041 */
   g_autofree guint32 *before = g_memdup2 (img->px, 40 * 30 * 4);
   GtkCheckButton *choice[3];
   AdwAlertDialog *d;
   static const char *const titles[3] = { "Threshold", "Ordered dither", "Error diffusion" };
 
   g_assert_cmpstr (i1, ==, "_Invert Colors|win.invert; _Black and White…|win.black-white; R_emove Background…|win.remove-background");   /* 0035 adds Remove Background (before: ended with Black and White) */
-  g_assert_cmpstr (s2, ==, "_Flip|(null); _Rotate|(null); Stretch and _Skew…|win.stretch-skew; _Invert Colors|win.invert; "
-                           "_Black and White…|win.black-white; R_emove Background…|win.remove-background");   /* 0035 adds Remove Background (before: ended with Black and White) */
+  g_assert_cmpstr (s2, ==, "_Invert Colors|win.invert; _Black and White…|win.black-white; R_emove Background…|win.remove-background");   /* the same three as the Image menu's second section */
   {
     g_auto (GStrv) accels = gtk_application_get_accels_for_action (GTK_APPLICATION (g_application_get_default ()), "win.black-white");
 
@@ -36807,7 +36810,7 @@ rbg_as1_menus (void)
   GMenuModel *im = menu_of (easel_window_get_image_button (win));
   GMenuModel *sel = gtk_popover_menu_get_menu_model (easel_window_get_selection_menu (win));
   g_autoptr (GMenuModel) image_section = g_menu_model_get_item_link (im, 1, G_MENU_LINK_SECTION);
-  g_autoptr (GMenuModel) sel_section = g_menu_model_get_item_link (sel, 2, G_MENU_LINK_SECTION);
+  g_autoptr (GMenuModel) sel_section = g_menu_model_get_item_link (sel, 3, G_MENU_LINK_SECTION);   /* the selection menu's fourth section since 0041 splits after Crop to Selection */
 
   g_assert_true (action_enabled (win, "remove-background"));
   g_assert_false (g_action_group_has_action (G_ACTION_GROUP (win), "remove-background-off"));
@@ -40881,6 +40884,871 @@ text_as10_highlight_transparent (void)
   write_settings ("[new-picture]\nwidth=300\nheight=200\n");
 }
 
+/* ---- 0041 T005: Crop to Selection's item, menus and key (REQ-0041-01) ---- */
+
+/* The key as GTK handles it: the shortcut of the application's accelerators whose trigger is (keyval, mods), in the window's own
+   shortcut controller, activated as the controller activates it. TRUE if there is one and its action ran. */
+static gboolean
+fire_shortcut (EaselWindow *win, guint keyval, GdkModifierType mods)
+{
+  g_autofree char *want = gtk_accelerator_name (keyval, mods);
+  g_autoptr (GListModel) controllers = gtk_widget_observe_controllers (GTK_WIDGET (win));
+
+  for (guint i = 0; i < g_list_model_get_n_items (controllers); i++)
+    {
+      g_autoptr (GtkEventController) c = g_list_model_get_item (controllers, i);
+
+      if (!GTK_IS_SHORTCUT_CONTROLLER (c))
+        continue;
+      for (guint k = 0; k < g_list_model_get_n_items (G_LIST_MODEL (c)); k++)
+        {
+          g_autoptr (GtkShortcut) sc = g_list_model_get_item (G_LIST_MODEL (c), k);
+          g_autofree char *trigger = gtk_shortcut_trigger_to_string (gtk_shortcut_get_trigger (sc));
+          g_auto (GStrv) parts = g_strsplit (trigger, "|", -1);
+
+          for (guint p = 0; parts[p] != NULL; p++)
+            if (g_strcmp0 (parts[p], want) == 0)
+              return gtk_shortcut_action_activate (gtk_shortcut_get_action (sc), GTK_SHORTCUT_ACTION_EXCLUSIVE, GTK_WIDGET (win), NULL);
+        }
+    }
+  return FALSE;
+}
+
+/* The model button of a popover menu whose text (the label without its mnemonic underscore) is `label`. */
+static GtkWidget *
+find_model_button (GtkWidget *root, const char *label)
+{
+  if (g_strcmp0 (G_OBJECT_TYPE_NAME (root), "GtkModelButton") == 0)
+    {
+      g_autofree char *text = NULL;
+
+      g_object_get (root, "text", &text, NULL);
+      if (g_strcmp0 (text, label) == 0)
+        return root;
+    }
+  for (GtkWidget *c = gtk_widget_get_first_child (root); c != NULL; c = gtk_widget_get_next_sibling (c))
+    {
+      GtkWidget *found = find_model_button (c, label);
+
+      if (found != NULL)
+        return found;
+    }
+  return NULL;
+}
+
+static void
+assert_size_is (EaselWindow *win, int w, int h)
+{
+  g_assert_cmpint (easel_window_get_picture (win)->width, ==, w);
+  g_assert_cmpint (easel_window_get_picture (win)->height, ==, h);
+}
+
+/* The key and the items are the crop's: Ctrl+Shift+K through the window's shortcut controller (a probe first that this path reaches an
+   enabled action and that a disabled one does nothing through it), the two items clicked in their open menus, the item and the key
+   sensitive only with a selection, and not acting with a drag held or a dialog, the color chooser or the quit prompt open. */
+static void
+as1_item_and_key (void)
+{
+  const GdkModifierType CS = GDK_CONTROL_MASK | GDK_SHIFT_MASK;
+  EaselWindow *win = window_of (300, 200);
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  uint32_t fg = easel_window_get_foreground (win), bg = easel_window_get_background (win);
+
+  g_assert_true (has_accel ("win.crop-to-selection", GDK_KEY_k, CS));
+  /* the probe: Ctrl+Shift+X swaps the colors, Ctrl+Z with nothing to undo does nothing */
+  g_assert_true (fire_shortcut (win, GDK_KEY_x, CS));
+  g_assert_cmphex (easel_window_get_foreground (win), ==, bg);
+  g_assert_cmphex (easel_window_get_background (win), ==, fg);
+  g_assert_true (fire_shortcut (win, GDK_KEY_x, CS));
+  g_assert_false (action_enabled (win, "undo"));
+  g_assert_false (fire_shortcut (win, GDK_KEY_z, GDK_CONTROL_MASK));
+  /* no selection: the action is insensitive and the key does nothing */
+  g_assert_false (action_enabled (win, "crop-to-selection"));
+  g_assert_false (fire_shortcut (win, GDK_KEY_k, CS));
+  assert_size_is (win, 300, 200);
+  g_assert_false (easel_window_get_modified (win));
+
+  /* a marked selection: sensitive; a drag held, a dialog, the color chooser: nothing */
+  use_select (win);
+  shape_press_move (win, 1, 40, 30, 139, 89);
+  shape_release (win, 1);
+  g_assert_true (selection_is (win, 40, 30, 100, 60));
+  g_assert_true (action_enabled (win, "crop-to-selection"));
+  shape_press_move (win, 1, 50, 40, 52, 40);                       /* the selection being dragged */
+  g_assert_true (easel_canvas_is_stroking (canvas));
+  fire_shortcut (win, GDK_KEY_k, CS);
+  assert_size_is (win, 300, 200);
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));              /* the drag cancelled: marked again */
+  shape_release (win, 1);
+  g_assert_true (selection_is (win, 40, 30, 100, 60));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "stretch-skew", NULL);
+  wait_for_dialogs (win, 1);
+  fire_shortcut (win, GDK_KEY_k, CS);                              /* a dialog open */
+  assert_size_is (win, 300, 200);
+  respond (win, "cancel");
+  assert_size_is (win, 300, 200);
+  g_assert_true (selection_is (win, 40, 30, 100, 60));
+  easel_palette_bar_press (easel_window_get_palette_bar (win), 17, 1, 1);
+  easel_palette_bar_press (easel_window_get_palette_bar (win), 17, 1, 2);
+  g_assert_true (easel_window_is_choosing_color (win));
+  fire_shortcut (win, GDK_KEY_k, CS);                              /* the color chooser open */
+  assert_size_is (win, 300, 200);
+  choose (win, NULL);
+  g_assert_true (selection_is (win, 40, 30, 100, 60));
+
+  /* the key crops: 100 x 60, no selection, one step, Undo gives the picture back */
+  g_assert_true (fire_shortcut (win, GDK_KEY_k, CS));
+  assert_size_is (win, 100, 60);
+  g_assert_false (easel_canvas_get_selection (canvas, &(int) { 0 }, &(int) { 0 }, &(int) { 0 }, &(int) { 0 }, &(gboolean) { FALSE }));
+  g_assert_false (action_enabled (win, "crop-to-selection"));
+  g_assert_true (easel_window_get_modified (win));
+  g_assert_false (fire_shortcut (win, GDK_KEY_k, CS));             /* again: nothing is left to crop */
+  assert_size_is (win, 100, 60);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  assert_size_is (win, 300, 200);
+  g_assert_false (action_enabled (win, "undo"));
+
+  /* the item of the Image menu, clicked in the open menu */
+  use_select (win);
+  shape_press_move (win, 1, 40, 30, 139, 89);
+  shape_release (win, 1);
+  gtk_menu_button_popup (easel_window_get_image_button (win));
+  wait_for_layout (win);
+  {
+    GtkWidget *item = find_model_button (GTK_WIDGET (gtk_menu_button_get_popover (easel_window_get_image_button (win))), "Crop to Selection");
+
+    g_assert_nonnull (item);
+    g_assert_true (gtk_widget_get_sensitive (item));
+    gtk_widget_activate (item);
+    wait_for_layout (win);
+  }
+  assert_size_is (win, 100, 60);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  assert_size_is (win, 300, 200);
+
+  /* the item of the selection's menu, over a marked and a Free-Form selection; insensitive in the Image menu with none */
+  use_select (win);
+  shape_press_move (win, 1, 40, 30, 139, 89);
+  shape_release (win, 1);
+  shape_press_move (win, 3, 50, 40, 50, 40);
+  shape_release (win, 3);
+  g_assert_true (gtk_widget_get_visible (GTK_WIDGET (easel_window_get_selection_menu (win))));
+  {
+    GtkWidget *item = find_model_button (GTK_WIDGET (easel_window_get_selection_menu (win)), "Crop to Selection");
+
+    g_assert_nonnull (item);
+    g_assert_true (gtk_widget_get_sensitive (item));
+    gtk_widget_activate (item);
+    wait_for_layout (win);
+  }
+  assert_size_is (win, 100, 60);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  use_free_select (win);
+  mark_triangle (win);
+  g_assert_true (action_enabled (win, "crop-to-selection"));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "clear-selection", NULL);
+  g_assert_false (action_enabled (win, "crop-to-selection"));
+  /* a floating selection (an arrow key lifted it) */
+  use_select (win);
+  shape_press_move (win, 1, 40, 30, 139, 89);
+  shape_release (win, 1);
+  g_assert_true (key_taken (win, GDK_KEY_Right, 0));
+  g_assert_true (action_enabled (win, "crop-to-selection"));
+  close_windows ();
+
+  /* before the picture exists the item is insensitive and the key does nothing (REQ-0001-39) */
+  write_settings ("[new-picture]\nwidth=auto\nheight=auto\n");
+  win = easel_window_new (app);
+  g_assert_null (easel_window_get_picture (win));
+  g_assert_false (action_enabled (win, "crop-to-selection"));
+  g_assert_false (fire_shortcut (win, GDK_KEY_k, CS));
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* The quit prompt open over a marked selection: the key does nothing (REQ-0041-01). Closing removes the selection before the prompt shows
+   (REQ-0013-12), so what stops the key here is that the item is insensitive; the handler's own gate for the prompt cannot be reached (Check G1). */
+static void
+as1_key_with_the_quit_prompt (void)
+{
+  EaselWindow *win = window_of (300, 200);
+
+  use_pencil (win);
+  A_STROKE (win);                                                  /* the picture is modified, so closing asks */
+  use_select (win);
+  shape_press_move (win, 1, 40, 30, 139, 89);
+  shape_release (win, 1);
+  gtk_window_close (GTK_WINDOW (win));
+  wait_for_layout (win);
+  g_assert_false (selection_is (win, 40, 30, 100, 60));            /* the selection went before the prompt showed */
+  g_assert_false (action_enabled (win, "crop-to-selection"));
+  fire_shortcut (win, GDK_KEY_k, GDK_CONTROL_MASK | GDK_SHIFT_MASK);
+  assert_size_is (win, 300, 200);
+  respond (win, "cancel");
+  close_windows ();
+}
+
+/* ---- 0041 T006: the marked crop in the window (REQ-0041-02, -05; AS-2, AS-3, AS-5) ---- */
+
+/* The window's picture made of distinct opaque pixels (shown again), and a copy of it. */
+static EaselImage *
+distinct_window_picture (EaselWindow *win)
+{
+  EaselImage *img = (EaselImage *) easel_window_get_picture (win), *copy = easel_image_new (img->width, img->height, 0);
+
+  g_assert_nonnull (copy);
+  for (gsize i = 0; i < (gsize) img->width * img->height; i++)
+    copy->px[i] = img->px[i] = 0xFF000000u | (uint32_t) ((i + 1) * 2654435761u >> 8);
+  easel_canvas_update (easel_window_get_canvas (win));
+  wait_for_next_frame (win);
+  return copy;
+}
+
+static EaselImage *
+distinct_copy_of (const EaselImage *img)
+{
+  EaselImage *c = easel_image_new (img->width, img->height, 0);
+
+  g_assert_nonnull (c);
+  memcpy (c->px, img->px, (gsize) img->width * img->height * sizeof c->px[0]);
+  return c;
+}
+
+static void
+assert_is_cut_of (const EaselImage *img, const EaselImage *old, int x, int y, int w, int h)
+{
+  g_assert_cmpint (img->width, ==, w);
+  g_assert_cmpint (img->height, ==, h);
+  for (int j = 0; j < h; j++)
+    for (int i = 0; i < w; i++)
+      g_assert_cmphex (img->px[(gsize) j * w + i], ==, old->px[(gsize) (y + j) * old->width + x + i]);
+}
+
+static void
+assert_same_pixels (const EaselImage *a, const EaselImage *b)
+{
+  g_assert_cmpint (a->width, ==, b->width);
+  g_assert_cmpint (a->height, ==, b->height);
+  g_assert_cmpint (memcmp (a->px, b->px, (gsize) a->width * a->height * sizeof a->px[0]), ==, 0);
+}
+
+/* AS-2: a 100 x 60 piece of a 300 x 200 picture of distinct pixels at (40, 30): the picture is 100 x 60, every pixel the old one shifted, no
+   selection, the status bar's size, the title marked, one step; the window shows the new picture's top-left corner; Undo gives the 300 x 200
+   picture back, Redo the piece again. */
+static void
+as2_marked (void)
+{
+  EaselWindow *win = window_of (300, 200);
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  g_autoptr (EaselImage) old = distinct_window_picture (win), cut = NULL;
+  int x, y, w, h;
+  gboolean floating;
+
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 100);
+  use_select (win);
+  shape_press_move (win, 1, 40, 30, 139, 89);
+  shape_release (win, 1);
+  g_assert_true (selection_is (win, 40, 30, 100, 60));
+  g_assert_false (easel_window_get_modified (win));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "crop-to-selection", NULL);
+  wait_for_layout (win);
+  assert_size (win, 100, 60);
+  assert_is_cut_of (img, old, 40, 30, 100, 60);
+  g_assert_false (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  g_assert_cmpstr (easel_status_bar_get_text (easel_window_get_status_bar (win), EASEL_STATUS_SELECTION), ==, "");
+  g_assert_true (easel_window_get_modified (win));
+  g_assert_cmpint (easel_window_get_tool (win), ==, EASEL_TOOL_SELECT);          /* the tool stays (REQ-0041-05) */
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 100);
+  easel_canvas_top_left_in_view (canvas, &x, &y);
+  g_assert_cmpint (x, ==, 0);
+  g_assert_cmpint (y, ==, 0);
+  assert_shown (win, img);                                                      /* the corner's 40 x 20 pixels, as rendered */
+  cut = distinct_copy_of (img);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  wait_for_layout (win);
+  assert_size (win, 300, 200);
+  assert_same_pixels (img, old);
+  g_assert_false (action_enabled (win, "undo"));                                 /* one step */
+  g_assert_false (easel_window_get_modified (win));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "redo", NULL);
+  wait_for_layout (win);
+  assert_size (win, 100, 60);
+  assert_same_pixels (img, cut);
+  close_windows ();
+}
+
+/* REQ-0041-05, REQ-0004-25: from a scrolled 400 % the view shows the new picture's top-left corner (the scroll 0, the pixels there by rendering the
+   window); Undo and Redo keep the scroll as far as the size allows. */
+static void
+as2_marked_scrolled (void)
+{
+  EaselWindow *win = window_of (600, 400);
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  g_autoptr (EaselImage) old = distinct_window_picture (win);
+  View view;
+  g_autofree uint32_t *px = NULL;
+  double scale = easel_canvas_get_scale (canvas);
+  int x, y, w, h, cx, cy;
+
+  use_select (win);
+  shape_press_move (win, 1, 100, 80, 599, 379);                                  /* (100, 80), 500 x 300: bigger than the area at 400 % */
+  shape_release (win, 1);
+  g_assert_true (selection_is (win, 100, 80, 500, 300));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-large", NULL);
+  wait_for_layout (win);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 400);
+  view = view_of (win);
+  scroll_to (win, 1500, 900);
+  g_assert_cmpfloat (gtk_adjustment_get_value (view.h), >, 1000);
+  g_assert_cmpfloat (gtk_adjustment_get_value (view.v), >, 500);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "crop-to-selection", NULL);
+  wait_for_layout (win);
+  wait_for_next_frame (win);
+  assert_size (win, 500, 300);
+  assert_is_cut_of (img, old, 100, 80, 500, 300);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 400);
+  g_assert_cmpfloat (gtk_adjustment_get_value (view.h), ==, 0);
+  g_assert_cmpfloat (gtk_adjustment_get_value (view.v), ==, 0);
+  easel_canvas_top_left_in_view (canvas, &x, &y);
+  g_assert_cmpint (x, ==, 0);
+  g_assert_cmpint (y, ==, 0);
+  /* rendered: the centers of the pixels (0, 0), (1, 0), (0, 1) and (7, 5) are those of the new picture's, at 4 logical pixels each */
+  px = render_pixels (win, &w, &h, &cx, &cy);
+  for (int k = 0; k < 4; k++)
+    {
+      static const int at[4][2] = { { 0, 0 }, { 1, 0 }, { 0, 1 }, { 7, 5 } };
+      int i = at[k][0], j = at[k][1];
+      int dx = (int) ((4 * i + 2) * scale), dy = (int) ((4 * j + 2) * scale);
+
+      g_assert_cmphex (rendered_pixel (px, w, cx, cy, dx, dy), ==, img->px[(gsize) j * 500 + i]);
+    }
+  /* Undo and Redo keep the scroll as far as the new size allows */
+  {
+    double h_before, v_before, h_max, v_max;
+
+    scroll_to (win, 700, 300);                      /* in the 500 x 300 picture: clamped by what it allows */
+    h_before = gtk_adjustment_get_value (view.h);
+    v_before = gtk_adjustment_get_value (view.v);
+    g_assert_cmpfloat (h_before, >, 100);
+    g_assert_cmpfloat (v_before, >, 100);
+    g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+    wait_for_layout (win);
+    assert_size (win, 600, 400);
+    g_assert_cmpfloat_with_epsilon (gtk_adjustment_get_value (view.h), h_before, 1.0);   /* the bigger picture lets it all stay */
+    g_assert_cmpfloat_with_epsilon (gtk_adjustment_get_value (view.v), v_before, 1.0);
+    scroll_to (win, 2000, 1200);                    /* as far as the 600 x 400 picture lets it */
+    h_before = gtk_adjustment_get_value (view.h);
+    v_before = gtk_adjustment_get_value (view.v);
+    g_assert_cmpfloat (h_before, >, 800);
+    g_action_group_activate_action (G_ACTION_GROUP (win), "redo", NULL);
+    wait_for_layout (win);
+    assert_size (win, 500, 300);
+    h_max = gtk_adjustment_get_upper (view.h) - gtk_adjustment_get_page_size (view.h);
+    v_max = gtk_adjustment_get_upper (view.v) - gtk_adjustment_get_page_size (view.v);
+    g_assert_cmpfloat_with_epsilon (gtk_adjustment_get_value (view.h), MAX (0, MIN (h_before, h_max)), 1.0);
+    g_assert_cmpfloat_with_epsilon (gtk_adjustment_get_value (view.v), MAX (0, MIN (v_before, v_max)), 1.0);
+    g_assert_cmpfloat (gtk_adjustment_get_value (view.h), <, h_before);                  /* it did have to give way */
+  }
+  close_windows ();
+}
+
+/* AS-3: a Free-Form selection of a triangle whose box is (10, 10) to (59, 49): the picture is the whole 50 x 40 box, the pixels outside the
+   triangle included. */
+static void
+as3_free_form (void)
+{
+  EaselWindow *win = window_of (80, 60);
+  const EaselImage *img = easel_window_get_picture (win);
+  g_autoptr (EaselImage) old = distinct_window_picture (win);
+
+  use_free_select (win);
+  trace_press (win, 20, 20);                          /* a click away first, as mark_triangle does */
+  shape_release (win, 1);
+  trace_press (win, 10, 10);
+  corner_to (win, 61, 10);                           /* the box of its pixels is (10, 10) to (59, 49), found by running it */
+  corner_to (win, 10, 51);
+  shape_release (win, 1);
+  g_assert_true (selection_is (win, 10, 10, 50, 40));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "crop-to-selection", NULL);
+  wait_for_layout (win);
+  assert_size (win, 50, 40);
+  assert_is_cut_of (img, old, 10, 10, 50, 40);        /* every pixel of the box, those outside the triangle too */
+  g_assert_cmpint (easel_window_get_tool (win), ==, EASEL_TOOL_FREE_SELECT);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  assert_same_pixels (img, old);
+  close_windows ();
+}
+
+/* AS-5: a marked selection of the whole picture: nothing changes, no step, the selection stays; a floating selection exactly over the whole
+   picture (a flipped Select All) is put down as one step, the size unchanged, and Undo gives the picture before the lift. */
+static void
+as5_whole (void)
+{
+  EaselWindow *win = window_of (60, 40);
+  const EaselImage *img = easel_window_get_picture (win);
+  g_autoptr (EaselImage) old = distinct_window_picture (win);
+
+  g_action_group_activate_action (G_ACTION_GROUP (win), "select-all", NULL);
+  g_assert_true (selection_is (win, 0, 0, 60, 40));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "crop-to-selection", NULL);
+  wait_for_layout (win);
+  assert_size (win, 60, 40);
+  assert_same_pixels (img, old);
+  g_assert_false (action_enabled (win, "undo"));
+  g_assert_false (easel_window_get_modified (win));
+  g_assert_true (selection_is (win, 0, 0, 60, 40));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "flip-horizontal", NULL);       /* lifts it and flips it: floating over the whole picture */
+  g_assert_true (selection_is (win, 0, 0, 60, 40));
+  g_assert_false (easel_window_get_modified (win));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "crop-to-selection", NULL);
+  wait_for_layout (win);
+  assert_size (win, 60, 40);
+  g_assert_true (easel_window_get_modified (win));
+  for (int j = 0; j < 40; j++)
+    for (int i = 0; i < 60; i++)
+      g_assert_cmphex (img->px[j * 60 + i], ==, old->px[j * 60 + 59 - i]);
+  assert_shown (win, img);                                                                /* and the window shows it */
+  g_assert_false (easel_canvas_get_selection (easel_window_get_canvas (win), &(int) { 0 }, &(int) { 0 }, &(int) { 0 }, &(int) { 0 },
+                                              &(gboolean) { FALSE }));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  assert_same_pixels (img, old);
+  g_assert_false (action_enabled (win, "undo"));                                         /* one step */
+  close_windows ();
+}
+
+/* ---- 0041 T007: the floating crop in the window (REQ-0041-03, -04; AS-4, AS-8) ---- */
+
+/* AS-4: a 20 x 20 floating selection of black pixels moved to (90, 90) of a 100 x 100 white picture, hanging 10 pixels past the right and bottom
+   edges: the crop is 20 x 20 and all black, the pixels outside the picture too; one step; Undo gives the picture as before the lift (the black block
+   where it was), no selection. */
+static void
+as4_floating (void)
+{
+  EaselWindow *win = window_of (100, 100);
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  EaselImage *img = (EaselImage *) easel_window_get_picture (win);
+  g_autoptr (EaselImage) old = NULL;
+  int x, y, w, h;
+  gboolean floating;
+
+  for (int j = 10; j < 30; j++)
+    for (int i = 10; i < 30; i++)
+      img->px[j * 100 + i] = 0xFF000000u;
+  easel_canvas_update (canvas);
+  old = distinct_copy_of (img);
+  use_select (win);
+  shape_press_move (win, 1, 10, 10, 29, 29);
+  shape_release (win, 1);
+  shape_press_move (win, 1, 15, 15, 95, 95);                       /* moved by (80, 80): floating at (90, 90) */
+  shape_release (win, 1);
+  g_assert_true (selection_is (win, 90, 90, 20, 20));
+  g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  g_assert_true (floating);
+  g_assert_false (easel_window_get_modified (win));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "crop-to-selection", NULL);
+  wait_for_layout (win);
+  assert_size (win, 20, 20);
+  for (int k = 0; k < 400; k++)
+    g_assert_cmphex (img->px[k], ==, 0xFF000000u);
+  g_assert_false (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  g_assert_true (easel_window_get_modified (win));
+  g_assert_cmpint (easel_window_get_tool (win), ==, EASEL_TOOL_SELECT);
+  easel_canvas_top_left_in_view (canvas, &x, &y);
+  g_assert_cmpint (x, ==, 0);
+  g_assert_cmpint (y, ==, 0);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  wait_for_layout (win);
+  assert_size (win, 100, 100);
+  assert_same_pixels (img, old);                                    /* before the lift: the block where it was */
+  g_assert_false (action_enabled (win, "undo"));                    /* the lift, the moves and the crop were one step */
+  g_assert_false (easel_window_get_modified (win));
+  g_assert_false (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  close_windows ();
+}
+
+/* AS-8: a 100 x 100 green picture, red the background, a Free-Form triangle of blue pixels floating so that its box (80, 20) hangs 20 pixels past
+   the right edge: the triangle's pixels blue, those outside it and inside the old picture green, those outside both red; Undo; Redo gives the
+   same picture, red kept though the background has changed since (REQ-0041-04). */
+static void
+as8_free_form_float (void)
+{
+  const uint32_t GREEN_ = 0xFF00FF00u, BLUE_ = 0xFF0000FFu, RED_ = 0xFFFF0000u;
+  EaselWindow *win = window_of (100, 100);
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  EaselImage *img = (EaselImage *) easel_window_get_picture (win);
+  g_autoptr (EaselImage) old = NULL, first = NULL;
+  g_autofree uint8_t *mask = NULL;
+  const uint8_t *m;
+  int x, y, w, h, mw, mh;
+  gboolean floating;
+
+  for (int k = 0; k < 100 * 100; k++)
+    img->px[k] = GREEN_;
+  for (int j = 10; j < 51; j++)
+    for (int i = 10; i < 51; i++)
+      img->px[j * 100 + i] = BLUE_;
+  easel_canvas_update (canvas);
+  old = distinct_copy_of (img);
+  easel_canvas_set_colors (canvas, 0xFF000000u, RED_);
+  use_free_select (win);
+  trace_press (win, 10, 10);
+  corner_to (win, 51, 10);
+  corner_to (win, 10, 51);
+  shape_release (win, 1);
+  g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  g_assert_cmpint (x, ==, 10);
+  g_assert_cmpint (y, ==, 10);
+  shape_press_move (win, 1, 12, 12, 82, 22);                       /* inside the shape; moved by (70, 10): the box at (80, 20) */
+  shape_release (win, 1);
+  g_assert_true (selection_is (win, 80, 20, w, h));
+  g_assert_cmpint (w, >, 20);
+  m = easel_canvas_get_selection_mask (canvas, &mw, &mh);
+  g_assert_nonnull (m);
+  g_assert_cmpint (mw, ==, w);
+  mask = g_memdup2 (m, (gsize) mw * mh);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "crop-to-selection", NULL);
+  wait_for_layout (win);
+  assert_size (win, w, h);
+  for (int j = 0; j < h; j++)
+    for (int i = 0; i < w; i++)
+      g_assert_cmphex (img->px[j * w + i], ==, mask[j * w + i] ? BLUE_ : (80 + i < 100 ? GREEN_ : RED_));
+  g_assert_false (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  first = distinct_copy_of (img);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  wait_for_layout (win);
+  assert_size (win, 100, 100);
+  assert_same_pixels (img, old);
+  easel_canvas_set_colors (canvas, 0xFF000000u, 0xFF00FFFFu);      /* the background changes before the Redo */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "redo", NULL);
+  wait_for_layout (win);
+  assert_same_pixels (img, first);                                  /* the red of the crop, not the cyan */
+  close_windows ();
+}
+
+/* REQ-0041-03, REQ-0016-07: a paste bigger than the picture with Resize Canvas to Picture (320 x 100 on 300 x 200, fully transparent pixels, so
+   that what is under it shows), moved down by 50, cropped after the background was set to red: the picture is the 320 x 100 box, its
+   pixels inside the picture as it was before the paste (not the grown picture's cyan), the 20 columns beyond its width the background of the crop,
+   red; one Undo gives the 300 x 200 picture before the paste. */
+static void
+grown_paste (void)
+{
+  const uint32_t RED_ = 0xFFFF0000u, CYAN_ = 0xFF00FFFFu;
+  EaselWindow *win = window_of (300, 200);
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  EaselImage *img = (EaselImage *) easel_window_get_picture (win);
+  EaselMemoryClipboard *clipboard = memory_clipboard (win);
+  g_autoptr (EaselImage) old = distinct_window_picture (win), cut = NULL;
+  int x, y, w, h;
+  gboolean floating;
+
+  use_select (win);
+  easel_canvas_set_colors (canvas, 0xFF000000u, CYAN_);
+  other_copies (clipboard, 320, 100, 0x00000000u);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "paste", NULL);
+  respond (win, "resize");
+  g_assert_cmpint (img->width, ==, 320);
+  g_assert_cmpint (img->height, ==, 200);
+  g_assert_cmphex (easel_image_get (img, 310, 150), !=, RED_);                   /* the grown strip: the picture's background, not the crop's red */
+  g_assert_true (selection_is (win, 0, 0, 320, 100));
+  shape_press_move (win, 1, 10, 10, 10, 60);                        /* dragged down by 50 */
+  shape_release (win, 1);
+  g_assert_true (selection_is (win, 0, 50, 320, 100));
+  easel_canvas_set_colors (canvas, 0xFF000000u, RED_);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "crop-to-selection", NULL);
+  wait_for_layout (win);
+  assert_size (win, 320, 100);
+  for (int j = 0; j < 100; j++)
+    for (int i = 0; i < 320; i++)
+      g_assert_cmphex (img->px[j * 320 + i], ==, i < 300 ? old->px[(50 + j) * 300 + i] : RED_);
+  g_assert_false (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  g_assert_true (easel_window_get_modified (win));
+  cut = distinct_copy_of (img);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  wait_for_layout (win);
+  assert_size (win, 300, 200);                                       /* before the paste: the growth is not a step of its own */
+  assert_same_pixels (img, old);
+  g_assert_false (action_enabled (win, "undo"));
+  g_assert_false (easel_window_get_modified (win));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "redo", NULL);
+  wait_for_layout (win);
+  assert_same_pixels (img, cut);
+  /* the crop kept nothing of the paste: a later move is an ordinary step, its Undo no growth or crop to the size before the paste */
+  shape_press_move (win, 1, 10, 10, 29, 29);
+  shape_release (win, 1);
+  shape_press_move (win, 1, 15, 15, 215, 55);
+  shape_release (win, 1);
+  g_assert_true (key_taken (win, GDK_KEY_Return, 0));
+  assert_size (win, 320, 100);
+  g_assert_true (easel_window_get_modified (win));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  wait_for_layout (win);
+  assert_size (win, 320, 100);
+  assert_same_pixels (img, cut);
+  close_windows ();
+}
+
+/* ---- 0041 T008: memory (REQ-0041-06, REQ-0002-17; AS-6) ---- */
+
+/* The crop's memory dialog: its heading, and the body naming the size that could not be had; closed by its button. */
+static void
+assert_crop_memory_dialog (EaselWindow *win, int w, int h)
+{
+  AdwAlertDialog *dialog = open_alert (win);
+  g_autofree char *body = g_strdup_printf ("There is not enough memory for a picture of %d × %d pixels.", w, h);
+
+  g_assert_nonnull (dialog);
+  g_assert_cmpstr (adw_alert_dialog_get_heading (dialog), ==, "Could Not Resize the Picture");
+  g_assert_cmpstr (adw_alert_dialog_get_body (dialog), ==, body);
+  respond (win, "close");
+}
+
+/* AS-6: with the allocation limit too small, Crop to Selection of a marked selection, of a floating one and of a grown paste's float shows "Could
+   Not Resize the Picture" with the new size, and the picture, the history and the selection (the floating one where it was, the grown picture as it
+   grew) are as they were; with the limit back the same crop is made, and a grown paste put down after a refusal is still one step whose Undo goes back to
+   before the paste. */
+static void
+as6_memory (void)
+{
+  EaselWindow *win = window_of (300, 200);
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  EaselImage *img = (EaselImage *) easel_window_get_picture (win);
+  EaselMemoryClipboard *clipboard = memory_clipboard (win);
+  g_autoptr (EaselImage) old = distinct_window_picture (win);
+  int x, y, w, h;
+  gboolean floating;
+
+  /* a marked selection */
+  use_select (win);
+  shape_press_move (win, 1, 40, 30, 139, 89);
+  shape_release (win, 1);
+  easel_canvas_set_selection_step_limit (canvas, 100);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "crop-to-selection", NULL);
+  wait_for_dialogs (win, 1);
+  assert_crop_memory_dialog (win, 100, 60);
+  assert_size (win, 300, 200);
+  assert_same_pixels (img, old);
+  g_assert_false (action_enabled (win, "undo"));
+  g_assert_false (easel_window_get_modified (win));
+  g_assert_true (selection_is (win, 40, 30, 100, 60));
+  g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  g_assert_false (floating);
+  /* a floating one, hanging past the edge */
+  easel_canvas_set_selection_step_limit (canvas, SIZE_MAX);
+  shape_press_move (win, 1, 50, 40, 250, 130);                     /* moved by (200, 90): floating at (240, 120), 100 x 60 */
+  shape_release (win, 1);
+  g_assert_true (selection_is (win, 240, 120, 100, 60));
+  easel_canvas_set_selection_step_limit (canvas, 100);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "crop-to-selection", NULL);
+  wait_for_dialogs (win, 1);
+  assert_crop_memory_dialog (win, 100, 60);
+  assert_size (win, 300, 200);
+  assert_same_pixels (img, old);
+  g_assert_true (selection_is (win, 240, 120, 100, 60));
+  g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  g_assert_true (floating);                                        /* where it was, still floating */
+  g_assert_false (easel_window_get_modified (win));
+  easel_canvas_set_selection_step_limit (canvas, SIZE_MAX);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "crop-to-selection", NULL);   /* with the memory back: made */
+  wait_for_layout (win);
+  assert_size (win, 100, 60);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  assert_size (win, 300, 200);
+  assert_same_pixels (img, old);
+  /* a grown paste's float: the crop refused leaves the grown picture and the float, and the put-down is still the paste's one step */
+  other_copies (clipboard, 320, 100, 0xFF0000FFu);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "paste", NULL);
+  respond (win, "resize");
+  assert_size (win, 320, 200);
+  shape_press_move (win, 1, 10, 10, 10, 60);                       /* dragged down by 50 */
+  shape_release (win, 1);
+  g_assert_true (selection_is (win, 0, 50, 320, 100));
+  easel_canvas_set_selection_step_limit (canvas, 100);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "crop-to-selection", NULL);
+  wait_for_dialogs (win, 1);
+  assert_crop_memory_dialog (win, 320, 100);
+  assert_size (win, 320, 200);                                     /* the grown picture, as it grew */
+  g_assert_true (selection_is (win, 0, 50, 320, 100));
+  easel_canvas_set_selection_step_limit (canvas, SIZE_MAX);
+  g_assert_true (key_taken (win, GDK_KEY_Return, 0));              /* put down: the paste's step, the growth in it */
+  assert_size (win, 320, 200);
+  g_assert_true (easel_window_get_modified (win));
+  g_assert_cmphex (easel_image_get (img, 100, 100), ==, 0xFF0000FFu);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  assert_size (win, 300, 200);
+  assert_same_pixels (img, old);
+  g_assert_false (action_enabled (win, "undo"));
+  close_windows ();
+}
+
+/* AS-6, REQ-0002-17: an 8000 x 8000 picture of distinct pixels, one earlier step (a pencil dot), the history budget 16 MB, and its whole picture floating,
+   moved by half the sides (its crop: 192 MB of removed pixels, a new picture of 256 MB, a log of 768 MB). (b) With the allocation limit below the log
+   the dialog shows, the picture is byte for byte as it was, the float where it was and the history as it was (the dot's step kept); (a) with the limit
+   above everything the crop is made and, though its step is far over the budget, is the only step: Undo gives the picture before the lift exactly and
+   there is nothing more to undo (the dot's step went). */
+static void
+memory_8000 (void)
+{
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  EaselImage *img;
+  g_autoptr (EaselImage) before = NULL;
+  int x, y, w, h;
+  gboolean floating;
+
+  write_settings ("[new-picture]\nwidth=8000\nheight=8000\ncanvas-color=#FFFFFF\nbackground=#FFFFFF\n\n[history]\nmemory=16\n");
+  win = start_window ();
+  wait_for_layout (win);
+  canvas = easel_window_get_canvas (win);
+  img = (EaselImage *) easel_window_get_picture (win);
+  for (gsize i = 0; i < (gsize) 8000 * 8000; i++)
+    img->px[i] = 0xFF000000u | (uint32_t) (i * 2654435761u);
+  easel_canvas_update (canvas);
+  use_pencil (win);
+  A_STROKE (win);                                                    /* the earlier step */
+  g_assert_true (action_enabled (win, "undo"));
+  before = distinct_copy_of (img);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-fit", NULL);
+  wait_for_layout (win);
+  use_select (win);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "select-all", NULL);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "flip-horizontal", NULL);   /* lifted and flipped: the crop is then not the picture itself */
+  shape_press_move (win, 1, 4000, 4000, 8000, 8000);               /* moved by half the sides: floating at (4000, 4000) */
+  shape_release (win, 1);
+  g_assert_true (selection_is (win, 4000, 4000, 8000, 8000));
+  g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  g_assert_true (floating);
+  /* (b) the limit below the log: the removed pixels (192 MB) and the new picture (256 MB) fit, the log (768 MB) does not */
+  easel_canvas_set_selection_step_limit (canvas, (size_t) 300 << 20);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "crop-to-selection", NULL);
+  wait_for_dialogs (win, 1);
+  assert_crop_memory_dialog (win, 8000, 8000);
+  assert_same_pixels (img, before);
+  g_assert_true (selection_is (win, 4000, 4000, 8000, 8000));
+  g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  g_assert_true (floating);
+  g_assert_true (action_enabled (win, "undo"));                      /* the dot's step is still there */
+  /* (a) the limit above everything: made, the only step */
+  easel_canvas_set_selection_step_limit (canvas, SIZE_MAX);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "crop-to-selection", NULL);
+  wait_for_layout (win);
+  assert_size (win, 8000, 8000);
+  g_assert_false (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  g_assert_true (easel_window_get_modified (win));
+  g_assert_cmphex (img->px[0], ==, before->px[7999]);                  /* the float is the flipped picture: its (0, 0) is the old (7999, 0) */
+  g_assert_cmphex (img->px[(gsize) 100 * 8000 + 100], ==, before->px[(gsize) 100 * 8000 + 7899]);
+  g_assert_cmphex (img->px[(gsize) 7999 * 8000 + 7999], ==, before->px[(gsize) 7999 * 8000]);
+  g_assert_true (action_enabled (win, "undo"));                      /* the crop's own step, over the budget, is there */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  wait_for_layout (win);
+  assert_same_pixels (img, before);
+  g_assert_false (action_enabled (win, "undo"));                     /* the crop was the only step: the older one went over the budget (REQ-0002-17) */
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* Check F1 (0041): a floating selection of the picture's own size, not at (0, 0), cropped: the size does not change, yet the window shows the crop (the
+   canvas rebuilt its tiles). The float is flipped first so that the crop is not the picture itself. */
+static void
+as4_float_same_size (void)
+{
+  EaselWindow *win = window_of (100, 100);
+  const EaselImage *img = easel_window_get_picture (win);
+  g_autoptr (EaselImage) old = distinct_window_picture (win);
+
+  use_select (win);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "select-all", NULL);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "flip-horizontal", NULL);
+  shape_press_move (win, 1, 50, 50, 60, 60);                       /* moved by (10, 10): floating at (10, 10), 100 x 100 */
+  shape_release (win, 1);
+  g_assert_true (selection_is (win, 10, 10, 100, 100));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "crop-to-selection", NULL);
+  wait_for_layout (win);
+  assert_size (win, 100, 100);
+  for (int j = 0; j < 100; j++)
+    for (int i = 0; i < 100; i++)
+      g_assert_cmphex (img->px[j * 100 + i], ==, old->px[j * 100 + 99 - i]);
+  assert_shown (win, img);                                          /* the window shows the flipped picture, not the old tiles */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  wait_for_layout (win);
+  assert_same_pixels (img, old);
+  assert_shown (win, img);
+  close_windows ();
+}
+
+/* Check G3 (0041): a stretched floating selection (REQ-0041-03, "moved, pasted, stretched or flipped"): the crop is the picture the stretch shows,
+   each pixel the lifted one by the nearest-pixel rule of REQ-0015-05 (20 x 20 made 40 x 40: the pixel (i, j) is the lifted (i / 2, j / 2)). */
+static void
+as4_stretched (void)
+{
+  EaselWindow *win = window_of (100, 100);
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  g_autoptr (EaselImage) old = distinct_window_picture (win);
+  graphene_rect_t r;
+  double l, hx, hy;
+
+  use_select (win);
+  shape_press_move (win, 1, 10, 10, 29, 29);
+  shape_release (win, 1);
+  g_assert_true (selection_is (win, 10, 10, 20, 20));
+  g_assert_true (easel_canvas_get_selection_handle_rect (canvas, EASEL_SEL_HANDLE_BR, &r));
+  l = easel_window_get_zoom (win) / 100.0 / easel_canvas_get_scale (canvas);
+  hx = r.origin.x + r.size.width / 2;
+  hy = r.origin.y + r.size.height / 2;
+  easel_canvas_press (canvas, 1, hx, hy);
+  easel_canvas_motion (canvas, hx + 20 * l, hy + 20 * l);          /* the bottom-right corner 20 pixels out: 40 x 40 */
+  easel_canvas_release (canvas, 1);
+  g_assert_true (selection_is (win, 10, 10, 40, 40));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "crop-to-selection", NULL);
+  wait_for_layout (win);
+  assert_size (win, 40, 40);
+  for (int j = 0; j < 40; j++)
+    for (int i = 0; i < 40; i++)
+      g_assert_cmphex (img->px[j * 40 + i], ==, old->px[(10 + j / 2) * 100 + 10 + i / 2]);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  wait_for_layout (win);
+  assert_same_pixels (img, old);                                    /* before the lift */
+  close_windows ();
+}
+
+/* AS-6, REQ-0041-05 (JOD, 2026-11-12, Check F2): a floating selection exactly over the whole picture is put down by the crop, and when the memory for that step
+   cannot be had the rule is the put-down's (REQ-0013-19): "Could Not Move the Selection", the picture as before the lift, the selection removed. */
+static void
+as6_whole_float_put_down_fails (void)
+{
+  EaselWindow *win = window_of (100, 100);
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  g_autoptr (EaselImage) old = distinct_window_picture (win);
+  AdwAlertDialog *dialog;
+  int x, y, w, h;
+  gboolean floating;
+
+  use_select (win);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "select-all", NULL);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "flip-horizontal", NULL);     /* floating over the whole picture, flipped */
+  g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  g_assert_true (floating);
+  easel_canvas_set_selection_step_limit (canvas, 100);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "crop-to-selection", NULL);
+  wait_for_dialogs (win, 1);
+  dialog = open_alert (win);
+  g_assert_nonnull (dialog);
+  g_assert_cmpstr (adw_alert_dialog_get_heading (dialog), ==, "Could Not Move the Selection");
+  g_assert_cmpstr (adw_alert_dialog_get_body (dialog), ==, "There is not enough memory to move this selection.");
+  respond (win, "close");
+  wait_for_layout (win);
+  g_assert_null (visible_dialog (win));                              /* one dialog only: not the crop's besides */
+  assert_size (win, 100, 100);
+  assert_same_pixels (img, old);                                     /* as before the lift */
+  g_assert_false (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  g_assert_false (action_enabled (win, "undo"));
+  g_assert_false (easel_window_get_modified (win));
+  close_windows ();
+}
+
 int
 main (int argc, char **argv)
 {
@@ -41592,6 +42460,20 @@ main (int argc, char **argv)
   g_test_add_func ("/0025-scale2/as1b_squares_at_scale_2", as1b_squares_at_scale_2);
   g_test_add_func ("/0025-scale2/as1b_far_corner_of_8000", as1b_far_corner_of_8000);
   g_test_add_func ("/0025-scale2/as1e_no_blend_below_100_at_scale_2", as1e_no_blend_below_100_at_scale_2);
+  g_test_add_func ("/0041/as1_item_and_key", as1_item_and_key);
+  g_test_add_func ("/0041/as1_key_with_the_quit_prompt", as1_key_with_the_quit_prompt);
+  g_test_add_func ("/0041/as2_marked", as2_marked);
+  g_test_add_func ("/0041/as2_marked_scrolled", as2_marked_scrolled);
+  g_test_add_func ("/0041/as3_free_form", as3_free_form);
+  g_test_add_func ("/0041/as5_whole", as5_whole);
+  g_test_add_func ("/0041/as4_floating", as4_floating);
+  g_test_add_func ("/0041/as4_float_same_size", as4_float_same_size);
+  g_test_add_func ("/0041/as4_stretched", as4_stretched);
+  g_test_add_func ("/0041/as8_free_form_float", as8_free_form_float);
+  g_test_add_func ("/0041/grown_paste", grown_paste);
+  g_test_add_func ("/0041/as6_memory", as6_memory);
+  g_test_add_func ("/0041/memory_8000", memory_8000);
+  g_test_add_func ("/0041/as6_whole_float_put_down_fails", as6_whole_float_put_down_fails);
   ret = g_test_run ();
   g_object_unref (app);
   return ret;

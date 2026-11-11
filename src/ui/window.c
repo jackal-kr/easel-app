@@ -3864,6 +3864,35 @@ stretch_skew_activated (GSimpleAction *action, GVariant *parameter, gpointer use
   easel_stretch_skew_dialog_present (GTK_WIDGET (self), w, h, stretch_skew_applied, self);
 }
 
+/* Crop to Selection (0041): the item and Ctrl+Shift+K. Sensitive with a selection (update_clipboard_actions); ignored where Stretch and Skew
+   is (before the picture exists, with a dialog, the quit prompt or the color chooser open, a button held, the focus in the font card's field). */
+static void
+crop_to_selection_activated (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+  EaselWindow *self = user_data;
+  EaselSelectionResult r;
+  int w, h, old_w = self->picture != NULL ? self->picture->width : 0, old_h = self->picture != NULL ? self->picture->height : 0;
+
+  if (!view_actions_allowed (self) || easel_canvas_is_panning (self->canvas) || card_field_focus (self) != NULL)
+    return;
+  r = easel_canvas_crop_to_selection (self->canvas, &w, &h);
+  if (r == EASEL_SELECTION_NO_MEMORY)
+    show_resize_error (self, w, h);
+  if (r != EASEL_SELECTION_DONE)
+    return;
+  if (self->picture->width != old_w || self->picture->height != old_h)
+    {
+      /* The view shows the new picture's top-left corner, the zoom as it was (REQ-0041-05); Undo and Redo keep the scroll as far as the
+         size allows, as a resize's do (REQ-0004-25). */
+      picture_size_changed (self);
+      gtk_adjustment_set_value (gtk_scrolled_window_get_hadjustment (self->scroller), 0);
+      gtk_adjustment_set_value (gtk_scrolled_window_get_vadjustment (self->scroller), 0);
+    }
+  else
+    easel_canvas_update (self->canvas);              /* the size the same: the pixels changed, so the tiles are made again (Check F1) */
+  sync_history_ui (self);
+}
+
 /* ---- Black and White (0034) ---- */
 
 /* Convert: the one function every conversion goes through; the dialog has closed. On the selection while one exists, else on the whole
@@ -5465,7 +5494,7 @@ update_clipboard_actions (EaselWindow *self)
   gboolean box = self->tool == EASEL_TOOL_TEXT && easel_canvas_text_box (self->canvas, &x, &y, &w, &h);
   gboolean selection = idle && easel_canvas_get_selection (self->canvas, &x, &y, &w, &h, &floating);
   gboolean picture = idle && self->clipboard != NULL && clipboard_has_picture (self->clipboard);
-  static const char *selection_actions[] = { "cut", "copy", "copy-to" };
+  static const char *selection_actions[] = { "cut", "copy", "copy-to", "crop-to-selection" };
 
   if (box)
     {
@@ -5478,6 +5507,7 @@ update_clipboard_actions (EaselWindow *self)
       set_action_enabled (self, "cut", text_selected);
       set_action_enabled (self, "copy", text_selected);
       set_action_enabled (self, "copy-to", FALSE);
+      set_action_enabled (self, "crop-to-selection", FALSE);
       set_action_enabled (self, "paste", text);
       set_action_enabled (self, "paste-plain", text);
       set_action_enabled (self, "paste-from", idle);
@@ -6244,6 +6274,7 @@ static const GActionEntry win_actions[] = {
   { .name = "rotate-180", .activate = rotate_180_activated },
   { .name = "rotate-270", .activate = rotate_270_activated },
   { .name = "stretch-skew", .activate = stretch_skew_activated },
+  { .name = "crop-to-selection", .activate = crop_to_selection_activated },
   { .name = "preferences", .activate = preferences_activated },
   { .name = "print", .activate = print_activated },
   { .name = "shortcuts", .activate = shortcuts_activated },

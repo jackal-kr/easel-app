@@ -32,6 +32,7 @@ static const EaselShortcut shortcuts[] = {
   { N_ ("Image"), N_ ("Rotate 90°"), "<Control>r", "win.rotate-90" },
   { N_ ("Image"), N_ ("Rotate 270°"), "<Control>l", "win.rotate-270" },
   { N_ ("Image"), N_ ("Stretch and Skew…"), "<Control>t", "win.stretch-skew" },
+  { N_ ("Image"), N_ ("Crop to Selection"), "<Control><Shift>k", "win.crop-to-selection" },
   { N_ ("Image"), N_ ("Invert Colors"), "<Control>i", NULL },
   { N_ ("Image"), N_ ("Attributes…"), "<Control>e", "win.attributes" },
   { N_ ("Image"), N_ ("Clear Image"), "<Control><Shift>n", "win.clear-image" },

@@ -152,6 +152,9 @@ msgstr "Rotește cu 270°"
 msgid "Stretch and Skew…"
 msgstr "Întinde și înclină…"
 
+msgid "Crop to Selection"
+msgstr "Decupează la selecție"
+
 msgid "Invert Colors"
 msgstr "Inversează culorile"
 
@@ -1102,6 +1105,9 @@ msgstr "Rotește cu _270°"
 
 msgid "Stretch and _Skew…"
 msgstr "Întin_de și înclină…"
+
+msgid "Cr_op to Selection"
+msgstr "Decupează la _selecție"
 
 msgid "_Invert Colors"
 msgstr "_Inversează culorile"

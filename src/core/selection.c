@@ -395,7 +395,7 @@ easel_selection_crop (const EaselFloat *f, EaselImage *img, EaselHistory *histor
   img->px = px;
   img->width = w;
   img->height = h;
-  img->dirty = (EaselRect) { 0, 0, 0, 0 };
+  img->dirty = (EaselRect) { 0, 0, w, h };           /* the whole new picture shows again: a crop of the same size needs its tiles made too (0041 Check F1) */
   return EASEL_SELECTION_DONE;
 }
 

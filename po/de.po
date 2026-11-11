@@ -151,6 +151,9 @@ msgstr "Um 270° drehen"
 msgid "Stretch and Skew…"
 msgstr "Strecken und Neigen…"
 
+msgid "Crop to Selection"
+msgstr "Auf Auswahl zuschneiden"
+
 msgid "Invert Colors"
 msgstr "Farben umkehren"
 
@@ -1092,6 +1095,9 @@ msgstr "Um _270° drehen"
 
 msgid "Stretch and _Skew…"
 msgstr "Strecken und _Neigen…"
+
+msgid "Cr_op to Selection"
+msgstr "Auf Auswahl _zuschneiden"
 
 msgid "_Invert Colors"
 msgstr "Farben _umkehren"

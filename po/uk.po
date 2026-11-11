@@ -152,6 +152,9 @@ msgstr "Повернути на 270°"
 msgid "Stretch and Skew…"
 msgstr "Розтягти й нахилити…"
 
+msgid "Crop to Selection"
+msgstr "Обрізати за виділенням"
+
 msgid "Invert Colors"
 msgstr "Обернути кольори"
 
@@ -1102,6 +1105,9 @@ msgstr "Повернути на _270°"
 
 msgid "Stretch and _Skew…"
 msgstr "Розтягти й _нахилити…"
+
+msgid "Cr_op to Selection"
+msgstr "Обрізати _за виділенням"
 
 msgid "_Invert Colors"
 msgstr "_Обернути кольори"

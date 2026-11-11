@@ -264,6 +264,12 @@ gboolean easel_canvas_can_paste (EaselCanvas *self, int pic_w, int pic_h, int gr
 size_t easel_canvas_get_selection_limit (EaselCanvas *self);
 /* Clear Selection (REQ-0013-14): FALSE, nothing done, without a selection or while a button is held. */
 gboolean easel_canvas_clear_selection (EaselCanvas *self);
+/* Crop to Selection (0041, REQ-0041-02 to -06): the picture becomes the selection's rectangle as one undo step, the selection gone. DONE:
+   made (the caller shows the new size, scrolls and updates the history's state); NOTHING: no selection, a button held, a marked selection of
+   the whole picture (a floating selection exactly over it is put down: DONE, the size the same), nothing changed; NO_MEMORY: nothing changed,
+   the selection stays (a floating one where it was, a grown paste's picture as grown), new_w and new_h the size that could not be had
+   (REQ-0041-06). A floating selection's crop is made from the picture as it was before a grown paste (REQ-0041-03, -04). */
+EaselSelectionResult easel_canvas_crop_to_selection (EaselCanvas *self, int *new_w, int *new_h);
 /* Select All (REQ-0013-15): a floating selection put down, then the whole picture marked. */
 void easel_canvas_select_all (EaselCanvas *self);
 /* Removes a marked selection (after an Undo or Redo, REQ-0013-12); a floating one is left alone. */

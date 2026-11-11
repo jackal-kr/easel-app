@@ -253,6 +253,10 @@ msgid "Stretch and Skew…"
 msgstr ""
 
 #: src/ui/help.c:35
+msgid "Crop to Selection"
+msgstr ""
+
+#: src/ui/help.c:35
 msgid "Invert Colors"
 msgstr ""
 
@@ -1695,6 +1699,10 @@ msgstr ""
 
 #: src/ui/window.ui:462 src/ui/window.ui:603
 msgid "Stretch and _Skew…"
+msgstr ""
+
+#: src/ui/window.ui:468 src/ui/window.ui:614
+msgid "Cr_op to Selection"
 msgstr ""
 
 #: src/ui/window.ui:469 src/ui/window.ui:608

@@ -2583,6 +2583,53 @@ crop_float_whole (void)
   easel_image_free (img);
 }
 
+/* Check G3 (0041): a Free-Form float moved a little over its own hole: the pixels of its box outside its shape but inside the hole show the hole's
+   color (the background, or #00000000 in Transparent mode), the others the picture; the shape's pixels the float's: what the lay gives. */
+static void
+crop_float_over_own_hole (void)
+{
+  for (int k = 0; k < 2; k++)
+    {
+      uint32_t hole = k == 0 ? YELLOW : 0;
+      EaselImage *img = distinct_picture (30, 20), *old = copy_of (img), *lay = copy_of (img);
+      EaselHistory *h = easel_history_new ((size_t) 512 << 20);
+      EaselFloat f = { 0 };
+      uint8_t mask[10 * 10];
+
+      CHECK (h != NULL);
+      for (int j = 0; j < 10; j++)
+        for (int i = 0; i < 10; i++)
+          mask[j * 10 + i] = i <= j;                         /* the lower-left triangle */
+      CHECK (easel_selection_lift (&f, img, 5, 5, 10, 10, mask, false, hole, SIZE_MAX) == EASEL_SELECTION_DONE);
+      f.x = 8;
+      f.y = 8;                                               /* box (8, 8) to (17, 17): over the hole (5, 5) to (14, 14) */
+      easel_selection_lay (&f, true, old, 0, 0, 30, 20, lay->px, 30);
+      CHECK (easel_selection_crop (&f, img, h, 8, 8, 10, 10, 0xFF123456u, SIZE_MAX) == EASEL_SELECTION_DONE);
+      CHECK (img->width == 10 && img->height == 10);
+      for (int j = 0; j < 10; j++)
+        for (int i = 0; i < 10; i++)
+          {
+            uint32_t want = lay->px[(8 + j) * 30 + 8 + i];
+
+            int hx = 8 + i - 5, hy = 8 + j - 5;
+            bool in_hole = hx >= 0 && hx < 10 && hy >= 0 && hy < 10 && mask[hy * 10 + hx];     /* the hole is the shape's old place */
+
+            CHECK (img->px[j * 10 + i] == want);
+            if (!mask[j * 10 + i] && in_hole)
+              CHECK (img->px[j * 10 + i] == hole);          /* outside the float's shape, in the hole: its color */
+            if (!mask[j * 10 + i] && !in_hole)
+              CHECK (img->px[j * 10 + i] == old->px[(8 + j) * 30 + 8 + i]);   /* outside both: the picture */
+          }
+      CHECK (easel_history_undo (h, img));
+      check_same (img, old);
+      easel_image_free (lay);
+      easel_image_free (old);
+      easel_float_free (&f);
+      easel_history_free (h);
+      easel_image_free (img);
+    }
+}
+
 int
 main (void)
 {
@@ -2642,5 +2689,6 @@ main (void)
   RUN (crop_float_no_memory);
   RUN (crop_float_paste_skips_clear);
   RUN (crop_float_whole);
+  RUN (crop_float_over_own_hole);
   return 0;
 }

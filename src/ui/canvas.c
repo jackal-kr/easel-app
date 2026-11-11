@@ -3150,6 +3150,78 @@ easel_canvas_clear_selection (EaselCanvas *self)
   return TRUE;
 }
 
+/* The picture's buffer and size and the saved ones of a grown paste (paste_base) change places: the crop of a floating paste is made from the
+   picture as it was before the paste (REQ-0041-03, REQ-0041-04), and a crop that fails puts them back as they were, with nothing allocated. */
+static void
+swap_paste_base (EaselCanvas *self)
+{
+  uint32_t *px = self->img->px;
+  int w = self->img->width, h = self->img->height;
+
+  self->img->px = self->paste_base->px;
+  self->img->width = self->paste_base->width;
+  self->img->height = self->paste_base->height;
+  self->paste_base->px = px;
+  self->paste_base->width = w;
+  self->paste_base->height = h;
+}
+
+EaselSelectionResult
+easel_canvas_crop_to_selection (EaselCanvas *self, int *new_w, int *new_h)
+{
+  EaselSelectionResult r;
+  int x, y, w, h;
+
+  *new_w = *new_h = 0;
+  if (self->sel_state == 0 || easel_canvas_is_stroking (self))
+    return EASEL_SELECTION_NOTHING;
+  if (self->sel_state == 2 && self->sel_x == 0 && self->sel_y == 0 && self->sel_w == self->img->width && self->sel_h == self->img->height)
+    {
+      /* A floating selection exactly over the whole picture is put down, one step, the size unchanged (REQ-0041-05); a put-down that
+         fails shows its own dialog and leaves it floating. */
+      finish_selection (self, FALSE);
+      return self->sel_state == 0 ? EASEL_SELECTION_DONE : EASEL_SELECTION_NOTHING;
+    }
+  if (self->sel_state == 2)
+    {
+      /* The float as it is shown: its whole image (a stretch is finished at its release; the call changes nothing then), its box. */
+      easel_selection_complete (&self->sel_float);
+      x = self->sel_float.x;
+      y = self->sel_float.y;
+      w = self->sel_float.w;
+      h = self->sel_float.h;
+    }
+  else
+    {
+      x = self->sel_x;                               /* the marked rectangle (a Free-Form selection's bounding rectangle, every pixel kept) */
+      y = self->sel_y;
+      w = self->sel_w;
+      h = self->sel_h;
+    }
+  *new_w = w;
+  *new_h = h;
+  if (self->paste_base != NULL)
+    swap_paste_base (self);
+  r = easel_selection_crop (self->sel_state == 2 ? &self->sel_float : NULL, self->img, self->history, x, y, w, h, self->background,
+                            self->sel_step_max);
+  if (r != EASEL_SELECTION_DONE)
+    {
+      if (self->paste_base != NULL)
+        swap_paste_base (self);                      /* nothing changed: the grown picture and the float as they were */
+      return r;
+    }
+  drop_paste_base (self);
+  drop_float (self);
+  shape_free (self);
+  self->sel_state = 0;
+  self->hover_sel = FALSE;
+  self->hover_sel_handle = -1;
+  update_cursor (self);
+  g_signal_emit (self, signals[SIGNAL_PENDING_CHANGED], 0);
+  g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);
+  return EASEL_SELECTION_DONE;
+}
+
 void
 easel_canvas_top_left_in_view (EaselCanvas *self, int *x, int *y)
 {

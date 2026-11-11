@@ -152,6 +152,9 @@ msgstr "Otočit o 270°"
 msgid "Stretch and Skew…"
 msgstr "Roztáhnout a zkosit…"
 
+msgid "Crop to Selection"
+msgstr "Oříznout na výběr"
+
 msgid "Invert Colors"
 msgstr "Invertovat barvy"
 
@@ -1102,6 +1105,9 @@ msgstr "Otočit o _270°"
 
 msgid "Stretch and _Skew…"
 msgstr "Roztáhnout a _zkosit…"
+
+msgid "Cr_op to Selection"
+msgstr "Oříznout _na výběr"
 
 msgid "_Invert Colors"
 msgstr "_Invertovat barvy"
