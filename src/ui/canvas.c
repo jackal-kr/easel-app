@@ -4175,16 +4175,17 @@ update_shape_end (EaselCanvas *self)
     }
 }
 
-gboolean
-easel_canvas_move_selection (EaselCanvas *self, int dx, int dy)
+static gboolean
+key_move_selection (EaselCanvas *self, int dx, int dy, gboolean copy)
 {
   if (self->sel_state == 0 || easel_canvas_is_stroking (self))
     return FALSE;
   if (self->sel_state == 1)
     {
-      /* The first key lifts it as a move does (REQ-0013-10, REQ-0013-08). The memory dialog: 0013 T017. */
+      /* The first key lifts it as a move does, or as a copy with no hole for Ctrl+Shift (REQ-0013-10, REQ-0013-08, -09). The
+         memory dialog: 0013 T017. */
       if (easel_selection_lift (&self->sel_float, self->img, self->sel_x, self->sel_y, self->sel_w, self->sel_h, self->sel_mask,
-                                FALSE, hole_color (self), self->sel_lift_max) != EASEL_SELECTION_DONE)
+                                copy, hole_color (self), self->sel_lift_max) != EASEL_SELECTION_DONE)
         {
           g_signal_emit (self, signals[SIGNAL_SELECTION_FAILED], 0, 0);
           return TRUE;
@@ -4197,6 +4198,18 @@ easel_canvas_move_selection (EaselCanvas *self, int dx, int dy)
   g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);
   gtk_widget_queue_draw (GTK_WIDGET (self));
   return TRUE;
+}
+
+gboolean
+easel_canvas_move_selection (EaselCanvas *self, int dx, int dy)
+{
+  return key_move_selection (self, dx, dy, FALSE);
+}
+
+gboolean
+easel_canvas_copy_move_selection (EaselCanvas *self, int dx, int dy)
+{
+  return key_move_selection (self, dx, dy, TRUE);
 }
 
 gboolean

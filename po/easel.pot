@@ -224,7 +224,7 @@ msgid "Smear the selection 1 pixel"
 msgstr ""
 
 #: src/ui/help.c:28
-msgid "Move the selection 10 pixels"
+msgid "Move a copy of the selection 10 pixels"
 msgstr ""
 
 #: src/ui/help.c:29

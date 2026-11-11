@@ -131,8 +131,8 @@ msgstr "Wyczyść zaznaczenie"
 msgid "Move the selection 1 pixel"
 msgstr "Przesuń zaznaczenie o 1 piksel"
 
-msgid "Move the selection 10 pixels"
-msgstr "Przesuń zaznaczenie o 10 pikseli"
+msgid "Move a copy of the selection 10 pixels"
+msgstr "Przesuń kopię zaznaczenia o 10 pikseli"
 
 msgid "Put down a selection or a waiting shape"
 msgstr "Odłóż zaznaczenie lub oczekujący kształt"

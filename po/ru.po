@@ -131,8 +131,8 @@ msgstr "Очистить выделение"
 msgid "Move the selection 1 pixel"
 msgstr "Сдвинуть выделение на 1 пиксель"
 
-msgid "Move the selection 10 pixels"
-msgstr "Сдвинуть выделение на 10 пикселей"
+msgid "Move a copy of the selection 10 pixels"
+msgstr "Сдвинуть копию выделения на 10 пикселей"
 
 msgid "Put down a selection or a waiting shape"
 msgstr "Положить выделение или ожидающую фигуру"

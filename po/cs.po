@@ -131,8 +131,8 @@ msgstr "Vymazat výběr"
 msgid "Move the selection 1 pixel"
 msgstr "Posunout výběr o 1 pixel"
 
-msgid "Move the selection 10 pixels"
-msgstr "Posunout výběr o 10 pixelů"
+msgid "Move a copy of the selection 10 pixels"
+msgstr "Posunout kopii výběru o 10 pixelů"
 
 msgid "Put down a selection or a waiting shape"
 msgstr "Položit výběr nebo čekající tvar"

@@ -130,8 +130,8 @@ msgstr "Kijelölés törlése"
 msgid "Move the selection 1 pixel"
 msgstr "Kijelölés mozgatása 1 képponttal"
 
-msgid "Move the selection 10 pixels"
-msgstr "Kijelölés mozgatása 10 képponttal"
+msgid "Move a copy of the selection 10 pixels"
+msgstr "A kijelölés másolatának mozgatása 10 képponttal"
 
 msgid "Put down a selection or a waiting shape"
 msgstr "Kijelölés vagy várakozó alakzat lerakása"

@@ -130,8 +130,8 @@ msgstr "Svuota la selezione"
 msgid "Move the selection 1 pixel"
 msgstr "Sposta la selezione di 1 pixel"
 
-msgid "Move the selection 10 pixels"
-msgstr "Sposta la selezione di 10 pixel"
+msgid "Move a copy of the selection 10 pixels"
+msgstr "Sposta una copia della selezione di 10 pixel"
 
 msgid "Put down a selection or a waiting shape"
 msgstr "Posa una selezione o una forma in attesa"

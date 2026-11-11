@@ -12047,6 +12047,36 @@ as5_arrow_keys (void)
   g_assert_false (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
   g_assert_true (key_taken (win, GDK_KEY_Right, 0));
   g_assert_false (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  /* Ctrl+Shift lifts a marked selection as a copy, no hole (JOD, 2026-11-11); a later key moves it and leaves no trail. */
+  {
+    g_autoptr (EaselImage) at11 = copied_selection (start, (const int[][2]) { { 11, 1 } }, 1);
+    g_autoptr (EaselImage) at12 = copied_selection (start, (const int[][2]) { { 12, 1 } }, 1);
+
+    shape_press_move (win, 1, 1, 1, 5, 4);
+    shape_release (win, 1);
+    g_assert_true (key_taken (win, GDK_KEY_Right, GDK_CONTROL_MASK | GDK_SHIFT_MASK));
+    g_assert_true (selection_is (win, 11, 1, 5, 4));
+    easel_canvas_marker_show (canvas, FALSE);
+    assert_shown (win, at11);
+    g_assert_true (key_taken (win, GDK_KEY_Right, 0));
+    g_assert_true (selection_is (win, 12, 1, 5, 4));
+    easel_canvas_marker_show (canvas, FALSE);
+    assert_shown (win, at12);
+    g_assert_true (key_taken (win, GDK_KEY_Return, 0));
+    assert_same_picture (img, at12);
+    g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+    g_assert_false (action_enabled (win, "undo"));
+    assert_same_picture (img, start);
+    /* The same with the focus off the canvas, on a toolbox button (the window's own arrows). */
+    shape_press_move (win, 1, 1, 1, 5, 4);
+    shape_release (win, 1);
+    gtk_widget_grab_focus (pencil);
+    g_assert_true (gtk_window_get_focus (GTK_WINDOW (win)) == pencil);
+    g_assert_true (key_taken (win, GDK_KEY_Right, GDK_CONTROL_MASK | GDK_SHIFT_MASK));
+    g_assert_true (selection_is (win, 11, 1, 5, 4));
+    easel_canvas_marker_show (canvas, FALSE);
+    assert_shown (win, at11);
+  }
   close_windows ();
 }
 
@@ -28088,7 +28118,7 @@ static const struct { const char *group, *title; } unbound_keys[] = {
   { "Edit", "Clear the selection" },
   { "Edit", "Move the selection 1 pixel" },
   { "Edit", "Smear the selection 1 pixel" },
-  { "Edit", "Move the selection 10 pixels" },
+  { "Edit", "Move a copy of the selection 10 pixels" },
   { "Edit", "Put down a selection or a waiting shape" },
   { "Edit", "Put down a selection, drop a waiting shape, cancel a drag" },
   { "View", "Move the focus" },

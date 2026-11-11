@@ -3151,6 +3151,8 @@ pointer_key (EaselWindow *self, guint keyval, GdkModifierType state, gboolean re
   /* With a selection and nothing held, an arrow moves it and the marker goes along; Alt moves the marker alone (REQ-0022-08). */
   if (moves_selection && shift && !ctrl)
     easel_canvas_smear_selection (self->canvas, dx, dy);
+  else if (moves_selection && ctrl)
+    easel_canvas_copy_move_selection (self->canvas, dx * step, dy * step);   /* no hole (REQ-0013-10) */
   else if (moves_selection)
     easel_canvas_move_selection (self->canvas, dx * step, dy * step);
   else if (alt && !easel_canvas_get_selection_size (self->canvas, &w, &h))
@@ -5167,14 +5169,16 @@ on_key_pressed (EaselWindow *self, guint keyval, guint keycode, GdkModifierType 
   if ((keyval == GDK_KEY_Left || keyval == GDK_KEY_Right || keyval == GDK_KEY_Up || keyval == GDK_KEY_Down)
       && (state & GDK_ALT_MASK) == 0 && (state & (GDK_CONTROL_MASK | GDK_SHIFT_MASK)) != GDK_CONTROL_MASK && !dialog_is_open (self))
     {
-      /* The arrows move the selection wherever the focus is, Shift smears it by 1, Ctrl+Shift moves it by 10 (REQ-0013-10);
+      /* The arrows move the selection wherever the focus is, Shift smears it by 1, Ctrl+Shift moves it by 10, a marked one lifted as a copy (REQ-0013-10);
          without one, or while a button is held, they are not taken. */
       gboolean shift = (state & GDK_SHIFT_MASK) != 0, ctrl = (state & GDK_CONTROL_MASK) != 0;
       int step = ctrl ? 10 : 1;
       int dx = keyval == GDK_KEY_Left ? -step : keyval == GDK_KEY_Right ? step : 0;
       int dy = keyval == GDK_KEY_Up ? -step : keyval == GDK_KEY_Down ? step : 0;
 
-      if (shift && !ctrl ? easel_canvas_smear_selection (self->canvas, dx, dy) : easel_canvas_move_selection (self->canvas, dx, dy))
+      if (shift && !ctrl ? easel_canvas_smear_selection (self->canvas, dx, dy)
+          : ctrl     ? easel_canvas_copy_move_selection (self->canvas, dx, dy)
+                     : easel_canvas_move_selection (self->canvas, dx, dy))
         return GDK_EVENT_STOP;
     }
   if (keyval == GDK_KEY_Escape && !dialog_is_open (self) && easel_canvas_finish_selection (self->canvas))

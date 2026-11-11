@@ -25,7 +25,7 @@ static const EaselShortcut shortcuts[] = {
   { N_ ("Edit"), N_ ("Clear the selection"), "Delete", NULL },
   { N_ ("Edit"), N_ ("Move the selection 1 pixel"), "Left Right Up Down", NULL },
   { N_ ("Edit"), N_ ("Smear the selection 1 pixel"), "<Shift>Left <Shift>Right <Shift>Up <Shift>Down", NULL },
-  { N_ ("Edit"), N_ ("Move the selection 10 pixels"), "<Control><Shift>Left <Control><Shift>Right <Control><Shift>Up <Control><Shift>Down", NULL },
+  { N_ ("Edit"), N_ ("Move a copy of the selection 10 pixels"), "<Control><Shift>Left <Control><Shift>Right <Control><Shift>Up <Control><Shift>Down", NULL },
   { N_ ("Edit"), N_ ("Put down a selection or a waiting shape"), "Return", NULL },
   { N_ ("Edit"), N_ ("Put down a selection, drop a waiting shape, cancel a drag"), "Escape", NULL },
 

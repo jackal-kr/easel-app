@@ -3352,11 +3352,29 @@ test: ui-0013
 file: src/ui/window.c
 test: ui-0013
 --- find
-      if (shift && !ctrl ? easel_canvas_smear_selection (self->canvas, dx, dy) : easel_canvas_move_selection (self->canvas, dx, dy))
+      if (shift && !ctrl ? easel_canvas_smear_selection (self->canvas, dx, dy)
+          : ctrl     ? easel_canvas_copy_move_selection (self->canvas, dx, dy)
+                     : easel_canvas_move_selection (self->canvas, dx, dy))
         return GDK_EVENT_STOP;
 --- replace
       easel_canvas_move_selection (self->canvas, dx, dy);
       return GDK_EVENT_STOP;
+
+=== REQ-0013-10 Ctrl+Shift with an arrow leaves a hole, the focus off the canvas
+file: src/ui/window.c
+test: ui-0013
+--- find
+          : ctrl     ? easel_canvas_copy_move_selection (self->canvas, dx, dy)
+--- replace
+          : ctrl     ? easel_canvas_move_selection (self->canvas, dx, dy)
+
+=== REQ-0013-10 Ctrl+Shift with an arrow leaves a hole, the focus on the canvas
+file: src/ui/window.c
+test: ui-0013
+--- find
+    easel_canvas_copy_move_selection (self->canvas, dx * step, dy * step);   /* no hole (REQ-0013-10) */
+--- replace
+    easel_canvas_move_selection (self->canvas, dx * step, dy * step);   /* no hole (REQ-0013-10) */
 
 === REQ-0013-10 Ctrl+Shift with an arrow moves by 1
 file: src/ui/window.c
@@ -3650,12 +3668,12 @@ test: ui-0013
 file: src/ui/canvas.c
 test: ui-0013
 --- find
-                                FALSE, hole_color (self), self->sel_lift_max) != EASEL_SELECTION_DONE)
+                                copy, hole_color (self), self->sel_lift_max) != EASEL_SELECTION_DONE)
         {
           g_signal_emit (self, signals[SIGNAL_SELECTION_FAILED], 0, 0);
           return TRUE;
 --- replace
-                                FALSE, self->background, self->sel_lift_max) != EASEL_SELECTION_DONE)
+                                copy, self->background, self->sel_lift_max) != EASEL_SELECTION_DONE)
         {
           g_signal_emit (self, signals[SIGNAL_SELECTION_FAILED], 0, 0);
           return TRUE;
@@ -3823,13 +3841,13 @@ test: ui-0013
 file: src/ui/canvas.c
 test: ui-0013
 --- find
-                                FALSE, hole_color (self), self->sel_lift_max) != EASEL_SELECTION_DONE)
+                                copy, hole_color (self), self->sel_lift_max) != EASEL_SELECTION_DONE)
         {
           g_signal_emit (self, signals[SIGNAL_SELECTION_FAILED], 0, 0);
           return TRUE;
         }
 --- replace
-                                FALSE, hole_color (self), self->sel_lift_max) != EASEL_SELECTION_DONE)
+                                copy, hole_color (self), self->sel_lift_max) != EASEL_SELECTION_DONE)
         return TRUE;
 
 === REQ-0013-19 a Ctrl copy that cannot be made does not end the drag
@@ -4541,13 +4559,13 @@ file: src/ui/canvas.c
 test: ui-0014
 --- find
 self->sel_w, self->sel_h, self->sel_mask,
-                                FALSE, hole_color (self), self->sel_lift_max) != EASEL_SELECTION_DONE)
+                                copy, hole_color (self), self->sel_lift_max) != EASEL_SELECTION_DONE)
         {
           g_signal_emit (self, signals[SIGNAL_SELECTION_FAILED], 0, 0);
           return TRUE;
 --- replace
 self->sel_w, self->sel_h, NULL,
-                                FALSE, hole_color (self), self->sel_lift_max) != EASEL_SELECTION_DONE)
+                                copy, hole_color (self), self->sel_lift_max) != EASEL_SELECTION_DONE)
         {
           g_signal_emit (self, signals[SIGNAL_SELECTION_FAILED], 0, 0);
           return TRUE;

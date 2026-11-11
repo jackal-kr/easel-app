@@ -131,8 +131,8 @@ msgstr "Golește selecția"
 msgid "Move the selection 1 pixel"
 msgstr "Mută selecția cu 1 pixel"
 
-msgid "Move the selection 10 pixels"
-msgstr "Mută selecția cu 10 pixeli"
+msgid "Move a copy of the selection 10 pixels"
+msgstr "Mută o copie a selecției cu 10 pixeli"
 
 msgid "Put down a selection or a waiting shape"
 msgstr "Așază o selecție sau o formă în așteptare"
