@@ -117,6 +117,20 @@ style_at_caret_rule (void)
   easel_text_buffer_select (b, 1, 1);
   easel_text_buffer_style_at_caret (b, false, &st);
   CHECK (st.size_pt == 12);
+  /* the caret set where it is (a press in the box at the caret) is no move: the pending style stays (JOD's bug, 2026-11-11) */
+  CHECK (easel_text_buffer_apply (b, EASEL_TEXT_SIZE, &v, false));
+  easel_text_buffer_select (b, 1, 1);
+  easel_text_buffer_style_at_caret (b, false, &st);
+  CHECK (st.size_pt == 30);
+  easel_text_buffer_free (b);
+  /* and in an empty box, before its first letter */
+  b = easel_text_buffer_new (&start);
+  CHECK (b != NULL);
+  v.size_pt = 15;
+  CHECK (easel_text_buffer_apply (b, EASEL_TEXT_SIZE, &v, false));
+  easel_text_buffer_select (b, 0, 0);
+  type (b, "d");
+  CHECK (easel_text_buffer_runs (b, &(size_t) { 0 })[0].style.size_pt == 15);
   easel_text_buffer_free (b);
 }
 

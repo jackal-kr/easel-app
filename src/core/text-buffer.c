@@ -212,9 +212,14 @@ easel_text_buffer_caret (const EaselTextBuffer *b)
 void
 easel_text_buffer_select (EaselTextBuffer *b, size_t anchor, size_t caret)
 {
-  b->anchor = anchor <= b->len ? anchor : b->len;
-  b->caret = caret <= b->len ? caret : b->len;
-  b->has_pending = false;                      /* the caret moved: a pending style is forgotten (REQ-0017-12) */
+  anchor = anchor <= b->len ? anchor : b->len;
+  caret = caret <= b->len ? caret : b->len;
+  /* a pending style is forgotten when the caret or the selection moves (REQ-0017-12), not when they are set where they are: a
+     press in the box at the caret keeps the size just chosen for the text typed next (JOD's bug, 2026-11-11) */
+  if (anchor != b->anchor || caret != b->caret)
+    b->has_pending = false;
+  b->anchor = anchor;
+  b->caret = caret;
   b->can_join = false;                         /* and a run of typing or deleting ends (REQ-0017-08) */
 }
 

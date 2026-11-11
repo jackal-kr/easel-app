@@ -39889,6 +39889,67 @@ smooth_as2_preferences (void)
   write_settings ("[new-picture]\nwidth=300\nheight=200\n");
 }
 
+/* 0017 AS-11 (REQ-0017-12; JOD's bug of 2026-11-11): in a new, empty box the size raised on the card, by its + button or typed and
+   Enter, is the size of the text typed next: an empty box takes it before its first letter. */
+static void
+as11_empty_box_takes_size (void)
+{
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  GtkSpinButton *size;
+
+  write_settings (TEXT_SETTINGS);
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  wait_for_layout (win);
+  use_tool (win, "text");
+  wait_for_layout (win);
+  /* the + button, three times: 15 */
+  shape_press_move (win, 1, 20, 25, 160, 80);
+  shape_release (win, 1);
+  wait_for_layout (win);
+  size = easel_font_card_get_size (easel_window_get_font_card (win));
+  g_assert_cmpint (gtk_spin_button_get_value_as_int (size), ==, 12);
+  for (int i = 0; i < 3; i++)
+    gtk_spin_button_spin (size, GTK_SPIN_STEP_FORWARD, 1);
+  wait_for_layout (win);
+  g_assert_cmpint (gtk_spin_button_get_value_as_int (size), ==, 15);
+  type_keys (win, "ab");
+  g_assert_cmpint (run_style_at (win, 0).size_pt, ==, 15);
+  g_assert_cmpint (run_style_at (win, 1).size_pt, ==, 15);
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+  /* typed in the field, then Enter, in the next new box: 30 */
+  shape_press_move (win, 1, 20, 100, 160, 160);
+  shape_release (win, 1);
+  wait_for_layout (win);
+  gtk_widget_grab_focus (GTK_WIDGET (size));
+  gtk_editable_set_text (GTK_EDITABLE (size), "30");
+  g_signal_emit_by_name (size, "activate");
+  wait_for_layout (win);
+  type_keys (win, "c");
+  g_assert_cmpint (run_style_at (win, 0).size_pt, ==, 30);
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+  /* the + button, then a press in the empty box to type there (the caret stays where it was): 13 */
+  shape_press_move (win, 1, 170, 25, 290, 90);
+  shape_release (win, 1);
+  wait_for_layout (win);
+  g_assert_cmpint (gtk_spin_button_get_value_as_int (size), ==, 30);
+  gtk_spin_button_set_value (size, 12);
+  wait_for_layout (win);
+  gtk_spin_button_spin (size, GTK_SPIN_STEP_FORWARD, 1);
+  wait_for_layout (win);
+  {
+    double x, y;
+
+    canvas_point (win, 200.5, 50.5, &x, &y);
+    easel_canvas_press (canvas, 1, x, y);
+    easel_canvas_release (canvas, 1);
+  }
+  type_keys (win, "d");
+  g_assert_cmpint (run_style_at (win, 0).size_pt, ==, 13);
+  close_windows ();
+}
+
 int
 main (int argc, char **argv)
 {
@@ -40197,6 +40258,7 @@ main (int argc, char **argv)
   g_test_add_func ("/0017/as20_paste_size_not_given", as20_paste_size_not_given);
   g_test_add_func ("/0017/as21_text_alone_no_paste", as21_text_alone_no_paste);
   g_test_add_func ("/0017/as22_box_menu", as22_box_menu);
+  g_test_add_func ("/0017/as11_empty_box_takes_size", as11_empty_box_takes_size);
   g_test_add_func ("/0016/as10_clipboard_memory", as10_clipboard_memory);
   g_test_add_func ("/0016/store_at_quit", store_at_quit);
   g_test_add_func ("/0016/as14_late_callback_after_timeout", as14_late_callback_after_timeout);

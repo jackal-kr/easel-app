@@ -6924,9 +6924,11 @@ test: core-text-buffer
 file: src/core/text-buffer.c
 test: core-text-buffer
 --- find
-  b->has_pending = false;                      /* the caret moved: a pending style is forgotten (REQ-0017-12) */
+  if (anchor != b->anchor || caret != b->caret)
+    b->has_pending = false;
 --- replace
-  (void) 0;
+  if (anchor != b->anchor || caret != b->caret)
+    (void) 0;
 
 === REQ-0017-12 a style set with nothing selected changes the character before the caret
 file: src/core/text-buffer.c
@@ -13424,3 +13426,12 @@ test: ui-0039
                                                            "smooth", NULL)),
 --- replace
                                                            "smooth-shapes", NULL)),
+
+=== REQ-0017-12 a press at the caret forgets the size just chosen for the next typed text
+file: src/core/text-buffer.c
+test: core-text-buffer ui-0017
+--- find
+  if (anchor != b->anchor || caret != b->caret)
+    b->has_pending = false;
+--- replace
+  b->has_pending = false;
