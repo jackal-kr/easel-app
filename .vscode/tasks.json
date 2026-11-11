@@ -15,10 +15,15 @@
       "type": "shell",
       "command": "tools/spec.sh new ${input:number} ${input:slug}",
       "problemMatcher": []
-    }
+    },
+    { "label": "Git: commit", "type": "shell", "command": "git status --short && git add -A && git commit -m \"$SUBJECT\" -m \"$WHY\"", "options": { "env": { "SUBJECT": "${input:commitSubject}", "WHY": "${input:commitWhy}" } }, "problemMatcher": [] },
+    { "label": "Git: push", "type": "shell", "command": "git push", "problemMatcher": [] },
+    { "label": "Release: build and publish", "type": "shell", "command": "tools/release.sh", "problemMatcher": [] }
   ],
   "inputs": [
     { "id": "number", "type": "promptString", "description": "Feature number from docs/specs/INDEX.md (4 digits)" },
-    { "id": "slug", "type": "promptString", "description": "Short kebab-case slug" }
+    { "id": "slug", "type": "promptString", "description": "Short kebab-case slug" },
+    { "id": "commitSubject", "type": "promptString", "description": "Commit subject, imperative" },
+    { "id": "commitWhy", "type": "promptString", "description": "Commit body: why the change" }
   ]
 }
