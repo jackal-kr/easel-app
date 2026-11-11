@@ -9,7 +9,7 @@ workflow; JOD to confirm or change each point; mark changes with an ADR if they 
 - GNOME-native (GTK 4 + libadwaita, GNOME HIG). Follows system light/dark and accent color. No XP visuals.
 - Header bar: Open, Save, Undo, Redo, Image menu button, View menu button, slim primary (hamburger) menu.
   No nested XP-style menu bar.
-- Layout: toolbox (18 tools: the 16 XP tools plus Pan and Gradient) with per-tool options below it, canvas in a scrolled viewport, palette bar
+- Layout: toolbox (16 buttons: the 16 XP tools plus Pan and Gradient, with Rectangle, Rounded Rectangle and Ellipse as shapes of one Shapes tool, 0043) with per-tool options below it, canvas in a scrolled viewport, palette bar
   (fore/background indicator, swap button, 28 swatches), status bar with pointer position, picture size, zoom, selection size (Selection) and tool hint.
   While a text box is open, a font card floats over the canvas next to the box (Text).
   The toolbox, the color box (palette bar) and the status bar can each be hidden from the View menu (0004).
@@ -40,12 +40,12 @@ How input maps to actions across all tools. Seed from XP Paint behavior; verify 
 - Right-click on a selection or text box opens a context menu instead of drawing.
 
 ### Pending state
-Things not yet put down (floating selection, text being typed, unfinished curve/polygon) are "pending".
+Things not yet put down (floating selection, text being typed, unfinished curve/polygon, a shape waiting with its handles) are "pending".
 They enter undo history only when committed; save, close, New and tool change must commit or ask first.
 One user-visible edit = exactly one undo step.
 
 ### Keyboard
-- Numpad +/- changes brush size (Ctrl+numpad +/- zooms); while a text box is open they type + and − into it (Text). Ctrl+G toggles the grid, which shows while a cell is at least 4 device pixels wide (the 1-pixel grid from 400 %, as in XP). Esc drops a pending curve, polygon or gradient, and puts a floating selection down (Selection).
+- Numpad +/- changes brush size (Ctrl+numpad +/- zooms); while a text box is open they type + and − into it (Text). Ctrl+G toggles the grid, which shows while a cell is at least 4 device pixels wide (the 1-pixel grid from 400 %, as in XP). Esc drops a pending curve, polygon, gradient or waiting shape, and puts a floating selection down (Selection).
 - Canvas takes keyboard focus; the view must not jump when focus changes.
 - Every pointer operation inside the picture has a keyboard path (see accessibility feature); a pointer outside the picture has none, and handles have commands instead.
 

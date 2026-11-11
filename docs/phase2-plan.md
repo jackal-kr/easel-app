@@ -84,6 +84,7 @@ Order suggestion: A and B first, C after the graphics path audit, D with file in
 
 ## From JOD's use, 2026-11-04
 - Ctrl+Shift with an arrow (REQ-0013-10) leaves the hole of a plain move, a blank strip beside the selection at its first move. JOD wants it fixed, in phase 2: the 10-pixel key should not show that gap. The likely form is a moved copy, as Ctrl with a drag does (the original stays, no trail, still 10 pixels), which would leave the keyboard no plain 10-pixel move; settle it in a spec then.
+  Done 2026-11-11 as a tiny change to 0013 (REQ-0013-10, AS-5): a moved copy, no trail.
 
 ## From 0035's opening test (2026-11-10)
 - A marked selection should survive a cancelled quit: closing a modified picture, then Cancel on the Save prompt, loses the marking,
@@ -111,6 +112,10 @@ Order suggestion: A and B first, C after the graphics path audit, D with file in
 - Smooth text, the selection's view only (the put-down is right): the grid faint under a selected soft edge at 800 %; two runs' soft
   edges overlapping take one run's color there; a soft edge in the next letter's advance gets no highlight.
 - A smooth outline reaching a pixel past Sharp's ink rectangle would be cut (not seen); `glyph_color` on near-zero alpha.
+
+## From 0043's spec (2026-11-11)
+- G1: resizing a waiting shape from the keyboard (a keyboard press never takes a handle, REQ-0022-07); its keys and
+  announcements are a design of their own. A keyboard user can move, put down or drop a waiting shape.
 
 ## From the mutation list
 - REQ-0017-14, the popover's scroll guard: survives on GTK 4.24, accepted (JOD, 2026-11-02). Re-decide at packaging-release, when the minimum GTK is chosen.

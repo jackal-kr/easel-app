@@ -49,7 +49,9 @@ Optional; it starts only after the core XP scope is delivered.
   draws them with antialiasing; its default is set in Preferences and is off out of the box (feature 0039).
 - Either switch changes only the current session; it does not rewrite the saved default. The Pencil, the Eraser and Fill stay
   exact and show no switch.
-- Extra shapes: triangles, diamond, pentagon, hexagon, arrows, stars, callouts, heart, lightning bolt.
+- Extra shapes: triangles, diamond, pentagon, hexagon, arrows, stars, callouts, heart, lightning bolt, in one Shapes tool that
+  also holds rectangle, rounded rectangle and ellipse (their buttons leave the toolbox); a shape waits with handles to be moved,
+  resized, mirrored and recolored until Enter or a press away (JOD, 2026-11-11; feature 0043).
 
 ## Decisions
 - Panning happens only in Pan mode; so Ctrl+drag on a selection keeps classic XP behavior: it moves a copy.

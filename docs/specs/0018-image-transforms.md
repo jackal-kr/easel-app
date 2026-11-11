@@ -86,7 +86,7 @@ features (JOD, 2026-10-27).
   lifted it); if the lift itself cannot get its memory, REQ-0013-19's dialog shows and the selection stays marked.
 
 ### Flipping by a handle
-- REQ-0018-11 When a selection handle (REQ-0015-02; not a text box's, REQ-0017-05) is dragged past the opposite edge
+- REQ-0018-11 (Pointer note, Extra shapes, 2026-11-11: a waiting shape is mirrored so too, REQ-0043-08.) When a selection handle (REQ-0015-02; not a text box's, REQ-0017-05) is dragged past the opposite edge
   (REQ-0015-03), the selection shall be mirrored on that axis (JOD, 2026-10-27; replacing REQ-0015-03's "no mirroring"): its extent on
   that axis runs from the opposite edge, which stays where it is, to the dragged edge, at least 1 pixel; with the dragged edge exactly
   on the opposite edge the extent is 1 pixel and not mirrored. A corner handle mirrors on each axis it passes. While the button is

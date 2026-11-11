@@ -21,7 +21,7 @@ text boxes, Image-menu transforms (flip, rotate, stretch, skew, invert, attribut
 open/save png, jpeg, bmp, tiff, webp (gif open only), print, Preferences, shortcuts window, thumbnail, i18n, accessibility,
 Flatpak and deb packaging first, AppImage in a later release (JOD, 2026-11-05).
 Additions beyond classic XP Paint: `docs/reference/new-behaviors.md`.
-XP-faithful by default; a later optional phase adds a few selected modern extras, and smoothing (antialiasing) is an option, off by default. Named exception: Curve bends where the user drags a point of the line, in place of XP's click-anywhere bends (JOD, 2026-11-07; feature 0033).
+XP-faithful by default; a later optional phase adds a few selected modern extras, and smoothing (antialiasing) is an option, off by default. Named exception: Curve bends where the user drags a point of the line, in place of XP's click-anywhere bends (JOD, 2026-11-07; feature 0033). Named exception: one Shapes tool holds rectangle, rounded rectangle and ellipse with sixteen more shapes, in place of XP's three shape buttons, and a shape waits with handles (move, resize, mirror, recolor) until Enter or a press away, in place of XP's put-down at the release; the toolbox is 16 buttons, not XP's layout (JOD, 2026-11-11; feature 0043).
 
 ## Non-goals
 XP visual styling; the third (Ctrl) color slot; layers; non-destructive editing; plugins; cloud features; Windows/macOS ports;

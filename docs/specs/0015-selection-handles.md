@@ -13,7 +13,7 @@ they are used.
 ## Requirements
 
 ### The handles
-- REQ-0015-01 While a selection exists, marked or floating, with Select or Free-Form Select active, the app shall show eight handles
+- REQ-0015-01 (Pointer note, Extra shapes, 2026-11-11: a waiting shape shows the same eight handles, REQ-0043-06.) While a selection exists, marked or floating, with Select or Free-Form Select active, the app shall show eight handles
   round its bounding rectangle, with the look of the picture's resize handles (REQ-0004-16: a filled navy square of 5 x 5 logical
   pixels; JOD: the same look for the same meaning, not the black of the reference): a corner handle has its inner corner at the
   rectangle's corner, outside it; an edge handle touches the middle of its edge from outside, centered on it, its position rounded
@@ -22,7 +22,7 @@ they are used.
   with the selection, also while it is moved, smeared or stretched with the button held (JOD). The picture's own resize handles (REQ-0004-16) lie under the selection's tint and its floating pixels where they overlap (JOD,
   2026-10-22), and under the selection's handles. While a rectangle is dragged out or a
   path traced there is no selection yet and no handle. (Pointer notes: REQ-0013-05 and REQ-0014-05, which said no handle is drawn.) (Pointer note, Text, 2026-10-26: An open text box shows the same eight handles with Text active, REQ-0017-05.)
-- REQ-0015-02 A press inside a handle's own 5 x 5 square shall go to that handle; elsewhere each handle takes presses in a hit area of
+- REQ-0015-02 (Pointer note, Extra shapes, 2026-11-11: a waiting shape's handles take presses by this rule, REQ-0043-07.) A press inside a handle's own 5 x 5 square shall go to that handle; elsewhere each handle takes presses in a hit area of
   9 x 9 logical pixels round its center, less the selection's bounding rectangle, and where those hit areas overlap a corner handle
   wins over an edge handle (JOD). Inside the bounding rectangle a press is what 0013 and 0014 say (on the selection, outside its
   shape, or on a picture handle whose hit area reaches in, REQ-0014-03). A selection handle wins over the picture's resize handles

@@ -41,7 +41,7 @@ selection marked with Select, and a pasted one (REQ-0016-06), has every pixel of
   was.
 
 ### Paste
-- REQ-0016-05 When the user chooses Paste and the clipboard holds a picture, or a copied file that is a picture (read by its content as
+- REQ-0016-05 (Pointer note, Extra shapes, 2026-11-11: Paste puts a waiting shape down first, REQ-0043-10.) When the user chooses Paste and the clipboard holds a picture, or a copied file that is a picture (read by its content as
   Open reads it, REQ-0005-06), the app shall read it first (REQ-0016-15) and then: put down a floating selection and remove a marked
   one, and apply or drop what is pending as a tool change does (REQ-0013-11, REQ-0011-12, REQ-0012-07); make Select the active tool
   (`docs/design.md`: after any paste the Select tool is active); and show the pasted picture as a floating selection whose top-left
