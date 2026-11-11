@@ -826,12 +826,62 @@ smooth_polygon_no_corner (void)
     }
 }
 
+/* 0040 REQ-0040-04: the mix in 255ths against the formula in doubles, written again from the spec: a sweep of colors (alphas 0, 1, 128
+   and 255 forced often) and every coverage from 0 to 255; c = 255 the color exactly, c = 0 the old color, an alpha of 0 the zero. */
+static uint32_t
+mix255_reference (uint32_t old, uint32_t color, unsigned c)
+{
+  double a = old >> 24, at = color >> 24, m = a * (255.0 - c) + at * c, alpha = floor (m / 255.0 + 0.5);
+  uint32_t r = 0;
+
+  if (alpha == 0)
+    return 0;
+  for (int sh = 0; sh <= 16; sh += 8)
+    {
+      double v = floor (((old >> sh & 0xFF) * a * (255.0 - c) + (color >> sh & 0xFF) * at * c) / m + 0.5);
+
+      r |= (uint32_t) (v > 255 ? 255 : v) << sh;
+    }
+  return (uint32_t) alpha << 24 | r;
+}
+
+static void
+mix255_oracle (void)
+{
+  static const uint32_t alphas[] = { 0, 1, 128, 255 };
+
+  for (int k = 0; k < 3000; k++)
+    {
+      uint32_t old = next (), color = next ();
+
+      if (k % 2 == 0)
+        old = (old & 0xFFFFFF) | alphas[k / 2 % 4] << 24;
+      if (k % 3 == 0)
+        color = (color & 0xFFFFFF) | alphas[k / 3 % 4] << 24;
+      if (old >> 24 == 0)
+        old = 0;
+      for (unsigned c = 0; c <= 255; c++)
+        {
+          uint32_t got = easel_cover_mix255 (old, color, c), want = mix255_reference (old, color, c);
+
+          if (got != want)
+            fprintf (stderr, "old %08X color %08X c %u: %08X, want %08X\n", old, color, c, got, want);
+          CHECK (got == want);
+        }
+    }
+  CHECK (easel_cover_mix255 (0xFFFFFFFF, 0xFF000000, 255) == 0xFF000000);
+  CHECK (easel_cover_mix255 (0x12345678, 0xFF000000, 0) == 0x12345678);
+  CHECK (easel_cover_mix255 (0, 0x80FF0000, 128) == 0x40FF0000);            /* over transparency the red is kept */
+  CHECK (easel_cover_mix255 (0xFF000000, 0x00000000, 255) == 0);
+}
+
 int
 main (void)
 {
   RUN (as6_mix_transparent);
   RUN (as6_mix_white);
   RUN (mix_oracle);
+  RUN (mix255_oracle);
   RUN (as4_ellipse_points);
   RUN (as4_rectangle_is_sharp);
   RUN (cover_oracle_boxes);

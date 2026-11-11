@@ -26,6 +26,23 @@ easel_cover_mix (uint32_t old, uint32_t c_out, unsigned n_out, uint32_t c_in, un
   return (uint32_t) alpha << 24 | r;
 }
 
+uint32_t
+easel_cover_mix255 (uint32_t old, uint32_t color, unsigned c)
+{
+  uint64_t rest = 255u - c, a = old >> 24, at = color >> 24, m = a * rest + at * c, alpha = (2 * m + 255) / 510;
+  uint32_t r = 0;
+
+  if (alpha == 0)
+    return 0;                                                            /* P7.7 */
+  for (int sh = 0; sh <= 16; sh += 8)
+    {
+      uint64_t num = (old >> sh & 0xFF) * a * rest + (color >> sh & 0xFF) * at * c, v = (2 * num + m) / (2 * m);
+
+      r |= (uint32_t) (v > 255 ? 255 : v) << sh;
+    }
+  return (uint32_t) alpha << 24 | r;
+}
+
 static int64_t
 floor_div16 (int64_t v)
 {

@@ -1308,3 +1308,6 @@ msgstr "Glatte Kanten"
 
 msgid "Smooth shapes and brushes"
 msgstr "Glatte Formen und Pinsel"
+
+msgid "Smooth text"
+msgstr "Glatter Text"

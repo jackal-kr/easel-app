@@ -99,6 +99,7 @@ const char easel_settings_default_text[] =
   "italic=false\n"
   "underline=false\n"
   "strikethrough=false\n"
+  "smooth=false\n"
   "\n"
   "[" SECTION_DRAWING "]\n"
   "brush=circle-4\n"
@@ -178,6 +179,7 @@ easel_settings_defaults (EaselSettings *s)
   s->line_width = 1;
   s->fill_style = EASEL_FILL_OUTLINE;
   s->smooth = false;
+  s->text_smooth = false;
   s->magnifier = 2;
   s->text_size = EASEL_TEXT_SIZE_DEFAULT;
   s->text_bold = s->text_italic = s->text_underline = s->text_strike = false;
@@ -306,6 +308,8 @@ apply (EaselSpan section, EaselSpan key, EaselSpan value, void *data)
         s->text_underline = false;
       else if (easel_span_is (key, "strikethrough") && !parse_true_false (value, &s->text_strike))
         s->text_strike = false;
+      else if (easel_span_is (key, "smooth") && !parse_true_false (value, &s->text_smooth))
+        s->text_smooth = false;                                          /* Sharp for any other value (REQ-0040-03) */
     }
   else if (easel_span_is (section, SECTION_DRAWING))
     {

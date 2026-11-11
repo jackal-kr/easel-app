@@ -14,6 +14,10 @@ G_BEGIN_DECLS
 /* A Pango context for text at picture scale; the caller unrefs it. */
 PangoContext *easel_text_render_context (void);
 
+/* The same with Smooth (0040): gray antialiasing in place of 1-bit glyphs, everything else as Sharp's, so the two lay text out alike
+   (REQ-0040-02, the Plan). easel_text_render_context is easel_text_render_context_for (FALSE). */
+PangoContext *easel_text_render_context_for (gboolean smooth);
+
 /* The font of a style: its family, its size in points, bold and italic. The caller frees it. */
 PangoFontDescription *easel_text_render_font (const EaselTextStyle *style);
 
@@ -25,13 +29,25 @@ void easel_text_render_metrics (const EaselTextStyle *style, int *line_height, i
    the caret. The caller unrefs it. */
 PangoLayout *easel_text_render_layout (const EaselTextBuffer *b, int width);
 
+/* The same layout made on the context of easel_text_render_context_for (smooth); easel_text_render_layout is this with FALSE. */
+PangoLayout *easel_text_render_layout_for (const EaselTextBuffer *b, int width, gboolean smooth);
+
 /* The height of the layout's text in picture pixels, rounded up. */
 int easel_text_render_height (PangoLayout *layout);
 
 /* The text as pixels (REQ-0017-16, the Plan): `ink` covers the layout's ink and its logical box from (x, y) of the picture; a pixel is
    in the mask where a character covers at least half of it, with its run's color (a color glyph's own color, opaque), the later run
-   winning. FALSE without memory or past `max_bytes` (5 bytes a pixel), with nothing made. The caller frees ink->color and ink->mask. */
-gboolean easel_text_render_ink (PangoLayout *layout, const EaselTextBuffer *b, int x, int y, size_t max_bytes, EaselTextInk *ink);
+   winning. FALSE without memory or past `max_bytes` (5 bytes a pixel), with nothing made. With `smooth` (0040), the layers of
+   REQ-0040-04 instead, one per style run with its coverage (1 byte a pixel of its rectangle, 4 more with color glyphs). The caller frees
+   it with easel_text_render_ink_free. */
+gboolean easel_text_render_ink (PangoLayout *layout, const EaselTextBuffer *b, int x, int y, size_t max_bytes, gboolean smooth,
+                                EaselTextInk *ink);
+
+/* Moves an ink by (dx, dy), its layers too (a box moved keeps its lines, REQ-0017-10). */
+void easel_text_render_ink_move (EaselTextInk *ink, int dx, int dy);
+
+/* Frees what easel_text_render_ink made (Sharp's color and mask, Smooth's layers) and empties the ink. */
+void easel_text_render_ink_free (EaselTextInk *ink);
 
 /* The installed family named `name` without regard to case, as Pango names it; NULL if none is installed. */
 const char *easel_text_render_find_family (const char *name);

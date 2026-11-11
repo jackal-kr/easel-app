@@ -29,6 +29,8 @@ ui_env.set('EASEL_HELP_PAGE', help_page)
 # File dialogs open in-process, so tests can find and close them.
 ui_env.set('GDK_DEBUG', 'no-portals')
 
+# 0040 (JOD's note b): Sharp and Smooth text lay out alike; Pango and fontconfig only, no display.
+test('text-smooth-layout', executable('test-text-layout', 'ui/test-text-layout.c', dependencies: easel_ui_dep), suite: 'ui')
 test_window = executable('test-window', 'ui/test-window.c', 'ui/memory-clipboard.c',
   dependencies: [easel_ui_dep, dependency('gio-unix-2.0')],
 )
@@ -51,6 +53,7 @@ ui_a11y_env.set('EASEL_HELP_PAGE', help_page)
 ui_a11y_env.set('GDK_DEBUG', 'no-portals')
 test('ui-0022', test_window, args: ['-p', '/0022'], env: ui_a11y_env, suite: 'ui', timeout: 180, is_parallel: false)
 test('ui-0039-a11y', test_window, args: ['-p', '/0039-a11y'], env: ui_a11y_env, suite: 'ui', timeout: 120, is_parallel: false)
+test('ui-0040-a11y', test_window, args: ['-p', '/0040-a11y'], env: ui_a11y_env, suite: 'ui', timeout: 120, is_parallel: false)
 
 ui_vulkan_env = environment()
 ui_vulkan_env.set('GSK_RENDERER', 'vulkan')
@@ -87,6 +90,8 @@ test('ui-0035', test_window, args: ['-p', '/0035'], env: ui_env, suite: 'ui', ti
 test('ui-0037', test_window, args: ['-p', '/0037'], env: ui_env, suite: 'ui', timeout: 300, is_parallel: false)
 test('ui-0038', test_window, args: ['-p', '/0038'], env: ui_env, suite: 'ui', timeout: 300, is_parallel: false)
 test('ui-0039', test_window, args: ['-p', '/0039'], env: ui_env, suite: 'ui', timeout: 300, is_parallel: false)
+test('ui-0040', test_window, args: ['-p', '/0040'], env: ui_env, suite: 'ui', timeout: 300, is_parallel: false)
+test('ui-0040-scale2', test_window, args: ['-p', '/0040-scale2'], env: ui_env, suite: 'ui', timeout: 180, is_parallel: false)
 test('ui-0036', test_window, args: ['-p', '/0036'], env: ui_env, suite: 'ui', timeout: 300, is_parallel: false)
 journey_uk_env = environment()
 journey_uk_env.set('GSK_RENDERER', 'cairo')

@@ -163,6 +163,11 @@ void easel_canvas_set_magnifier_level (EaselCanvas *self, int pct);
 void easel_canvas_set_shape_options (EaselCanvas *self, int width, int style);
 /* Sharp or Smooth for the seven tools of 0039 (REQ-0039-01); a waiting curve or polygon is shown in it at once (REQ-0039-02). */
 void easel_canvas_set_smooth (EaselCanvas *self, gboolean smooth);
+/* Smooth text (0040): the open box is shown and put down in it at once; FALSE, the choice and the box as they were and the bell, if the memory to
+   show it cannot be had (REQ-0040-02, REQ-0040-07). */
+gboolean easel_canvas_set_text_smooth (EaselCanvas *self, gboolean smooth);
+/* Whether text in the open box is being selected by a drag (a button held, REQ-0040-02). */
+gboolean easel_canvas_is_selecting_text (EaselCanvas *self);
 void easel_canvas_set_shift (EaselCanvas *self, gboolean down);
 /* A curve or polygon is pending (0011): shown over the picture, with a stage held or waiting for the next one. */
 gboolean easel_canvas_is_pending (EaselCanvas *self);

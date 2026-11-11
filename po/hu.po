@@ -1308,3 +1308,6 @@ msgstr "Simított szélek"
 
 msgid "Smooth shapes and brushes"
 msgstr "Simított alakzatok és ecsetek"
+
+msgid "Smooth text"
+msgstr "Simított szöveg"

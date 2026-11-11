@@ -402,6 +402,23 @@ settings_smooth (void)
   CHECK (!parse (easel_settings_default_text).smooth);
 }
 
+/* 0040 AS-2 (REQ-0040-03): `[text] smooth`: Smooth for `true` in any case; missing, `false` and any other value Sharp; apart from
+   `[drawing] smooth`; the created file holds `smooth=false` in `[text]`. */
+static void
+settings_text_smooth (void)
+{
+  CHECK (parse ("[text]\nsmooth=true\n").text_smooth);
+  CHECK (parse ("[text]\nsmooth=TRUE\n").text_smooth);
+  CHECK (!parse ("[text]\nsmooth=yes\n").text_smooth);
+  CHECK (!parse ("[text]\nsmooth=false\n").text_smooth);
+  CHECK (!parse ("[text]\nsmooth=true\nsmooth=bad\n").text_smooth);
+  CHECK (!parse ("").text_smooth);
+  CHECK (!parse ("[drawing]\nsmooth=true\n").text_smooth);                /* 0039's key is its own */
+  CHECK (!parse ("[text]\nsmooth=true\n").smooth);
+  CHECK (strstr (easel_settings_default_text, "strikethrough=false\nsmooth=false\n") != NULL);
+  CHECK (!parse (easel_settings_default_text).text_smooth);
+}
+
 int
 main (void)
 {
@@ -420,5 +437,6 @@ main (void)
   RUN (as36_syntax_rules);
   RUN (as6_toolbox_width_key);
   RUN (settings_smooth);
+  RUN (settings_text_smooth);
   return 0;
 }

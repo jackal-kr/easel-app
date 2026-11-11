@@ -7071,10 +7071,10 @@ file: src/core/text-put.c
 test: core-text-put
 --- find
   if (opaque && x >= bx && x < bx + bw && y >= by && y < by + bh)
-    return easel_px_canon (background);
+    v = easel_px_canon (background);
 --- replace
   if (0)
-    return easel_px_canon (background);
+    v = easel_px_canon (background);
 
 === REQ-0017-16 the Opaque fill reaches one pixel past the box
 file: src/core/text-put.c
@@ -7568,19 +7568,17 @@ test: ui-0017
 file: src/ui/canvas.c
 test: ui-0017
 --- find
-    c = ink->color[(size_t) (y - ink->y) * ink->w + (x - ink->x)];
+  return easel_text_ink_value (&self->text_ink, x, y, c, bx, by, bw, bh, self->text_opaque, self->background);
 --- replace
-    (void) 0;
+  return c;
 
 === REQ-0017-05 an Opaque box shows no background
 file: src/ui/canvas.c
 test: ui-0017
 --- find
-  if (self->text_opaque && x >= bx && x < bx + bw && y >= by && y < by + bh)
-    c = self->background;
+  return easel_text_ink_value (&self->text_ink, x, y, c, bx, by, bw, bh, self->text_opaque, self->background);
 --- replace
-  if (0)
-    c = self->background;
+  return easel_text_ink_value (&self->text_ink, x, y, c, bx, by, bw, bh, FALSE, self->background);
 
 === REQ-0017-05 the selected text has no accent behind it
 file: src/ui/canvas.c
@@ -7648,9 +7646,9 @@ test: ui-0017
 file: src/ui/canvas.c
 test: ui-0017
 --- find
-      else if (!easel_text_render_ink (layout, copy, self->tb_x, self->tb_y, self->text_show_max, &ink))
+      else if (!easel_text_render_ink (layout, copy, self->tb_x, self->tb_y, self->text_show_max, self->text_smooth, &ink))
 --- replace
-      else if (!easel_text_render_ink (layout, copy, self->tb_x, self->tb_y, SIZE_MAX, &ink))
+      else if (!easel_text_render_ink (layout, copy, self->tb_x, self->tb_y, SIZE_MAX, self->text_smooth, &ink))
 
 === REQ-0017-07 a box whose first text cannot be shown stays open
 file: src/ui/canvas.c
@@ -10523,7 +10521,7 @@ test: ui-0018
 file: src/ui/text-render.c
 test: ui-0017
 --- find
-  cairo_font_options_set_antialias (fo, CAIRO_ANTIALIAS_NONE);
+  cairo_font_options_set_antialias (fo, smooth ? CAIRO_ANTIALIAS_GRAY : CAIRO_ANTIALIAS_NONE);
 --- replace
   cairo_font_options_set_antialias (fo, CAIRO_ANTIALIAS_GRAY);
 
@@ -13133,8 +13131,10 @@ file: src/core/cover.c
 test: core-cover
 --- find
     return 0;                                                            /* P7.7 */
+  /* Divided by M, not by the rounded alpha, so that a color over a fully transparent pixel keeps its red, green and blue. */
 --- replace
     return c_out & 0xFFFFFF;
+  /* Divided by M, not by the rounded alpha, so that a color over a fully transparent pixel keeps its red, green and blue. */
 
 === REQ-0039-05 the corner radius is taken from the fine box, not the pixel box times 16
 file: src/core/figure.c
@@ -13323,7 +13323,7 @@ test: ui-0039
 file: src/ui/tool-options.c
 test: ui-0039
 --- find
-    gtk_box_append (GTK_BOX (brush_box), new_smooth_well ());
+    gtk_box_append (GTK_BOX (brush_box), new_smooth_well ("win.smooth"));
 --- replace
     gtk_widget_get_first_child (brush_box);
 
@@ -13435,3 +13435,204 @@ test: core-text-buffer ui-0017
     b->has_pending = false;
 --- replace
   b->has_pending = false;
+
+=== REQ-0040-02 Smooth text lays out with hint metrics off, so its glyphs and lines move against Sharp's
+file: src/ui/text-render.c
+test: text-smooth-layout
+--- find
+  cairo_font_options_set_hint_metrics (fo, CAIRO_HINT_METRICS_ON);
+  pango_cairo_context_set_font_options (ctx, fo);
+--- replace
+  cairo_font_options_set_hint_metrics (fo, smooth ? CAIRO_HINT_METRICS_OFF : CAIRO_HINT_METRICS_ON);
+  pango_cairo_context_set_font_options (ctx, fo);
+
+=== REQ-0040-04 Smooth text is drawn 1-bit, as Sharp
+file: src/ui/text-render.c
+test: text-smooth-layout
+--- find
+  cairo_font_options_set_antialias (fo, smooth ? CAIRO_ANTIALIAS_GRAY : CAIRO_ANTIALIAS_NONE);
+--- replace
+  cairo_font_options_set_antialias (fo, CAIRO_ANTIALIAS_NONE);
+
+=== REQ-0040-04 the text's mix counts 256ths, not 255ths
+file: src/core/cover.c
+test: core-cover
+--- find
+  uint64_t rest = 255u - c, a = old >> 24, at = color >> 24, m = a * rest + at * c, alpha = (2 * m + 255) / 510;
+--- replace
+  uint64_t rest = 256u - c, a = old >> 24, at = color >> 24, m = a * rest + at * c, alpha = (2 * m + 256) / 512;
+
+=== REQ-0040-04 the text's mix rounds its halves down
+file: src/core/cover.c
+test: core-cover
+--- find
+      uint64_t num = (old >> sh & 0xFF) * a * rest + (color >> sh & 0xFF) * at * c, v = (2 * num + m) / (2 * m);
+--- replace
+      uint64_t num = (old >> sh & 0xFF) * a * rest + (color >> sh & 0xFF) * at * c, v = (2 * num + m - 1) / (2 * m);
+
+=== REQ-0040-04 the text's mix keeps a color under an alpha of 0 (P7.7)
+file: src/core/cover.c
+test: core-cover
+--- find
+    return 0;                                                            /* P7.7 */
+  for (int sh = 0; sh <= 16; sh += 8)
+    {
+      uint64_t num = (old >> sh & 0xFF) * a * rest
+--- replace
+    return color & 0xFFFFFF;
+  for (int sh = 0; sh <= 16; sh += 8)
+    {
+      uint64_t num = (old >> sh & 0xFF) * a * rest
+
+=== REQ-0040-05 Smooth's layers are laid in the reverse order: the earlier run on top
+file: src/core/text-put.c
+test: core-text-put
+--- find
+  for (size_t k = 0; k < ink->n_layers; k++)
+    {
+      const EaselTextLayer *l = &ink->layers[k];
+--- replace
+  for (size_t kk = ink->n_layers; kk-- > 0;)
+    {
+      const EaselTextLayer *l = &ink->layers[kk];
+
+=== REQ-0040-04 a color glyph's layer mixes the run's color, not its own
+file: src/core/text-put.c
+test: core-text-put
+--- find
+        v = easel_cover_mix255 (v, l->colors != NULL ? l->colors[i] : l->color, l->cover[i]);   /* in order: the later on top */
+--- replace
+        v = easel_cover_mix255 (v, l->color, l->cover[i]);   /* in order: the later on top */
+
+=== REQ-0040-05 an Opaque box's ground is laid over the text, not under it
+file: src/core/text-put.c
+test: core-text-put
+--- find
+  uint32_t v = under;
+--- replace
+  uint32_t v = under; if (opaque && x >= bx && x < bx + bw && y >= by && y < by + bh && ink->n_layers > 0) return easel_px_canon (background);
+
+=== REQ-0040-04 a smooth run's partial pixels take a tinted color, not the run's
+file: src/ui/text-render.c
+test: text-smooth-layout
+--- find
+              *l = (EaselTextLayer) { x + ax + x0, y + ay + y0, w, h, runs[i].style.color, cover, colors };
+--- replace
+              *l = (EaselTextLayer) { x + ax + x0, y + ay + y0, w, h, runs[i].style.color ^ 0x10u, cover, colors };
+
+=== REQ-0040-04 an edited box's ink is made Sharp whatever is chosen
+file: src/ui/canvas.c
+test: ui-0040
+--- find
+  if (easel_text_render_ink (self->text_layout, self->text_buf, self->tb_x, self->tb_y, self->text_show_max, self->text_smooth, &ink))
+--- replace
+  if (easel_text_render_ink (self->text_layout, self->text_buf, self->tb_x, self->tb_y, self->text_show_max, FALSE, &ink))
+
+=== REQ-0040-07 a moved Smooth box leaves its layers where they were
+file: src/ui/text-render.c
+test: ui-0040
+--- find
+      ((EaselTextLayer *) ink->layers)[k].x += dx;
+--- replace
+      ((EaselTextLayer *) ink->layers)[k].x += 0;
+
+=== REQ-0040-07 a switch the memory refuses still takes the choice
+file: src/ui/canvas.c
+test: ui-0040
+--- find
+      self->text_smooth = was;
+      error_bell (self);
+      return FALSE;
+--- replace
+      error_bell (self);
+      return TRUE;
+
+=== REQ-0040-08 the open box's view draws Sharp's mask only, not Smooth's layers
+file: src/ui/canvas.c
+test: ui-0040
+--- find
+  return easel_text_ink_value (&self->text_ink, x, y, c, bx, by, bw, bh, self->text_opaque, self->background);
+--- replace
+  { EaselTextInk sharp = self->text_ink; sharp.n_layers = 0; return easel_text_ink_value (&sharp, x, y, c, bx, by, bw, bh, self->text_opaque, self->background); }
+
+=== REQ-0040-03 the start-up choice of Smooth text is not read from the settings
+file: src/ui/window.c
+test: ui-0040
+--- find
+  g_action_group_change_action_state (G_ACTION_GROUP (self), "text-smooth", g_variant_new_boolean (self->settings.text_smooth));
+--- replace
+  g_action_group_change_action_state (G_ACTION_GROUP (self), "text-smooth", g_variant_new_boolean (FALSE));
+
+=== REQ-0040-01 Text shows no Sharp | Smooth well
+file: src/ui/tool-options.c
+test: ui-0040
+--- find
+      gtk_box_append (GTK_BOX (text_box), new_smooth_well ("win.text-smooth"));
+--- replace
+      gtk_widget_get_first_child (text_box);
+
+=== REQ-0040-01 Text's well is bound to the shapes' choice, not its own
+file: src/ui/tool-options.c
+test: ui-0040
+--- find
+      gtk_box_append (GTK_BOX (text_box), new_smooth_well ("win.text-smooth"));
+--- replace
+      gtk_box_append (GTK_BOX (text_box), new_smooth_well ("win.smooth"));
+
+=== REQ-0040-02 Smooth text chosen while text is selected by a drag is taken
+file: src/ui/window.c
+test: ui-0040
+--- find
+  if (easel_canvas_is_stroking (self->canvas) || easel_canvas_is_selecting_text (self->canvas))
+--- replace
+  if (easel_canvas_is_stroking (self->canvas))
+
+=== REQ-0040-02 Smooth text chosen while a box is being made is taken
+file: src/ui/window.c
+test: ui-0040
+--- find
+  if (easel_canvas_is_stroking (self->canvas) || easel_canvas_is_selecting_text (self->canvas))
+--- replace
+  if (easel_canvas_is_selecting_text (self->canvas))
+
+=== REQ-0040-06 the highlight lies over a smooth letter's whole pixels too
+file: src/ui/canvas.c
+test: ui-0040
+--- find
+                && text_cover_at (ink, xx, yy, NULL) < 255)
+--- replace
+                && text_cover_at (ink, xx, yy, NULL) <= 255)
+
+=== REQ-0040-03 Preferences writes Smooth text under another key
+file: src/ui/preferences-dialog.c
+test: ui-0040
+--- find
+  add_switch (p, text, _ ("Smooth text"), &s->text_smooth, "true", "false", "text", "smooth", NULL);
+--- replace
+  add_switch (p, text, _ ("Smooth text"), &s->text_smooth, "true", "false", "text", "smooth-text", NULL);
+
+=== REQ-0040-08 Smooth ink past the box is put down but not shown
+file: src/ui/canvas.c
+test: ui-0040
+--- find
+  if (ink->mask != NULL || ink->layers != NULL)          /* Sharp's mask or Smooth's layers: either may reach past the box (0040 Check F1) */
+--- replace
+  if (ink->mask != NULL)
+
+=== REQ-0040-06 a selected, partly covered pixel keeps its letter in the box's drawing: the letter shows twice
+file: src/ui/canvas.c
+test: ui-0040
+--- find
+          if (selected != NULL && selected[(gsize) j * rw + i] && text_cover_at (&self->text_ink, x0 + i, y0 + j, NULL) > 0)
+--- replace
+          if (selected != NULL && selected[(gsize) j * rw + i] && text_cover_at (&self->text_ink, x0 + i, y0 + j, NULL) > 255)
+
+=== REQ-0040-06 a selected, partly covered pixel shows the highlight without its letter
+file: src/ui/canvas.c
+test: ui-0040
+--- find
+        if (cover > 0)
+          gtk_snapshot_append_color (snapshot,
+--- replace
+        if (cover > 255)
+          gtk_snapshot_append_color (snapshot,

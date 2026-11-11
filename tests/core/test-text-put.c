@@ -6,6 +6,7 @@
 #include <stdlib.h>
 
 #include "check.h"
+#include "cover.h"
 #include "text-put.h"
 
 #define WHITE 0xFFFFFFFFu
@@ -167,6 +168,65 @@ as5_text_writes_exact_colors (void)
       }
 }
 
+/* 0040 REQ-0040-04, REQ-0040-05: Smooth's layers, on a 10 x 6 picture of distinct colors with a box (1, 1, 7, 4): two layers that
+   overlap mixed in order (the later on top) by the mix in 255ths; a pixel no layer covers keeps its color (Transparent) or takes the
+   background (Opaque); a color-glyph layer mixes its own colors; a one-pixel layer; an empty ink. Through easel_text_ink_value and
+   through the put-down, with one step. */
+static void
+ink_lay_layers (void)
+{
+  uint8_t cover_a[4 * 2] = { 255, 128, 64, 0, 10, 200, 255, 30 };            /* (2..5, 2..3), red */
+  uint8_t cover_b[3 * 2] = { 90, 255, 1, 0, 128, 40 };                      /* (4..6, 2..3), half blue */
+  uint8_t cover_c[1] = { 77 };                                                /* (1, 1), a color glyph */
+  uint32_t colors_c[1] = { 0xFF20C040u };
+  EaselTextLayer layers[3] = { { 2, 2, 4, 2, RED, cover_a, NULL }, { 4, 2, 3, 2, 0x800000FFu, cover_b, NULL },
+                               { 1, 1, 1, 1, BLACK, cover_c, colors_c } };
+  EaselTextInk ink = { 1, 1, 6, 3, NULL, NULL, layers, 3 };
+
+  for (int opaque = 0; opaque <= 1; opaque++)
+    {
+      EaselImage *img = easel_image_new (10, 6, 0), *before = easel_image_new (10, 6, 0);
+      EaselHistory *h = easel_history_new (1 << 20);
+
+      CHECK (img != NULL && before != NULL && h != NULL);
+      for (int i = 0; i < 60; i++)
+        img->px[i] = before->px[i] = i % 4 == 0 ? 0 : 0xFF000000u | (uint32_t) (i * 2654435761u >> 8);
+      for (int y = 0; y < 6; y++)
+        for (int x = 0; x < 10; x++)
+          {
+            uint32_t want = before->px[y * 10 + x];
+
+            if (opaque && x >= 1 && x < 8 && y >= 1 && y < 5)
+              want = YELLOW;
+            if (x >= 2 && x < 6 && y >= 2 && y < 4)
+              want = easel_cover_mix255 (want, RED, cover_a[(y - 2) * 4 + (x - 2)]);
+            if (x >= 4 && x < 7 && y >= 2 && y < 4)
+              want = easel_cover_mix255 (want, 0x800000FFu, cover_b[(y - 2) * 3 + (x - 4)]);
+            if (x == 1 && y == 1)
+              want = easel_cover_mix255 (want, 0xFF20C040u, 77);
+            CHECK (easel_text_ink_value (&ink, x, y, before->px[y * 10 + x], 1, 1, 7, 4, opaque, YELLOW) == want);
+          }
+      CHECK (easel_text_put_down (img, h, 1, 1, 7, 4, &ink, opaque, YELLOW, SIZE_MAX) == EASEL_SELECTION_DONE);
+      for (int y = 0; y < 6; y++)
+        for (int x = 0; x < 10; x++)
+          CHECK (img->px[y * 10 + x] == easel_text_ink_value (&ink, x, y, before->px[y * 10 + x], 1, 1, 7, 4, opaque, YELLOW));
+      CHECK (img->px[2 * 10 + 2] == RED);                                     /* a whole pixel: the run's color exactly */
+      CHECK (easel_history_undo (h, img) && !easel_history_can_undo (h));
+      for (int i = 0; i < 60; i++)
+        CHECK (img->px[i] == before->px[i]);
+      /* an empty ink: nothing in Transparent mode, the box in Opaque mode */
+      {
+        EaselTextInk empty = { 1, 1, 0, 0, NULL, NULL, layers, 0 };
+
+        CHECK (easel_text_put_down (img, h, 1, 1, 7, 4, &empty, opaque, YELLOW, SIZE_MAX)
+               == (opaque ? EASEL_SELECTION_DONE : EASEL_SELECTION_NOTHING));
+      }
+      easel_history_free (h);
+      easel_image_free (img);
+      easel_image_free (before);
+    }
+}
+
 int
 main (void)
 {
@@ -174,5 +234,6 @@ main (void)
   RUN (as5_text_writes_exact_colors);
   RUN (put_down_without_memory);
   RUN (as16_step_holds_what_it_counts);
+  RUN (ink_lay_layers);
   return 0;
 }

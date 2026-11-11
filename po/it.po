@@ -1308,3 +1308,6 @@ msgstr "Bordi smussati"
 
 msgid "Smooth shapes and brushes"
 msgstr "Forme e pennelli smussati"
+
+msgid "Smooth text"
+msgstr "Testo smussato"

@@ -50,6 +50,9 @@ Precondition: `Status: accepted` in the spec. Otherwise stop and say so.
    - a random oracle's inputs include the empty and the single case (no points, one point, zero length) (0039: 2000 figures passed, a polygon with no corner crashed);
    - a check that something stays the same (a size, a least height, a width) compares with the state before the change or the tool at start, not only the new cases with one another (0039: every tool's least height rose alike and the test passed);
    - a full or gate run that takes minutes has nothing built in its build folder beside it (0039: a background gate ran binaries rebuilt under it);
+   - a structure that gains a second form (a mask, now layers) has every reader of each field of the old form found by grep, a NULL check included, not only the callers the Plan lists (0040 F1: `mask != NULL` stood for "there is ink");
+   - a view that must equal a stack of translucent layers is drawn as that stack of the renderer's own nodes, never as one color computed by hand (0040 F2: the ground's alpha was dropped);
+   - a reference value a test reads from the render is read inside the area the rule covers, and asserted to be what it is meant to be before it is used (0040: the highlight's color read where no highlight was);
    - a dialog's or card's OK, Apply or Cancel is tested by activating its real button (and Esc by its real close), reading the result
      only after the dialog has closed, never by emitting the response or calling the apply function (0035: OK kept nothing, its tests passed);
    - a modifier that decides an action (Ctrl, Shift) is read from the event of the press, and the manual check lists each such action

@@ -1308,3 +1308,6 @@ msgstr "Bords lissés"
 
 msgid "Smooth shapes and brushes"
 msgstr "Formes et pinceaux lissés"
+
+msgid "Smooth text"
+msgstr "Texte lissé"

@@ -107,6 +107,11 @@ Order suggestion: A and B first, C after the graphics path audit, D with file in
   (a count once a pixel is whole) if it is ever seen.
 - With "Always show scrollbars", the toolbox column's scrollbar may widen the toolbox in a short window: a manual look.
 
+## From 0040's check (2026-11-11)
+- Smooth text, the selection's view only (the put-down is right): the grid faint under a selected soft edge at 800 %; two runs' soft
+  edges overlapping take one run's color there; a soft edge in the next letter's advance gets no highlight.
+- A smooth outline reaching a pixel past Sharp's ink rectangle would be cut (not seen); `glyph_color` on near-zero alpha.
+
 ## From the mutation list
 - REQ-0017-14, the popover's scroll guard: survives on GTK 4.24, accepted (JOD, 2026-11-02). Re-decide at packaging-release, when the minimum GTK is chosen.
 

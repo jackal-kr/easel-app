@@ -18789,7 +18789,7 @@ as28_same_letter_same_pixels (void)
             st.family = easel_text_buffer_intern (b, families[f]);
             g_assert_true (easel_text_buffer_insert (b, text, strlen (text), &st, EASEL_TEXT_EDIT_TYPING));
             layout = easel_text_render_layout (b, 10000);
-            g_assert_true (easel_text_render_ink (layout, b, 0, 0, SIZE_MAX, &ink));
+            g_assert_true (easel_text_render_ink (layout, b, 0, 0, SIZE_MAX, FALSE, &ink));
             for (int line = 0; line < 2; line++)
               {
                 int first = line * 7, x[7], y0 = 0, y1 = 0;
@@ -19339,7 +19339,7 @@ as16_half_covered_underline_ends (void)
       style.family = easel_text_buffer_intern (b, style.family);
       g_assert_true (easel_text_buffer_insert (b, "ab", 2, &style, EASEL_TEXT_EDIT_TYPING));
       layout = easel_text_render_layout (b, 10000);
-      g_assert_true (easel_text_render_ink (layout, b, 0, 0, SIZE_MAX, &ink));
+      g_assert_true (easel_text_render_ink (layout, b, 0, 0, SIZE_MAX, FALSE, &ink));
       surface = cairo_image_surface_create (CAIRO_FORMAT_A8, ink.w, ink.h);
       cr = cairo_create (surface);
       cairo_move_to (cr, -ink.x, -ink.y);
@@ -22125,7 +22125,8 @@ as1_text_tool_and_options (void)
   /* side by side in one well (REQ-0030-16) */
   g_assert_cmpfloat_with_epsilon (bounds_in (transparent, GTK_WIDGET (win)).origin.y, bounds_in (opaque, GTK_WIDGET (win)).origin.y, 1.0);
   g_assert_cmpfloat (bounds_in (transparent, GTK_WIDGET (win)).origin.x, >, bounds_in (opaque, GTK_WIDGET (win)).origin.x + 1);
-  g_assert_cmpint (count_mapped_toggles_in_options (win), ==, 2);
+  /* the two modes and, since 0040, Text's own Sharp and Smooth (REQ-0017-02's pointer note, REQ-0040-01) */
+  g_assert_cmpint (count_mapped_toggles_in_options (win), ==, 4);
   /* Text's own mode: Opaque here leaves Select's as it was */
   g_signal_emit_by_name (opaque, "clicked");
   g_assert_true (easel_window_get_text_opaque (win));
@@ -39538,7 +39539,8 @@ static void
 smooth_as1_well_shared (void)
 {
   static const char *const with[] = { "rectangle", "ellipse", "curve", "polygon", "rounded-rectangle", "brush", "line" };
-  static const char *const without[] = { "pencil", "airbrush", "eraser", "fill", "gradient", "text", "select" };
+  /* Text has a well of its own since 0040 (REQ-0039-01's pointer note), apart from this choice: `/0040/as1_own_choice` */
+  static const char *const without[] = { "pencil", "airbrush", "eraser", "fill", "gradient", "select" };
   EaselWindow *win = smooth_window (100, 80, "pan");
   GtkWidget *sharp, *soft, *well;
   int toolbox_w = gtk_widget_get_width (gtk_widget_get_parent (GTK_WIDGET (easel_window_get_tool_options (win))));
@@ -39960,6 +39962,891 @@ as11_empty_box_takes_size (void)
   type_keys (win, "d");
   g_assert_cmpint (run_style_at (win, 0).size_pt, ==, 13);
   close_windows ();
+}
+
+/* ---- 0040 Smooth text ---- */
+
+static gboolean
+text_smooth_state (EaselWindow *win)
+{
+  g_autoptr (GVariant) v = g_action_group_get_action_state (G_ACTION_GROUP (win), "text-smooth");
+
+  g_assert_nonnull (v);
+  return g_variant_get_boolean (v);
+}
+
+static void
+set_text_smooth (EaselWindow *win, gboolean on)
+{
+  g_action_group_change_action_state (G_ACTION_GROUP (win), "text-smooth", g_variant_new_boolean (on));
+  g_assert_cmpint (text_smooth_state (win), ==, on);
+}
+
+/* A window with Text at DejaVu Sans `size` on a w x h picture of `background` (a settings value), the foreground fg and white, the box
+   (10, 10) to (x1, y1) made. */
+static EaselWindow *
+text_smooth_window (int w, int h, const char *background, int size, int x1, int y1, uint32_t fg)
+{
+  g_autofree char *text = g_strdup_printf ("[new-picture]\nwidth=%d\nheight=%d\nbackground=%s\n\n[text]\nfont=DejaVu Sans\nsize=%d\n", w, h,
+                                           background, size);
+  EaselWindow *win;
+
+  write_settings (text);
+  win = start_window ();
+  wait_for_layout (win);
+  use_tool (win, "text");
+  wait_for_layout (win);
+  easel_canvas_set_colors (easel_window_get_canvas (win), fg, 0xFFFFFFFFu);    /* a box takes the foreground when made (REQ-0017-12) */
+  shape_press_move (win, 1, 10, 10, x1, y1);
+  shape_release (win, 1);
+  wait_for_layout (win);
+  g_assert_nonnull (easel_canvas_text_buffer (easel_window_get_canvas (win)));
+  return win;
+}
+
+/* Whether p is the mix of REQ-0040-04 of `under` and `color` by some coverage from 1 to 254. */
+static gboolean
+is_partial_mix (uint32_t p, uint32_t under, uint32_t color)
+{
+  for (unsigned c = 1; c < 255; c++)
+    if (easel_cover_mix255 (under, color, c) == p)
+      return TRUE;
+  return FALSE;
+}
+
+/* 0040 AS-3 (REQ-0040-04, REQ-0040-05, REQ-0040-08; JOD's notes a and c): black "Hello" at 24 points on white with Smooth: every changed
+   pixel black or a gray with R = G = B from #010101 to #FEFEFE, grays there; "l   l   l": every "l" the same pixels (each found as a
+   group of columns with ink); with Sharp only white and black. Invariants only. */
+static void
+text_as3_gray_and_same_letters (void)
+{
+  for (int smooth = 1; smooth >= 0; smooth--)
+    {
+      EaselWindow *win = text_smooth_window (300, 120, "#FFFFFF", 24, 290, 50, 0xFF000000u);
+      const EaselImage *img = easel_window_get_picture (win);
+      int gray = 0;
+
+      set_text_smooth (win, smooth);
+      box_text (win, "Hello");
+      g_assert_true (key_taken (win, GDK_KEY_Escape, 0));                       /* put down */
+      for (int i = 0; i < img->width * img->height; i++)
+        {
+          uint32_t p = img->px[i];
+          unsigned r = p >> 16 & 255, g = p >> 8 & 255, b = p & 255;
+
+          if (p == 0xFFFFFFFFu || p == 0xFF000000u)
+            continue;
+          g_assert_true (smooth);                                              /* Sharp: only white and black */
+          g_assert_cmpuint (r, ==, g);
+          g_assert_cmpuint (g, ==, b);
+          g_assert_cmphex (p >> 24, ==, 0xFF);
+          gray++;
+        }
+      g_assert_cmpint (gray, >, (smooth ? 20 : -1));
+      if (smooth)
+        {
+          /* "l   l   l" in a box lower down: three groups of inked columns, the same pixels */
+          int groups[3][2], n = 0, inked_prev = 0;
+
+          use_tool (win, "text");
+          shape_press_move (win, 1, 10, 60, 290, 110);
+          shape_release (win, 1);
+          box_text (win, "l   l   l");
+          g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+          for (int x = 0; x < 300; x++)
+            {
+              int inked = 0;
+
+              for (int y = 60; y < 120; y++)
+                inked |= easel_image_get (img, x, y) != 0xFFFFFFFFu;
+              if (inked && !inked_prev)
+                {
+                  g_assert_cmpint (n, <, 3);
+                  groups[n][0] = x;
+                }
+              if (!inked && inked_prev)
+                groups[n++][1] = x;
+              inked_prev = inked;
+            }
+          g_assert_cmpint (n, ==, 3);
+          for (int k = 1; k < 3; k++)
+            {
+              g_assert_cmpint (groups[k][1] - groups[k][0], ==, groups[0][1] - groups[0][0]);
+              for (int y = 60; y < 120; y++)
+                for (int dx = 0; dx < groups[0][1] - groups[0][0]; dx++)
+                  g_assert_cmphex (easel_image_get (img, groups[k][0] + dx, y), ==, easel_image_get (img, groups[0][0] + dx, y));
+            }
+        }
+      close_windows ();
+    }
+  write_settings ("[new-picture]\nwidth=300\nheight=200\n");
+}
+
+/* 0040 AS-4 (REQ-0040-04, REQ-0040-05): red "o" with Smooth on a fully transparent picture: every changed pixel red #FF0000 with an
+   alpha from 1 to 255. */
+static void
+text_as4_red_over_transparent (void)
+{
+  EaselWindow *win = text_smooth_window (200, 100, "transparent", 24, 120, 60, 0xFFFF0000u);
+  const EaselImage *img = easel_window_get_picture (win);
+  int changed = 0, partial = 0;
+
+  set_text_smooth (win, TRUE);
+  box_text (win, "o");
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+  for (int i = 0; i < img->width * img->height; i++)
+    {
+      uint32_t p = img->px[i];
+
+      if (p == 0)
+        continue;
+      changed++;
+      g_assert_cmphex (p & 0xFFFFFF, ==, 0xFF0000);
+      partial += (p >> 24) < 255;
+    }
+  g_assert_cmpint (changed, >, 20);
+  g_assert_cmpint (partial, >, 5);
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\n");
+}
+
+/* 0040 AS-4 (REQ-0040-05): the same in Opaque mode with white as the background: the box white where no letter is, each pixel of the "o"
+   the mix of white and red by some coverage, or red. */
+static void
+text_as4_opaque_box (void)
+{
+  EaselWindow *win = text_smooth_window (200, 100, "transparent", 24, 120, 60, 0xFFFF0000u);
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  int bx, by, bw, bh, partial = 0;
+
+  gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (find_mapped_by_tooltip (GTK_WIDGET (win), "Opaque: fill the text box with the background color")), TRUE);
+  set_text_smooth (win, TRUE);
+  box_text (win, "o");
+  g_assert_true (easel_canvas_text_box (canvas, &bx, &by, &bw, &bh));
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+  for (int y = by; y < by + bh; y++)
+    for (int x = bx; x < bx + bw; x++)
+      {
+        uint32_t p = easel_image_get (img, x, y);
+
+        g_assert_true (p == 0xFFFFFFFFu || p == 0xFFFF0000u || is_partial_mix (p, 0xFFFFFFFFu, 0xFFFF0000u));
+        partial += p != 0xFFFFFFFFu && p != 0xFFFF0000u;
+      }
+  g_assert_cmpint (partial, >, 5);
+  g_assert_cmphex (easel_image_get (img, bx - 1, by), ==, 0);                     /* outside the box: the picture */
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\n");
+}
+
+/* 0040 AS-5 (REQ-0040-02, REQ-0040-08): an open box with "Hi" in Sharp, then Smooth: the box shows smoothed at once (its pixels the ink's
+   value over white, under the selection's tint, at 100 % and 800 %), the same height and caret; Undo inside the box keeps Smooth; the
+   put-down writes exactly the ink's values, one step, one Undo restores white. */
+static void
+text_as5_switch_open_box (void)
+{
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  const EaselImage *img;
+  EaselTextInk ink;
+  int bx, by, bw, bh, bh_sharp, partial = 0;
+  size_t caret;
+  g_autofree uint32_t *want = NULL;
+
+  g_object_get (gtk_settings_get_default (), "gtk-cursor-blink", &blink_at_start, NULL);
+  caret_blink (FALSE);
+  win = text_smooth_window (300, 200, "#FFFFFF", 24, 110, 50, 0xFF000000u);
+  canvas = easel_window_get_canvas (win);
+  img = easel_window_get_picture (win);
+  box_text (win, "Hi");
+  g_assert_true (easel_canvas_text_box (canvas, &bx, &by, &bw, &bh_sharp));
+  caret = easel_text_buffer_caret (easel_canvas_text_buffer (canvas));
+  set_text_smooth (win, TRUE);
+  g_assert_true (easel_canvas_text_box (canvas, &bx, &by, &bw, &bh));
+  g_assert_cmpint (bh, ==, bh_sharp);
+  g_assert_cmpuint (easel_text_buffer_caret (easel_canvas_text_buffer (canvas)), ==, caret);
+  g_assert_true (easel_canvas_text_ink (canvas, &ink));
+  g_assert_null (ink.mask);
+  want = g_new (uint32_t, (gsize) bw * bh);
+  for (int y = 0; y < bh; y++)
+    for (int x = 0; x < bw; x++)
+      {
+        want[(gsize) y * bw + x] = easel_text_ink_value (&ink, bx + x, by + y, 0xFFFFFFFFu, bx, by, bw, bh, FALSE, 0);
+        partial += want[(gsize) y * bw + x] != 0xFFFFFFFFu && want[(gsize) y * bw + x] != 0xFF000000u;
+      }
+  g_assert_cmpint (partial, >, 10);
+  easel_text_buffer_select (easel_canvas_text_buffer (canvas), 0, 0);           /* the caret at the box's left, its column left out */
+  easel_canvas_text_edited (canvas);
+  for (int zoom = 100; zoom <= 800; zoom += 700)
+    {
+      g_autofree uint32_t *px = NULL;
+      int w, h, cx, cy, z = zoom / 100;
+
+      easel_canvas_set_zoom (canvas, zoom);
+      wait_for_layout (win);
+      g_assert_cmpint (easel_window_get_zoom (win), ==, zoom);
+      {
+        GtkScrolledWindow *scroller = GTK_SCROLLED_WINDOW (gtk_widget_get_ancestor (GTK_WIDGET (canvas), GTK_TYPE_SCROLLED_WINDOW));
+
+        gtk_adjustment_set_value (gtk_scrolled_window_get_hadjustment (scroller), (bx - 2) * z);
+        gtk_adjustment_set_value (gtk_scrolled_window_get_vadjustment (scroller), (by - 2) * z);
+      }
+      wait_for_next_frame (win);
+      px = render_pixels (win, &w, &h, &cx, &cy);
+      for (int y = 0; y < MIN (bh, 30); y++)
+        for (int x = 1; x < MIN (bw, 60); x++)                                  /* the caret's column (bx) apart */
+          {
+            int sx = cx + (bx + x) * z + z / 2, sy = cy + (by + y) * z + z / 2;
+
+            if (sx < 0 || sy < 0 || sx >= w || sy >= h)
+              continue;
+            assert_near (px[(gsize) sy * w + sx], tinted (want[(gsize) y * bw + x]));
+          }
+    }
+  easel_canvas_set_zoom (canvas, 100);
+  wait_for_layout (win);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);           /* takes back the typing, not the choice */
+  g_assert_true (text_smooth_state (win));
+  box_text (win, "Hi");
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+  for (int y = 0; y < bh; y++)
+    for (int x = 0; x < bw; x++)
+      g_assert_cmphex (easel_image_get (img, bx + x, by + y), ==, want[(gsize) y * bw + x]);
+  g_assert_true (action_enabled (win, "undo"));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_cmpint (count_color (img, 0xFFFFFFFFu), ==, 300 * 200);
+  g_assert_false (action_enabled (win, "undo"));
+  close_windows ();
+  caret_blink (blink_at_start);
+  write_settings ("[new-picture]\nwidth=300\nheight=200\n");
+}
+
+/* 0040 AS-5 at scale 2 (REQ-0040-08 (4)): the put-down's pixels are the ink's, made with no window, as at scale 1. */
+static void
+text_as5_scale2 (void)
+{
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  const EaselImage *img;
+  EaselTextStyle st = { "DejaVu Sans", 24, 0, 0xFF000000u };
+  EaselTextBuffer *b = easel_text_buffer_new (&st);
+  PangoLayout *layout;
+  EaselTextInk ink;
+  int bx, by, bw, bh;
+
+  win = text_smooth_window (300, 200, "#FFFFFF", 24, 110, 50, 0xFF000000u);
+  canvas = easel_window_get_canvas (win);
+  img = easel_window_get_picture (win);
+  if (easel_canvas_get_scale (canvas) != 2)
+    {
+      close_windows ();
+      g_test_skip ("needs a screen at scale 2 (tools/isolated.sh --scale 2)");
+      return;
+    }
+  set_text_smooth (win, TRUE);
+  box_text (win, "Hi");
+  g_assert_true (easel_canvas_text_box (canvas, &bx, &by, &bw, &bh));
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+  g_assert_true (easel_text_buffer_insert (b, "Hi", 2, &st, EASEL_TEXT_EDIT_TYPING));
+  layout = easel_text_render_layout (b, bw);
+  g_assert_true (easel_text_render_ink (layout, b, bx, by, SIZE_MAX, TRUE, &ink));
+  for (int y = by; y < by + bh; y++)
+    for (int x = bx; x < bx + bw; x++)
+      g_assert_cmphex (easel_image_get (img, x, y), ==, easel_text_ink_value (&ink, x, y, 0xFFFFFFFFu, bx, by, bw, bh, FALSE, 0));
+  easel_text_render_ink_free (&ink);
+  g_object_unref (layout);
+  easel_text_buffer_free (b);
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\n");
+}
+
+/* 0040 AS-6 (REQ-0040-07): Smooth and too little memory for the put-down's step: the dialog of REQ-0017-18, the picture unchanged. */
+static void
+text_as6_no_memory (void)
+{
+  EaselWindow *win = text_smooth_window (300, 200, "#FFFFFF", 24, 110, 50, 0xFF000000u);
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+
+  set_text_smooth (win, TRUE);
+  box_text (win, "Hi");
+  easel_canvas_set_text_step_limit (canvas, 100);
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+  easel_canvas_set_text_step_limit (canvas, SIZE_MAX);
+  wait_for_dialogs (win, 1);
+  g_assert_nonnull (open_alert (win));
+  g_assert_cmpint (count_color (img, 0xFFFFFFFFu), ==, 300 * 200);
+  adw_dialog_close (ADW_DIALOG (open_alert (win)));
+  wait_for_dialogs (win, 0);
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\n");
+}
+
+/* 0040 AS-6 (REQ-0040-07): too little memory to show the open box smoothed: the choice stays Sharp, the box as it was, the bell. */
+static void
+text_as6_switch_without_memory (void)
+{
+  EaselWindow *win = text_smooth_window (300, 200, "#FFFFFF", 24, 110, 50, 0xFF000000u);
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  EaselTextInk ink;
+  guint bells;
+
+  box_text (win, "Hi");
+  g_assert_true (easel_canvas_text_ink (canvas, &ink));
+  g_assert_nonnull (ink.mask);
+  bells = easel_canvas_get_error_bells (canvas);
+  easel_canvas_set_text_show_limit (canvas, 10);
+  g_action_group_change_action_state (G_ACTION_GROUP (win), "text-smooth", g_variant_new_boolean (TRUE));
+  easel_canvas_set_text_show_limit (canvas, SIZE_MAX);
+  g_assert_false (text_smooth_state (win));
+  g_assert_cmpuint (easel_canvas_get_error_bells (canvas), ==, bells + 1);
+  g_assert_true (easel_canvas_text_ink (canvas, &ink));
+  g_assert_nonnull (ink.mask);                                                  /* still Sharp's */
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\n");
+}
+
+/* 0040 AS-7 (REQ-0040-05): Opaque, a foreground #00000080, Smooth, "x" over white: whole pixels #00000080, partial ones the mix of the
+   white box and #00000080 by some coverage. */
+static void
+text_as7_half_alpha (void)
+{
+  EaselWindow *win = text_smooth_window (200, 100, "#FFFFFF", 24, 120, 60, 0x80000000u);
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  int bx, by, bw, bh, whole = 0, partial = 0;
+
+  gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (find_mapped_by_tooltip (GTK_WIDGET (win), "Opaque: fill the text box with the background color")), TRUE);
+  set_text_smooth (win, TRUE);
+  box_text (win, "x");
+  g_assert_true (easel_canvas_text_box (canvas, &bx, &by, &bw, &bh));
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+  for (int y = by; y < by + bh; y++)
+    for (int x = bx; x < bx + bw; x++)
+      {
+        uint32_t p = easel_image_get (img, x, y);
+
+        if (p == 0xFFFFFFFFu)
+          continue;
+        if (p == easel_cover_mix255 (0xFFFFFFFFu, 0x80000000u, 255))
+          whole++;
+        else
+          {
+            g_assert_true (is_partial_mix (p, 0xFFFFFFFFu, 0x80000000u));
+            partial++;
+          }
+      }
+  g_assert_cmpint (whole, >, 3);
+  g_assert_cmpint (partial, >, 3);
+  g_assert_cmphex (easel_cover_mix255 (0xFFFFFFFFu, 0x80000000u, 255), ==, 0x80000000u);
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\n");
+}
+
+/* 0040 AS-8 (REQ-0040-04): underlined "ab" and struck-through "cd" with Smooth: the underline's and the strike's rows (the rows whose
+   inked run is longest) are one even line between their ends: no pixel of a joint darker or lighter than its neighbours. */
+static void
+text_as8_underline_joint (void)
+{
+  EaselWindow *win = text_smooth_window (300, 120, "#FFFFFF", 24, 290, 60, 0xFF000000u);
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  EaselTextBuffer *b;
+  EaselTextStyle st;
+  int bx, by, bw, bh, mid, left, right;
+
+  set_text_smooth (win, TRUE);
+  b = easel_canvas_text_buffer (canvas);
+  easel_canvas_text_style_at_caret (canvas, &st);
+  st.flags = EASEL_TEXT_UNDERLINE;
+  g_assert_true (easel_text_buffer_insert (b, "ab", 2, &st, EASEL_TEXT_EDIT_TYPING));
+  st.flags = EASEL_TEXT_STRIKE;
+  g_assert_true (easel_text_buffer_insert (b, "cd", 2, &st, EASEL_TEXT_EDIT_TYPING));
+  easel_canvas_text_edited (canvas);
+  g_assert_true (easel_canvas_text_box (canvas, &bx, &by, &bw, &bh));
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+  {
+    /* the inked columns' middle parts "ab" from "cd" (one line, the same size) */
+    int xa = bx + bw, xz = bx;
+
+    for (int y = by; y < by + bh; y++)
+      for (int x = bx; x < bx + bw; x++)
+        if (easel_image_get (img, x, y) != 0xFFFFFFFFu)
+          xa = MIN (xa, x), xz = MAX (xz, x);
+    mid = (xa + xz) / 2;
+    left = xa;
+    right = xz + 1;
+  }
+  for (int part = 0; part < 2; part++)
+    {
+      /* "ab" left of the middle, "cd" right of it: the row with the longest run of black in each */
+      int x_from = part == 0 ? left : mid, x_to = part == 0 ? mid : right, best_row = -1, best = 0, a = 0, z = 0;
+
+      for (int y = by; y < by + bh; y++)
+        {
+          int run = 0, longest = 0, ra = 0, start = 0;
+
+          for (int x = x_from; x < x_to; x++)
+            {
+              if (easel_image_get (img, x, y) == 0xFF000000u)
+                {
+                  if (run == 0)
+                    start = x;
+                  if (++run > longest)
+                    longest = run, ra = start;
+                }
+              else
+                run = 0;
+            }
+          if (longest > best)
+            best = longest, best_row = y, a = ra, z = ra + longest;
+        }
+      g_assert_cmpint (best, >, 12);                                              /* the line spans its letters */
+      for (int x = a; x < z; x++)
+        g_assert_cmphex (easel_image_get (img, x, best_row), ==, 0xFF000000u);
+    }
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\n");
+}
+
+/* 0040 AS-9 (REQ-0040-04, REQ-0040-08): a color emoji with Smooth over white: colored pixels (not gray) among its own, every changed pixel
+   opaque. Skipped where no color emoji font is installed (then M1). */
+static void
+text_as9_color_emoji (void)
+{
+  EaselWindow *win;
+  const EaselImage *img;
+  int colored = 0;
+
+  if (easel_text_render_find_family ("Noto Color Emoji") == NULL)
+    {
+      g_test_skip ("no color emoji font (Noto Color Emoji): manual M1");
+      return;
+    }
+  win = text_smooth_window (200, 100, "#FFFFFF", 24, 120, 60, 0xFF000000u);
+  img = easel_window_get_picture (win);
+  set_text_smooth (win, TRUE);
+  box_text (win, "\xf0\x9f\x8d\x8e");                                              /* a red apple */
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+  for (int i = 0; i < img->width * img->height; i++)
+    {
+      uint32_t p = img->px[i];
+
+      if (p == 0xFFFFFFFFu)
+        continue;
+      g_assert_cmphex (p >> 24, ==, 0xFF);
+      colored += ((p >> 16) & 255) != ((p >> 8) & 255) || ((p >> 8) & 255) != (p & 255);
+    }
+  g_assert_cmpint (colored, >, 20);
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\n");
+}
+
+/* 0040 (REQ-0040-07, REQ-0017-10): a Smooth box moved (Alt with an arrow, REQ-0022-12) keeps its lines: its layers move with it, so the
+   put-down writes them at the new place and nothing at the old. */
+static void
+text_as5_moved_box (void)
+{
+  EaselWindow *win = text_smooth_window (300, 200, "#FFFFFF", 24, 110, 50, 0xFF000000u);
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  EaselTextInk ink;
+  int bx, by, bw, bh, nx, ny, nw, nh;
+  g_autofree uint32_t *want = NULL;
+
+  set_text_smooth (win, TRUE);
+  box_text (win, "Hi");
+  g_assert_true (easel_canvas_text_box (canvas, &bx, &by, &bw, &bh));
+  g_assert_true (easel_canvas_text_ink (canvas, &ink));
+  want = g_new (uint32_t, (gsize) bw * bh);
+  for (int y = 0; y < bh; y++)
+    for (int x = 0; x < bw; x++)
+      want[(gsize) y * bw + x] = easel_text_ink_value (&ink, bx + x, by + y, 0xFFFFFFFFu, bx, by, bw, bh, FALSE, 0);
+  for (int k = 0; k < 30; k++)
+    g_assert_true (key_taken (win, GDK_KEY_Right, GDK_ALT_MASK));
+  for (int k = 0; k < 20; k++)
+    g_assert_true (key_taken (win, GDK_KEY_Down, GDK_ALT_MASK));
+  g_assert_true (easel_canvas_text_box (canvas, &nx, &ny, &nw, &nh));
+  g_assert_cmpint (nx, ==, bx + 30);
+  g_assert_cmpint (ny, ==, by + 20);
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+  for (int y = 0; y < bh; y++)
+    for (int x = 0; x < bw; x++)
+      g_assert_cmphex (easel_image_get (img, nx + x, ny + y), ==, want[(gsize) y * bw + x]);
+  for (int y = by; y < ny; y++)
+    for (int x = bx; x < bx + bw; x++)
+      g_assert_cmphex (easel_image_get (img, x, y), ==, 0xFFFFFFFFu);           /* the old place's top rows: nothing */
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\n");
+}
+
+/* The Text panel's Sharp and Smooth cells: in the well right under the Text modes' (Opaque | Transparent). */
+static void
+text_cells (EaselWindow *win, GtkWidget **sharp, GtkWidget **soft)
+{
+  *sharp = find_mapped_by_tooltip (GTK_WIDGET (win), "Sharp edges");
+  *soft = find_mapped_by_tooltip (GTK_WIDGET (win), "Smooth edges");
+  g_assert_true (GTK_IS_TOGGLE_BUTTON (*sharp) && GTK_IS_TOGGLE_BUTTON (*soft));
+}
+
+/* 0040 AS-1 (REQ-0040-01, REQ-0040-02): Text shows a well Sharp | Smooth below Opaque | Transparent, Sharp chosen; Smooth there leaves
+   Line, Ellipse and Brush at Sharp; Smooth for Line leaves Text at Sharp; the toolbox's width and the window's least height as Pan's. */
+static void
+text_as1_own_choice (void)
+{
+  EaselWindow *win = smooth_window (100, 80, "pan");
+  GtkWidget *sharp, *soft, *opaque;
+  int toolbox_w = gtk_widget_get_width (gtk_widget_get_parent (GTK_WIDGET (easel_window_get_tool_options (win)))), min_h, min_text;
+  graphene_rect_t a, b, o;
+
+  gtk_widget_measure (GTK_WIDGET (win), GTK_ORIENTATION_VERTICAL, -1, &min_h, NULL, NULL, NULL);
+  use_tool (win, "text");
+  wait_for_layout (win);
+  text_cells (win, &sharp, &soft);
+  opaque = find_mapped_by_tooltip (GTK_WIDGET (win), "Opaque: fill the text box with the background color");
+  g_assert_nonnull (opaque);
+  g_assert_true (gtk_widget_get_parent (sharp) == gtk_widget_get_parent (soft));
+  g_assert_true (gtk_widget_has_css_class (gtk_widget_get_parent (sharp), "options-well"));
+  g_assert_true (gtk_widget_compute_bounds (sharp, GTK_WIDGET (win), &a) && gtk_widget_compute_bounds (soft, GTK_WIDGET (win), &b)
+                 && gtk_widget_compute_bounds (opaque, GTK_WIDGET (win), &o));
+  g_assert_cmpfloat (a.origin.y, ==, b.origin.y);
+  g_assert_cmpfloat (a.origin.x, <, b.origin.x);
+  g_assert_cmpfloat (a.origin.y, >, o.origin.y + o.size.height);
+  g_assert_true (gtk_toggle_button_get_active (GTK_TOGGLE_BUTTON (sharp)));
+  g_assert_cmpint (gtk_widget_get_width (gtk_widget_get_parent (GTK_WIDGET (easel_window_get_tool_options (win)))), ==, toolbox_w);
+  gtk_widget_measure (GTK_WIDGET (win), GTK_ORIENTATION_VERTICAL, -1, &min_text, NULL, NULL, NULL);
+  g_assert_cmpint (min_text, ==, min_h);
+  g_signal_emit_by_name (soft, "clicked");
+  g_assert_true (text_smooth_state (win));
+  g_assert_false (smooth_state (win));
+  for (int i = 0; i < 3; i++)
+    {
+      use_tool (win, (const char *[]) { "line", "ellipse", "brush" }[i]);
+      wait_for_layout (win);
+      g_assert_true (gtk_toggle_button_get_active (GTK_TOGGLE_BUTTON (find_mapped_by_tooltip (GTK_WIDGET (win), "Sharp edges"))));
+    }
+  use_tool (win, "line");
+  wait_for_layout (win);
+  set_smooth (win, FALSE);
+  set_text_smooth (win, FALSE);
+  g_signal_emit_by_name (find_mapped_by_tooltip (GTK_WIDGET (win), "Smooth edges"), "clicked");
+  g_assert_true (smooth_state (win));
+  g_assert_false (text_smooth_state (win));
+  use_tool (win, "text");
+  wait_for_layout (win);
+  text_cells (win, &sharp, &soft);
+  g_assert_true (gtk_toggle_button_get_active (GTK_TOGGLE_BUTTON (sharp)));
+  close_windows ();
+}
+
+/* 0040 AS-1 (REQ-0040-02): Tab from Transparent reaches Sharp, then Smooth; their activation (Space's path) chooses. */
+static void
+text_as1_keyboard (void)
+{
+  EaselWindow *win = smooth_window (100, 80, "text");
+  GtkWidget *sharp, *soft, *transparent = find_mapped_by_tooltip (GTK_WIDGET (win), "Transparent: only the text");
+  gint64 deadline;
+
+  text_cells (win, &sharp, &soft);
+  g_assert_nonnull (transparent);
+  gtk_widget_grab_focus (transparent);
+  g_assert_true (gtk_widget_child_focus (GTK_WIDGET (win), GTK_DIR_TAB_FORWARD));
+  g_assert_true (gtk_root_get_focus (GTK_ROOT (win)) == sharp);
+  g_assert_true (gtk_widget_child_focus (GTK_WIDGET (win), GTK_DIR_TAB_FORWARD));
+  g_assert_true (gtk_root_get_focus (GTK_ROOT (win)) == soft);
+  gtk_widget_activate (soft);
+  deadline = g_get_monotonic_time () + 2 * G_USEC_PER_SEC;
+  while (!text_smooth_state (win) && g_get_monotonic_time () < deadline)
+    g_main_context_iteration (NULL, FALSE);
+  g_assert_true (text_smooth_state (win));
+  close_windows ();
+}
+
+/* 0040 AS-1 (REQ-0040-02): while a box is being made, and while text in a box is selected by a drag, a click on Smooth changes nothing;
+   after the release it chooses. */
+static void
+text_as1_ignored_while_held (void)
+{
+  EaselWindow *win = text_smooth_window (300, 200, "#FFFFFF", 24, 200, 60, 0xFF000000u);
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  GtkWidget *sharp, *soft;
+  double x, y;
+
+  text_cells (win, &sharp, &soft);
+  /* selecting by a drag in the open box */
+  box_text (win, "Hello");
+  canvas_point (win, 12.5, 20.5, &x, &y);
+  easel_canvas_press (canvas, 1, x, y);
+  canvas_point (win, 60.5, 20.5, &x, &y);
+  easel_canvas_motion (canvas, x, y);
+  g_signal_emit_by_name (soft, "clicked");
+  g_assert_false (text_smooth_state (win));
+  easel_canvas_release (canvas, 1);
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+  /* making a box */
+  shape_press_move (win, 1, 20, 100, 150, 150);
+  g_assert_true (easel_canvas_is_stroking (canvas));
+  g_signal_emit_by_name (soft, "clicked");
+  g_assert_false (text_smooth_state (win));
+  shape_release (win, 1);
+  wait_for_layout (win);
+  g_signal_emit_by_name (soft, "clicked");
+  g_assert_true (text_smooth_state (win));
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\n");
+}
+
+/* 0040 AS-1 (REQ-0040-01): the Text cells' accessible names are their tooltips. */
+static void
+text_as1_names (void)
+{
+  EaselWindow *win = smooth_window (100, 80, "text");
+  GtkWidget *sharp, *soft;
+
+  text_cells (win, &sharp, &soft);
+  assert_label (sharp, "Sharp edges");
+  assert_label (soft, "Smooth edges");
+  close_windows ();
+}
+
+/* The coverage of the ink's layers at (x, y): the largest, 0 where none covers. */
+static unsigned
+ink_cover_at (const EaselTextInk *ink, int x, int y)
+{
+  unsigned c = 0;
+
+  for (size_t k = 0; k < ink->n_layers; k++)
+    {
+      const EaselTextLayer *l = &ink->layers[k];
+
+      if (x >= l->x && x < l->x + l->w && y >= l->y && y < l->y + l->h)
+        c = MAX (c, l->cover[(size_t) (y - l->y) * l->w + (x - l->x)]);
+    }
+  return c;
+}
+
+/* 0040 AS-10 (REQ-0040-06): "Hi" with Smooth, "H" selected: under the "H", a whole pixel shows the letter's color under the tint (no
+   highlight, as Sharp); a partly covered one the letter's color mixed by its coverage over the highlight's color (read where the
+   highlight lies over no letter), within 2 a channel; with Sharp, as 0017 has it. */
+static void
+text_as10_highlight (void)
+{
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  EaselTextInk ink;
+  g_autofree uint32_t *px = NULL;
+  int w, h, cx, cy, bx, by, bw, bh, partial = 0, whole = 0;
+  uint32_t highlight = 0;
+  PangoRectangle hpos;
+
+  g_object_get (gtk_settings_get_default (), "gtk-cursor-blink", &blink_at_start, NULL);
+  caret_blink (FALSE);
+  win = text_smooth_window (300, 200, "#FFFFFF", 48, 200, 90, 0xFF000000u);
+  canvas = easel_window_get_canvas (win);
+  set_text_smooth (win, TRUE);
+  box_text (win, "Hi");
+  easel_text_buffer_select (easel_canvas_text_buffer (canvas), 0, 1);           /* "H" */
+  easel_canvas_text_edited (canvas);
+  g_assert_true (easel_canvas_text_box (canvas, &bx, &by, &bw, &bh));
+  g_assert_true (easel_canvas_text_ink (canvas, &ink));
+  {
+    EaselTextBuffer *b = easel_canvas_text_buffer (canvas);
+    PangoLayout *layout = easel_text_render_layout (b, bw);
+
+    pango_layout_index_to_pos (layout, 0, &hpos);
+    g_object_unref (layout);
+  }
+  wait_for_next_frame (win);
+  px = render_pixels (win, &w, &h, &cx, &cy);
+  /* the highlight's color: the commonest rendered color among the pixels of the "H"'s place, in the rows its stem inks (inside the
+     line, which is shorter than the box), that no letter covers */
+  {
+    g_autoptr (GHashTable) counts = g_hash_table_new (NULL, NULL);
+    guint most = 0;
+
+    for (int y = by; y < by + bh; y++)
+      for (int x = bx + hpos.x / PANGO_SCALE + 1; x < bx + (hpos.x + hpos.width) / PANGO_SCALE; x++)
+        if (ink_cover_at (&ink, x, y) == 0 && ink_cover_at (&ink, bx + hpos.x / PANGO_SCALE + 6, y) > 0)   /* a row the "H" inks */
+          {
+            uint32_t p = rendered_pixel (px, w, cx, cy, x, y);
+            guint n = GPOINTER_TO_UINT (g_hash_table_lookup (counts, GUINT_TO_POINTER (p))) + 1;
+
+            g_hash_table_insert (counts, GUINT_TO_POINTER (p), GUINT_TO_POINTER (n));
+            if (n > most)
+              most = n, highlight = p;
+          }
+  }
+  g_assert_cmphex (highlight, !=, 0);
+  g_assert_false (near_color (highlight, tinted (0xFFFFFFFFu)));               /* the highlight is there */
+  for (int y = by; y < by + bh; y++)
+    for (int x = bx + hpos.x / PANGO_SCALE + 1; x < bx + (hpos.x + hpos.width) / PANGO_SCALE; x++)
+      {
+        unsigned c = ink_cover_at (&ink, x, y);
+        uint32_t got = rendered_pixel (px, w, cx, cy, x, y);
+
+        if (c == 255)
+          {
+            assert_near (got, tinted (0xFF000000u));
+            whole++;
+          }
+        else if (c > 0)
+          {
+            assert_near (got, easel_cover_mix255 (highlight, 0xFF000000u, c));
+            partial++;
+          }
+      }
+  g_assert_cmpint (whole, >, 20);
+  g_assert_cmpint (partial, >, 5);
+  close_windows ();
+  caret_blink (blink_at_start);
+  write_settings ("[new-picture]\nwidth=300\nheight=200\n");
+}
+
+/* 0040 AS-2 (REQ-0040-03): `[text] smooth=true` starts Text at Smooth and 0039's choice at Sharp; `smooth=yes` and no key, Sharp;
+   Preferences' "Smooth text" (after Strikethrough, the group's subtitle) on and Cancel writes nothing, on and Apply writes `smooth=true`
+   in `[text]` and leaves the panel's choice; the panel's choice writes nothing. */
+static void
+text_as2_preferences (void)
+{
+  static const char *const starts[][2] = { { "[text]\nsmooth=true\n", "1" }, { "[text]\nsmooth=TRUE\n", "1" },
+                                           { "[text]\nsmooth=yes\n", "0" }, { "[view]\n", "0" } };
+  EaselWindow *win;
+  AdwDialog *d;
+  GtkWidget *row, *strike;
+
+  for (guint i = 0; i < G_N_ELEMENTS (starts); i++)
+    {
+      write_settings (starts[i][0]);
+      win = start_window ();
+      wait_for_layout (win);
+      g_assert_cmpint (text_smooth_state (win), ==, starts[i][1][0] == '1');
+      g_assert_false (smooth_state (win));
+      close_windows ();
+    }
+  write_settings ("[text]\nsmooth=false\n");
+  win = start_window ();
+  wait_for_layout (win);
+  set_text_smooth (win, TRUE);
+  g_assert_true (settings_has ("smooth=false"));
+  g_assert_false (settings_has ("smooth=true"));
+  set_text_smooth (win, FALSE);
+  d = open_preferences (win);
+  row = pref_row (d, "Smooth text");
+  g_assert_true (ADW_IS_SWITCH_ROW (row));
+  g_assert_false (adw_switch_row_get_active (ADW_SWITCH_ROW (row)));
+  strike = pref_row (d, "Strikethrough");
+  g_assert_true (gtk_widget_get_next_sibling (strike) == row);
+  set_switch (d, "Smooth text", TRUE);
+  press_prefs (win, d, "_Cancel");
+  wait_for_no_dialog (win);
+  g_assert_false (settings_has ("smooth=true"));
+  d = open_preferences (win);
+  set_switch (d, "Smooth text", TRUE);
+  press_prefs (win, d, "_Apply");
+  {
+    g_autofree char *text = settings_text ();
+
+    g_assert_nonnull (strstr (text, "[text]"));
+    g_assert_true (strstr (strstr (text, "[text]"), "smooth=true") != NULL);
+  }
+  g_assert_false (text_smooth_state (win));
+  close_preferences (win, d);
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\n");
+}
+
+/* 0040 Check F1 (REQ-0040-08 (3)): Smooth ink that reaches past the box (an italic's overhang) is shown where it will be put down:
+   every pixel of the ink's rectangle outside the box shows the ink's value over the white picture (no tint there). */
+static void
+text_as5_overhang_shown (void)
+{
+  EaselWindow *win = text_smooth_window (300, 200, "#FFFFFF", 48, 40, 70, 0xFF000000u);
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  EaselTextBuffer *b;
+  EaselTextStyle st;
+  EaselTextInk ink;
+  g_autofree uint32_t *px = NULL;
+  int w, h, cx, cy, bx, by, bw, bh, outside = 0;
+
+  g_object_get (gtk_settings_get_default (), "gtk-cursor-blink", &blink_at_start, NULL);
+  caret_blink (FALSE);
+  set_text_smooth (win, TRUE);
+  b = easel_canvas_text_buffer (canvas);
+  easel_canvas_text_style_at_caret (canvas, &st);
+  st.flags = EASEL_TEXT_ITALIC;
+  g_assert_true (easel_text_buffer_insert (b, "Wf", 2, &st, EASEL_TEXT_EDIT_TYPING));
+  easel_text_buffer_select (b, 0, 0);
+  easel_canvas_text_edited (canvas);
+  g_assert_true (easel_canvas_text_box (canvas, &bx, &by, &bw, &bh));
+  g_assert_true (easel_canvas_text_ink (canvas, &ink));
+  wait_for_next_frame (win);
+  px = render_pixels (win, &w, &h, &cx, &cy);
+  for (int y = ink.y; y < ink.y + ink.h; y++)
+    for (int x = ink.x; x < ink.x + ink.w; x++)
+      {
+        uint32_t want = easel_text_ink_value (&ink, x, y, 0xFFFFFFFFu, bx, by, bw, bh, FALSE, 0);
+
+        if ((x >= bx - 8 && x < bx + bw + 8 && y >= by - 8 && y < by + bh + 8) || want == 0xFFFFFFFFu || x < 0 || y < 0)
+          continue;                                                   /* the box, its outline and handles apart */
+        assert_near (rendered_pixel (px, w, cx, cy, x, y), want);
+        outside++;
+      }
+  g_assert_cmpint (outside, >, 10);
+  close_windows ();
+  caret_blink (blink_at_start);
+  write_settings ("[new-picture]\nwidth=300\nheight=200\n");
+}
+
+/* 0040 Check F2 (REQ-0040-06): on a fully transparent picture, a selected, partly covered pixel of black smooth text shows the highlight
+   over the checkerboard darkened by its coverage, as an uncovered selected pixel beside it in the same checker square shows the highlight
+   alone: P = H (1 - c / 255) within 3 a channel (it was drawn opaque over a black ground). */
+static void
+text_as10_highlight_transparent (void)
+{
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  EaselTextInk ink;
+  g_autofree uint32_t *px = NULL;
+  int w, h, cx, cy, bx, by, bw, bh, checked = 0;
+
+  g_object_get (gtk_settings_get_default (), "gtk-cursor-blink", &blink_at_start, NULL);
+  caret_blink (FALSE);
+  win = text_smooth_window (300, 200, "transparent", 48, 200, 90, 0xFF000000u);
+  canvas = easel_window_get_canvas (win);
+  set_text_smooth (win, TRUE);
+  box_text (win, "Hi");
+  easel_text_buffer_select (easel_canvas_text_buffer (canvas), 0, 2);
+  easel_canvas_text_edited (canvas);
+  g_assert_true (easel_canvas_text_box (canvas, &bx, &by, &bw, &bh));
+  g_assert_true (easel_canvas_text_ink (canvas, &ink));
+  wait_for_next_frame (win);
+  px = render_pixels (win, &w, &h, &cx, &cy);
+  for (int y = by; y < by + bh; y++)
+    for (int x = bx + 2; x < bx + bw; x++)
+      {
+        unsigned c = ink_cover_at (&ink, x, y);
+        uint32_t p, q;
+
+        if (c == 0 || c == 255 || ink_cover_at (&ink, x - 1, y) != 0 || (x - 1) / 8 != x / 8)
+          continue;
+        p = rendered_pixel (px, w, cx, cy, x, y);
+        q = rendered_pixel (px, w, cx, cy, x - 1, y);                    /* the highlight alone, over the same checker square */
+        if (near_color (q, rendered_pixel (px, w, cx, cy, bx + bw - 3, by + bh - 3)))
+          continue;                                                       /* not under the highlight (below the line) */
+        for (int sh = 0; sh <= 16; sh += 8)
+          {
+            int want = (int) lround (((q >> sh) & 255) * (1.0 - c / 255.0)), got = (p >> sh) & 255;
+
+            if (ABS (got - want) > 3)
+              g_test_message ("(%d, %d) c %u: %08X, the highlight %08X, want %d in channel %d", x, y, c, p, q, want, sh);
+            g_assert_cmpint (ABS (got - want), <=, 3);
+          }
+        checked++;
+      }
+  g_assert_cmpint (checked, >, 5);
+  close_windows ();
+  caret_blink (blink_at_start);
+  write_settings ("[new-picture]\nwidth=300\nheight=200\n");
 }
 
 int
@@ -40506,6 +41393,25 @@ main (int argc, char **argv)
   g_test_add_func ("/0039/as1_well_shared", smooth_as1_well_shared);
   g_test_add_func ("/0039/as1_keyboard", smooth_as1_keyboard);
   g_test_add_func ("/0039-a11y/as1_names", smooth_as1_names);
+  g_test_add_func ("/0040/as1_own_choice", text_as1_own_choice);
+  g_test_add_func ("/0040/as1_keyboard", text_as1_keyboard);
+  g_test_add_func ("/0040/as1_ignored_while_held", text_as1_ignored_while_held);
+  g_test_add_func ("/0040-a11y/as1_names", text_as1_names);
+  g_test_add_func ("/0040/as3_gray_and_same_letters", text_as3_gray_and_same_letters);
+  g_test_add_func ("/0040/as4_red_over_transparent", text_as4_red_over_transparent);
+  g_test_add_func ("/0040/as4_opaque_box", text_as4_opaque_box);
+  g_test_add_func ("/0040/as5_switch_open_box", text_as5_switch_open_box);
+  g_test_add_func ("/0040-scale2/as5_scale2", text_as5_scale2);
+  g_test_add_func ("/0040/as5_moved_box", text_as5_moved_box);
+  g_test_add_func ("/0040/as5_overhang_shown", text_as5_overhang_shown);
+  g_test_add_func ("/0040/as6_no_memory", text_as6_no_memory);
+  g_test_add_func ("/0040/as6_switch_without_memory", text_as6_switch_without_memory);
+  g_test_add_func ("/0040/as7_half_alpha", text_as7_half_alpha);
+  g_test_add_func ("/0040/as8_underline_joint", text_as8_underline_joint);
+  g_test_add_func ("/0040/as9_color_emoji", text_as9_color_emoji);
+  g_test_add_func ("/0040/as10_highlight", text_as10_highlight);
+  g_test_add_func ("/0040/as10_highlight_transparent", text_as10_highlight_transparent);
+  g_test_add_func ("/0040/as2_preferences", text_as2_preferences);
   g_test_add_func ("/0039/as1_ignored_while_held", smooth_as1_ignored_while_held);
   g_test_add_func ("/0039/as7_preview_is_put_down", smooth_as7_preview_is_put_down);
   g_test_add_func ("/0039/as7_esc_and_undo", smooth_as7_esc_and_undo);

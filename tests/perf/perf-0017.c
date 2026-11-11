@@ -128,10 +128,9 @@ measure_typing (const char *config_dir, const char *what, int pic_w, int pic_h, 
         easel_text_render_height (layout);
         lay[i] = (g_get_monotonic_time () - start) / 1000.0;
         start = g_get_monotonic_time ();
-        g_assert (easel_text_render_ink (layout, b, bx, by, SIZE_MAX, &ink));
+        g_assert (easel_text_render_ink (layout, b, bx, by, SIZE_MAX, FALSE, &ink));
         inked[i] = (g_get_monotonic_time () - start) / 1000.0;
-        g_free ((uint32_t *) ink.color);
-        g_free ((uint8_t *) ink.mask);
+        easel_text_render_ink_free (&ink);
         g_object_unref (layout);
       }
     qsort (lay, N, sizeof lay[0], cmp_double);

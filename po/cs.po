@@ -1318,3 +1318,6 @@ msgstr "Hladké hrany"
 
 msgid "Smooth shapes and brushes"
 msgstr "Hladké tvary a štětce"
+
+msgid "Smooth text"
+msgstr "Hladký text"

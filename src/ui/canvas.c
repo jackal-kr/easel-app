@@ -6,6 +6,8 @@
 #include <adwaita.h>
 
 #include "canvas.h"
+
+#include "cover.h"
 #include "curve-bend.h"
 #include "cursor-shape.h"
 #include "fill.h"
@@ -172,6 +174,7 @@ struct _EaselCanvas
   gboolean caret_on;                            /* the caret is shown now (blinking, REQ-0017-05) */
   guint caret_blink;                            /* its timer, or 0 */
   size_t text_show_max;                         /* the most the ink may use (a test hook, REQ-0017-07) */
+  gboolean text_smooth;                         /* Smooth text (0040): the box's ink by coverage */
   size_t text_step_max;                         /* the most the put-down's step may use (a test hook, REQ-0017-18) */
   guint error_bells;                            /* the error bells sounded (a test hook) */
   gboolean text_selecting;                      /* a drag inside the box selects (REQ-0017-06) */
@@ -745,7 +748,7 @@ easel_canvas_text_buffer (EaselCanvas *self)
 gboolean
 easel_canvas_text_ink (EaselCanvas *self, EaselTextInk *ink)
 {
-  if (!self->text_open || self->text_ink.mask == NULL)
+  if (!self->text_open || (self->text_ink.mask == NULL && self->text_ink.layers == NULL))
     return FALSE;
   *ink = self->text_ink;
   return TRUE;
@@ -794,6 +797,32 @@ gboolean
 easel_canvas_text_caret_on (EaselCanvas *self)
 {
   return self->text_open && self->caret_on;
+}
+
+static void error_bell (EaselCanvas *self);
+
+gboolean
+easel_canvas_set_text_smooth (EaselCanvas *self, gboolean smooth)
+{
+  EaselTextInk ink;
+  gboolean was = self->text_smooth;
+
+  if (smooth == was)
+    return TRUE;
+  self->text_smooth = smooth;
+  if (!self->text_open || self->text_layout == NULL)
+    return TRUE;
+  /* the open box in the new choice at once (REQ-0040-02); without the memory, as it was (REQ-0040-07) */
+  if (!easel_text_render_ink (self->text_layout, self->text_buf, self->tb_x, self->tb_y, self->text_show_max, smooth, &ink))
+    {
+      self->text_smooth = was;
+      error_bell (self);
+      return FALSE;
+    }
+  text_free_ink (self);
+  self->text_ink = ink;
+  gtk_widget_queue_draw (GTK_WIDGET (self));
+  return TRUE;
 }
 
 void
@@ -871,7 +900,7 @@ text_relayout (EaselCanvas *self)
   g_clear_object (&self->text_layout);
   self->text_layout = easel_text_render_layout (self->text_buf, self->tb_w);
   self->text_h = easel_text_render_height (self->text_layout);
-  if (easel_text_render_ink (self->text_layout, self->text_buf, self->tb_x, self->tb_y, self->text_show_max, &ink))
+  if (easel_text_render_ink (self->text_layout, self->text_buf, self->tb_x, self->tb_y, self->text_show_max, self->text_smooth, &ink))
     {
       text_free_ink (self);
       self->text_ink = ink;
@@ -1000,7 +1029,7 @@ text_try (EaselCanvas *self, const TextOp *op)
       h = easel_text_render_height (layout);
       if (pango_layout_get_line_count (layout) > 1 && self->tb_y + MAX (h, self->tb_set_h) > self->img->height)
         ok = FALSE;                                   /* past the bottom edge */
-      else if (!easel_text_render_ink (layout, copy, self->tb_x, self->tb_y, self->text_show_max, &ink))
+      else if (!easel_text_render_ink (layout, copy, self->tb_x, self->tb_y, self->text_show_max, self->text_smooth, &ink))
         ok = FALSE, no_memory = TRUE;
     }
   if (ok && !apply_op (self->text_buf, op))
@@ -1009,8 +1038,7 @@ text_try (EaselCanvas *self, const TextOp *op)
   if (!ok)
     {
       g_clear_object (&layout);
-      g_free ((uint32_t *) ink.color);
-      g_free ((uint8_t *) ink.mask);
+      easel_text_render_ink_free (&ink);
       easel_text_buffer_text (self->text_buf, &len);
       if (no_memory && len == 0)
         {
@@ -1460,9 +1488,7 @@ text_start_style (EaselCanvas *self)
 static void
 text_free_ink (EaselCanvas *self)
 {
-  g_free ((uint32_t *) self->text_ink.color);
-  g_free ((uint8_t *) self->text_ink.mask);
-  self->text_ink = (EaselTextInk) { 0 };
+  easel_text_render_ink_free (&self->text_ink);
 }
 
 static void
@@ -1613,7 +1639,7 @@ text_set_rect (EaselCanvas *self, int x, int y, int w, int set_h)
       if (!text_fits (self, y, w))
         return FALSE;
       layout = easel_text_render_layout (self->text_buf, w);
-      if (!easel_text_render_ink (layout, self->text_buf, x, y, self->text_show_max, &ink))
+      if (!easel_text_render_ink (layout, self->text_buf, x, y, self->text_show_max, self->text_smooth, &ink))
         {
           g_object_unref (layout);
           return FALSE;
@@ -1626,8 +1652,7 @@ text_set_rect (EaselCanvas *self, int x, int y, int w, int set_h)
     }
   else
     {
-      self->text_ink.x += x - self->tb_x;               /* the same lines, elsewhere */
-      self->text_ink.y += y - self->tb_y;
+      easel_text_render_ink_move (&self->text_ink, x - self->tb_x, y - self->tb_y);   /* the same lines, elsewhere */
     }
   self->tb_x = x;
   self->tb_y = y;
@@ -1749,7 +1774,7 @@ text_box_area (EaselCanvas *self, double l, int *bx, int *by, int *x0, int *y0, 
   *y0 = *by;
   *x1 = *bx + bw;
   *y1 = *by + bh;
-  if (ink->mask != NULL)
+  if (ink->mask != NULL || ink->layers != NULL)          /* Sharp's mask or Smooth's layers: either may reach past the box (0040 Check F1) */
     {
       *x0 = MIN (*x0, ink->x);
       *y0 = MIN (*y0, ink->y);
@@ -1777,15 +1802,12 @@ text_box_area (EaselCanvas *self, double l, int *bx, int *by, int *x0, int *y0, 
 static uint32_t
 text_box_pixel (EaselCanvas *self, int x, int y, uint32_t c, int bx, int by, int bw, int bh)
 {
-  const EaselTextInk *ink = &self->text_ink;
-
-  if (self->text_opaque && x >= bx && x < bx + bw && y >= by && y < by + bh)
-    c = self->background;
-  if (ink->mask != NULL && x >= ink->x && x < ink->x + ink->w && y >= ink->y && y < ink->y + ink->h
-      && ink->mask[(size_t) (y - ink->y) * ink->w + (x - ink->x)])
-    c = ink->color[(size_t) (y - ink->y) * ink->w + (x - ink->x)];
-  return c;
+  /* the value the put-down gives it, by the same function (REQ-0040-08 (3)) */
+  return easel_text_ink_value (&self->text_ink, x, y, c, bx, by, bw, bh, self->text_opaque, self->background);
 }
+
+static unsigned text_cover_at (const EaselTextInk *ink, int x, int y, uint32_t *color);
+static uint8_t *text_selected_pixels (EaselCanvas *self, int bx, int by, int x0, int y0, int rw, int rh);
 
 static void
 append_text_box (EaselCanvas *self, GtkSnapshot *snapshot, double l)
@@ -1802,11 +1824,22 @@ append_text_box (EaselCanvas *self, GtkSnapshot *snapshot, double l)
   px = g_try_malloc ((gsize) rw * rh * sizeof *px);
   if (px == NULL)
     return;
-  for (int j = 0; j < rh; j++)
-    for (int i = 0; i < rw; i++)
-      {
-        px[(gsize) j * rw + i] = text_box_pixel (self, x0 + i, y0 + j, easel_image_get (self->img, x0 + i, y0 + j), bx, by, bw, bh);
-      }
+  {
+    /* Smooth: a selected, partly covered pixel is drawn without its letter, which the highlight lays over it (0040 Check F2) */
+    g_autofree uint8_t *selected = self->text_ink.n_layers > 0 ? text_selected_pixels (self, bx, by, x0, y0, rw, rh) : NULL;
+    EaselTextInk ground = { 0 };
+
+    for (int j = 0; j < rh; j++)
+      for (int i = 0; i < rw; i++)
+        {
+          uint32_t under = easel_image_get (self->img, x0 + i, y0 + j);
+
+          if (selected != NULL && selected[(gsize) j * rw + i] && text_cover_at (&self->text_ink, x0 + i, y0 + j, NULL) > 0)
+            px[(gsize) j * rw + i] = easel_text_ink_value (&ground, x0 + i, y0 + j, under, bx, by, bw, bh, self->text_opaque, self->background);
+          else
+            px[(gsize) j * rw + i] = text_box_pixel (self, x0 + i, y0 + j, under, bx, by, bw, bh);
+        }
+  }
   /* On the squares drawn under it (REQ-0025-03); with no memory for that, by the renderer's scaling below. */
   if (view_built_by_edges (self) && append_cells_by_edges (self, snapshot, px, x0, y0, rw, rh))
     {
@@ -1819,28 +1852,48 @@ append_text_box (EaselCanvas *self, GtkSnapshot *snapshot, double l)
                                       &GRAPHENE_RECT_INIT ((float) (x0 * l), (float) (y0 * l), (float) (rw * l), (float) (rh * l)));
 }
 
+/* Smooth's coverage of the pixel (x, y): the largest of its layers', with that layer's color there in *color; 0 where none covers, and
+   for Sharp's ink. */
+static unsigned
+text_cover_at (const EaselTextInk *ink, int x, int y, uint32_t *color)
+{
+  unsigned best = 0;
+
+  for (size_t k = 0; k < ink->n_layers; k++)
+    {
+      const EaselTextLayer *t = &ink->layers[k];
+      size_t i;
+
+      if (x < t->x || x >= t->x + t->w || y < t->y || y >= t->y + t->h)
+        continue;
+      i = (size_t) (y - t->y) * (size_t) t->w + (size_t) (x - t->x);
+      if (t->cover[i] > best)
+        {
+          best = t->cover[i];
+          if (color != NULL)
+            *color = t->colors != NULL ? t->colors[i] : t->color;
+        }
+    }
+  return best;
+}
+
 /* The selected text's highlight (REQ-0017-05): the accent at 35 % over the selected text's line area, except the pixels set in the
    text, which keep the letter's own color; drawn on top of the tint, one rectangle per run of a picture row. */
-static void
-append_text_highlight (EaselCanvas *self, GtkSnapshot *snapshot, double l)
+/* The pixels of the area (x0, y0, rw, rh) under the selected text's highlight (REQ-0017-05): the selected text's line area, less the
+   pixels its letters cover wholly (Sharp's mask, Smooth's 255). NULL with no selection or no memory. */
+static uint8_t *
+text_selected_pixels (EaselCanvas *self, int bx, int by, int x0, int y0, int rw, int rh)
 {
   const EaselTextInk *ink = &self->text_ink;
-  int bx, by, x0, y0, x1, y1, rw, rh;
   size_t from = 0, to = 0;
-  g_autoptr (GdkRGBA) accent = NULL;
-  g_autofree uint8_t *selected = NULL;
+  uint8_t *selected;
   PangoLayoutIter *it;
-  GdkRGBA color;
 
-  if (self->text_layout == NULL || !easel_text_buffer_selection (self->text_buf, &from, &to)
-      || !text_box_area (self, l, &bx, &by, &x0, &y0, &x1, &y1))
-    return;
-  rw = x1 - x0;
-  rh = y1 - y0;
+  if (self->text_layout == NULL || !easel_text_buffer_selection (self->text_buf, &from, &to))
+    return NULL;
   selected = g_try_malloc0 ((gsize) rw * rh);
   if (selected == NULL)
-    return;
-  /* The selected text's area, from the layout's lines */
+    return NULL;
   it = pango_layout_get_iter (self->text_layout);
   do
     {
@@ -1857,14 +1910,34 @@ append_text_highlight (EaselCanvas *self, GtkSnapshot *snapshot, double l)
         for (int yy = by + (int) floor ((double) lr.y / PANGO_SCALE); yy < by + (int) ceil ((double) (lr.y + lr.height) / PANGO_SCALE); yy++)
           for (int xx = bx + (int) floor ((double) ranges[2 * k] / PANGO_SCALE);
                xx < bx + (int) ceil ((double) ranges[2 * k + 1] / PANGO_SCALE); xx++)
-            if (xx >= x0 && xx < x1 && yy >= y0 && yy < y1
+            if (xx >= x0 && xx < x0 + rw && yy >= y0 && yy < y0 + rh
                 && !(ink->mask != NULL && xx >= ink->x && xx < ink->x + ink->w && yy >= ink->y && yy < ink->y + ink->h
-                     && ink->mask[(size_t) (yy - ink->y) * ink->w + (xx - ink->x)]))
+                     && ink->mask[(size_t) (yy - ink->y) * ink->w + (xx - ink->x)])
+                && text_cover_at (ink, xx, yy, NULL) < 255)
               selected[(gsize) (yy - y0) * rw + (xx - x0)] = 1;
       g_free (ranges);
     }
   while (pango_layout_iter_next_line (it));
   pango_layout_iter_free (it);
+  return selected;
+}
+
+static void
+append_text_highlight (EaselCanvas *self, GtkSnapshot *snapshot, double l)
+{
+  const EaselTextInk *ink = &self->text_ink;
+  int bx, by, x0, y0, x1, y1, rw, rh;
+  g_autoptr (GdkRGBA) accent = NULL;
+  g_autofree uint8_t *selected = NULL;
+  GdkRGBA color;
+
+  if (!text_box_area (self, l, &bx, &by, &x0, &y0, &x1, &y1))
+    return;
+  rw = x1 - x0;
+  rh = y1 - y0;
+  selected = text_selected_pixels (self, bx, by, x0, y0, rw, rh);
+  if (selected == NULL)
+    return;
   accent = adw_style_manager_get_accent_color_rgba (adw_style_manager_get_default ());
   color = (GdkRGBA) { accent->red, accent->green, accent->blue, 0.35f };
   for (int j = 0; j < rh; j++)
@@ -1881,6 +1954,22 @@ append_text_highlight (EaselCanvas *self, GtkSnapshot *snapshot, double l)
           i++;
         gtk_snapshot_append_color (snapshot, &color,
                                    &GRAPHENE_RECT_INIT ((float) ((x0 + i0) * l), (float) ((y0 + j) * l), (float) ((i - i0) * l), (float) l));
+      }
+  /* Smooth (REQ-0040-06): the box's drawing left a selected, partly covered pixel without its letter (append_text_box), so the highlight
+     lies under it; the letter's color is laid over at its coverage here, which for an opaque pixel is the mix of REQ-0040-04 over the
+     highlight's color, and over a transparent one shows the checkerboard through as the box does (0040 Check F2). A whole pixel was
+     left out of the highlight and shows the letter as Sharp's does. */
+  for (int j = 0; ink->n_layers > 0 && j < rh; j++)
+    for (int i = 0; i < rw; i++)
+      {
+        uint32_t c = 0;
+        unsigned cover = selected[(gsize) j * rw + i] ? text_cover_at (ink, x0 + i, y0 + j, &c) : 0;
+
+        if (cover > 0)
+          gtk_snapshot_append_color (snapshot,
+                                     &(GdkRGBA) { ((c >> 16) & 255) / 255.0f, ((c >> 8) & 255) / 255.0f, (c & 255) / 255.0f,
+                                                  (c >> 24) / 255.0f * cover / 255.0f },
+                                     &GRAPHENE_RECT_INIT ((float) ((x0 + i) * l), (float) ((y0 + j) * l), (float) l, (float) l));
       }
 }
 
@@ -5745,6 +5834,12 @@ easel_canvas_is_stroking (EaselCanvas *self)
 {
   return self->stroke != NULL || self->picking || self->shaping || self->pend_held || self->off_press || self->selecting || self->sel_moving
          || self->lassoing || self->stretching || self->text_drag != 0;
+}
+
+gboolean
+easel_canvas_is_selecting_text (EaselCanvas *self)
+{
+  return self->text_selecting;
 }
 
 gboolean

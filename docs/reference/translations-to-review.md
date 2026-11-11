@@ -5,6 +5,25 @@ one menu page share a letter (0035 Check F1, kept by `/0023-lang/as14_menu_mnemo
 underscore marks the letter. A word is wrong, or a letter hard to type on your keyboard: say which, and the letter is moved again
 (the test says whether the new one is free).
 
+## 0040 Smooth text (2026-11-11): 1 string, and one Help sentence
+
+The Preferences switch; the cells reuse 0039's tooltips. Help: one more sentence after 0039's, naming Text and Preferences by the words
+of the app.
+
+| Language | Smooth text |
+|---|---|
+| cs | Hladký text |
+| de | Glatter Text |
+| es | Texto suave |
+| fr | Texte lissé |
+| hu | Simított szöveg |
+| it | Testo smussato |
+| pl | Wygładzony tekst |
+| pt | Texto suave |
+| ro | Text neted |
+| ru | Сглаженный текст |
+| uk | Згладжений текст |
+
 ## 0039 Smooth shapes and brushes (2026-11-11): 3 strings, and one Help sentence
 
 The two cells' tooltips (also their accessible names) and the Preferences switch. No mnemonics. Help: one sentence at the end of the

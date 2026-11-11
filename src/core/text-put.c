@@ -3,12 +3,16 @@
 #include "text-put.h"
 
 #include "change-log.h"
+#include "cover.h"
 
-/* The value the put-down gives the pixel (x, y): the ink where masked, else the background inside an Opaque box, else its own. */
-static uint32_t
-value_at (const EaselImage *img, int x, int y, int bx, int by, int bw, int bh, const EaselTextInk *ink, bool opaque,
-          uint32_t background)
+uint32_t
+easel_text_ink_value (const EaselTextInk *ink, int x, int y, uint32_t under, int bx, int by, int bw, int bh, bool opaque,
+                      uint32_t background)
 {
+  uint32_t v = under;
+
+  if (opaque && x >= bx && x < bx + bw && y >= by && y < by + bh)
+    v = easel_px_canon (background);
   if (ink->mask != NULL && x >= ink->x && x < ink->x + ink->w && y >= ink->y && y < ink->y + ink->h)
     {
       size_t i = (size_t) (y - ink->y) * (size_t) ink->w + (size_t) (x - ink->x);
@@ -16,9 +20,18 @@ value_at (const EaselImage *img, int x, int y, int bx, int by, int bw, int bh, c
       if (ink->mask[i])
         return easel_px_canon (ink->color[i]);   /* P7.7 */
     }
-  if (opaque && x >= bx && x < bx + bw && y >= by && y < by + bh)
-    return easel_px_canon (background);
-  return easel_image_get (img, x, y);
+  for (size_t k = 0; k < ink->n_layers; k++)
+    {
+      const EaselTextLayer *l = &ink->layers[k];
+      size_t i;
+
+      if (x < l->x || x >= l->x + l->w || y < l->y || y >= l->y + l->h)
+        continue;
+      i = (size_t) (y - l->y) * (size_t) l->w + (size_t) (x - l->x);
+      if (l->cover[i] > 0)
+        v = easel_cover_mix255 (v, l->colors != NULL ? l->colors[i] : l->color, l->cover[i]);   /* in order: the later on top */
+    }
+  return v;
 }
 
 EaselSelectionResult
@@ -48,7 +61,8 @@ easel_text_put_down (EaselImage *img, EaselHistory *history, int x, int y, int w
   easel_change_log_init (&l, max_bytes);
   for (int py = y0; ok && py < y1; py++)
     for (int px = x0; ok && px < x1; px++)
-      ok = easel_change_log_set (&l, img, px, py, value_at (img, px, py, x, y, w, h, ink, opaque, background));
+      ok = easel_change_log_set (&l, img, px, py,
+                                 easel_text_ink_value (ink, px, py, easel_image_get (img, px, py), x, y, w, h, opaque, background));
   if (!ok)
     {
       easel_change_log_restore (&l, img);

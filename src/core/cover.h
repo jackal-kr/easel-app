@@ -14,6 +14,11 @@
    premultiplied alpha, halves rounded up; an alpha of 0 gives 0x00000000 (REQ-0039-06, P7.7). */
 uint32_t easel_cover_mix (uint32_t old, uint32_t c_out, unsigned n_out, uint32_t c_in, unsigned n_in);
 
+/* The same mix for a coverage c from 0 to 255 by one color (REQ-0040-04, smooth text): with old (r, g, b, a) and color (r_t, g_t, b_t,
+   a_t), M = a (255 - c) + a_t c, the alpha round (M / 255), the red round ((r a (255 - c) + r_t a_t c) / M), at most 255, halves up;
+   an alpha of 0 gives 0x00000000. c = 255 gives color, c = 0 old. */
+uint32_t easel_cover_mix255 (uint32_t old, uint32_t color, unsigned c);
+
 /* A run of pixels x0 to x1 of one row, each with out of its points in the figure's outline and in in its inside (0 to 256 each,
    out + in at most 256); a pixel no part covers is in no run. */
 typedef struct

@@ -1318,3 +1318,6 @@ msgstr "Сглаженные края"
 
 msgid "Smooth shapes and brushes"
 msgstr "Сглаженные фигуры и кисти"
+
+msgid "Smooth text"
+msgstr "Сглаженный текст"

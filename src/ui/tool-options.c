@@ -364,35 +364,35 @@ add_width_buttons (GtkBox *box, GtkLabel **labels)
 
 static GtkWidget *new_grid (void);
 
-/* Sharp or Smooth (REQ-0039-01): a line at 45 degrees in the text color, of whole logical pixels in steps of 2, or with blended
-   edges; the cell's size is the Eraser's mode cells'. */
+/* Sharp or Smooth (REQ-0039-01; JOD, 2026-11-11, idea D of docs/reference/proto-0040/icons.png): four magnified pixels along a
+   45-degree edge in the text color, whole for Sharp; for Smooth the edge's own pixels at 45 % of it, as a blended edge. Whole logical
+   pixels, no smoothing of the icon itself. */
 static void
 draw_edges (GtkDrawingArea *area, cairo_t *cr, int width, int height, gpointer data)
 {
+  /* 1 a whole pixel, 2 an edge pixel (Smooth's half tone, Sharp's nothing), 0 none: an edge from the top right to the bottom left */
+  static const int grid[4][4] = { { 1, 1, 1, 2 }, { 1, 1, 2, 0 }, { 1, 2, 0, 0 }, { 2, 0, 0, 0 } };
   gboolean smooth = GPOINTER_TO_INT (data);
   GdkRGBA color;
   int x0 = (width - 16) / 2, y0 = (height - 16) / 2;
 
   gtk_widget_get_color (GTK_WIDGET (area), &color);
-  gdk_cairo_set_source_rgba (cr, &color);
-  if (!smooth)
-    {
-      cairo_set_antialias (cr, CAIRO_ANTIALIAS_NONE);
-      for (int k = 0; k < 8; k++)
-        cairo_rectangle (cr, x0 + 2 * k, y0 + 14 - 2 * k, 2, 2);
-      cairo_fill (cr);
-      return;
-    }
-  cairo_set_line_width (cr, 2);
-  cairo_move_to (cr, x0 + 0.5, y0 + 15.5);
-  cairo_line_to (cr, x0 + 15.5, y0 + 0.5);
-  cairo_stroke (cr);
+  cairo_set_antialias (cr, CAIRO_ANTIALIAS_NONE);
+  for (int j = 0; j < 4; j++)
+    for (int i = 0; i < 4; i++)
+      {
+        if (grid[j][i] == 0 || (grid[j][i] == 2 && !smooth))
+          continue;
+        cairo_set_source_rgba (cr, color.red, color.green, color.blue, grid[j][i] == 2 ? color.alpha * 0.45 : color.alpha);
+        cairo_rectangle (cr, x0 + 4 * i, y0 + 4 * j, 4, 4);
+        cairo_fill (cr);
+      }
 }
 
-/* The well of the two cells, Sharp then Smooth, bound to win.smooth: one choice for the seven tools, so every page has its own
-   pair and the action keeps them alike (REQ-0039-01). */
+/* The well of the two cells, Sharp then Smooth, bound to `action`: win.smooth, one choice for the seven tools of 0039, so every page
+   has its own pair and the action keeps them alike (REQ-0039-01); win.text-smooth, Text's own (REQ-0040-01). */
 static GtkWidget *
-new_smooth_well (void)
+new_smooth_well (const char *action)
 {
   static const char *const tips[2] = { N_ ("Sharp edges"), N_ ("Smooth edges") };
   GtkWidget *grid = new_grid ();
@@ -408,7 +408,7 @@ new_smooth_well (void)
       gtk_drawing_area_set_content_height (GTK_DRAWING_AREA (area), 22);
       gtk_drawing_area_set_draw_func (GTK_DRAWING_AREA (area), draw_edges, GINT_TO_POINTER (i), NULL);
       gtk_button_set_child (GTK_BUTTON (button), area);
-      gtk_actionable_set_action_name (GTK_ACTIONABLE (button), "win.smooth");
+      gtk_actionable_set_action_name (GTK_ACTIONABLE (button), action);
       gtk_actionable_set_action_target_value (GTK_ACTIONABLE (button), g_variant_new_boolean (i == 1));
       gtk_grid_attach (GTK_GRID (grid), button, i, 0, 1, 1);
     }
@@ -445,7 +445,7 @@ new_shape_box (gboolean with_fill_styles, GtkLabel **width_labels)
     }
   add_width_buttons (GTK_BOX (widths), width_labels);
   gtk_box_append (GTK_BOX (box), widths);
-  gtk_box_append (GTK_BOX (box), new_smooth_well ());
+  gtk_box_append (GTK_BOX (box), new_smooth_well ("win.smooth"));
   return box;
 }
 
@@ -548,7 +548,14 @@ build_presets (EaselToolOptions *self)
                                       preset_data ((EaselFootprint) { EASEL_SHAPE_SQUARE, 1 }, 0), NULL);
     self->text_modes[1] = add_button (self, GTK_GRID (text_grid), 1, 2, _ ("Transparent: only the text"),
                                       preset_data ((EaselFootprint) { EASEL_SHAPE_SQUARE, 1 }, 1), self->text_modes[0]);
-    self->groups[7] = text_grid;
+    {
+      /* below the modes, Text's own Sharp | Smooth (REQ-0040-01) */
+      GtkWidget *text_box = gtk_box_new (GTK_ORIENTATION_VERTICAL, 6);
+
+      gtk_box_append (GTK_BOX (text_box), text_grid);
+      gtk_box_append (GTK_BOX (text_box), new_smooth_well ("win.text-smooth"));
+      self->groups[7] = text_box;
+    }
   }
 
   {
@@ -574,7 +581,7 @@ build_presets (EaselToolOptions *self)
     GtkWidget *brush_box = gtk_box_new (GTK_ORIENTATION_VERTICAL, 6);
 
     gtk_box_append (GTK_BOX (brush_box), brush_grid);
-    gtk_box_append (GTK_BOX (brush_box), new_smooth_well ());
+    gtk_box_append (GTK_BOX (brush_box), new_smooth_well ("win.smooth"));
     self->groups[0] = brush_box;
   }
   self->groups[1] = air_grid;

@@ -2467,6 +2467,19 @@ smooth_changed (GSimpleAction *action, GVariant *value, gpointer user_data)
     easel_tool_options_set_smooth (self->tool_options, g_variant_get_boolean (value));
 }
 
+/* Smooth text (REQ-0040-02): Text's own choice, ignored while a button is held; an open box takes it at once, or, without the memory to
+   show it so, the choice stays as it was with the bell (REQ-0040-07). */
+static void
+text_smooth_changed (GSimpleAction *action, GVariant *value, gpointer user_data)
+{
+  EaselWindow *self = user_data;
+
+  if (easel_canvas_is_stroking (self->canvas) || easel_canvas_is_selecting_text (self->canvas))
+    return;
+  if (easel_canvas_set_text_smooth (self->canvas, g_variant_get_boolean (value)))
+    g_simple_action_set_state (action, value);
+}
+
 /* View > Zoom (REQ-0008-04): a preset, through the same path as the other zoom commands, which keeps the center still. */
 static void
 zoom_to_activated (GSimpleAction *action, GVariant *parameter, gpointer user_data)
@@ -6216,6 +6229,7 @@ static const GActionEntry win_actions[] = {
   { .name = "line-width", .parameter_type = "i", .state = "1", .change_state = line_width_changed },
   { .name = "fill-style", .parameter_type = "i", .state = "0", .change_state = fill_style_changed },
   { .name = "smooth", .parameter_type = "b", .state = "false", .change_state = smooth_changed },
+  { .name = "text-smooth", .parameter_type = "b", .state = "false", .change_state = text_smooth_changed },
   { .name = "grid", .state = "false", .change_state = grid_state_changed },
   { .name = "thumbnail", .state = "false", .change_state = thumbnail_state_changed },
   { .name = "grid-dialog", .activate = grid_dialog_activated },
@@ -6534,6 +6548,7 @@ easel_window_init (EaselWindow *self)
   g_action_group_change_action_state (G_ACTION_GROUP (self), "line-width", g_variant_new_int32 (self->settings.line_width));
   g_action_group_change_action_state (G_ACTION_GROUP (self), "fill-style", g_variant_new_int32 ((int) self->settings.fill_style));
   g_action_group_change_action_state (G_ACTION_GROUP (self), "smooth", g_variant_new_boolean (self->settings.smooth));
+  g_action_group_change_action_state (G_ACTION_GROUP (self), "text-smooth", g_variant_new_boolean (self->settings.text_smooth));
   g_action_group_change_action_state (G_ACTION_GROUP (self), "magnifier-level", g_variant_new_int32 (self->settings.magnifier * 100));
   gtk_popover_menu_add_child (GTK_POPOVER_MENU (gtk_menu_button_get_popover (self->view_button)), make_zoom_row (self),
                               "zoom");

@@ -683,6 +683,7 @@ build_drawing (Prefs *p, AdwPreferencesPage *page)
   add_switch (p, text, _ ("Italic"), &s->text_italic, "true", "false", "text", "italic", NULL);
   add_switch (p, text, _ ("Underline"), &s->text_underline, "true", "false", "text", "underline", NULL);
   add_switch (p, text, _ ("Strikethrough"), &s->text_strike, "true", "false", "text", "strikethrough", NULL);
+  add_switch (p, text, _ ("Smooth text"), &s->text_smooth, "true", "false", "text", "smooth", NULL);   /* the start-up choice (REQ-0040-03) */
   add_number (p, history, _ ("Undo memory"), EASEL_UNDO_MB_MIN, EASEL_UNDO_MB_MAX, &s->undo_budget_mb, "MB", NEXT_START, "history", "memory", NULL);
   add_number (p, saving, _ ("JPEG quality"), EASEL_JPEG_QUALITY_MIN, EASEL_JPEG_QUALITY_MAX, &s->jpeg_quality, NULL, NULL, "save", "jpeg-quality", NULL);
 }

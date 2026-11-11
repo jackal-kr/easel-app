@@ -8,13 +8,21 @@
 PangoContext *
 easel_text_render_context (void)
 {
+  return easel_text_render_context_for (FALSE);
+}
+
+PangoContext *
+easel_text_render_context_for (gboolean smooth)
+{
   PangoContext *ctx = pango_font_map_create_context (pango_cairo_font_map_get_default ());
   cairo_font_options_t *fo = cairo_font_options_create ();
 
   /* 1-bit glyphs on the grid (REQ-0017-28): no antialiasing, the outlines fitted to the pixels, the metrics and the glyph positions in
      whole pixels, so the same letter is the same bitmap wherever it falls in a line; the resolution is fixed, so the layout does not
-     depend on the screen (the probe `probe-text-hinting`, its setting G). */
-  cairo_font_options_set_antialias (fo, CAIRO_ANTIALIAS_NONE);
+     depend on the screen (the probe `probe-text-hinting`, its setting G). Smooth (0040) changes the antialiasing only, to gray (never
+     subpixel: REQ-0040-04), so it lays text out alike (`text-smooth-layout`). The context's options decide the drawing: Pango's override
+     the surface's. */
+  cairo_font_options_set_antialias (fo, smooth ? CAIRO_ANTIALIAS_GRAY : CAIRO_ANTIALIAS_NONE);
   cairo_font_options_set_hint_style (fo, CAIRO_HINT_STYLE_FULL);
   cairo_font_options_set_hint_metrics (fo, CAIRO_HINT_METRICS_ON);
   pango_cairo_context_set_font_options (ctx, fo);
@@ -149,7 +157,13 @@ run_attributes (const EaselTextBuffer *b, gboolean only, size_t only_from, size_
 PangoLayout *
 easel_text_render_layout (const EaselTextBuffer *b, int width)
 {
-  PangoContext *ctx = easel_text_render_context ();
+  return easel_text_render_layout_for (b, width, FALSE);
+}
+
+PangoLayout *
+easel_text_render_layout_for (const EaselTextBuffer *b, int width, gboolean smooth)
+{
+  PangoContext *ctx = easel_text_render_context_for (smooth);
   PangoLayout *layout = pango_layout_new (ctx);
   EaselTextStyle st;
   PangoFontDescription *fd;
@@ -204,8 +218,146 @@ run_has_color_glyphs (PangoLayout *layout, size_t from, size_t to)
   return color;
 }
 
+void
+easel_text_render_ink_move (EaselTextInk *ink, int dx, int dy)
+{
+  ink->x += dx;
+  ink->y += dy;
+  for (size_t k = 0; k < ink->n_layers; k++)
+    {
+      ((EaselTextLayer *) ink->layers)[k].x += dx;
+      ((EaselTextLayer *) ink->layers)[k].y += dy;
+    }
+}
+
+void
+easel_text_render_ink_free (EaselTextInk *ink)
+{
+  for (size_t k = 0; k < ink->n_layers; k++)
+    {
+      g_free ((uint8_t *) ink->layers[k].cover);
+      g_free ((uint32_t *) ink->layers[k].colors);
+    }
+  g_free ((EaselTextLayer *) ink->layers);
+  g_free ((uint32_t *) ink->color);
+  g_free ((uint8_t *) ink->mask);
+  *ink = (EaselTextInk) { 0 };
+}
+
+/* The straight, opaque color of a color glyph's pixel p (premultiplied ARGB) where it is not the run's own color c, as Sharp decides
+   it (REQ-0017-06); c where it is or where nothing is drawn. */
+static uint32_t
+glyph_color (uint32_t p, uint32_t c)
+{
+  unsigned a = p >> 24, r, g, bl;
+
+  if (a == 0)
+    return c;
+  r = ((p >> 16) & 255) * 255 / a;
+  g = ((p >> 8) & 255) * 255 / a;
+  bl = (p & 255) * 255 / a;
+  if (ABS ((int) r - (int) ((c >> 16) & 255)) > 2 || ABS ((int) g - (int) ((c >> 8) & 255)) > 2 || ABS ((int) bl - (int) (c & 255)) > 2)
+    return 0xFF000000u | r << 16 | g << 8 | bl;
+  return c;
+}
+
+/* Smooth's ink (REQ-0040-04, REQ-0040-05): each style run drawn alone through a layout of the same text on the gray context (the same
+   places as Sharp's, `text-smooth-layout`), its coverage kept over the rectangle where it is not 0, in the order of the runs. */
+static gboolean
+smooth_ink (PangoLayout *sharp, const EaselTextBuffer *b, int x, int y, int ax, int ay, int aw, int ah, size_t max_bytes,
+            EaselTextInk *ink)
+{
+  PangoLayout *layout = easel_text_render_layout_for (b, pango_layout_get_width (sharp) / PANGO_SCALE, TRUE);
+  const EaselTextRun *runs;
+  size_t n, len, used = 0;
+  EaselTextLayer *layers;
+  cairo_surface_t *a8 = cairo_image_surface_create (CAIRO_FORMAT_A8, aw, ah);
+  gboolean ok = cairo_surface_status (a8) == CAIRO_STATUS_SUCCESS;
+
+  easel_text_buffer_text (b, &len);
+  runs = easel_text_buffer_runs (b, &n);
+  layers = ok ? g_try_new0 (EaselTextLayer, MAX (n, 1)) : NULL;
+  *ink = (EaselTextInk) { x + ax, y + ay, aw, ah, NULL, NULL, layers, 0 };
+  ok = layers != NULL;
+  for (size_t i = 0; ok && i < n; i++)
+    {
+      size_t from = runs[i].start, to = i + 1 < n ? runs[i + 1].start : len;
+      PangoAttrList *attrs = run_attributes (b, TRUE, from, to);
+      gboolean colored = run_has_color_glyphs (layout, from, to);
+      cairo_surface_t *argb = colored ? cairo_image_surface_create (CAIRO_FORMAT_ARGB32, aw, ah) : NULL;
+      cairo_t *cr = cairo_create (a8);
+      const unsigned char *d;
+      int stride, x0 = aw, y0 = ah, x1 = -1, y1 = -1;
+
+      /* the run alone (the others at alpha 1 of 65535, which draws them at 0 coverage), as Sharp's pass */
+      pango_layout_set_attributes (layout, attrs);
+      cairo_set_operator (cr, CAIRO_OPERATOR_CLEAR);
+      cairo_paint (cr);
+      cairo_set_operator (cr, CAIRO_OPERATOR_OVER);
+      cairo_move_to (cr, -ax, -ay);
+      pango_cairo_show_layout (cr, layout);
+      cairo_destroy (cr);
+      cairo_surface_flush (a8);
+      if (argb != NULL)
+        {
+          cr = cairo_create (argb);
+          cairo_move_to (cr, -ax, -ay);
+          pango_cairo_show_layout (cr, layout);
+          cairo_destroy (cr);
+          cairo_surface_flush (argb);
+        }
+      pango_attr_list_unref (attrs);
+      d = cairo_image_surface_get_data (a8);
+      stride = cairo_image_surface_get_stride (a8);
+      for (int j = 0; j < ah; j++)
+        for (int k = 0; k < aw; k++)
+          if (d[(size_t) j * stride + k] > 0)
+            {
+              x0 = MIN (x0, k), x1 = MAX (x1, k);
+              y0 = MIN (y0, j), y1 = MAX (y1, j);
+            }
+      if (x1 >= 0)
+        {
+          EaselTextLayer *l = &layers[ink->n_layers];
+          int w = x1 - x0 + 1, h = y1 - y0 + 1;
+          size_t a = (size_t) w * (size_t) h, bytes = a * (argb != NULL ? 5 : 1);
+          uint8_t *cover = used + bytes <= max_bytes ? g_try_malloc (a) : NULL;
+          uint32_t *colors = cover != NULL && argb != NULL ? g_try_new (uint32_t, a) : NULL;
+
+          ok = cover != NULL && (argb == NULL || colors != NULL);
+          if (ok)
+            {
+              used += bytes;
+              for (int j = 0; j < h; j++)
+                for (int k = 0; k < w; k++)
+                  {
+                    cover[(size_t) j * w + k] = d[(size_t) (y0 + j) * stride + x0 + k];
+                    if (colors != NULL)
+                      colors[(size_t) j * w + k] = glyph_color (((const uint32_t *) (cairo_image_surface_get_data (argb)
+                                                                                     + (size_t) (y0 + j) * cairo_image_surface_get_stride (argb)))[x0 + k],
+                                                                runs[i].style.color);
+                  }
+              *l = (EaselTextLayer) { x + ax + x0, y + ay + y0, w, h, runs[i].style.color, cover, colors };
+              ink->n_layers++;
+            }
+          else
+            {
+              g_free (cover);
+              g_free (colors);
+            }
+        }
+      g_clear_pointer (&argb, cairo_surface_destroy);
+    }
+  cairo_surface_destroy (a8);
+  g_object_unref (layout);
+  if (!ok)
+    easel_text_render_ink_free (ink);
+  return ok;
+}
+
 gboolean
-easel_text_render_ink (PangoLayout *layout, const EaselTextBuffer *b, int x, int y, size_t max_bytes, EaselTextInk *ink)
+easel_text_render_ink (PangoLayout *layout, const EaselTextBuffer *b, int x, int y, size_t max_bytes, gboolean smooth,
+                       EaselTextInk *ink)
 {
   PangoRectangle inked, logical;
   const EaselTextRun *runs;
@@ -232,6 +384,11 @@ easel_text_render_ink (PangoLayout *layout, const EaselTextBuffer *b, int x, int
     {
       pango_attr_list_unref (saved);
       return FALSE;
+    }
+  if (smooth)
+    {
+      pango_attr_list_unref (saved);
+      return smooth_ink (layout, b, x, y, ax, ay, aw, ah, max_bytes, ink);
     }
   color = g_try_malloc (area * sizeof *color);
   mask = g_try_malloc0 (area);

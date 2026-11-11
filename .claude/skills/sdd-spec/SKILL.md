@@ -67,6 +67,8 @@ Input: feature number or name from `docs/specs/INDEX.md`.
    the spec is accepted (0039: dividing by the rounded alpha turned red over transparent into #FA0000).
    A feature that adds a way to take back (Ctrl+Z) is checked against every earlier input that removes or cancels another, in this
    feature and in the ones it extends (0037/0038: a second press erased the first, so Ctrl+Z skipped both).
+   A rule that something happens "when X changes" (the caret moves, the size changes) gets a scenario where X is set to the value it
+   already has (0017: a press at the caret dropped the style chosen for the next text).
    A rule of order between two inputs ("the later wins") is stated for every pixel each input changes, not only the pixel where it was
    made (0038: a press flips a whole piece).
 4. Take behavior from XP Paint knowledge, jspaint (behavior, not code), JOD's descriptions and `docs/reference`; never from the
