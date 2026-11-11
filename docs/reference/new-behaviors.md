@@ -44,8 +44,8 @@ Optional; it starts only after the core XP scope is delivered.
 - Invert selection: selects everything outside the current selection.
 - Smooth text: a switch in the Text tool's options draws text with antialiasing; its default is set in Preferences and is off
   out of the box.
-- Smooth shapes and brushes: one shared switch in the options of the Line, Curve, shape and Brush tools draws them with
-  antialiasing; its default is set in Preferences and is off out of the box.
+- Smooth shapes and brushes: one shared choice, two cells Sharp | Smooth in the options of the Line, Curve, shape and Brush tools,
+  draws them with antialiasing; its default is set in Preferences and is off out of the box (feature 0039).
 - Either switch changes only the current session; it does not rewrite the saved default. The Pencil, the Eraser and Fill stay
   exact and show no switch.
 - Extra shapes: triangles, diamond, pentagon, hexagon, arrows, stars, callouts, heart, lightning bolt.
