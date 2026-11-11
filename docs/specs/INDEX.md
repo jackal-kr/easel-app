@@ -44,13 +44,13 @@ Vertical slices first (a thin end-to-end feature), breadth later.
 | 0037 | remove-background-pieces | In Remove Background's card a click on a piece of the preview toggles it kept or removed (the eagle's cloud islands, a horizon's bands); segments of the border prototyped and left out | Phase 2, item F of `docs/phase2-plan.md`; JOD, 2026-11-10; implemented 2026-11-10 |
 | 0038 | remove-background-brushes | In Remove Background's card two brushes, Keep this and Remove this: strokes become the method's seeds, so a subject the border misleads (a selfie's shirt on the bottom edge) is kept by a few strokes | Phase 2, item G of `docs/phase2-plan.md`; JOD, 2026-11-10; implemented 2026-11-10 |
 | 0039 | smooth-shapes-brushes | Two cells, Sharp and Smooth, shared by Line, Curve, the shapes and Brush: edges mixed by coverage of 16 x 16 points a pixel, each pixel once a figure; the default in Preferences, off | Phase 2, from the Phase 2 list; JOD, 2026-11-10; implemented 2026-11-11 (the toolbox's column now scrolls in a short window, 0006's edge case) |
+| 0040 | smooth-text | Text's own Sharp and Smooth cells, below Opaque and Transparent: smooth letters (gray, the shapes fitted to the pixels) mixed by their coverage; its own Preferences switch, off | Phase 2, the Phase 2 list's Smooth text option; JOD, 2026-11-11 (accepted) |
 
 ### Phase 2: Modern extras (optional, starts only after the core XP scope is delivered)
 | Feature | One line |
 |---|---|
 | Crop to selection | Crops the picture to the current selection in one command |
 | Invert selection | Selects everything outside the current selection |
-| Smooth text option | An opt-in switch that draws text with antialiasing; off by default |
 | Extra shapes | Triangles, diamond, pentagon, hexagon, arrows, stars, callouts, heart, lightning bolt |
 | 10-pixel key move without a gap | Ctrl+Shift with an arrow (REQ-0013-10) moves without leaving the blank strip of a plain move (From JOD's use) |
 
