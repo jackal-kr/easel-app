@@ -1,0 +1,38 @@
+# 0042 Invert selection
+
+Status: accepted
+Reviewed: spec-reviewer, 2026-11-11 (9 findings merged; the memory failure decided routinely as 0014's dialog)
+Depends on: 0013, 0014, 0021, 0023, 0041
+
+## Why
+To work on everything except a part of the picture (clear the background around a person, recolor all but a logo) the user would have
+to select the surroundings piece by piece. Invert Selection selects everything outside the current selection in one command; it is a
+modern extra (`docs/product.md`, `docs/reference/new-behaviors.md`). It changes no pixel (unlike Invert Colors, REQ-0018-05).
+
+## Requirements
+- REQ-0042-01 The primary menu's Edit submenu (REQ-0013-16) shall have "In_vert Selection" directly after "Select _All", and a selection's context menu (REQ-0013-17) the same item directly after its "Select _All", both with the shortcut Ctrl+Shift+J (JOD, 2026-11-11: free in Easel and in the desktop; Ctrl+Shift+I opens GTK's inspector where its keybinding is on), shown beside the item, in the Shortcuts window and in Help. The item and its key are sensitive only while a selection exists (marked or floating, Select or Free-Form Select). The key does nothing where REQ-0021-01's keys do nothing (before the picture exists, with a dialog, the quit prompt, the color chooser or a menu open, a button held in the canvas area, the selection or a resize handle being dragged, the focus in a text field of the font card); the item acts from its own menu.
+- REQ-0042-02 When the user inverts a marked selection, the app shall make the selection every pixel of the picture that was not selected, and only those: for a rectangle, the picture less the rectangle; for a Free-Form shape, the picture less the shape. The new selection is marked (nothing is lifted), Free-Form Select becomes the active tool and keeps it (JOD, 2026-11-11; REQ-0014-10 does not apply to this switch), and from then on it is a Free-Form selection in every respect (REQ-0014-05 to REQ-0014-17: moved, copied, cleared, cut, flipped, stretched and cropped as one).
+- REQ-0042-03 When the user inverts a floating selection, the app shall first put it down where it is, as REQ-0013-11 says for it (a moved one in the step of its lift; a pasted one as REQ-0016-05 says; JOD, 2026-11-11), then select every pixel of the picture outside its whole shape (its rectangle for a rectangular one; background-colored pixels included, as REQ-0013-13 keeps them in both modes), as REQ-0042-02.
+- REQ-0042-04 Inverting adds no undo step and changes no pixel, apart from a floating selection's put-down (REQ-0042-03); it does not mark the picture modified. Undo after it takes back the edit before it and leaves no selection, the tool staying Free-Form Select. Inverting twice selects the first selection's pixels again (as a Free-Form selection).
+- REQ-0042-05 If the inverted selection would have no pixel (the selection, marked, floating or Free-Form, covered the whole picture), then the app shall remove the selection (after a floating one's put-down): nothing is selected and the tool stays as it was.
+- REQ-0042-06 A selection's shape may have holes and several separate pieces (a hole when a rectangle inside the picture is inverted; pieces when a band across it is). It shall be outlined along every grid edge between a selected pixel and a pixel that is unselected or outside the picture, in REQ-0014-05's line and dashes; each closed boundary is one dashed line, its dashes counted from its corner of smallest y, then smallest x, going clockwise. The status bar shows the size of its bounding rectangle (REQ-0014-07).
+- REQ-0042-07 If the memory for the new selection's shape cannot be had, then the app shall show the dialog of REQ-0014-15 ("Could Not Make the Selection") and leave the selection as it was: a marked one marked, a floating one still floating where it was, nothing put down.
+
+## Scenarios
+- AS-1 (REQ-0042-01) Given no selection, Then Edit › Invert Selection is insensitive and Ctrl+Shift+J does nothing; Given a marked, a floating and a Free-Form selection, Then it is sensitive in the Edit submenu and in the selection's context menu, directly after Select All, with Ctrl+Shift+J beside it, and the Shortcuts window and Help list it; Given before the picture exists, a stroke held, the selection or a resize handle being dragged, the focus in the font card's size field, a dialog, the quit prompt, the color chooser or a menu open, When Ctrl+Shift+J, Then nothing happens | Verified by: automated (ui)
+- AS-2 (REQ-0042-02, REQ-0042-04, REQ-0042-06) Given a 300 x 200 picture with Select and a marked selection (100, 50) to (199, 149), When Invert Selection, Then Free-Form Select is active, the selection is the 300 x 200 picture less that rectangle (50 000 pixels), marked, the picture unchanged, no step added, the title not marked, the status bar "300 × 200", and the outline is two dashed lines, one round the picture's edge and one round the hole; When Delete (Clear Selection), Then every pixel outside the rectangle is cleared and those inside it are unchanged, one step | Verified by: automated (ui)
+- AS-3 (REQ-0042-02, REQ-0042-04) Given a Free-Form triangle selected, When Invert Selection twice, Then the selection is the triangle's pixels again, as a Free-Form selection; Given a marked selection and an earlier edit, When Invert Selection then Undo, Then the earlier edit is taken back, no selection, Free-Form Select still active | Verified by: automated (ui)
+- AS-4 (REQ-0042-03) Given a 20 x 20 floating selection moved to (50, 50), When Invert Selection, Then it is put down there in the step of its lift, and the selection is the picture less (50, 50) to (69, 69); When Undo, Then the picture before the lift, and no selection; Given a pasted 20 x 20 picture, When Invert Selection, Then it is put down as REQ-0016-05 says and the rest is selected; When Undo, Then the picture before the paste | Verified by: automated (ui)
+- AS-5 (REQ-0042-05) Given Select All, a floating selection exactly over the whole picture, or a Free-Form shape covering every pixel, When Invert Selection, Then nothing is selected, the tool is as it was, nothing changes except the floating one's put-down (one step) | Verified by: automated (ui)
+- AS-6 (REQ-0042-07) Given memory made too small for the new shape, When Invert Selection on a marked and on a floating selection, Then "Could Not Make the Selection" shows and the selection is as it was, the floating one still floating | Verified by: automated (ui)
+- AS-7 (REQ-0042-01) Given each language, Then the item's mnemonic is used by no other item of the Edit submenu and of the selection's context menu (the mnemonic tests of 0023 and 0035) | Verified by: automated (ui)
+- AS-8 (REQ-0042-02, REQ-0042-06) Given an inverted selection with a hole, When it is moved (a drag on it), Then the picture less the hole is lifted and moves, leaving the hole's pixels where they were; When Crop to Selection, Then nothing changes (its bounding rectangle is the whole picture, REQ-0041-05); Given a band across the picture inverted, Then two pieces are selected, each with its own dashed outline | Verified by: automated (ui)
+
+## Edge cases
+- A selection of one pixel: the inverted one is every other pixel.
+- A floating selection partly outside the picture: put down (the part outside is lost, REQ-0013-11), then the rest of the picture is selected.
+- A Free-Form selection whose shape touches the picture's edges: its inverse has no line along those edges where it has no pixel.
+- Invert while a resize handle or the selection is dragged: ignored (REQ-0042-01).
+
+## Out of scope
+- Selecting by color (a magic wand), adding to or subtracting from a selection.
