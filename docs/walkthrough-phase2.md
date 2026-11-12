@@ -64,3 +64,23 @@ Everything goes in `/tmp/easel-walk2`; save there too. Remove it afterwards with
     save a file in your home folder, Help opens; quit. The same with `tools/package.sh install-deb`, after removing the Flatpak
     (`flatpak uninstall --user` Easel's id), since both show one entry.
 14. **The icon (0024 T003).** In the app grid and the dock: say yes, or what to change.
+
+## Since the beta (before 1.0.0)
+Same setup. One step per change since `v0.1.0-beta.1`; then steps 13 and 14 again with the 1.0.0 packages.
+
+15. **Ctrl+Shift+arrow (0013).** `walk /tmp/easel-walk2/subject.png`. Select around the red disk; Ctrl+Shift+Right: a copy moves 10
+    pixels and the original stays, no blank strip; again: 10 more, still no trail. Ctrl+Z takes it back.
+16. **Crop to Selection (0041).** Select a rectangle around the disk; Image › Crop to Selection (Ctrl+Shift+K): the picture becomes that
+    rectangle, the window title shows it modified; Ctrl+Z gives the whole picture back. Free-Form Select around the island, then the
+    selection's right-click menu › Crop to Selection: the picture is the island's bounding box, outside its outline the background.
+    Move a selection first (floating), then crop: the moved pixels are in the result, as shown.
+17. **Invert Selection (0042).** Select the disk; Edit › Invert Selection (Ctrl+Shift+J): Free-Form Select becomes the tool, the dashes
+    run around the picture's edge and around the hole; Delete clears everything but the disk. Ctrl+Z. Ctrl+Shift+J twice: back to the
+    disk's rectangle as a free-form selection. Ctrl+A, Ctrl+Shift+J: nothing is selected.
+18. **Shapes (0043).** The toolbox has one Shapes button in place of Rectangle, Rounded Rectangle and Ellipse. In its options, the
+    Shape button opens 19 shapes; choose 5-Point Star, drag: the star waits with eight handles, the picture not changed yet. Drag
+    inside it: it moves; drag a handle: it resizes, past the opposite edge it mirrors; change the width, the fill style, Sharp or
+    Smooth and a palette color: it follows at once. Enter puts it down (one Ctrl+Z); drag another, then press away: put down, and
+    the press starts the next one. Esc while one waits: removed. With the keyboard: the arrows move the marker, Space, arrows,
+    Space draws one; Space inside it, arrows, Space moves it. Hover a picture handle that lies inside a waiting shape's box: the move
+    cursor, and a press there moves the shape. Look at the 19 icons in light and dark.

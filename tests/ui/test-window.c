@@ -8422,6 +8422,52 @@ as16_shape_memory_dialog (void)
   close_windows ();
 }
 
+/* The release path that only Line takes since Shapes' shapes wait (0043; found by the 1.0.0 gate's full mutation run): a Line drawn
+   with the secondary button is in the background color (REQ-0010-06), and a Line refused at its release shows the dialog and changes
+   nothing (REQ-0010-20). */
+static void
+gate_line_release_paths (void)
+{
+  EaselWindow *win = start_window ();
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  EaselPaletteBar *bar = easel_window_get_palette_bar (win);
+  AdwAlertDialog *dialog;
+  uint32_t fg, bg;
+
+  wait_for_layout (win);
+  use_tool (win, "line");
+  easel_palette_bar_press (bar, 4, 3, 1);                 /* a background other than the foreground and the picture's yellow */
+  fg = easel_window_get_foreground (win);
+  bg = easel_window_get_background (win);
+  g_assert_cmphex (bg, !=, fg);
+  g_assert_cmphex (bg, !=, 0xFFFFFF00u);
+  shape_press_move (win, 3, 10, 10, 40, 10);
+  shape_release (win, 3);
+  g_assert_false (easel_canvas_is_pending (canvas));
+  g_assert_cmphex (easel_image_get (img, 20, 10), ==, bg);
+  g_assert_cmpint (count_color (img, fg), ==, 0);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_cmpint (count_color (img, 0xFFFFFF00u), ==, 300 * 200);
+  /* refused at the release: the dialog, nothing drawn, no step */
+  easel_canvas_set_shape_memory_limit (canvas, 1000);
+  shape_press_move (win, 1, 0, 0, 299, 199);
+  shape_release (win, 1);
+  easel_canvas_set_shape_memory_limit (canvas, SIZE_MAX);
+  wait_for_dialogs (win, 1);
+  dialog = open_alert (win);
+  g_assert_nonnull (dialog);
+  g_assert_cmpstr (adw_alert_dialog_get_heading (dialog), ==, "Could Not Draw the Shape");
+  g_assert_cmpint (count_color (img, 0xFFFFFF00u), ==, 300 * 200);
+  g_assert_false (easel_canvas_is_stroking (canvas));
+  adw_dialog_close (ADW_DIALOG (dialog));
+  wait_for_dialogs (win, 0);
+  shape_press_move (win, 1, 0, 0, 299, 199);
+  shape_release (win, 1);
+  g_assert_cmpint (count_color (img, 0xFFFFFF00u), <, 300 * 200);
+  close_windows ();
+}
+
 /* AS-17 (REQ-0010-21): the end follows the pointer past the area's edge; the view does not scroll by itself; Ctrl+wheel
    goes through the wheel handler and does not zoom (the view scrolls as usual), the pinch does nothing; after a scroll the
    end moves at the next pointer motion. */
@@ -18123,11 +18169,21 @@ as8_paste_from_dialog (void)
     for (gint64 deadline = g_get_monotonic_time () + 1500000; g_get_monotonic_time () < deadline;)
       g_main_context_iteration (NULL, FALSE);
     g_assert_true (gtk_file_chooser_set_file (GTK_FILE_CHOOSER (chooser), png_file, NULL));
+    /* until the chooser has the file (a slow build, ASan, takes longer than the moment above) */
+    for (gint64 deadline = g_get_monotonic_time () + 10 * G_USEC_PER_SEC; g_get_monotonic_time () < deadline;)
+      {
+        g_autoptr (GFile) chosen = gtk_file_chooser_get_file (GTK_FILE_CHOOSER (chooser));
+
+        if (chosen != NULL && g_file_equal (chosen, png_file))
+          break;
+        g_main_context_iteration (NULL, FALSE);
+      }
     G_GNUC_END_IGNORE_DEPRECATIONS
-    for (gint64 deadline = g_get_monotonic_time () + 1500000; g_get_monotonic_time () < deadline;)
-      g_main_context_iteration (NULL, FALSE);
   }
   g_signal_emit_by_name (chooser, "response", GTK_RESPONSE_ACCEPT);
+  /* until the file is read and floats (its reading is not on the main thread) */
+  for (gint64 deadline = g_get_monotonic_time () + 10 * G_USEC_PER_SEC; !selection_is (win, 0, 0, 3, 2) && g_get_monotonic_time () < deadline;)
+    g_main_context_iteration (NULL, FALSE);
   wait_for_layout (win);
   g_assert_true (selection_is (win, 0, 0, 3, 2));
   g_assert_true (g_str_has_suffix (gtk_window_get_title (GTK_WINDOW (win)), "Untitled – Easel"));
@@ -44392,6 +44448,7 @@ main (int argc, char **argv)
   g_test_add_func ("/0010/as9_shift_during_drag", as9_shift_during_drag);
   g_test_add_func ("/0010/as14_shapes_ignored_when_blocked", as14_shapes_ignored_when_blocked);
   g_test_add_func ("/0010/as16_shape_memory_dialog", as16_shape_memory_dialog);
+  g_test_add_func ("/0010/gate_line_release_paths", gate_line_release_paths);
   g_test_add_func ("/0010/as17_drag_outside_area", as17_drag_outside_area);
   g_test_add_func ("/0011/as1_curve_polygon_toolbox_hints", as1_curve_polygon_toolbox_hints);
   g_test_add_func ("/0012/as1_gradient_toolbox_hints", as1_gradient_toolbox_hints);
