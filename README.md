@@ -6,19 +6,19 @@ Draw and touch up pictures. A simple, native GNOME paint program in the style of
 
 Easel has the classic tools and workflow, built with GTK 4 and libadwaita, so it looks and behaves like a GNOME app: header bar, dark style, native dialogs. Pictures stay exact: hard edges and no surprise smoothing.
 
-**Status:** beta, a pre-release (0.1.0-beta.1). Every feature planned for the first release is in; expect a few rough edges still, and keep copies of pictures you care about.
+**Status:** 1.0.0, the first full release.
 
 ## Try it
-Download the Flatpak or the .deb from the [Releases](https://github.com/jackal-kr/easel-app/releases) page (a beta is a pre-release, so GitHub's "latest" link does not list it).
+Download the Flatpak or the .deb from the [Releases](https://github.com/jackal-kr/easel-app/releases) page.
 
-    flatpak install --user easel-0.1.0-beta.1.flatpak       # any distribution
-    sudo apt install ./easel_0.1.0-beta.1_amd64.deb          # Ubuntu 26.10, x86-64
+    flatpak install --user easel-1.0.0.flatpak              # any distribution
+    sudo apt install ./easel_1.0.0_amd64.deb                 # Ubuntu 26.10, x86-64
 
-The Flatpak needs Flathub for the GNOME runtime. The [release notes](docs/release-notes-0.1.0-beta.1.md) have the full steps, how to remove it, and the checksums.
+The Flatpak needs Flathub for the GNOME runtime. The [release notes](docs/release-notes-1.0.0.md) have the full steps, how to remove it, and the checksums.
 
 ## What it does
-- **Tools:** Pencil, Brush, Airbrush, Eraser, Fill, Pick Color, Magnifier, Text, Line, Curve, Rectangle, Rounded Rectangle, Ellipse, Polygon, Select and Free-Form Select, plus Pan and Gradient.
-- **Selections:** move, copy, smear, transparent mode, clipboard, flip, rotate, stretch and skew.
+- **Tools:** Pencil, Brush, Airbrush, Eraser, Fill, Pick Color, Magnifier, Text, Line, Curve, Shapes (19 of them, adjustable before they are put down), Polygon, Select and Free-Form Select, plus Pan and Gradient.
+- **Selections:** move, copy, crop, invert, smear, transparent mode, clipboard, flip, rotate, stretch and skew.
 - **Image:** Remove Background (with Keep this and Remove this brushes), Black and White, gradients (Linear, Radial, Reflected), and optional smooth edges for lines, shapes, brushes and text.
 - **View:** zoom from 10 % to 1600 %, a pixel grid and a thumbnail.
 - **History:** undo and redo within a memory budget you can change.

@@ -1,3 +1,10 @@
+easel (1.0.0) stonking; urgency=low
+
+  * First full release: Shapes with 19 shapes that wait with handles, Crop to
+    Selection, Invert Selection, and Ctrl+Shift+arrow leaving a copy.
+
+ -- JOD <20030596+jackal-kr@users.noreply.github.com>  Thu, 12 Nov 2026 12:00:00 +0100
+
 easel (0.1.0~beta.1) stonking; urgency=low
 
   * First beta release: Remove Background, Black and White, gradient types,
