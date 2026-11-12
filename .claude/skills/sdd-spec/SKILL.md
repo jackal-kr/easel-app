@@ -41,6 +41,7 @@ Input: feature number or name from `docs/specs/INDEX.md`.
    A requirement that says "exact" bounds every quantity it computes with, and the Plan checks that range (0033), points the spec
    derives (a curve's samples, their denominators) included (0039).
    A shape made as the union of others says what happens at their ends and joins (0039: "sides as Lines, joins rounded").
+   A rule that says where a line starts or which way it runs is worded from the function's own rule (read it, or port it and run it), and tried on a second shape (a triangular hole, two pieces) before it is accepted, not generalized from the example (0042: "corner of largest y" held for a rectangle only).
    An edge case that limits the window or a layout (a least size, what scrolls) gets a scenario, so that it gets a test (0039: 0006's
    "the column scrolls" was never built).
    A prototype that gives the spec's numbers is kept in `docs/reference/proto-NNNN/`, not in a temporary folder (0039: lost in a reboot).

@@ -38,6 +38,7 @@ Precondition: `Status: accepted` in the spec. Otherwise stop and say so.
      report), then the smallest code that passes; a ui test of anything that
      moves the view also checks where the picture is drawn, by rendering the window; a new case also passes when run alone;
    - a step or buffer kept under a memory budget has a test that compares the memory held (capacity) with the memory counted, not only the length, and so does every allocation a task adds that the limit counts (a list that gains a column, a flag array);
+   - a refusal test over a path of several allocations sweeps the limit to find the least limit of each stage and asserts their order, and a limit given to a stage that a stricter one always refuses first is an equivalent mutant, removed with the reason (0042: the outline needed 72 bytes against the core's 48); a "nothing changed" test compares the state before the action with the state after it, never a baseline it assumed (a moved float had left Undo enabled);
    - a key the feature handles that is also an application accelerator (Ctrl+Z, Ctrl+A) is tested with that accelerator's action
      enabled (a picture with undo steps), through the action it activates: the accelerator takes the key first (0038 F1);
    - a size given on the screen in logical pixels gets one case at scale 2 (`ui-NNNN-scale2`): the zoom counts device pixels (0038 F2);
@@ -64,6 +65,7 @@ Precondition: `Status: accepted` in the spec. Otherwise stop and say so.
    - a test that closes a window keeps a weak pointer to it and asserts that it is still there before it touches it;
    - a probe or helper that sets the desktop's clipboard acts from a click and is checked from outside (a second process, `xclip`) before JOD is asked to use it;
    - a test helper that waits asks for what it waits for, and a case that ends far slower than its work is looked into: a wait that runs out its deadline passes in silence;
+   - a value in a test that the spec gives no number for (a stretch's source pixel, a free function of an image type) is read from the spec's rule or the header first, not guessed: 0042's first run died on a wrong destructor and a wrong source pixel;
    - a test that changes a process-wide setting (a GTK setting, an environment variable) sets it back to the test program's start value, not to what it takes for the default;
    - a pure function and its test are written in two separate edits, with a build and a red run between them;
    - when work from a later task is pulled forward, its tests are written and run red before that code too;
