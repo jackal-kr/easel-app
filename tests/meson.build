@@ -91,6 +91,7 @@ test('ui-0037', test_window, args: ['-p', '/0037'], env: ui_env, suite: 'ui', ti
 test('ui-0038', test_window, args: ['-p', '/0038'], env: ui_env, suite: 'ui', timeout: 300, is_parallel: false)
 test('ui-0039', test_window, args: ['-p', '/0039'], env: ui_env, suite: 'ui', timeout: 300, is_parallel: false)
 test('ui-0040', test_window, args: ['-p', '/0040'], env: ui_env, suite: 'ui', timeout: 300, is_parallel: false)
+test('ui-0042', test_window, args: ['-p', '/0042'], env: ui_env, suite: 'ui', timeout: 300, is_parallel: false)
 test('ui-0041', test_window, args: ['-p', '/0041'], env: ui_env, suite: 'ui', timeout: 300, is_parallel: false)
 test('ui-0040-scale2', test_window, args: ['-p', '/0040-scale2'], env: ui_env, suite: 'ui', timeout: 180, is_parallel: false)
 test('ui-0036', test_window, args: ['-p', '/0036'], env: ui_env, suite: 'ui', timeout: 300, is_parallel: false)
@@ -246,5 +247,6 @@ test('ui-0023-suite-in-english', test_window, args: ['-p', '/0020'], env: suite_
 
 # Remove background (spec 0035, ADR-0007): one result at 8000 x 8000 against 1 s; a benchmark, never in the suite.
 benchmark('perf-0035', executable('perf-0035', 'perf/perf-0035.c', dependencies: easel_core_dep), env: perf_env, timeout: 300)
+benchmark('perf-0042', executable('perf-0042', 'perf/perf-0042.c', dependencies: easel_ui_dep), env: perf_env, timeout: 600)
 benchmark('perf-0041', executable('perf-0041', 'perf/perf-0041.c', dependencies: easel_ui_dep), env: perf_env, timeout: 600)
 benchmark('perf-0039', executable('perf-0039', 'perf/perf-0039.c', dependencies: easel_ui_dep), env: perf_env, timeout: 600)

@@ -125,6 +125,9 @@ msgstr "Lipește"
 msgid "Select All"
 msgstr "Selectează tot"
 
+msgid "Invert Selection"
+msgstr "Inversează selecția"
+
 msgid "Clear the selection"
 msgstr "Golește selecția"
 
@@ -1135,6 +1138,9 @@ msgstr "_Golește selecția"
 
 msgid "Select _All"
 msgstr "Selecte_ază tot"
+
+msgid "In_vert Selection"
+msgstr "I_nversează selecția"
 
 msgid "Cop_y To…"
 msgstr "C_opiază în…"

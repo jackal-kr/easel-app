@@ -124,6 +124,9 @@ msgstr "Beillesztés"
 msgid "Select All"
 msgstr "Összes kijelölése"
 
+msgid "Invert Selection"
+msgstr "Kijelölés megfordítása"
+
 msgid "Clear the selection"
 msgstr "Kijelölés törlése"
 
@@ -1125,6 +1128,9 @@ msgstr "Ki_jelölés törlése"
 
 msgid "Select _All"
 msgstr "Ö_sszes kijelölése"
+
+msgid "In_vert Selection"
+msgstr "Kijelölés me_gfordítása"
 
 msgid "Cop_y To…"
 msgstr "Más_olás ide…"

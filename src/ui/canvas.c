@@ -3150,6 +3150,71 @@ easel_canvas_clear_selection (EaselCanvas *self)
   return TRUE;
 }
 
+EaselSelectionResult
+easel_canvas_invert_selection (EaselCanvas *self, gboolean *selected)
+{
+  EaselSelectionResult r;
+  EaselPath path = { 0 };
+  uint8_t *mask = NULL;
+  int x, y, w, h;
+
+  *selected = FALSE;
+  if (self->sel_state == 0 || easel_canvas_is_stroking (self))
+    return EASEL_SELECTION_NOTHING;
+  /* The new shape and its line are made first, so that a refusal changes nothing (REQ-0042-07): of a marked selection's rectangle or mask, or of a floating one's whole shape,
+     its box and mask as it is shown (the image of a stretch is whole at its release). */
+  if (self->sel_state == 2)
+    easel_selection_complete (&self->sel_float);
+  r = self->sel_state == 2
+      ? easel_selection_invert (self->sel_float.mask, self->sel_float.x, self->sel_float.y, self->sel_float.w, self->sel_float.h, self->img->width, self->img->height, &x, &y,
+                                &w, &h, &mask, self->sel_lift_max)
+      : easel_selection_invert (self->sel_mask, self->sel_x, self->sel_y, self->sel_w, self->sel_h, self->img->width, self->img->height, &x, &y, &w, &h, &mask,
+                                self->sel_lift_max);
+  if (r == EASEL_SELECTION_DONE && !easel_lasso_outline (mask, w, h, x, y, &path, self->sel_lift_max))
+    {
+      free (mask);
+      r = EASEL_SELECTION_NO_MEMORY;
+    }
+  if (r == EASEL_SELECTION_NO_MEMORY)
+    {
+      g_signal_emit (self, signals[SIGNAL_SELECTION_FAILED], 0, 2);   /* the dialog of REQ-0014-15; the selection as it was */
+      return r;
+    }
+  if (self->sel_state == 2)
+    {
+      /* A floating selection is put down first where it is (REQ-0042-03); if that fails (REQ-0013-19: its dialog, the picture as before the lift, the selection gone)
+         nothing is inverted. */
+      if (!finish_selection (self, FALSE))
+        {
+          free (mask);
+          easel_path_free (&path);
+          return EASEL_SELECTION_NOTHING;
+        }
+    }
+  else
+    shape_free (self);
+  if (r == EASEL_SELECTION_DONE)
+    {
+      self->sel_state = 1;                           /* marked (a floating one's put-down left none) */
+      self->sel_x = self->sel_path_x = x;
+      self->sel_y = self->sel_path_y = y;
+      self->sel_w = w;
+      self->sel_h = h;
+      self->sel_mask = mask;
+      self->sel_path = path;
+      *selected = TRUE;
+    }
+  else
+    self->sel_state = 0;                             /* nothing is left: the selection goes (REQ-0042-05) */
+  self->hover_sel = FALSE;
+  self->hover_sel_handle = -1;
+  update_cursor (self);
+  g_signal_emit (self, signals[SIGNAL_PENDING_CHANGED], 0);
+  g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);
+  gtk_widget_queue_draw (GTK_WIDGET (self));
+  return EASEL_SELECTION_DONE;
+}
+
 /* The picture's buffer and size and the saved ones of a grown paste (paste_base) change places: the crop of a floating paste is made from the
    picture as it was before the paste (REQ-0041-03, REQ-0041-04), and a crop that fails puts them back as they were, with nothing allocated. */
 static void

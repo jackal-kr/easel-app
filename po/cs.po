@@ -125,6 +125,9 @@ msgstr "Vložit"
 msgid "Select All"
 msgstr "Vybrat vše"
 
+msgid "Invert Selection"
+msgstr "Invertovat výběr"
+
 msgid "Clear the selection"
 msgstr "Vymazat výběr"
 
@@ -1135,6 +1138,9 @@ msgstr "Vy_mazat výběr"
 
 msgid "Select _All"
 msgstr "Vybr_at vše"
+
+msgid "In_vert Selection"
+msgstr "Inver_tovat výběr"
 
 msgid "Cop_y To…"
 msgstr "Kopírovat _do…"

@@ -124,6 +124,9 @@ msgstr "Einfügen"
 msgid "Select All"
 msgstr "Alles auswählen"
 
+msgid "Invert Selection"
+msgstr "Auswahl umkehren"
+
 msgid "Clear the selection"
 msgstr "Auswahl leeren"
 
@@ -1125,6 +1128,9 @@ msgstr "Auswahl _leeren"
 
 msgid "Select _All"
 msgstr "_Alles auswählen"
+
+msgid "In_vert Selection"
+msgstr "Auswahl u_mkehren"
 
 msgid "Cop_y To…"
 msgstr "K_opieren nach…"

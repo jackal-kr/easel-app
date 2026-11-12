@@ -142,6 +142,7 @@ struct _EaselWindow
   int frames_before_decode;
   gboolean decode_after_paint;   /* test hook: the last decode was started by a frame's after-paint */
   gboolean prompt_open;   /* a "Save Changes?" prompt, from showing it until its choice is carried out */
+  gboolean keep_selection_on_tool_change;   /* Invert Selection makes Free-Form Select the tool and keeps its selection (REQ-0042-02) */
   AdwDialog *paste_prompt;   /* the oversize-paste prompt while it is open (REQ-0016-13) */
   EaselImage *paste_pending; /* the picture it asks about, read when Paste was chosen */
   void (*prompt_then) (EaselWindow *self);   /* what Discard, or a Save that worked, goes on to do */
@@ -3893,6 +3894,23 @@ crop_to_selection_activated (GSimpleAction *action, GVariant *parameter, gpointe
   sync_history_ui (self);
 }
 
+/* Invert Selection (0042): the action. Sensitive with a selection (update_clipboard_actions); ignored where Crop to Selection is. A selection left makes Free-Form
+   Select the tool without putting it down (REQ-0042-02, REQ-0014-10 does not apply); an empty result removes it and leaves the tool. */
+static void
+invert_selection_activated (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+  EaselWindow *self = user_data;
+  gboolean selected;
+
+  if (!view_actions_allowed (self) || easel_canvas_is_panning (self->canvas) || card_field_focus (self) != NULL)
+    return;
+  if (easel_canvas_invert_selection (self->canvas, &selected) != EASEL_SELECTION_DONE || !selected || self->tool == EASEL_TOOL_FREE_SELECT)
+    return;
+  self->keep_selection_on_tool_change = TRUE;
+  g_action_group_change_action_state (G_ACTION_GROUP (self), "tool", g_variant_new_string ("free-select"));
+  self->keep_selection_on_tool_change = FALSE;
+}
+
 /* ---- Black and White (0034) ---- */
 
 /* Convert: the one function every conversion goes through; the dialog has closed. On the selection while one exists, else on the whole
@@ -5494,7 +5512,7 @@ update_clipboard_actions (EaselWindow *self)
   gboolean box = self->tool == EASEL_TOOL_TEXT && easel_canvas_text_box (self->canvas, &x, &y, &w, &h);
   gboolean selection = idle && easel_canvas_get_selection (self->canvas, &x, &y, &w, &h, &floating);
   gboolean picture = idle && self->clipboard != NULL && clipboard_has_picture (self->clipboard);
-  static const char *selection_actions[] = { "cut", "copy", "copy-to", "crop-to-selection" };
+  static const char *selection_actions[] = { "cut", "copy", "copy-to", "crop-to-selection", "invert-selection" };
 
   if (box)
     {
@@ -5508,6 +5526,7 @@ update_clipboard_actions (EaselWindow *self)
       set_action_enabled (self, "copy", text_selected);
       set_action_enabled (self, "copy-to", FALSE);
       set_action_enabled (self, "crop-to-selection", FALSE);
+      set_action_enabled (self, "invert-selection", FALSE);
       set_action_enabled (self, "paste", text);
       set_action_enabled (self, "paste-plain", text);
       set_action_enabled (self, "paste-from", idle);
@@ -6196,7 +6215,7 @@ change_tool_state (GSimpleAction *action, GVariant *value, gpointer user_data)
   if (!easel_tool_from_name (g_variant_get_string (value, NULL), &tool))
     return;
   /* Another tool puts a pending curve or polygon down; the same tool keeps it (REQ-0011-12). */
-  if (tool != self->tool && !put_down_for_action (self, FALSE))
+  if (tool != self->tool && !self->keep_selection_on_tool_change && !put_down_for_action (self, FALSE))
     return;                                     /* a text box that could not be put down: Text stays the tool (REQ-0017-18) */
   if (tool == EASEL_TOOL_PICK && self->tool != EASEL_TOOL_PICK)
     self->pick_return_tool = self->tool;
@@ -6275,6 +6294,7 @@ static const GActionEntry win_actions[] = {
   { .name = "rotate-270", .activate = rotate_270_activated },
   { .name = "stretch-skew", .activate = stretch_skew_activated },
   { .name = "crop-to-selection", .activate = crop_to_selection_activated },
+  { .name = "invert-selection", .activate = invert_selection_activated },
   { .name = "preferences", .activate = preferences_activated },
   { .name = "print", .activate = print_activated },
   { .name = "shortcuts", .activate = shortcuts_activated },

@@ -124,6 +124,9 @@ msgstr "Incolla"
 msgid "Select All"
 msgstr "Seleziona tutto"
 
+msgid "Invert Selection"
+msgstr "Inverti selezione"
+
 msgid "Clear the selection"
 msgstr "Svuota la selezione"
 
@@ -1125,6 +1128,9 @@ msgstr "Svuota _la selezione"
 
 msgid "Select _All"
 msgstr "_Seleziona tutto"
+
+msgid "In_vert Selection"
+msgstr "I_nverti selezione"
 
 msgid "Cop_y To…"
 msgstr "C_opia in…"

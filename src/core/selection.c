@@ -284,6 +284,78 @@ static EaselSelectionResult put_down_with (const EaselFloat *f, bool with_float,
                                            const Growth *growth);
 
 EaselSelectionResult
+easel_selection_invert (const uint8_t *mask, int sx, int sy, int sw, int sh, int img_w, int img_h, int *x, int *y, int *w, int *h,
+                        uint8_t **out, size_t max_bytes)
+{
+  int ix0 = sx > 0 ? sx : 0, iy0 = sy > 0 ? sy : 0;
+  int ix1 = (long long) sx + sw < img_w ? sx + sw : img_w, iy1 = (long long) sy + sh < img_h ? sy + sh : img_h;
+  uint32_t *rows, *cols;
+  int x0 = img_w, y0 = img_h, x1 = -1, y1 = -1, bw, bh;
+  uint8_t *m;
+
+  *out = NULL;
+  if (img_w < 1 || img_h < 1 || img_w > EASEL_IMAGE_MAX_SIZE || img_h > EASEL_IMAGE_MAX_SIZE)
+    return EASEL_SELECTION_NO_MEMORY;
+  /* The selected pixels of each row and column of the picture, which is all that the bounding rectangle of the rest needs: a row (a column) has
+     a pixel left unless the selection fills it. */
+  if ((size_t) (img_w + img_h) * sizeof *rows > max_bytes || (rows = calloc ((size_t) (img_w + img_h), sizeof *rows)) == NULL)
+    return EASEL_SELECTION_NO_MEMORY;
+  cols = rows + img_h;
+  if (sw > 0 && sh > 0 && ix1 > ix0 && iy1 > iy0)
+    {
+      if (mask == NULL)
+        {
+          for (int j = iy0; j < iy1; j++)
+            rows[j] = (uint32_t) (ix1 - ix0);
+          for (int i = ix0; i < ix1; i++)
+            cols[i] = (uint32_t) (iy1 - iy0);
+        }
+      else
+        for (int j = iy0; j < iy1; j++)
+          for (int i = ix0; i < ix1; i++)
+            if (mask[(size_t) (j - sy) * (size_t) sw + (size_t) (i - sx)])
+              {
+                rows[j]++;
+                cols[i]++;
+              }
+    }
+  for (int j = 0; j < img_h; j++)
+    if (rows[j] < (uint32_t) img_w)
+      {
+        y0 = j < y0 ? j : y0;
+        y1 = j;
+      }
+  for (int i = 0; i < img_w; i++)
+    if (cols[i] < (uint32_t) img_h)
+      {
+        x0 = i < x0 ? i : x0;
+        x1 = i;
+      }
+  free (rows);
+  if (x1 < 0 || y1 < 0)
+    return EASEL_SELECTION_NOTHING;
+  bw = x1 - x0 + 1;
+  bh = y1 - y0 + 1;
+  if ((size_t) bw * (size_t) bh > max_bytes || (m = malloc ((size_t) bw * (size_t) bh)) == NULL)
+    return EASEL_SELECTION_NO_MEMORY;
+  for (int j = 0; j < bh; j++)
+    for (int i = 0; i < bw; i++)
+      {
+        int px = x0 + i, py = y0 + j;
+        bool selected = sw > 0 && sh > 0 && px >= sx && py >= sy && px - sx < sw && py - sy < sh
+                        && (mask == NULL || mask[(size_t) (py - sy) * (size_t) sw + (size_t) (px - sx)] != 0);
+
+        m[(size_t) j * (size_t) bw + (size_t) i] = !selected;
+      }
+  *x = x0;
+  *y = y0;
+  *w = bw;
+  *h = bh;
+  *out = m;
+  return EASEL_SELECTION_DONE;
+}
+
+EaselSelectionResult
 easel_selection_crop (const EaselFloat *f, EaselImage *img, EaselHistory *history, int x, int y, int w, int h, uint32_t fill,
                       size_t max_bytes)
 {

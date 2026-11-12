@@ -210,6 +210,15 @@ void easel_selection_lay_range (const EaselFloat *f, size_t first, size_t last, 
 EaselSelectionResult easel_selection_put_down (const EaselFloat *f, bool with_float, EaselImage *img,
                                                EaselHistory *history, size_t max_bytes);
 
+/* The shape of Invert Selection (0042, REQ-0042-02, -03, -05): every pixel of the img_w x img_h picture that the selection does not hold. The
+   selection is the box (sx, sy, sw, sh), which may lie anywhere (a floating one may hang past the picture's edges: only its part inside the
+   picture counts), and its mask (sw x sh bytes, 1 for a pixel of it; NULL: every pixel of the box). DONE, with the bounding rectangle
+   (*x, *y, *w, *h) of the pixels left (REQ-0014-07) and *out, their mask (w x h bytes, 1 for a pixel of the new shape; the caller frees it);
+   NOTHING, no mask, when no pixel is left; NO_MEMORY, nothing made, when a size is outside 1 to EASEL_IMAGE_MAX_SIZE or an allocation (the
+   counts of the selected pixels of each row and column of the picture, the mask), each counted by itself, is above max_bytes or cannot be had. */
+EaselSelectionResult easel_selection_invert (const uint8_t *mask, int sx, int sy, int sw, int sh, int img_w, int img_h, int *x, int *y,
+                                             int *w, int *h, uint8_t **out, size_t max_bytes);
+
 /* Crop to Selection (0041, REQ-0041-02 to -06): the picture becomes the rectangle (x, y, w, h) of itself, as one undo step of the history
    (easel_history_push_crop): a pixel inside the old picture is its own, one outside it (a rectangle may hang past the edges) is fill, fully
    transparent as 0 (P7.7). f is NULL for a marked selection (a Free-Form one crops its bounding rectangle, every pixel kept). For a floating

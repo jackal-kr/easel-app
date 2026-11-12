@@ -2630,6 +2630,236 @@ crop_float_over_own_hole (void)
     }
 }
 
+/* ---- 0042 T001: the shape of the inverse (REQ-0042-02, -03, -05) ---- */
+
+/* Is the picture's pixel (x, y) selected: inside the box (sx, sy, sw, sh) and, with a mask, a pixel of it. */
+static bool
+oracle_selected (const uint8_t *mask, int sx, int sy, int sw, int sh, int x, int y)
+{
+  if (x < sx || y < sy || x - sx >= sw || y - sy >= sh)
+    return false;
+  return mask == NULL || mask[(size_t) (y - sy) * sw + (x - sx)] != 0;
+}
+
+/* The inverse of the selection over a W x H picture, from its pixels one by one: the result of easel_selection_invert must be it, the bounding
+   rectangle of the pixels not selected and their mask, or NOTHING when there are none. Returns the number of pixels of the new shape. */
+static size_t
+check_invert (const uint8_t *mask, int sx, int sy, int sw, int sh, int W, int H, int *bx, int *by, int *bw, int *bh, uint8_t **keep)
+{
+  int x0 = W, y0 = H, x1 = -1, y1 = -1;
+  size_t count = 0;
+  uint8_t *out = NULL;
+  int x, y, w, h;
+  EaselSelectionResult r;
+
+  for (int j = 0; j < H; j++)
+    for (int i = 0; i < W; i++)
+      if (!oracle_selected (mask, sx, sy, sw, sh, i, j))
+        {
+          x0 = i < x0 ? i : x0;
+          y0 = j < y0 ? j : y0;
+          x1 = i > x1 ? i : x1;
+          y1 = j > y1 ? j : y1;
+          count++;
+        }
+  r = easel_selection_invert (mask, sx, sy, sw, sh, W, H, &x, &y, &w, &h, &out, SIZE_MAX);
+  if (count == 0)
+    {
+      CHECK (r == EASEL_SELECTION_NOTHING && out == NULL);
+      return 0;
+    }
+  CHECK (r == EASEL_SELECTION_DONE && out != NULL);
+  CHECK (x == x0 && y == y0 && w == x1 - x0 + 1 && h == y1 - y0 + 1);
+  for (int j = 0; j < h; j++)
+    for (int i = 0; i < w; i++)
+      CHECK ((out[j * w + i] != 0) == !oracle_selected (mask, sx, sy, sw, sh, x + i, y + j));
+  if (bx != NULL)
+    {
+      *bx = x;
+      *by = y;
+      *bw = w;
+      *bh = h;
+    }
+  if (keep != NULL)
+    *keep = out;
+  else
+    free (out);
+  return count;
+}
+
+/* AS-2 (core part): a 300 x 200 picture less (100, 50) to (199, 149): 50 000 pixels, the bounding rectangle the picture. */
+static void
+invert_rect_hole (void)
+{
+  int x, y, w, h;
+
+  CHECK (check_invert (NULL, 100, 50, 100, 100, 300, 200, &x, &y, &w, &h, NULL) == 50000);
+  CHECK (x == 0 && y == 0 && w == 300 && h == 200);
+}
+
+/* A triangle's mask in its box at (5, 5) of a 40 x 30 picture: every pixel of the box outside the triangle, and every pixel outside the box. */
+static void
+invert_mask_triangle (void)
+{
+  uint8_t mask[10 * 10];
+
+  for (int j = 0; j < 10; j++)
+    for (int i = 0; i < 10; i++)
+      mask[j * 10 + i] = i <= j;
+  CHECK (check_invert (mask, 5, 5, 10, 10, 40, 30, NULL, NULL, NULL, NULL, NULL) == (size_t) (40 * 30 - 55));
+}
+
+/* The inverse of the inverse is the first shape: a rectangle comes back as the full mask of its box, a triangle as its own mask. */
+static void
+invert_twice (void)
+{
+  uint8_t tri[10 * 10], *once = NULL, *twice = NULL;
+  int x, y, w, h, x2, y2, w2, h2;
+
+  CHECK (check_invert (NULL, 12, 7, 9, 6, 40, 30, &x, &y, &w, &h, &once) == (size_t) (40 * 30 - 54));
+  CHECK (easel_selection_invert (once, x, y, w, h, 40, 30, &x2, &y2, &w2, &h2, &twice, SIZE_MAX) == EASEL_SELECTION_DONE);
+  CHECK (x2 == 12 && y2 == 7 && w2 == 9 && h2 == 6);
+  for (int k = 0; k < 9 * 6; k++)
+    CHECK (twice[k] == 1);
+  free (once);
+  free (twice);
+  once = twice = NULL;
+  for (int j = 0; j < 10; j++)
+    for (int i = 0; i < 10; i++)
+      tri[j * 10 + i] = i <= j;
+  CHECK (check_invert (tri, 5, 5, 10, 10, 40, 30, &x, &y, &w, &h, &once) > 0);
+  CHECK (easel_selection_invert (once, x, y, w, h, 40, 30, &x2, &y2, &w2, &h2, &twice, SIZE_MAX) == EASEL_SELECTION_DONE);
+  CHECK (x2 == 5 && y2 == 5 && w2 == 10 && h2 == 10);
+  CHECK (memcmp (twice, tri, sizeof tri) == 0);
+  free (once);
+  free (twice);
+}
+
+/* REQ-0042-05: every pixel selected: nothing is left, and no mask is made. */
+static void
+invert_whole_is_nothing (void)
+{
+  uint8_t full[12 * 9];
+
+  memset (full, 1, sizeof full);
+  CHECK (check_invert (NULL, 0, 0, 12, 9, 12, 9, NULL, NULL, NULL, NULL, NULL) == 0);       /* the rectangle of the whole picture */
+  CHECK (check_invert (full, 0, 0, 12, 9, 12, 9, NULL, NULL, NULL, NULL, NULL) == 0);       /* a Free-Form shape of every pixel */
+  CHECK (check_invert (NULL, -5, -5, 22, 19, 12, 9, NULL, NULL, NULL, NULL, NULL) == 0);    /* a box that holds the picture, a float over it */
+}
+
+static void
+invert_one_pixel (void)
+{
+  int x, y, w, h;
+
+  CHECK (check_invert (NULL, 2, 1, 1, 1, 5, 4, &x, &y, &w, &h, NULL) == 19);
+  CHECK (x == 0 && y == 0 && w == 5 && h == 4);
+  CHECK (check_invert (NULL, 0, 0, 1, 1, 1, 2, &x, &y, &w, &h, NULL) == 1);              /* a 1 x 2 picture less its first pixel */
+  CHECK (x == 0 && y == 1 && w == 1 && h == 1);
+}
+
+/* A box past the edges (a floating selection may hang past them): only the part inside the picture counts. */
+static void
+invert_hangs_past_the_edge (void)
+{
+  uint8_t mask[10 * 10];
+
+  CHECK (check_invert (NULL, 15, 5, 10, 10, 20, 10, NULL, NULL, NULL, NULL, NULL) == (size_t) (20 * 10 - 25));      /* right and bottom */
+  CHECK (check_invert (NULL, -3, -3, 6, 6, 20, 10, NULL, NULL, NULL, NULL, NULL) == (size_t) (20 * 10 - 9));         /* left and top */
+  CHECK (check_invert (NULL, 40, 30, 6, 6, 20, 10, NULL, NULL, NULL, NULL, NULL) == 200);                            /* wholly outside: all of it */
+  for (int k = 0; k < 100; k++)
+    mask[k] = (k % 3) == 0;
+  CHECK (check_invert (mask, 15, 5, 10, 10, 20, 10, NULL, NULL, NULL, NULL, NULL) > 0);                               /* a shape, past the edge */
+}
+
+/* The bounding rectangle of the inverse is smaller than the picture when the selection fills whole rows or columns at its edges. */
+static void
+invert_bounding_is_smaller (void)
+{
+  const int W = 30, H = 20;
+  uint8_t l_shape[30 * 20];
+  int x, y, w, h;
+
+  CHECK (check_invert (NULL, 0, 0, W, 3, W, H, &x, &y, &w, &h, NULL) == (size_t) (W * (H - 3)));         /* a band across the top */
+  CHECK (x == 0 && y == 3 && w == W && h == H - 3);
+  CHECK (check_invert (NULL, 0, 0, 4, H, W, H, &x, &y, &w, &h, NULL) == (size_t) ((W - 4) * H));         /* a strip down the left side */
+  CHECK (x == 4 && y == 0 && w == W - 4 && h == H);
+  CHECK (check_invert (NULL, 0, H - 2, W, 2, W, H, &x, &y, &w, &h, NULL) == (size_t) (W * (H - 2)));     /* a band across the bottom */
+  CHECK (x == 0 && y == 0 && w == W && h == H - 2);
+  CHECK (check_invert (NULL, W - 5, 0, 5, H, W, H, &x, &y, &w, &h, NULL) == (size_t) ((W - 5) * H));     /* a strip down the right side */
+  CHECK (x == 0 && y == 0 && w == W - 5 && h == H);
+  for (int j = 0; j < H; j++)
+    for (int i = 0; i < W; i++)
+      l_shape[j * W + i] = j < 3 || i < 4;                                                              /* both: an L */
+  CHECK (check_invert (l_shape, 0, 0, W, H, W, H, &x, &y, &w, &h, NULL) == (size_t) ((W - 4) * (H - 3)));
+  CHECK (x == 4 && y == 3 && w == W - 4 && h == H - 3);
+}
+
+/* ---- 0042 T002: the memory of the shape (REQ-0042-07) ---- */
+
+/* An allocation above max_bytes, or one that cannot be had, makes nothing: NO_MEMORY and no mask. Each is counted by itself, the counts of the
+   picture's rows and columns (4 bytes each) and the mask: a 30 x 20 picture has 200 bytes of counts, and the inverse of a small box a mask
+   of 600, of a nearly full one a mask of 3. */
+static void
+invert_no_memory (void)
+{
+  uint8_t full[30 * 20], *out = (uint8_t *) 1;
+  int x, y, w, h;
+
+  /* the mask (600 bytes) above the counts (200): the limit one below each */
+  CHECK (easel_selection_invert (NULL, 10, 5, 4, 4, 30, 20, &x, &y, &w, &h, &out, 199) == EASEL_SELECTION_NO_MEMORY && out == NULL);
+  CHECK (easel_selection_invert (NULL, 10, 5, 4, 4, 30, 20, &x, &y, &w, &h, &out, 599) == EASEL_SELECTION_NO_MEMORY && out == NULL);
+  CHECK (easel_selection_invert (NULL, 10, 5, 4, 4, 30, 20, &x, &y, &w, &h, &out, 600) == EASEL_SELECTION_DONE && out != NULL && w == 30 && h == 20);
+  free (out);
+  /* the mask (3 bytes) below the counts: the counts are what the limit meets, and with them in the mask needs 3 */
+  memset (full, 1, sizeof full);
+  full[5 * 30 + 5] = full[5 * 30 + 6] = full[5 * 30 + 7] = 0;
+  CHECK (easel_selection_invert (full, 0, 0, 30, 20, 30, 20, &x, &y, &w, &h, &out, 199) == EASEL_SELECTION_NO_MEMORY && out == NULL);
+  CHECK (easel_selection_invert (full, 0, 0, 30, 20, 30, 20, &x, &y, &w, &h, &out, 200) == EASEL_SELECTION_DONE && out != NULL);
+  CHECK (x == 5 && y == 5 && w == 3 && h == 1 && out[0] == 1 && out[1] == 1 && out[2] == 1);
+  free (out);
+  /* a real shortage: the address space limited to a little above what is in use, a mask of 16 MB to make */
+  {
+    struct rlimit lim, was;
+    int ok;
+
+    CHECK (getrlimit (RLIMIT_AS, &was) == 0);
+    lim = was;
+    lim.rlim_cur = address_space () + 4 * 1024 * 1024;
+    CHECK (setrlimit (RLIMIT_AS, &lim) == 0);
+    ok = easel_selection_invert (NULL, 100, 100, 10, 10, 4000, 4000, &x, &y, &w, &h, &out, SIZE_MAX) == EASEL_SELECTION_NO_MEMORY && out == NULL;
+    CHECK (setrlimit (RLIMIT_AS, &was) == 0);
+    CHECK (ok);
+  }
+  /* a size outside 1 to EASEL_IMAGE_MAX_SIZE */
+  CHECK (easel_selection_invert (NULL, 0, 0, 1, 1, 0, 5, &x, &y, &w, &h, &out, SIZE_MAX) == EASEL_SELECTION_NO_MEMORY && out == NULL);
+  CHECK (easel_selection_invert (NULL, 0, 0, 1, 1, 5, 0, &x, &y, &w, &h, &out, SIZE_MAX) == EASEL_SELECTION_NO_MEMORY && out == NULL);
+  CHECK (easel_selection_invert (NULL, 0, 0, 1, 1, EASEL_IMAGE_MAX_SIZE + 1, 5, &x, &y, &w, &h, &out, SIZE_MAX) == EASEL_SELECTION_NO_MEMORY && out == NULL);
+  CHECK (easel_selection_invert (NULL, 0, 0, 1, 1, 5, EASEL_IMAGE_MAX_SIZE + 1, &x, &y, &w, &h, &out, SIZE_MAX) == EASEL_SELECTION_NO_MEMORY && out == NULL);
+}
+
+/* REQ-0002-16 in spirit, as 0041's: what a call holds when it returns is the mask and nothing spare: the counts (16 000 bytes for 2000 x 2000) are freed.
+   The inverse of a 1000 x 1000 box in the middle of a 2000 x 2000 picture is a mask of 4 000 000 bytes. */
+static void
+invert_mask_held_as_counted (void)
+{
+  uint8_t *out;
+  int x, y, w, h;
+  size_t before = heap_in_use (), held;
+
+  CHECK (easel_selection_invert (NULL, 500, 500, 1000, 1000, 2000, 2000, &x, &y, &w, &h, &out, SIZE_MAX) == EASEL_SELECTION_DONE);
+  held = heap_in_use () - before;
+  printf ("  held %zu bytes, the mask %zu\n", held, (size_t) w * h);
+  CHECK (w == 2000 && h == 2000);
+  CHECK (held >= (size_t) w * h && held <= (size_t) w * h + 4096);
+  free (out);
+  /* NOTHING and NO_MEMORY hold nothing either */
+  before = heap_in_use ();
+  CHECK (easel_selection_invert (NULL, 0, 0, 2000, 2000, 2000, 2000, &x, &y, &w, &h, &out, SIZE_MAX) == EASEL_SELECTION_NOTHING);
+  CHECK (easel_selection_invert (NULL, 500, 500, 1000, 1000, 2000, 2000, &x, &y, &w, &h, &out, 16000) == EASEL_SELECTION_NO_MEMORY);
+  CHECK (heap_in_use () <= before + 4096);
+}
+
 int
 main (void)
 {
@@ -2690,5 +2920,14 @@ main (void)
   RUN (crop_float_paste_skips_clear);
   RUN (crop_float_whole);
   RUN (crop_float_over_own_hole);
+  RUN (invert_rect_hole);
+  RUN (invert_mask_triangle);
+  RUN (invert_twice);
+  RUN (invert_whole_is_nothing);
+  RUN (invert_one_pixel);
+  RUN (invert_hangs_past_the_edge);
+  RUN (invert_bounding_is_smaller);
+  RUN (invert_no_memory);
+  RUN (invert_mask_held_as_counted);
   return 0;
 }

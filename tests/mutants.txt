@@ -2198,7 +2198,7 @@ test: ui-0011
 file: src/ui/window.c
 test: ui-0011
 --- find
-  if (tool != self->tool && !put_down_for_action (self, FALSE))
+  if (tool != self->tool && !self->keep_selection_on_tool_change && !put_down_for_action (self, FALSE))
     return;
 --- replace
   if (tool != self->tool)
@@ -2208,10 +2208,10 @@ test: ui-0011
 file: src/ui/window.c
 test: ui-0011
 --- find
-  if (tool != self->tool && !put_down_for_action (self, FALSE))
+  if (tool != self->tool && !self->keep_selection_on_tool_change && !put_down_for_action (self, FALSE))
     return;
 --- replace
-  if (!put_down_for_action (self, FALSE))
+  if (!self->keep_selection_on_tool_change && !put_down_for_action (self, FALSE))
     return;
 
 === REQ-0011-12 an Image action does not put a pending polygon down
@@ -4203,8 +4203,10 @@ file: src/ui/canvas.c
 test: ui-0014
 --- find
       self->sel_mask = mask;
+      self->sel_path = path;                   /* the selection keeps the path: it is its line */
 --- replace
       self->sel_mask = NULL;
+      self->sel_path = path;                   /* the selection keeps the path: it is its line */
 
 === REQ-0014-07 a press anywhere in the rectangle of a free-form selection is on the selection
 file: src/ui/canvas.c
@@ -8008,7 +8010,7 @@ test: ui-0017
 file: src/ui/window.c
 test: ui-0017
 --- find
-  if (tool != self->tool && !put_down_for_action (self, FALSE))
+  if (tool != self->tool && !self->keep_selection_on_tool_change && !put_down_for_action (self, FALSE))
     return;
 --- replace
   if (tool != self->tool)
@@ -13965,9 +13967,9 @@ test: ui-0041
 file: src/ui/window.c
 test: ui-0041
 --- find
-  static const char *selection_actions[] = { "cut", "copy", "copy-to", "crop-to-selection" };
+  static const char *selection_actions[] = { "cut", "copy", "copy-to", "crop-to-selection", "invert-selection" };
 --- replace
-  static const char *selection_actions[] = { "cut", "copy", "copy-to" };
+  static const char *selection_actions[] = { "cut", "copy", "copy-to", "invert-selection" };
 
 === REQ-0041-01 the Shortcuts window names the item differently from its menu
 file: src/ui/help.c
@@ -14334,3 +14336,477 @@ test: core-selection
 --- replace
           if (false)
             v = f->hole_color;
+
+# ---- the shape of the inverse (0042, T001) ----
+
+=== REQ-0042-02 the analytic row count of a rectangle uses its height
+file: src/core/selection.c
+test: core-selection
+--- find
+            rows[j] = (uint32_t) (ix1 - ix0);
+--- replace
+            rows[j] = (uint32_t) (iy1 - iy0);
+
+=== REQ-0042-02 the analytic column count of a rectangle uses its width
+file: src/core/selection.c
+test: core-selection
+--- find
+            cols[i] = (uint32_t) (iy1 - iy0);
+--- replace
+            cols[i] = (uint32_t) (ix1 - ix0);
+
+=== REQ-0042-02 a mask's pixels are not counted in their rows
+file: src/core/selection.c
+test: core-selection
+--- find
+                rows[j]++;
+--- replace
+                (void) 0;
+
+=== REQ-0042-02 a mask's pixels are not counted in their columns
+file: src/core/selection.c
+test: core-selection
+--- find
+                cols[i]++;
+--- replace
+                (void) 0;
+
+=== REQ-0042-05 a row that the selection fills still counts as having a pixel left
+file: src/core/selection.c
+test: core-selection
+--- find
+    if (rows[j] < (uint32_t) img_w)
+--- replace
+    if (rows[j] <= (uint32_t) img_w)
+
+=== REQ-0042-05 a column that the selection fills still counts as having a pixel left
+file: src/core/selection.c
+test: core-selection
+--- find
+    if (cols[i] < (uint32_t) img_h)
+--- replace
+    if (cols[i] <= (uint32_t) img_h)
+
+=== REQ-0042-02 the bounding rectangle of the inverse always reaches the top
+file: src/core/selection.c
+test: core-selection
+--- find
+        y0 = j < y0 ? j : y0;
+--- replace
+        y0 = 0;
+
+=== REQ-0042-02 the bounding rectangle of the inverse always reaches the bottom
+file: src/core/selection.c
+test: core-selection
+--- find
+        y1 = j;
+--- replace
+        y1 = img_h - 1;
+
+=== REQ-0042-02 the bounding rectangle of the inverse always reaches the left
+file: src/core/selection.c
+test: core-selection
+--- find
+        x0 = i < x0 ? i : x0;
+--- replace
+        x0 = 0;
+
+=== REQ-0042-02 the bounding rectangle of the inverse always reaches the right
+file: src/core/selection.c
+test: core-selection
+--- find
+        x1 = i;
+--- replace
+        x1 = img_w - 1;
+
+=== REQ-0042-02 the inverse selects the selection's pixels, not the others
+file: src/core/selection.c
+test: core-selection
+--- find
+        m[(size_t) j * (size_t) bw + (size_t) i] = !selected;
+--- replace
+        m[(size_t) j * (size_t) bw + (size_t) i] = selected;
+
+=== REQ-0042-02 the selection's part past the left edge is clipped one pixel too far in
+file: src/core/selection.c
+test: core-selection
+--- find
+  int ix0 = sx > 0 ? sx : 0, iy0 = sy > 0 ? sy : 0;
+--- replace
+  int ix0 = sx > 1 ? sx : 1, iy0 = sy > 0 ? sy : 0;
+
+=== REQ-0042-02 the selection's part past the right edge is clipped one pixel too far in
+file: src/core/selection.c
+test: core-selection
+--- find
+  int ix1 = (long long) sx + sw < img_w ? sx + sw : img_w, iy1 = (long long) sy + sh < img_h ? sy + sh : img_h;
+--- replace
+  int ix1 = (long long) sx + sw < img_w ? sx + sw : img_w - 1, iy1 = (long long) sy + sh < img_h ? sy + sh : img_h;
+
+=== REQ-0042-05 an inverse with no pixel left is not NOTHING
+file: src/core/selection.c
+test: core-selection
+--- find
+  if (x1 < 0 || y1 < 0)
+    return EASEL_SELECTION_NOTHING;
+--- replace
+  if (false)
+    return EASEL_SELECTION_NOTHING;
+
+# ---- the memory of the inverse's shape (0042, T002) ----
+
+=== REQ-0042-07 the counts of the picture's rows and columns are not counted against the limit
+file: src/core/selection.c
+test: core-selection
+--- find
+(size_t) (img_w + img_h) * sizeof *rows > max_bytes || (rows = calloc
+--- replace
+(rows = calloc
+
+=== REQ-0042-07 the new mask is not counted against the limit
+file: src/core/selection.c
+test: core-selection
+--- find
+(size_t) bw * (size_t) bh > max_bytes || (m = malloc
+--- replace
+(m = malloc
+
+=== REQ-0042-07 the counts are not freed when the mask is made
+file: src/core/selection.c
+test: core-selection
+--- find
+  free (rows);
+  if (x1 < 0 || y1 < 0)
+--- replace
+  if (x1 < 0 || y1 < 0)
+
+=== REQ-0042-07 a picture of no width is inverted
+file: src/core/selection.c
+test: core-selection
+--- find
+  if (img_w < 1 || img_h < 1 || img_w > EASEL_IMAGE_MAX_SIZE || img_h > EASEL_IMAGE_MAX_SIZE)
+--- replace
+  if (img_h < 1 || img_w > EASEL_IMAGE_MAX_SIZE || img_h > EASEL_IMAGE_MAX_SIZE)
+
+=== REQ-0042-07 a picture of more than the largest width is inverted
+file: src/core/selection.c
+test: core-selection
+--- find
+  if (img_w < 1 || img_h < 1 || img_w > EASEL_IMAGE_MAX_SIZE || img_h > EASEL_IMAGE_MAX_SIZE)
+--- replace
+  if (img_w < 1 || img_h < 1 || img_h > EASEL_IMAGE_MAX_SIZE)
+
+=== REQ-0042-07 a refused inversion leaves the mask pointer as it was
+file: src/core/selection.c
+test: core-selection
+--- find
+  *out = NULL;
+  if (img_w < 1
+--- replace
+  if (img_w < 1
+
+# ---- the line of the inverse (0042, T003; the outline of 0019's REQ-0019-12 is its rule) ----
+
+=== REQ-0042-06 the outline puts no break between its parts
+file: src/core/lasso.c
+test: core-lasso
+--- find
+        if ((!first_part && !easel_path_add (&p, EASEL_PATH_BREAK, EASEL_PATH_BREAK, max_bytes))
+--- replace
+        if ((false && !easel_path_add (&p, EASEL_PATH_BREAK, EASEL_PATH_BREAK, max_bytes))
+
+=== REQ-0042-06 the outline's first corner ignores the shape's place
+file: src/core/lasso.c
+test: core-lasso
+--- find
+            || !easel_path_add (&p, x + cx, y + cy, max_bytes))
+--- replace
+            || !easel_path_add (&p, x + cx, cy, max_bytes))
+
+=== REQ-0042-06 the outline keeps the corners that go straight on
+file: src/core/lasso.c
+test: core-lasso
+--- find
+            if (turned != dir && !(cx == x0 && cy == y0 && turned == EAST)
+--- replace
+            if (turned == dir && !(cx == x0 && cy == y0 && turned == EAST)
+
+=== REQ-0042-06 the outline does not mark the top edges it has taken
+file: src/core/lasso.c
+test: core-lasso
+--- find
+                seen[(size_t) cy * w + cx] = 1;
+--- replace
+                (void) 0;
+
+# ---- Invert Selection on a marked selection (0042, T005) ----
+
+=== REQ-0042-02 the tool change after Invert Selection puts its selection down
+file: src/ui/window.c
+test: ui-0042
+--- find
+  if (tool != self->tool && !self->keep_selection_on_tool_change && !put_down_for_action (self, FALSE))
+--- replace
+  if (tool != self->tool && !put_down_for_action (self, FALSE))
+
+=== REQ-0042-02 the flag that keeps the selection through the tool change is never cleared
+file: src/ui/window.c
+test: ui-0042
+--- find
+  self->keep_selection_on_tool_change = FALSE;
+}
+--- replace
+  (void) 0;
+}
+
+=== REQ-0042-02 Invert Selection does not make Free-Form Select the tool
+file: src/ui/window.c
+test: ui-0042
+--- find
+  if (easel_canvas_invert_selection (self->canvas, &selected) != EASEL_SELECTION_DONE || !selected || self->tool == EASEL_TOOL_FREE_SELECT)
+    return;
+--- replace
+  if (easel_canvas_invert_selection (self->canvas, &selected) != EASEL_SELECTION_DONE || !selected || self->tool == self->tool)
+    return;
+
+=== REQ-0042-05 an empty inverse still makes Free-Form Select the tool
+file: src/ui/window.c
+test: ui-0042
+--- find
+  if (easel_canvas_invert_selection (self->canvas, &selected) != EASEL_SELECTION_DONE || !selected || self->tool == EASEL_TOOL_FREE_SELECT)
+    return;
+--- replace
+  if (easel_canvas_invert_selection (self->canvas, &selected) != EASEL_SELECTION_DONE || self->tool == EASEL_TOOL_FREE_SELECT)
+    return;
+
+=== REQ-0042-05 an inverse with no pixel left leaves the selection
+file: src/ui/canvas.c
+test: ui-0042
+--- find
+    self->sel_state = 0;                             /* nothing is left: the selection goes (REQ-0042-05) */
+--- replace
+    (void) 0;                                        /* nothing is left: the selection goes (REQ-0042-05) */
+
+=== REQ-0042-06 the new selection's line keeps the old place
+file: src/ui/canvas.c
+test: ui-0042
+--- find
+      self->sel_x = self->sel_path_x = x;
+      self->sel_y = self->sel_path_y = y;
+      self->sel_w = w;
+      self->sel_h = h;
+      self->sel_mask = mask;
+      self->sel_path = path;
+      *selected = TRUE;
+--- replace
+      self->sel_x = x;
+      self->sel_y = self->sel_path_y = y;
+      self->sel_w = w;
+      self->sel_h = h;
+      self->sel_mask = mask;
+      self->sel_path = path;
+      *selected = TRUE;
+
+=== REQ-0042-06 the new selection has no line
+file: src/ui/canvas.c
+test: ui-0042
+--- find
+      self->sel_mask = mask;
+      self->sel_path = path;
+      *selected = TRUE;
+--- replace
+      self->sel_mask = mask;
+      easel_path_free (&path);
+      *selected = TRUE;
+
+=== REQ-0042-02 the new selection keeps the old size
+file: src/ui/canvas.c
+test: ui-0042
+--- find
+      self->sel_x = self->sel_path_x = x;
+      self->sel_y = self->sel_path_y = y;
+      self->sel_w = w;
+      self->sel_h = h;
+      self->sel_mask = mask;
+      self->sel_path = path;
+      *selected = TRUE;
+--- replace
+      self->sel_x = self->sel_path_x = x;
+      self->sel_y = self->sel_path_y = y;
+      self->sel_h = h;
+      self->sel_mask = mask;
+      self->sel_path = path;
+      *selected = TRUE;
+
+# ---- Invert Selection's item, menus and key (0042, T006) ----
+
+=== REQ-0042-01 Ctrl+Shift+J is not an accelerator of Invert Selection
+file: src/ui/application.c
+test: ui-0042
+--- find
+  gtk_application_set_accels_for_action (GTK_APPLICATION (app), "win.invert-selection", (const char *[]) { "<Control><Shift>j", NULL });
+--- replace
+  (void) 0;
+
+=== REQ-0042-01 the Edit submenu's item does not invert
+file: src/ui/window.ui
+test: ui-0042
+--- find
+            <attribute name="action">win.invert-selection</attribute>
+--- replace
+            <attribute name="action">win.stretch-skew</attribute>
+
+=== REQ-0042-01 the selection menu's item does not invert
+file: src/ui/window.ui
+test: ui-0042
+--- find
+        <attribute name="action">win.invert-selection</attribute>
+        <attribute name="accel">&lt;Control&gt;&lt;Shift&gt;j</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">Cop_y To…</attribute>
+--- replace
+        <attribute name="action">win.stretch-skew</attribute>
+        <attribute name="accel">&lt;Control&gt;&lt;Shift&gt;j</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">Cop_y To…</attribute>
+
+=== REQ-0042-01 Invert Selection is sensitive without a selection
+file: src/ui/window.c
+test: ui-0042
+--- find
+  static const char *selection_actions[] = { "cut", "copy", "copy-to", "crop-to-selection", "invert-selection" };
+--- replace
+  static const char *selection_actions[] = { "cut", "copy", "copy-to", "crop-to-selection" };
+
+=== REQ-0042-01 Invert Selection acts with a dialog or the color chooser open
+file: src/ui/window.c
+test: ui-0042
+--- find
+  if (!view_actions_allowed (self) || easel_canvas_is_panning (self->canvas) || card_field_focus (self) != NULL)
+    return;
+  if (easel_canvas_invert_selection
+--- replace
+  if (easel_canvas_is_panning (self->canvas) || card_field_focus (self) != NULL)
+    return;
+  if (easel_canvas_invert_selection
+
+=== REQ-0042-01 the Shortcuts window names Invert Selection differently from its menu
+file: src/ui/help.c
+test: ui-0021
+--- find
+  { N_ ("Edit"), N_ ("Invert Selection"), "<Control><Shift>j", "win.invert-selection" },
+--- replace
+  { N_ ("Edit"), N_ ("Invert the Selection"), "<Control><Shift>j", "win.invert-selection" },
+
+=== REQ-0042-01 the Shortcuts window lists another key for Invert Selection
+file: src/ui/help.c
+test: ui-0021
+--- find
+  { N_ ("Edit"), N_ ("Invert Selection"), "<Control><Shift>j", "win.invert-selection" },
+--- replace
+  { N_ ("Edit"), N_ ("Invert Selection"), "<Control><Shift>k", "win.invert-selection" },
+
+# ---- Invert Selection on a floating selection (0042, T007) ----
+
+=== REQ-0042-03 a failed put-down still inverts
+file: src/ui/canvas.c
+test: ui-0042
+--- find
+      if (!finish_selection (self, FALSE))
+        {
+          free (mask);
+--- replace
+      if (false && !finish_selection (self, FALSE))
+        {
+          free (mask);
+
+=== REQ-0042-02 the new selection after a float's put-down is not marked
+file: src/ui/canvas.c
+test: ui-0042
+--- find
+      self->sel_state = 1;                           /* marked (a floating one's put-down left none) */
+--- replace
+      (void) 0;                                      /* marked (a floating one's put-down left none) */
+
+=== REQ-0042-03 a floating selection is not put down by the inversion
+file: src/ui/canvas.c
+test: ui-0042
+--- find
+  if (self->sel_state == 2)
+    {
+      /* A floating selection is put down first where it is (REQ-0042-03);
+--- replace
+  if (false)
+    {
+      /* A floating selection is put down first where it is (REQ-0042-03);
+
+=== REQ-0042-03 a Free-Form float's inverse is made of its box, not its shape
+file: src/ui/canvas.c
+test: ui-0042
+--- find
+      ? easel_selection_invert (self->sel_float.mask, self->sel_float.x,
+--- replace
+      ? easel_selection_invert (NULL, self->sel_float.x,
+
+=== REQ-0042-07 a refused inversion shows no dialog
+file: src/ui/canvas.c
+test: ui-0042
+--- find
+      g_signal_emit (self, signals[SIGNAL_SELECTION_FAILED], 0, 2);   /* the dialog of REQ-0014-15; the selection as it was */
+--- replace
+      (void) 0;   /* the dialog of REQ-0014-15; the selection as it was */
+
+=== REQ-0042-07 a refused inversion puts a floating selection down
+file: src/ui/canvas.c
+test: ui-0042
+--- find
+      g_signal_emit (self, signals[SIGNAL_SELECTION_FAILED], 0, 2);   /* the dialog of REQ-0014-15; the selection as it was */
+--- replace
+      if (self->sel_state == 2)
+        finish_selection (self, FALSE);
+      g_signal_emit (self, signals[SIGNAL_SELECTION_FAILED], 0, 2);   /* the dialog of REQ-0014-15; the selection as it was */
+
+=== REQ-0042-07 a refused inversion removes the selection
+file: src/ui/canvas.c
+test: ui-0042
+--- find
+      g_signal_emit (self, signals[SIGNAL_SELECTION_FAILED], 0, 2);   /* the dialog of REQ-0014-15; the selection as it was */
+--- replace
+      shape_free (self);
+      self->sel_state = 0;
+      g_signal_emit (self, signals[SIGNAL_SELECTION_FAILED], 0, 2);   /* the dialog of REQ-0014-15; the selection as it was */
+
+=== REQ-0042-07 the limit is not given to the outline of the inverse
+file: src/ui/canvas.c
+test: ui-0042
+--- find
+easel_lasso_outline (mask, w, h, x, y, &path, self->sel_lift_max))
+--- replace
+easel_lasso_outline (mask, w, h, x, y, &path, SIZE_MAX))
+
+=== REQ-0042-02 the inverse is installed as a rectangle, without its mask
+file: src/ui/canvas.c
+test: ui-0042
+--- find
+      self->sel_mask = mask;
+      self->sel_path = path;
+      *selected = TRUE;
+--- replace
+      free (mask);
+      self->sel_mask = NULL;
+      self->sel_path = path;
+      *selected = TRUE;
+
+=== REQ-0042-06 the inverse is installed without its outline
+file: src/ui/canvas.c
+test: ui-0042
+--- find
+      self->sel_mask = mask;
+      self->sel_path = path;
+      *selected = TRUE;
+--- replace
+      self->sel_mask = mask;
+      easel_path_free (&path);
+      *selected = TRUE;

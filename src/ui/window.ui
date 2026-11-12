@@ -569,6 +569,11 @@
         <attribute name="action">win.select-all</attribute>
       </item>
       <item>
+        <attribute name="label" translatable="yes">In_vert Selection</attribute>
+        <attribute name="action">win.invert-selection</attribute>
+        <attribute name="accel">&lt;Control&gt;&lt;Shift&gt;j</attribute>
+      </item>
+      <item>
         <attribute name="label" translatable="yes">Cop_y To…</attribute>
         <attribute name="action">win.copy-to</attribute>
       </item>
@@ -737,6 +742,11 @@
           <item>
             <attribute name="label" translatable="yes">Select _All</attribute>
             <attribute name="action">win.select-all</attribute>
+          </item>
+          <item>
+            <attribute name="label" translatable="yes">In_vert Selection</attribute>
+            <attribute name="action">win.invert-selection</attribute>
+            <attribute name="accel">&lt;Control&gt;&lt;Shift&gt;j</attribute>
           </item>
           <item>
             <attribute name="label" translatable="yes">C_lear Selection</attribute>

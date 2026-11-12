@@ -22,6 +22,7 @@ static const EaselShortcut shortcuts[] = {
   { N_ ("Edit"), N_ ("Copy"), "<Control>c", "win.copy" },
   { N_ ("Edit"), N_ ("Paste"), "<Control>v", "win.paste" },
   { N_ ("Edit"), N_ ("Select All"), "<Control>a", "win.select-all" },
+  { N_ ("Edit"), N_ ("Invert Selection"), "<Control><Shift>j", "win.invert-selection" },
   { N_ ("Edit"), N_ ("Clear the selection"), "Delete", NULL },
   { N_ ("Edit"), N_ ("Move the selection 1 pixel"), "Left Right Up Down", NULL },
   { N_ ("Edit"), N_ ("Smear the selection 1 pixel"), "<Shift>Left <Shift>Right <Shift>Up <Shift>Down", NULL },

@@ -264,6 +264,11 @@ gboolean easel_canvas_can_paste (EaselCanvas *self, int pic_w, int pic_h, int gr
 size_t easel_canvas_get_selection_limit (EaselCanvas *self);
 /* Clear Selection (REQ-0013-14): FALSE, nothing done, without a selection or while a button is held. */
 gboolean easel_canvas_clear_selection (EaselCanvas *self);
+/* Invert Selection (0042, REQ-0042-02 to -07): the selection becomes every pixel of the picture it did not hold, a marked Free-Form selection (its mask, its line along the grid
+   edges, parts and holes included), nothing lifted, no pixel changed, no step. DONE, *selected TRUE; DONE with *selected FALSE when no pixel is left (the selection removed);
+   NOTHING: no selection or a button held, nothing changed, or a floating selection whose put-down failed (REQ-0013-19: its own dialog, the selection gone, nothing inverted);
+   NO_MEMORY: nothing changed, after `selection-failed` with kind 2 (REQ-0014-15's dialog). A floating selection is put down where it is first, as one step with its lift. */
+EaselSelectionResult easel_canvas_invert_selection (EaselCanvas *self, gboolean *selected);
 /* Crop to Selection (0041, REQ-0041-02 to -06): the picture becomes the selection's rectangle as one undo step, the selection gone. DONE:
    made (the caller shows the new size, scrolls and updates the history's state); NOTHING: no selection, a button held, a marked selection of
    the whole picture (a floating selection exactly over it is put down: DONE, the size the same), nothing changed; NO_MEMORY: nothing changed,

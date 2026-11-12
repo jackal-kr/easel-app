@@ -125,6 +125,9 @@ msgstr "Вставити"
 msgid "Select All"
 msgstr "Виділити все"
 
+msgid "Invert Selection"
+msgstr "Інвертувати виділення"
+
 msgid "Clear the selection"
 msgstr "Очистити виділення"
 
@@ -1135,6 +1138,9 @@ msgstr "О_чистити виділення"
 
 msgid "Select _All"
 msgstr "Виді_лити все"
+
+msgid "In_vert Selection"
+msgstr "_Інвертувати виділення"
 
 msgid "Cop_y To…"
 msgstr "Ко_піювати до…"

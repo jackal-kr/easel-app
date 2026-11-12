@@ -438,6 +438,173 @@ line_oriented (void)
   easel_path_free (&src);
 }
 
+/* ---- 0042 T003: the line of the inverse (REQ-0042-06) ---- */
+
+/* The parts of a line (corners x, y, parts told apart by EASEL_PATH_BREAK): at most 8 of at most 16 corners. */
+typedef struct
+{
+  int n[8], xy[8][32], parts;
+} Parts;
+
+static void
+split_parts (const EaselPath *p, Parts *out)
+{
+  size_t at = 0, n;
+  const int *c;
+
+  memset (out, 0, sizeof *out);
+  while ((c = easel_path_next_part (p, &at, &n)) != NULL)
+    {
+      CHECK (out->parts < 8 && n <= 16);
+      out->n[out->parts] = (int) n;
+      memcpy (out->xy[out->parts], c, n * 2 * sizeof *c);
+      out->parts++;
+    }
+}
+
+/* Twice the signed area of a closed line of corners, the picture's y downward: positive for a clockwise line as it is seen. */
+static long
+twice_area (const int *xy, int n)
+{
+  long a = 0;
+
+  for (int i = 0; i < n; i++)
+    {
+      int j = (i + 1) % n;
+
+      a += (long) xy[2 * i] * xy[2 * j + 1] - (long) xy[2 * j] * xy[2 * i + 1];
+    }
+  return a;
+}
+
+/* The line of the inverse of a selection: the inverse's shape (easel_selection_invert) outlined at its place. */
+static void
+inverse_line (const uint8_t *mask, int sx, int sy, int sw, int sh, int W, int H, EaselPath *p)
+{
+  uint8_t *shape = NULL;
+  int x, y, w, h;
+
+  CHECK (easel_selection_invert (mask, sx, sy, sw, sh, W, H, &x, &y, &w, &h, &shape, SIZE_MAX) == EASEL_SELECTION_DONE);
+  *p = (EaselPath) { 0 };
+  CHECK (easel_lasso_outline (shape, w, h, x, y, p, SIZE_MAX));
+  free (shape);
+}
+
+/* AS-2: the 300 x 200 picture less (100, 50) to (199, 149): two lines, the picture's edge from (0, 0) clockwise, and the hole from its bottom-left corner counter-clockwise (the selection
+   always on the line's right). Each line's direction by its signed area and its start by its corners, not by the list alone. */
+static void
+outline_of_the_inverse (void)
+{
+  static const int outer[8] = { 0, 0, 300, 0, 300, 200, 0, 200 }, hole[8] = { 100, 150, 200, 150, 200, 50, 100, 50 };
+  EaselPath p;
+  Parts q;
+
+  inverse_line (NULL, 100, 50, 100, 100, 300, 200, &p);
+  split_parts (&p, &q);
+  CHECK (q.parts == 2 && q.n[0] == 4 && q.n[1] == 4);
+  CHECK (memcmp (q.xy[0], outer, sizeof outer) == 0);
+  CHECK (memcmp (q.xy[1], hole, sizeof hole) == 0);
+  CHECK (twice_area (q.xy[0], 4) > 0 && twice_area (q.xy[1], 4) < 0);          /* the edge clockwise, the hole the other way */
+  for (int k = 0; k < 2; k++)
+    {
+      int best = 0;
+
+      for (int i = 1; i < q.n[k]; i++)                                           /* the outer line starts at its smallest y, then smallest x; the hole at its largest y, then smallest x */
+        {
+          int yi = q.xy[k][2 * i + 1], yb = q.xy[k][2 * best + 1];
+
+          if (k == 0 ? (yi < yb || (yi == yb && q.xy[k][2 * i] < q.xy[k][2 * best])) : (yi > yb || (yi == yb && q.xy[k][2 * i] < q.xy[k][2 * best])))
+            best = i;
+        }
+      CHECK (best == 0);
+    }
+  easel_path_free (&p);
+}
+
+/* A band across the picture inverted: two pieces, two lines, each from its top-left corner clockwise, at their places (the second piece's box starts at y = 5). */
+static void
+outline_of_a_band (void)
+{
+  static const int top[8] = { 0, 0, 10, 0, 10, 3, 0, 3 }, bottom[8] = { 0, 5, 10, 5, 10, 8, 0, 8 };
+  EaselPath p;
+  Parts q;
+
+  inverse_line (NULL, 0, 3, 10, 2, 10, 8, &p);
+  split_parts (&p, &q);
+  CHECK (q.parts == 2 && q.n[0] == 4 && q.n[1] == 4);
+  CHECK (memcmp (q.xy[0], top, sizeof top) == 0);
+  CHECK (memcmp (q.xy[1], bottom, sizeof bottom) == 0);
+  CHECK (twice_area (q.xy[0], 4) > 0 && twice_area (q.xy[1], 4) > 0);
+  easel_path_free (&p);
+}
+
+/* The bounding rectangle of the inverse does not start at the picture's corner: the line is at its place (a band across the top selected). */
+static void
+outline_of_a_shape_off_the_corner (void)
+{
+  static const int below[8] = { 0, 3, 10, 3, 10, 8, 0, 8 };
+  EaselPath p;
+  Parts q;
+
+  inverse_line (NULL, 0, 0, 10, 3, 10, 8, &p);
+  split_parts (&p, &q);
+  CHECK (q.parts == 1 && q.n[0] == 4);
+  CHECK (memcmp (q.xy[0], below, sizeof below) == 0);
+  easel_path_free (&p);
+}
+
+/* Pieces that touch only at a corner are two lines (a picture of 4 x 4 less all but the pixels (1, 1) and (2, 2)): the first from (1, 1), the second from (2, 2). */
+static void
+outline_of_pieces_at_a_corner (void)
+{
+  static const int first[8] = { 1, 1, 2, 1, 2, 2, 1, 2 }, second[8] = { 2, 2, 3, 2, 3, 3, 2, 3 };
+  uint8_t sel[4 * 4];
+  EaselPath p;
+  Parts q;
+
+  memset (sel, 1, sizeof sel);
+  sel[1 * 4 + 1] = sel[2 * 4 + 2] = 0;
+  inverse_line (sel, 0, 0, 4, 4, 4, 4, &p);
+  split_parts (&p, &q);
+  CHECK (q.parts == 2 && q.n[0] == 4 && q.n[1] == 4);
+  CHECK (memcmp (q.xy[0], first, sizeof first) == 0);
+  CHECK (memcmp (q.xy[1], second, sizeof second) == 0);
+  easel_path_free (&p);
+}
+
+/* The inverse of a shape with a hole and of a shape with a hole in a piece of its own: 3 x 3 selected in the middle of a 7 x 7 picture is an edge and a hole;
+   the inverse of that is the 3 x 3 again, one line. */
+static void
+outline_of_the_inverse_twice (void)
+{
+  uint8_t sel[7 * 7], *once = NULL;
+  int x, y, w, h;
+  EaselPath p = { 0 };
+  Parts q;
+
+  memset (sel, 0, sizeof sel);
+  for (int j = 2; j < 5; j++)
+    for (int i = 2; i < 5; i++)
+      sel[j * 7 + i] = 1;
+  CHECK (easel_selection_invert (sel, 0, 0, 7, 7, 7, 7, &x, &y, &w, &h, &once, SIZE_MAX) == EASEL_SELECTION_DONE);
+  CHECK (x == 0 && y == 0 && w == 7 && h == 7);
+  free (once);
+  CHECK (easel_selection_invert (sel, 0, 0, 7, 7, 7, 7, &x, &y, &w, &h, &once, SIZE_MAX) == EASEL_SELECTION_DONE);
+  {
+    uint8_t *again = NULL;
+    int x2, y2, w2, h2;
+
+    CHECK (easel_selection_invert (once, x, y, w, h, 7, 7, &x2, &y2, &w2, &h2, &again, SIZE_MAX) == EASEL_SELECTION_DONE);
+    CHECK (x2 == 2 && y2 == 2 && w2 == 3 && h2 == 3);
+    CHECK (easel_lasso_outline (again, w2, h2, x2, y2, &p, SIZE_MAX));
+    free (again);
+  }
+  free (once);
+  split_parts (&p, &q);
+  CHECK (q.parts == 1 && q.n[0] == 4 && q.xy[0][0] == 2 && q.xy[0][1] == 2 && twice_area (q.xy[0], 4) > 0);
+  easel_path_free (&p);
+}
+
 int
 main (void)
 {
@@ -446,6 +613,11 @@ main (void)
   RUN (as20_diamond_and_whole_picture);
   RUN (lasso_matches_the_flood);
   RUN (as12_shape_memory);
+  RUN (outline_of_the_inverse);
+  RUN (outline_of_a_band);
+  RUN (outline_of_a_shape_off_the_corner);
+  RUN (outline_of_pieces_at_a_corner);
+  RUN (outline_of_the_inverse_twice);
   RUN (as7_scaled_path_line);
   RUN (as7_scaled_path_rounding_and_margins);
   RUN (line_oriented);

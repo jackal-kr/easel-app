@@ -212,6 +212,10 @@ msgid "Select All"
 msgstr ""
 
 #: src/ui/help.c:25
+msgid "Invert Selection"
+msgstr ""
+
+#: src/ui/help.c:25
 msgid "Clear the selection"
 msgstr ""
 
@@ -1749,6 +1753,10 @@ msgstr ""
 #: src/ui/window.ui:563 src/ui/window.ui:643 src/ui/window.ui:659
 #: src/ui/window.ui:726
 msgid "Select _All"
+msgstr ""
+
+#: src/ui/window.ui:575 src/ui/window.ui:760
+msgid "In_vert Selection"
 msgstr ""
 
 #: src/ui/window.ui:567 src/ui/window.ui:737

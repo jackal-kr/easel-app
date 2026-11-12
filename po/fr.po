@@ -124,6 +124,9 @@ msgstr "Coller"
 msgid "Select All"
 msgstr "Tout sélectionner"
 
+msgid "Invert Selection"
+msgstr "Inverser la sélection"
+
 msgid "Clear the selection"
 msgstr "Effacer la sélection"
 
@@ -1125,6 +1128,9 @@ msgstr "_Effacer la sélection"
 
 msgid "Select _All"
 msgstr "_Tout sélectionner"
+
+msgid "In_vert Selection"
+msgstr "Inverser l_a sélection"
 
 msgid "Cop_y To…"
 msgstr "Copier _vers…"

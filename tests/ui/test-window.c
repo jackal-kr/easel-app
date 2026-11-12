@@ -12511,11 +12511,11 @@ as10_select_all_edit_menu (void)
   edit = g_menu_model_get_item_link (edit_section, 0, G_MENU_LINK_SUBMENU);
   g_assert_nonnull (edit);
   items = describe_section (edit, 1);                                         /* 0016: Cut, Copy, Paste are its first section */
-  g_assert_cmpstr (items, ==, "Select _All|win.select-all; C_lear Selection|win.clear-selection");
+  g_assert_cmpstr (items, ==, "Select _All|win.select-all; In_vert Selection|win.invert-selection; C_lear Selection|win.clear-selection");
   {
     g_autoptr (GMenuModel) second = g_menu_model_get_item_link (edit, 1, G_MENU_LINK_SECTION);
 
-    g_menu_model_get_item_attribute (second, 1, "accel", "s", &accel);
+    g_menu_model_get_item_attribute (second, 2, "accel", "s", &accel);                  /* Clear Selection: the third item since 0042 puts Invert Selection before it */
   }
   g_assert_cmpstr (accel, ==, "Delete");
   g_assert_true (has_accel ("win.select-all", GDK_KEY_a, GDK_CONTROL_MASK));
@@ -12590,7 +12590,7 @@ as11_context_menu (void)
 
     g_assert_nonnull (model);
     items = describe_section (model, 1);                     /* 0016: Cut, Copy and Paste come first (REQ-0016-01) */
-    g_assert_cmpstr (items, ==, "C_lear Selection|win.clear-selection; Select _All|win.select-all; Cop_y To…|win.copy-to");
+    g_assert_cmpstr (items, ==, "C_lear Selection|win.clear-selection; Select _All|win.select-all; In_vert Selection|win.invert-selection; Cop_y To…|win.copy-to");
   }
   /* On a marked selection: the menu, nothing else. */
   shape_press_move (win, 1, 1, 1, 5, 4);
@@ -17134,9 +17134,9 @@ as1_clipboard_menus (void)
   e0 = describe_section (edit, 0);
   e1 = describe_section (edit, 1);
   g_assert_cmpstr (e0, ==, "Cu_t|win.cut; _Copy|win.copy; _Paste|win.paste");
-  g_assert_cmpstr (e1, ==, "Select _All|win.select-all; C_lear Selection|win.clear-selection");
+  g_assert_cmpstr (e1, ==, "Select _All|win.select-all; In_vert Selection|win.invert-selection; C_lear Selection|win.clear-selection");
   g_assert_cmpstr (s0, ==, "Cu_t|win.cut; _Copy|win.copy; _Paste|win.paste");
-  g_assert_cmpstr (s1, ==, "C_lear Selection|win.clear-selection; Select _All|win.select-all; Cop_y To…|win.copy-to");
+  g_assert_cmpstr (s1, ==, "C_lear Selection|win.clear-selection; Select _All|win.select-all; In_vert Selection|win.invert-selection; Cop_y To…|win.copy-to");
   g_assert_true (has_accel ("win.cut", GDK_KEY_x, GDK_CONTROL_MASK));
   g_assert_true (has_accel ("win.copy", GDK_KEY_c, GDK_CONTROL_MASK));
   g_assert_true (has_accel ("win.paste", GDK_KEY_v, GDK_CONTROL_MASK));
@@ -41749,6 +41749,863 @@ as6_whole_float_put_down_fails (void)
   close_windows ();
 }
 
+/* ---- 0042 T005: Invert Selection on a marked selection (REQ-0042-02, -04, -05, -06; AS-2, AS-3, AS-5) ---- */
+
+/* The corners of the selection's line, the parts told apart (EASEL_PATH_BREAK), as the canvas hands them out: parts, and for each its corner count and corners. */
+typedef struct
+{
+  int parts, n[8], xy[8][32];
+} LineParts;
+
+static void
+selection_line (EaselWindow *win, LineParts *out)
+{
+  size_t n = 0;
+  int dx, dy, at = 0;
+  const int *xy = easel_canvas_get_selection_path (easel_window_get_canvas (win), &n, &dx, &dy);
+
+  memset (out, 0, sizeof *out);
+  g_assert_nonnull (xy);
+  out->parts = 1;
+  for (size_t i = 0; i < n; i++)
+    {
+      if (xy[2 * i] == INT_MIN)
+        {
+          out->parts++;
+          at = 0;
+          g_assert_cmpint (out->parts, <=, 8);
+          continue;
+        }
+      g_assert_cmpint (at, <, 16);
+      out->xy[out->parts - 1][2 * at] = xy[2 * i] + dx;
+      out->xy[out->parts - 1][2 * at + 1] = xy[2 * i + 1] + dy;
+      out->n[out->parts - 1] = ++at;
+    }
+}
+
+/* AS-2: a 300 x 200 picture with Select and a marked (100, 50) to (199, 149): Invert Selection makes Free-Form Select the tool and the selection the picture less the
+   rectangle, marked, 50 000 pixels, the picture unchanged, no step, the title not marked, the status bar "300 × 200", the line two parts with the corners of AS-2; the window
+   draws the hole's line and none across the hole; Delete then clears every pixel outside the rectangle and leaves those inside, one step. */
+static void
+as2_invert_marked (void)
+{
+  static const int outer[8] = { 0, 0, 300, 0, 300, 200, 0, 200 }, hole[8] = { 100, 150, 200, 150, 200, 50, 100, 50 };
+  EaselWindow *win = window_of (300, 200);
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  EaselImage *img = (EaselImage *) easel_window_get_picture (win);
+  g_autoptr (EaselImage) old = distinct_window_picture (win);
+  g_autofree uint32_t *px = NULL;
+  LineParts q;
+  uint32_t bg = easel_window_get_background (win);
+  int x, y, w, h, rw, rh, cx, cy, black = 0, white = 0, inside_other = 0;
+  gboolean floating;
+
+  for (gsize i = 0; i < (gsize) 300 * 200; i++)
+    old->px[i] = img->px[i] = 0xFF808080u;                      /* one color, so that a line over it is plain to see */
+  easel_canvas_update (canvas);
+  use_select (win);
+  shape_press_move (win, 1, 100, 50, 199, 149);
+  shape_release (win, 1);
+  g_assert_true (selection_is (win, 100, 50, 100, 100));
+  g_assert_true (action_enabled (win, "invert-selection"));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "invert-selection", NULL);
+  wait_for_layout (win);
+  g_assert_cmpint (easel_window_get_tool (win), ==, EASEL_TOOL_FREE_SELECT);
+  g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  g_assert_false (floating);
+  g_assert_cmpint (x, ==, 0);
+  g_assert_cmpint (y, ==, 0);
+  g_assert_cmpint (w, ==, 300);
+  g_assert_cmpint (h, ==, 200);
+  g_assert_cmpint (mask_count (win, 300, 200), ==, 50000);
+  g_assert_cmpstr (easel_status_bar_get_text (easel_window_get_status_bar (win), EASEL_STATUS_SELECTION), ==, "300 × 200");
+  assert_same_pixels (img, old);
+  g_assert_false (action_enabled (win, "undo"));
+  g_assert_false (easel_window_get_modified (win));
+  selection_line (win, &q);
+  g_assert_cmpint (q.parts, ==, 2);
+  g_assert_cmpint (q.n[0], ==, 4);
+  g_assert_cmpint (q.n[1], ==, 4);
+  g_assert_cmpint (memcmp (q.xy[0], outer, sizeof outer), ==, 0);
+  g_assert_cmpint (memcmp (q.xy[1], hole, sizeof hole), ==, 0);
+  /* the window draws the hole's line (black and white dashes within a pixel of its top edge) and nothing in the middle of the hole */
+  wait_for_next_frame (win);
+  px = render_pixels (win, &rw, &rh, &cx, &cy);
+  for (int j = 48; j <= 51; j++)
+    for (int i = 100; i < 200; i++)
+      {
+        uint32_t c = rendered_pixel (px, rw, cx, cy, i, j);
+
+        black += c == 0xFF000000u;
+        white += c == 0xFFFFFFFFu;
+      }
+  g_assert_cmpint (black, >, 20);
+  g_assert_cmpint (white, >, 20);
+  for (int j = 70; j < 130; j++)
+    for (int i = 120; i < 180; i++)
+      {
+        uint32_t c = rendered_pixel (px, rw, cx, cy, i, j);
+
+        inside_other += c == 0xFF000000u || c == 0xFFFFFFFFu;
+      }
+  g_assert_cmpint (inside_other, ==, 0);
+  /* Delete: every pixel outside the rectangle cleared, those inside it as they were, one step */
+  g_assert_true (key_taken (win, GDK_KEY_Delete, 0));
+  for (int j = 0; j < 200; j++)
+    for (int i = 0; i < 300; i++)
+      g_assert_cmphex (img->px[j * 300 + i], ==, (i >= 100 && i < 200 && j >= 50 && j < 150) ? old->px[j * 300 + i] : bg);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  assert_same_pixels (img, old);
+  g_assert_false (action_enabled (win, "undo"));
+  close_windows ();
+}
+
+/* AS-3: a Free-Form triangle inverted twice is its pixels again, as a Free-Form selection; an earlier edit, a marked selection, Invert Selection, Undo: the edit taken back,
+   no selection, Free-Form Select still the tool (also when it was Select). */
+static void
+as3_twice_and_undo (void)
+{
+  EaselWindow *win = window_of (60, 40);
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  g_autoptr (EaselImage) start = distinct_window_picture (win);
+  g_autofree uint8_t *first = NULL;
+  const uint8_t *m;
+  int x, y, w, h, mw, mh;
+  gboolean floating;
+
+  use_free_select (win);
+  mark_triangle (win);
+  g_assert_true (selection_is (win, 1, 1, 5, 5));
+  m = easel_canvas_get_selection_mask (canvas, &mw, &mh);
+  first = g_memdup2 (m, 25);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "invert-selection", NULL);
+  g_assert_true (selection_is (win, 0, 0, 60, 40));
+  g_assert_cmpint (mask_count (win, 60, 40), ==, 60 * 40 - 15);
+  g_assert_cmpint (easel_window_get_tool (win), ==, EASEL_TOOL_FREE_SELECT);
+  {
+    LineParts q;
+
+    selection_line (win, &q);                                            /* the picture's edge from (0, 0), though the triangle's line began at (1, 1) */
+    g_assert_cmpint (q.parts, ==, 2);
+    g_assert_cmpint (q.xy[0][0], ==, 0);
+    g_assert_cmpint (q.xy[0][1], ==, 0);
+  }
+  g_action_group_activate_action (G_ACTION_GROUP (win), "invert-selection", NULL);
+  g_assert_true (selection_is (win, 1, 1, 5, 5));                       /* the triangle's box again */
+  g_assert_cmpint (mask_count (win, 5, 5), ==, 15);
+  m = easel_canvas_get_selection_mask (canvas, &mw, &mh);
+  g_assert_cmpint (memcmp (m, first, 25), ==, 0);                        /* its pixels, byte for byte */
+  g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  g_assert_false (floating);
+  g_assert_cmpint (easel_window_get_tool (win), ==, EASEL_TOOL_FREE_SELECT);
+  g_assert_false (action_enabled (win, "undo"));
+  g_assert_false (easel_window_get_modified (win));
+  {
+    LineParts q;
+
+    selection_line (win, &q);                                            /* the triangle's line at its own place, not at the picture's corner */
+    g_assert_cmpint (q.parts, ==, 1);
+    g_assert_cmpint (q.xy[0][0], ==, 1);
+    g_assert_cmpint (q.xy[0][1], ==, 1);
+  }
+  /* a tool change after Invert Selection puts the selection down as it always does (the flag of the tool switch is not left set) */
+  use_pencil (win);
+  g_assert_false (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  g_assert_false (easel_window_get_modified (win));
+  /* an earlier edit, then Select, a marked rectangle, Invert Selection, Undo */
+  A_STROKE (win);
+  g_assert_true (easel_window_get_modified (win));
+  use_select (win);
+  shape_press_move (win, 1, 20, 20, 29, 29);
+  shape_release (win, 1);
+  g_assert_true (selection_is (win, 20, 20, 10, 10));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "invert-selection", NULL);
+  g_assert_cmpint (easel_window_get_tool (win), ==, EASEL_TOOL_FREE_SELECT);
+  g_assert_true (action_enabled (win, "undo"));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  wait_for_layout (win);
+  assert_same_pixels (img, start);                                       /* the earlier edit taken back */
+  g_assert_false (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  g_assert_cmpint (easel_window_get_tool (win), ==, EASEL_TOOL_FREE_SELECT);
+  /* the tool switch of Invert Selection from Select left no flag set: with Select again, a marked rectangle and a tool change, the selection is put down */
+  use_select (win);
+  shape_press_move (win, 1, 20, 20, 29, 29);
+  shape_release (win, 1);
+  g_assert_true (selection_is (win, 20, 20, 10, 10));
+  use_pencil (win);
+  g_assert_false (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  close_windows ();
+}
+
+/* AS-5: Select All, and a Free-Form shape of every pixel, inverted: nothing selected, the tool as it was, no step, not modified. */
+static void
+as5_invert_whole (void)
+{
+  EaselWindow *win = window_of (60, 40);
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  g_autoptr (EaselImage) old = distinct_window_picture (win);
+  int x, y, w, h;
+  gboolean floating;
+
+  use_select (win);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "select-all", NULL);
+  g_assert_true (selection_is (win, 0, 0, 60, 40));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "invert-selection", NULL);
+  g_assert_false (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  g_assert_cmpint (easel_window_get_tool (win), ==, EASEL_TOOL_SELECT);      /* the tool as it was */
+  g_assert_false (action_enabled (win, "undo"));
+  g_assert_false (easel_window_get_modified (win));
+  assert_same_pixels (easel_window_get_picture (win), old);
+  use_free_select (win);
+  trace_press (win, 0, 0);                                                 /* a path round the whole picture: a shape of every pixel */
+  corner_to (win, 60, 0);
+  corner_to (win, 60, 40);
+  corner_to (win, 0, 40);
+  shape_release (win, 1);
+  g_assert_true (selection_is (win, 0, 0, 60, 40));
+  g_assert_cmpint (mask_count (win, 60, 40), ==, 60 * 40);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "invert-selection", NULL);
+  g_assert_false (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  g_assert_cmpint (easel_window_get_tool (win), ==, EASEL_TOOL_FREE_SELECT);
+  g_assert_false (action_enabled (win, "undo"));
+  g_assert_false (easel_window_get_modified (win));
+  close_windows ();
+}
+
+/* ---- 0042 T006: Invert Selection's item, menus and key (REQ-0042-01) ---- */
+
+/* AS-1: the key (Ctrl+Shift+J through the window's own shortcut controller, after 0041's probe of that path), the item in the really opened Edit submenu and in the selection's menu;
+   sensitive with a marked, a Free-Form and a floating selection and with nothing else; with a dialog or the color chooser open the key does nothing, the selection existing and the
+   item sensitive; with a selection being dragged the item is insensitive and the key does nothing. */
+static void
+as1_invert_item_and_key (void)
+{
+  const GdkModifierType CS = GDK_CONTROL_MASK | GDK_SHIFT_MASK;
+  EaselWindow *win = window_of (300, 200);
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  uint32_t fg = easel_window_get_foreground (win), bg = easel_window_get_background (win);
+  int x, y, w, h;
+  gboolean floating;
+
+  g_assert_true (has_accel ("win.invert-selection", GDK_KEY_j, CS));
+  g_assert_true (fire_shortcut (win, GDK_KEY_x, CS));                                   /* the probe: Ctrl+Shift+X swaps the colors */
+  g_assert_cmphex (easel_window_get_foreground (win), ==, bg);
+  g_assert_cmphex (easel_window_get_background (win), ==, fg);
+  g_assert_true (fire_shortcut (win, GDK_KEY_x, CS));
+  /* no selection: insensitive, the key does nothing */
+  g_assert_false (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  g_assert_false (action_enabled (win, "invert-selection"));
+  g_assert_false (fire_shortcut (win, GDK_KEY_j, CS));
+  g_assert_false (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  /* a marked selection: sensitive; a dialog and the color chooser open: the key does nothing, the selection and the item as they were */
+  use_select (win);
+  shape_press_move (win, 1, 100, 50, 199, 149);
+  shape_release (win, 1);
+  g_assert_true (selection_is (win, 100, 50, 100, 100));
+  g_assert_true (action_enabled (win, "invert-selection"));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "stretch-skew", NULL);
+  wait_for_dialogs (win, 1);
+  g_assert_true (action_enabled (win, "invert-selection"));
+  fire_shortcut (win, GDK_KEY_j, CS);
+  g_assert_true (selection_is (win, 100, 50, 100, 100));
+  respond (win, "cancel");
+  easel_palette_bar_press (easel_window_get_palette_bar (win), 17, 1, 1);
+  easel_palette_bar_press (easel_window_get_palette_bar (win), 17, 1, 2);
+  g_assert_true (easel_window_is_choosing_color (win));
+  g_assert_true (action_enabled (win, "invert-selection"));
+  fire_shortcut (win, GDK_KEY_j, CS);
+  g_assert_true (selection_is (win, 100, 50, 100, 100));
+  choose (win, NULL);
+  /* the selection being dragged: the item is insensitive and the key does nothing */
+  shape_press_move (win, 1, 120, 70, 122, 70);
+  g_assert_true (easel_canvas_is_stroking (canvas));
+  g_assert_false (action_enabled (win, "invert-selection"));
+  g_assert_false (fire_shortcut (win, GDK_KEY_j, CS));
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+  shape_release (win, 1);
+  g_assert_true (selection_is (win, 100, 50, 100, 100));
+  /* the key inverts: Free-Form Select the tool, the picture less the rectangle */
+  g_assert_true (fire_shortcut (win, GDK_KEY_j, CS));
+  g_assert_cmpint (easel_window_get_tool (win), ==, EASEL_TOOL_FREE_SELECT);
+  g_assert_true (selection_is (win, 0, 0, 300, 200));
+  g_assert_cmpint (mask_count (win, 300, 200), ==, 50000);
+  g_assert_true (action_enabled (win, "invert-selection"));                            /* a Free-Form selection: sensitive too */
+  /* the item of the Edit submenu, in the really opened primary menu */
+  gtk_menu_button_popup (GTK_MENU_BUTTON (find_primary_button (GTK_WIDGET (win))));
+  wait_for_layout (win);
+  {
+    GtkWidget *popover = GTK_WIDGET (gtk_menu_button_get_popover (GTK_MENU_BUTTON (find_primary_button (GTK_WIDGET (win)))));
+    GtkWidget *edit = find_model_button (popover, "Edit"), *item;
+
+    g_assert_nonnull (edit);
+    gtk_widget_activate (edit);                                                        /* the Edit page */
+    wait_for_layout (win);
+    item = find_model_button (popover, "Invert Selection");
+    g_assert_nonnull (item);
+    g_assert_true (gtk_widget_get_sensitive (item));
+    g_assert_true (gtk_widget_get_mapped (item));
+    gtk_widget_activate (item);
+    wait_for_layout (win);
+  }
+  g_assert_true (selection_is (win, 100, 50, 100, 100));                               /* inverted again: the rectangle's box, as a shape */
+  g_assert_cmpint (mask_count (win, 100, 100), ==, 100 * 100);
+  /* the item of the selection's menu, opened by the secondary press on the selection */
+  shape_press_move (win, 3, 120, 70, 120, 70);
+  shape_release (win, 3);
+  g_assert_true (gtk_widget_get_visible (GTK_WIDGET (easel_window_get_selection_menu (win))));
+  {
+    GtkWidget *item = find_model_button (GTK_WIDGET (easel_window_get_selection_menu (win)), "Invert Selection");
+
+    g_assert_nonnull (item);
+    g_assert_true (gtk_widget_get_sensitive (item));
+    gtk_widget_activate (item);
+    wait_for_layout (win);
+  }
+  g_assert_true (selection_is (win, 0, 0, 300, 200));
+  /* a floating selection: sensitive (its inversion is T007's) */
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+  use_select (win);
+  shape_press_move (win, 1, 20, 20, 29, 29);
+  shape_release (win, 1);
+  g_assert_true (key_taken (win, GDK_KEY_Right, 0));
+  g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  g_assert_true (floating);
+  g_assert_true (action_enabled (win, "invert-selection"));
+  close_windows ();
+  /* before the picture exists: insensitive, the key does nothing */
+  write_settings ("[new-picture]\nwidth=auto\nheight=auto\n");
+  win = easel_window_new (app);
+  g_assert_null (easel_window_get_picture (win));
+  g_assert_false (action_enabled (win, "invert-selection"));
+  g_assert_false (fire_shortcut (win, GDK_KEY_j, CS));
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* ---- 0042 T007: Invert Selection on a floating selection (REQ-0042-03, -04, -05; AS-4, AS-5) ---- */
+
+/* AS-4: a 20 x 20 floating selection moved to (50, 50) of a 100 x 100 picture: Invert Selection puts it down there, in the step of its lift (the hole in the background color, the pixels at
+   their new place), and the selection is the picture less (50, 50) to (69, 69), a marked Free-Form selection; Undo gives the picture before the lift and no selection; no second step. */
+static void
+as4_invert_floating (void)
+{
+  EaselWindow *win = window_of (100, 100);
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  EaselImage *img = (EaselImage *) easel_window_get_picture (win);
+  g_autoptr (EaselImage) old = distinct_window_picture (win), want = distinct_copy_of (img);
+  uint32_t bg = easel_window_get_background (win);
+  const uint8_t *m;
+  int x, y, w, h, mw, mh;
+  gboolean floating;
+
+  use_select (win);
+  shape_press_move (win, 1, 10, 10, 29, 29);
+  shape_release (win, 1);
+  shape_press_move (win, 1, 15, 15, 55, 55);                       /* moved by (40, 40): floating at (50, 50) */
+  shape_release (win, 1);
+  g_assert_true (selection_is (win, 50, 50, 20, 20));
+  g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  g_assert_true (floating);
+  g_assert_false (easel_window_get_modified (win));
+  for (int j = 10; j < 30; j++)
+    for (int i = 10; i < 30; i++)
+      want->px[j * 100 + i] = bg;                                    /* the hole */
+  for (int j = 0; j < 20; j++)
+    for (int i = 0; i < 20; i++)
+      want->px[(50 + j) * 100 + 50 + i] = old->px[(10 + j) * 100 + 10 + i];
+  g_action_group_activate_action (G_ACTION_GROUP (win), "invert-selection", NULL);
+  wait_for_layout (win);
+  assert_same_pixels (img, want);                                    /* put down where it was */
+  g_assert_true (easel_window_get_modified (win));
+  g_assert_cmpint (easel_window_get_tool (win), ==, EASEL_TOOL_FREE_SELECT);
+  g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  g_assert_false (floating);
+  g_assert_true (selection_is (win, 0, 0, 100, 100));
+  g_assert_cmpint (mask_count (win, 100, 100), ==, 100 * 100 - 20 * 20);
+  m = easel_canvas_get_selection_mask (canvas, &mw, &mh);
+  g_assert_cmpint (m[50 * 100 + 50], ==, 0);                         /* the put-down rectangle is not selected */
+  g_assert_cmpint (m[69 * 100 + 69], ==, 0);
+  g_assert_cmpint (m[70 * 100 + 69], ==, 1);
+  g_assert_cmpint (m[49 * 100 + 50], ==, 1);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  wait_for_layout (win);
+  assert_same_pixels (img, old);                                     /* the picture before the lift, no selection */
+  g_assert_false (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  g_assert_false (action_enabled (win, "undo"));                     /* one step: the lift's */
+  g_assert_false (easel_window_get_modified (win));
+  /* a floating selection partly past the edge: the part past it is lost (REQ-0013-11), only the part inside is not selected */
+  use_select (win);
+  shape_press_move (win, 1, 10, 10, 29, 29);
+  shape_release (win, 1);
+  shape_press_move (win, 1, 15, 15, 95, 95);                         /* floating at (90, 90): 10 x 10 of it inside the picture */
+  shape_release (win, 1);
+  g_assert_true (selection_is (win, 90, 90, 20, 20));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "invert-selection", NULL);
+  wait_for_layout (win);
+  g_assert_true (selection_is (win, 0, 0, 100, 100));
+  g_assert_cmpint (mask_count (win, 100, 100), ==, 100 * 100 - 10 * 10);
+  g_assert_cmphex (img->px[95 * 100 + 95], ==, old->px[15 * 100 + 15]);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  assert_same_pixels (img, old);
+  close_windows ();
+}
+
+/* AS-4: a pasted 20 x 20 picture is put down as REQ-0016-05 says and the rest is selected; Undo gives the picture before the paste. A Free-Form float: its whole shape is not selected. */
+static void
+as4_invert_pasted_and_free_form (void)
+{
+  EaselWindow *win = window_of (60, 40);
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  EaselMemoryClipboard *clipboard = memory_clipboard (win);
+  g_autoptr (EaselImage) old = distinct_window_picture (win);
+  const uint8_t *m;
+  int x, y, w, h, mw, mh;
+  gboolean floating;
+
+  use_select (win);
+  other_copies (clipboard, 20, 20, 0xFF0000FFu);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "paste", NULL);
+  g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  g_assert_true (floating);
+  g_assert_cmpint (w, ==, 20);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "invert-selection", NULL);
+  wait_for_layout (win);
+  g_assert_cmphex (easel_image_get (img, x + 5, y + 5), ==, 0xFF0000FFu);        /* put down */
+  g_assert_true (easel_window_get_modified (win));
+  g_assert_true (selection_is (win, 0, 0, 60, 40));
+  g_assert_cmpint (mask_count (win, 60, 40), ==, 60 * 40 - 20 * 20);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  wait_for_layout (win);
+  assert_same_pixels (img, old);                                                   /* before the paste */
+  g_assert_false (action_enabled (win, "undo"));
+  /* a Free-Form float: the triangle of mark_triangle moved by (10, 5): its whole shape (its 15 pixels) is not selected */
+  use_free_select (win);
+  mark_triangle (win);
+  shape_press_move (win, 1, 2, 2, 12, 7);
+  shape_release (win, 1);
+  g_assert_true (selection_is (win, 11, 6, 5, 5));
+  g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  g_assert_true (floating);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "invert-selection", NULL);
+  wait_for_layout (win);
+  g_assert_true (selection_is (win, 0, 0, 60, 40));
+  g_assert_cmpint (mask_count (win, 60, 40), ==, 60 * 40 - 15);
+  m = easel_canvas_get_selection_mask (canvas, &mw, &mh);
+  g_assert_cmpint (m[6 * 60 + 11], ==, 0);                                         /* in the triangle */
+  g_assert_cmpint (m[6 * 60 + 15], ==, 0);
+  g_assert_cmpint (m[6 * 60 + 16], ==, 1);                                         /* in its box, outside its shape: selected */
+  g_assert_cmpint (m[10 * 60 + 15], ==, 1);
+  close_windows ();
+}
+
+/* AS-5: a floating selection over the whole picture (a flipped Select All): Invert Selection puts it down, one step, and nothing is selected; the tool as it was; Undo gives the picture before the lift.
+   REQ-0042-03's last sentence: when the put-down cannot get its memory (REQ-0013-19) nothing is inverted: its dialog, the picture as before the lift, no selection, the tool as it was. */
+static void
+as5_invert_whole_float_and_put_down_fails (void)
+{
+  EaselWindow *win = window_of (60, 40);
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  g_autoptr (EaselImage) old = distinct_window_picture (win);
+  AdwAlertDialog *dialog;
+  int x, y, w, h;
+  gboolean floating;
+
+  use_select (win);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "select-all", NULL);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "flip-horizontal", NULL);   /* floating over the whole picture, flipped */
+  g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  g_assert_true (floating);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "invert-selection", NULL);
+  wait_for_layout (win);
+  for (int j = 0; j < 40; j++)
+    for (int i = 0; i < 60; i++)
+      g_assert_cmphex (img->px[j * 60 + i], ==, old->px[j * 60 + 59 - i]);        /* put down, flipped */
+  g_assert_false (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  g_assert_cmpint (easel_window_get_tool (win), ==, EASEL_TOOL_SELECT);
+  g_assert_true (easel_window_get_modified (win));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  assert_same_pixels (img, old);
+  g_assert_false (action_enabled (win, "undo"));                                   /* one step */
+  /* the put-down cannot get its memory */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "select-all", NULL);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "flip-horizontal", NULL);
+  g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  g_assert_true (floating);
+  easel_canvas_set_selection_step_limit (canvas, 100);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "invert-selection", NULL);
+  wait_for_dialogs (win, 1);
+  dialog = open_alert (win);
+  g_assert_nonnull (dialog);
+  g_assert_cmpstr (adw_alert_dialog_get_heading (dialog), ==, "Could Not Move the Selection");
+  g_assert_cmpstr (adw_alert_dialog_get_body (dialog), ==, "There is not enough memory to move this selection.");
+  respond (win, "close");
+  wait_for_layout (win);
+  g_assert_null (visible_dialog (win));
+  assert_same_pixels (img, old);                                                   /* as before the lift */
+  g_assert_false (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  g_assert_cmpint (easel_window_get_tool (win), ==, EASEL_TOOL_SELECT);            /* nothing inverted: the tool not switched */
+  g_assert_false (action_enabled (win, "undo"));
+  g_assert_false (easel_window_get_modified (win));
+  close_windows ();
+}
+
+/* ---- 0042 T008: memory (REQ-0042-07; AS-6) ---- */
+
+/* REQ-0014-15's dialog, one only, closed by its button. */
+static void
+assert_make_selection_dialog (EaselWindow *win)
+{
+  AdwAlertDialog *dialog = open_alert (win);
+
+  g_assert_nonnull (dialog);
+  g_assert_cmpstr (adw_alert_dialog_get_heading (dialog), ==, "Could Not Make the Selection");
+  g_assert_cmpstr (adw_alert_dialog_get_body (dialog), ==, "There is not enough memory to make this selection.");
+  respond (win, "close");
+  wait_for_layout (win);
+  g_assert_null (visible_dialog (win));
+}
+
+/* AS-6: with the memory for the new shape refused (the counts of the picture's rows and columns, then the mask), a marked and a floating selection shown "Could Not Make the Selection", and the
+   selection as it was: the marked one marked and Select still the tool, the floating one still floating where it was, nothing put down; the picture and the history untouched; with the
+   memory back the same inversion is made. */
+static void
+as6_invert_memory (void)
+{
+  EaselWindow *win = window_of (300, 200);
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  g_autoptr (EaselImage) old = distinct_window_picture (win);
+  int x, y, w, h;
+  gboolean floating, undo_before, modified_before;
+
+  /* a marked selection: the counts (4 bytes for each of 500 rows and columns: 2 000) and the mask (60 000) each refused */
+  use_select (win);
+  shape_press_move (win, 1, 100, 50, 199, 149);
+  shape_release (win, 1);
+  for (size_t limit = 100; limit <= 30000; limit += 29900)
+    {
+      easel_canvas_set_selection_lift_limit (canvas, limit);
+      g_action_group_activate_action (G_ACTION_GROUP (win), "invert-selection", NULL);
+      wait_for_dialogs (win, 1);
+      assert_make_selection_dialog (win);
+      g_assert_true (selection_is (win, 100, 50, 100, 100));
+      g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+      g_assert_false (floating);
+      g_assert_cmpint (easel_window_get_tool (win), ==, EASEL_TOOL_SELECT);          /* not switched */
+      assert_same_pixels (img, old);
+      g_assert_false (action_enabled (win, "undo"));
+      g_assert_false (easel_window_get_modified (win));
+    }
+  /* a floating one, hanging: still floating where it was, not put down */
+  easel_canvas_set_selection_lift_limit (canvas, SIZE_MAX);
+  shape_press_move (win, 1, 120, 70, 220, 120);                                    /* moved by (100, 50): floating at (200, 100) */
+  shape_release (win, 1);
+  g_assert_true (selection_is (win, 200, 100, 100, 100));
+  g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  g_assert_true (floating);
+  undo_before = action_enabled (win, "undo");
+  modified_before = easel_window_get_modified (win);
+  easel_canvas_set_selection_lift_limit (canvas, 100);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "invert-selection", NULL);
+  wait_for_dialogs (win, 1);
+  assert_make_selection_dialog (win);
+  g_assert_true (selection_is (win, 200, 100, 100, 100));
+  g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  g_assert_true (floating);                                                        /* nothing put down */
+  assert_same_pixels (img, old);
+  g_assert_cmpint (easel_window_get_modified (win), ==, modified_before);
+  g_assert_cmpint (action_enabled (win, "undo"), ==, undo_before);
+  g_assert_cmpint (easel_window_get_tool (win), ==, EASEL_TOOL_SELECT);
+  /* the memory back: made, the float put down, one step */
+  easel_canvas_set_selection_lift_limit (canvas, SIZE_MAX);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "invert-selection", NULL);
+  wait_for_layout (win);
+  g_assert_cmpint (easel_window_get_tool (win), ==, EASEL_TOOL_FREE_SELECT);
+  g_assert_true (selection_is (win, 0, 0, 300, 200));
+  g_assert_cmpint (mask_count (win, 300, 200), ==, 300 * 200 - 100 * 100);
+  g_assert_true (easel_window_get_modified (win));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  while (action_enabled (win, "undo"))
+    g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  assert_same_pixels (img, old);
+  close_windows ();
+}
+
+/* AS-6 at 8000 x 8000 (the whole picture floating, flipped, moved by half its sides): (b) with the limit below the mask the dialog, the picture byte for byte, the float where it was, still
+   floating, nothing put down; (a) with the limit off the inversion made, the float put down in one step, the rest selected; Undo gives the picture before the lift. */
+static void
+memory_8000_invert (void)
+{
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  EaselImage *img;
+  g_autoptr (EaselImage) before = NULL;
+  int x, y, w, h;
+  gboolean floating, undo_before, modified_before;
+
+  write_settings ("[new-picture]\nwidth=8000\nheight=8000\ncanvas-color=#FFFFFF\nbackground=#FFFFFF\n");
+  win = start_window ();
+  wait_for_layout (win);
+  canvas = easel_window_get_canvas (win);
+  img = (EaselImage *) easel_window_get_picture (win);
+  for (gsize i = 0; i < (gsize) 8000 * 8000; i++)
+    img->px[i] = 0xFF000000u | (uint32_t) (i * 2654435761u);
+  easel_canvas_update (canvas);
+  before = distinct_copy_of (img);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-fit", NULL);
+  wait_for_layout (win);
+  use_select (win);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "select-all", NULL);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "flip-horizontal", NULL);
+  shape_press_move (win, 1, 4000, 4000, 8000, 8000);                               /* floating at (4000, 4000) */
+  shape_release (win, 1);
+  g_assert_true (selection_is (win, 4000, 4000, 8000, 8000));
+  g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  g_assert_true (floating);
+  undo_before = action_enabled (win, "undo");
+  modified_before = easel_window_get_modified (win);
+  /* (b) the limit below the mask (64 000 000 bytes) */
+  easel_canvas_set_selection_lift_limit (canvas, (size_t) 60 << 20);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "invert-selection", NULL);
+  wait_for_dialogs (win, 1);
+  assert_make_selection_dialog (win);
+  assert_same_pixels (img, before);
+  g_assert_true (selection_is (win, 4000, 4000, 8000, 8000));
+  g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  g_assert_true (floating);
+  g_assert_cmpint (easel_window_get_modified (win), ==, modified_before);
+  g_assert_cmpint (action_enabled (win, "undo"), ==, undo_before);
+  /* (a) the limit off: made */
+  easel_canvas_set_selection_lift_limit (canvas, SIZE_MAX);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "invert-selection", NULL);
+  wait_for_layout (win);
+  g_assert_true (selection_is (win, 0, 0, 8000, 8000));
+  g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  g_assert_false (floating);
+  g_assert_true (easel_window_get_modified (win));
+  g_assert_cmpint (mask_count (win, 8000, 8000), ==, 8000 * 8000 - 4000 * 4000);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  wait_for_layout (win);
+  while (action_enabled (win, "undo"))
+    g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  wait_for_layout (win);
+  assert_same_pixels (img, before);
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* AS-6, each allocation by itself: the least limit at which the canvas makes the inversion is above the least at which the core makes its mask (the outline of the inverse is counted by
+   the same limit, and needs more than the core's two: so a limit given to the core alone is never the one that refuses, and the outline's is), for a marked and for a floating selection; every limit below it is refused with the selection as it was. */
+static void
+as6_invert_each_allocation (void)
+{
+  for (int floating_case = 0; floating_case < 2; floating_case++)
+    {
+      EaselWindow *win = window_of (6, 6);
+      EaselCanvas *canvas = easel_window_get_canvas (win);
+      guint failed_id = g_signal_lookup ("selection-failed", EASEL_TYPE_CANVAS);
+      uint8_t *mask = NULL;
+      int x, y, w, h;
+      size_t core_least = 0, canvas_least = 0;
+      gboolean selected = FALSE;
+
+      use_select (win);
+      shape_press_move (win, 1, 1, 1, 2, 2);                                       /* 2 x 2 at (1, 1) */
+      shape_release (win, 1);
+      if (floating_case)
+        {
+          shape_press_move (win, 1, 1, 1, 2, 2);                                   /* moved by (1, 1): floating at (2, 2) */
+          shape_release (win, 1);
+        }
+      g_assert_true (selection_is (win, floating_case ? 2 : 1, floating_case ? 2 : 1, 2, 2));
+      while (easel_selection_invert (NULL, 1, 1, 2, 2, 6, 6, &x, &y, &w, &h, &mask, core_least) != EASEL_SELECTION_DONE)
+        core_least++;
+      free (mask);
+      g_signal_handlers_block_matched (canvas, G_SIGNAL_MATCH_ID, failed_id, 0, NULL, NULL, NULL);
+      for (;; canvas_least++)
+        {
+          easel_canvas_set_selection_lift_limit (canvas, canvas_least);
+          g_assert_cmpuint (canvas_least, <, 5000);
+          if (easel_canvas_invert_selection (canvas, &selected) == EASEL_SELECTION_DONE)
+            break;
+          g_assert_true (selection_is (win, floating_case ? 2 : 1, floating_case ? 2 : 1, 2, 2));
+        }
+      g_signal_handlers_unblock_matched (canvas, G_SIGNAL_MATCH_ID, failed_id, 0, NULL, NULL, NULL);
+      g_assert_true (selected);
+      g_assert_cmpuint (canvas_least, >, core_least);
+      close_windows ();
+    }
+}
+
+/* ---- 0042 T009: holes, pieces and the Free-Form behaviours (REQ-0042-02, -06; AS-8) ---- */
+
+/* The picture base as a lift of the 60 x 40 picture less the hole (10, 10) to (29, 29) leaves it: optionally flipped across, stretched to sw x sh, moved by (dx, dy) and put down, from the core. */
+static EaselImage *
+hole_inverse_result (const EaselImage *base, uint32_t bg, int op, int sw, int sh, int dx, int dy, gboolean copy)
+{
+  EaselImage *want = distinct_copy_of (base);
+  EaselFloat f = { 0 };
+  uint8_t mask[60 * 40];
+
+  for (int j = 0; j < 40; j++)
+    for (int i = 0; i < 60; i++)
+      mask[j * 60 + i] = !(i >= 10 && i <= 29 && j >= 10 && j <= 29);
+  g_assert_cmpint (easel_selection_lift (&f, want, 0, 0, 60, 40, mask, copy, bg, SIZE_MAX), ==, EASEL_SELECTION_DONE);
+  if (op >= 0)
+    g_assert_cmpint (easel_selection_transform (&f, (EaselOp) op, SIZE_MAX), ==, EASEL_SELECTION_DONE);
+  if (sw > 0)
+    g_assert_cmpint (easel_selection_stretch (&f, 0, 0, sw, sh, SIZE_MAX), ==, EASEL_SELECTION_DONE);
+  f.x += dx;
+  f.y += dy;
+  g_assert_cmpint (easel_selection_put_down (&f, TRUE, want, NULL, SIZE_MAX), !=, EASEL_SELECTION_NO_MEMORY);
+  return want;
+}
+
+/* A 60 x 40 picture of distinct pixels with the rectangle (10, 10) to (29, 29) marked by Select and inverted: Free-Form Select the tool, the picture less 400 pixels selected. */
+static EaselWindow *
+window_with_inverted_hole (EaselImage **old)
+{
+  EaselWindow *win = window_of (60, 40);
+
+  *old = distinct_window_picture (win);
+  easel_canvas_set_guides_hidden (easel_window_get_canvas (win), TRUE);
+  use_select (win);
+  shape_press_move (win, 1, 10, 10, 29, 29);
+  shape_release (win, 1);
+  g_assert_true (selection_is (win, 10, 10, 20, 20));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "invert-selection", NULL);
+  wait_for_layout (win);
+  g_assert_cmpint (easel_window_get_tool (win), ==, EASEL_TOOL_FREE_SELECT);
+  g_assert_true (selection_is (win, 0, 0, 60, 40));
+  g_assert_cmpint (mask_count (win, 60, 40), ==, 60 * 40 - 400);
+  return win;
+}
+
+/* AS-8: an inverted selection with a hole moved by a drag on it lifts the picture less the hole (the hole's pixels stay where they were, the rest takes the background and the float);
+   Crop to Selection changes nothing; a band across the picture inverted is two pieces with a dashed line each, and a press in the band, outside both, leaves none. */
+static void
+as8_invert_hole_and_band (void)
+{
+  static const int top[8] = { 0, 0, 60, 0, 60, 15, 0, 15 }, bottom[8] = { 0, 25, 60, 25, 60, 40, 0, 40 };
+  EaselImage *old = NULL;
+  EaselWindow *win = window_with_inverted_hole (&old);
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  g_autoptr (EaselImage) before = old, moved = NULL;
+  uint32_t bg = easel_window_get_background (win);
+  LineParts q;
+  int x, y, w, h;
+  gboolean floating;
+
+  /* Crop to Selection: the bounding rectangle is the whole picture, nothing changes */
+  g_assert_true (action_enabled (win, "crop-to-selection"));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "crop-to-selection", NULL);
+  wait_for_layout (win);
+  assert_size (win, 60, 40);
+  assert_same_pixels (img, before);
+  g_assert_false (action_enabled (win, "undo"));
+  g_assert_false (easel_window_get_modified (win));
+  /* a drag on it, from (5, 5) to (8, 7) */
+  moved = hole_inverse_result (before, bg, -1, 0, 0, 3, 2, FALSE);
+  shape_press_move (win, 1, 5, 5, 8, 7);
+  shape_release (win, 1);
+  g_assert_true (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  g_assert_true (floating);
+  g_assert_true (selection_is (win, 3, 2, 60, 40));
+  assert_same_pixels (img, before);                                                  /* nothing is written before the put-down */
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+  assert_same_pixels (img, moved);
+  g_assert_cmphex (easel_image_get (img, 25, 15), ==, easel_image_get (before, 25, 15));  /* in the hole: where it was */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  assert_same_pixels (img, before);
+  g_assert_false (action_enabled (win, "undo"));
+  close_windows ();
+  /* a band across the picture, (0, 15) to (59, 24), inverted: two pieces */
+  win = window_of (60, 40);
+  canvas = easel_window_get_canvas (win);
+  img = easel_window_get_picture (win);
+  use_select (win);
+  shape_press_move (win, 1, 0, 15, 59, 24);
+  shape_release (win, 1);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "invert-selection", NULL);
+  wait_for_layout (win);
+  g_assert_true (selection_is (win, 0, 0, 60, 40));
+  g_assert_cmpint (mask_count (win, 60, 40), ==, 60 * 30);
+  selection_line (win, &q);
+  g_assert_cmpint (q.parts, ==, 2);
+  g_assert_cmpint (q.n[0], ==, 4);
+  g_assert_cmpint (q.n[1], ==, 4);
+  g_assert_cmpmem (q.xy[0], 8 * sizeof (int), top, sizeof top);
+  g_assert_cmpmem (q.xy[1], 8 * sizeof (int), bottom, sizeof bottom);
+  /* a press in the band, outside both pieces: a click leaves no selection, the picture is as it was */
+  trace_press (win, 30, 20);
+  shape_release (win, 1);
+  g_assert_false (easel_canvas_get_selection (canvas, &x, &y, &w, &h, &floating));
+  g_assert_false (action_enabled (win, "undo"));
+  close_windows ();
+}
+
+/* AS-8: the inverted selection with a hole, stretched by its corner handle to 30 x 20 (its mask scaled with it: the hole's 400 pixels become 100 at (5, 5)), then put down: the pixels
+   of the stretch from the core; and flipped across (the hole at (30, 10) to (49, 29)), and moved with Ctrl (a copy, the hole's pixels and the original left). */
+static void
+as8_invert_stretched_flipped_and_copied (void)
+{
+  EaselImage *old = NULL;
+  EaselWindow *win = window_with_inverted_hole (&old);
+  const EaselImage *img = easel_window_get_picture (win);
+  g_autoptr (EaselImage) before = old, stretched = NULL, flipped = NULL, copied = NULL;
+  uint32_t bg = easel_window_get_background (win);
+  int x, y, w, h;
+  gboolean floating;
+
+  stretched = hole_inverse_result (before, bg, -1, 30, 20, 0, 0, FALSE);
+  flipped = hole_inverse_result (before, bg, EASEL_OP_FLIP_H, 0, 0, 0, 0, FALSE);
+  copied = hole_inverse_result (before, bg, -1, 0, 0, 3, 2, TRUE);
+  g_assert_cmpint (differing_pixels (before, stretched), >, 1000);
+  g_assert_cmpint (differing_pixels (before, flipped), >, 1000);
+  drag_handle (win, EASEL_HANDLE_CORNER, -30, -20);
+  g_assert_true (easel_canvas_get_selection (easel_window_get_canvas (win), &x, &y, &w, &h, &floating));
+  g_assert_true (floating);
+  g_assert_true (selection_is (win, 0, 0, 30, 20));
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+  assert_same_pixels (img, stretched);
+  g_assert_cmphex (easel_image_get (img, 8, 8), ==, bg);                              /* inside the scaled hole: lifted from there, nothing written back */
+  g_assert_cmphex (easel_image_get (img, 2, 2), ==, easel_image_get (before, 5, 5));  /* the float's pixel: the source pixel at the centre of the two it covers */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  assert_same_pixels (img, before);
+  close_windows ();
+  /* flipped across: the hole moves to the other side, the pixels are where the flip puts them */
+  win = window_with_inverted_hole (&old);
+  img = easel_window_get_picture (win);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "flip-horizontal", NULL);
+  wait_for_layout (win);
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+  assert_same_pixels (img, flipped);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  g_assert_false (action_enabled (win, "undo"));
+  g_assert_cmpint (differing_pixels (img, old), ==, 0);
+  easel_image_free (old);
+  close_windows ();
+  /* a Ctrl drag: a copy at the shift, the original and the hole untouched */
+  win = window_with_inverted_hole (&old);
+  img = easel_window_get_picture (win);
+  modifier_keys (win, GDK_CONTROL_MASK);
+  shape_press_move (win, 1, 5, 5, 8, 7);
+  shape_release (win, 1);
+  modifier_keys (win, 0);
+  g_assert_true (selection_is (win, 3, 2, 60, 40));
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+  assert_same_pixels (img, copied);
+  g_assert_cmphex (easel_image_get (img, 25, 15), ==, easel_image_get (old, 25, 15));
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  assert_same_pixels (img, old);
+  easel_image_free (old);
+  close_windows ();
+}
+
 int
 main (int argc, char **argv)
 {
@@ -42474,6 +43331,18 @@ main (int argc, char **argv)
   g_test_add_func ("/0041/as6_memory", as6_memory);
   g_test_add_func ("/0041/memory_8000", memory_8000);
   g_test_add_func ("/0041/as6_whole_float_put_down_fails", as6_whole_float_put_down_fails);
+  g_test_add_func ("/0042/as2_marked", as2_invert_marked);
+  g_test_add_func ("/0042/as3_twice_and_undo", as3_twice_and_undo);
+  g_test_add_func ("/0042/as5_whole", as5_invert_whole);
+  g_test_add_func ("/0042/as1_item_and_key", as1_invert_item_and_key);
+  g_test_add_func ("/0042/as4_floating", as4_invert_floating);
+  g_test_add_func ("/0042/as6_memory", as6_invert_memory);
+  g_test_add_func ("/0042/memory_8000", memory_8000_invert);
+  g_test_add_func ("/0042/as6_each_allocation", as6_invert_each_allocation);
+  g_test_add_func ("/0042/as8_hole_and_band", as8_invert_hole_and_band);
+  g_test_add_func ("/0042/as8_stretched_and_flipped", as8_invert_stretched_flipped_and_copied);
+  g_test_add_func ("/0042/as4_pasted_and_free_form", as4_invert_pasted_and_free_form);
+  g_test_add_func ("/0042/as5_whole_float_and_put_down_fails", as5_invert_whole_float_and_put_down_fails);
   ret = g_test_run ();
   g_object_unref (app);
   return ret;

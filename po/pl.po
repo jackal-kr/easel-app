@@ -125,6 +125,9 @@ msgstr "Wklej"
 msgid "Select All"
 msgstr "Zaznacz wszystko"
 
+msgid "Invert Selection"
+msgstr "Odwróć zaznaczenie"
+
 msgid "Clear the selection"
 msgstr "Wyczyść zaznaczenie"
 
@@ -1135,6 +1138,9 @@ msgstr "Wy_czyść zaznaczenie"
 
 msgid "Select _All"
 msgstr "Z_aznacz wszystko"
+
+msgid "In_vert Selection"
+msgstr "O_dwróć zaznaczenie"
 
 msgid "Cop_y To…"
 msgstr "Kopiu_j do…"
