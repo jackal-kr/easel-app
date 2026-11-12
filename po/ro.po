@@ -782,14 +782,11 @@ msgstr "Schimbă mărirea."
 msgid "Draws a straight line with the selected line width."
 msgstr "Desenează o linie dreaptă de grosimea aleasă."
 
-msgid "Draws a rectangle with the selected fill style."
-msgstr "Desenează un dreptunghi cu stilul de umplere ales."
+msgid "Draws the chosen shape with the selected fill style."
+msgstr "Desenează forma selectată cu stilul de umplere ales."
 
-msgid "Draws a rounded rectangle with the selected fill style."
-msgstr "Desenează un dreptunghi rotunjit cu stilul de umplere ales."
-
-msgid "Draws an ellipse with the selected fill style."
-msgstr "Desenează o elipsă cu stilul de umplere ales."
+msgid "Shapes"
+msgstr "Forme"
 
 msgid "Draws a curved line: drag a line, then drag points of it to bend it. A click away from it finishes it."
 msgstr "Desenează o linie curbă: trageți o linie, apoi trageți puncte ale ei pentru a o curba. Un clic în afara ei o încheie."
@@ -1333,3 +1330,68 @@ msgstr "Forme și pensule netede"
 
 msgid "Smooth text"
 msgstr "Text neted"
+
+msgid "Triangle"
+msgstr "Triunghi"
+
+msgid "Right Triangle"
+msgstr "Triunghi dreptunghic"
+
+msgid "Diamond"
+msgstr "Romb"
+
+msgid "Pentagon"
+msgstr "Pentagon"
+
+msgid "Hexagon"
+msgstr "Hexagon"
+
+msgid "Right Arrow"
+msgstr "Săgeată dreapta"
+
+msgid "Left Arrow"
+msgstr "Săgeată stânga"
+
+msgid "Up Arrow"
+msgstr "Săgeată sus"
+
+msgid "Down Arrow"
+msgstr "Săgeată jos"
+
+msgid "4-Point Star"
+msgstr "Stea cu 4 colțuri"
+
+msgid "5-Point Star"
+msgstr "Stea cu 5 colțuri"
+
+msgid "6-Point Star"
+msgstr "Stea cu 6 colțuri"
+
+msgid "Rounded Rectangle Callout"
+msgstr "Balon dreptunghiular"
+
+msgid "Oval Callout"
+msgstr "Balon oval"
+
+msgid "Heart"
+msgstr "Inimă"
+
+msgid "Lightning Bolt"
+msgstr "Fulger"
+
+msgid "Shape"
+msgstr "Formă"
+
+#, c-format
+msgid "Shape: %s"
+msgstr "Formă: %s"
+
+#, c-format
+msgid "Shape %d by %d"
+msgstr "Formă %d pe %d"
+
+msgid "Shape put down"
+msgstr "Formă așezată"
+
+msgid "Shape removed"
+msgstr "Formă eliminată"

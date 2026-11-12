@@ -774,14 +774,11 @@ msgstr "Ändert die Vergrößerung."
 msgid "Draws a straight line with the selected line width."
 msgstr "Zeichnet eine gerade Linie in der gewählten Stärke."
 
-msgid "Draws a rectangle with the selected fill style."
-msgstr "Zeichnet ein Rechteck im gewählten Füllstil."
+msgid "Draws the chosen shape with the selected fill style."
+msgstr "Zeichnet die ausgewählte Form im gewählten Füllstil."
 
-msgid "Draws a rounded rectangle with the selected fill style."
-msgstr "Zeichnet ein abgerundetes Rechteck im gewählten Füllstil."
-
-msgid "Draws an ellipse with the selected fill style."
-msgstr "Zeichnet eine Ellipse im gewählten Füllstil."
+msgid "Shapes"
+msgstr "Formen"
 
 msgid "Draws a curved line: drag a line, then drag points of it to bend it. A click away from it finishes it."
 msgstr "Zeichnet eine gebogene Linie: Linie ziehen, dann Punkte darauf ziehen, um sie zu biegen. Ein Klick daneben schließt sie ab."
@@ -1323,3 +1320,68 @@ msgstr "Glatte Formen und Pinsel"
 
 msgid "Smooth text"
 msgstr "Glatter Text"
+
+msgid "Triangle"
+msgstr "Dreieck"
+
+msgid "Right Triangle"
+msgstr "Rechtwinkliges Dreieck"
+
+msgid "Diamond"
+msgstr "Raute"
+
+msgid "Pentagon"
+msgstr "Fünfeck"
+
+msgid "Hexagon"
+msgstr "Sechseck"
+
+msgid "Right Arrow"
+msgstr "Pfeil nach rechts"
+
+msgid "Left Arrow"
+msgstr "Pfeil nach links"
+
+msgid "Up Arrow"
+msgstr "Pfeil nach oben"
+
+msgid "Down Arrow"
+msgstr "Pfeil nach unten"
+
+msgid "4-Point Star"
+msgstr "Vierzackiger Stern"
+
+msgid "5-Point Star"
+msgstr "Fünfzackiger Stern"
+
+msgid "6-Point Star"
+msgstr "Sechszackiger Stern"
+
+msgid "Rounded Rectangle Callout"
+msgstr "Abgerundete Sprechblase"
+
+msgid "Oval Callout"
+msgstr "Ovale Sprechblase"
+
+msgid "Heart"
+msgstr "Herz"
+
+msgid "Lightning Bolt"
+msgstr "Blitz"
+
+msgid "Shape"
+msgstr "Form"
+
+#, c-format
+msgid "Shape: %s"
+msgstr "Form: %s"
+
+#, c-format
+msgid "Shape %d by %d"
+msgstr "Form %d mal %d"
+
+msgid "Shape put down"
+msgstr "Form abgelegt"
+
+msgid "Shape removed"
+msgstr "Form entfernt"

@@ -120,6 +120,21 @@ struct _EaselCanvas
   uint32_t shape_draw, shape_other;             /* the colors of the press, kept until the release (REQ-0010-06) */
   int shape_width;                              /* 1 to 5, and the fill style: set by the window from its two actions */
   EaselFigureStyle shape_style;
+  EaselShapeKind shape_kind;                    /* what Shapes draws (REQ-0043-02) */
+  int shape_pts[2 * EASEL_SHAPE_MAX_CORNERS];   /* its corners in its box, made by easel_shape_figure */
+  gboolean shape_moved;                         /* the first drag of Shapes has left its press's pixel (REQ-0043-06) */
+  gboolean pend_shape;                          /* the pending figure is a waiting shape of Shapes (REQ-0043-06) */
+  int wait_x, wait_y, wait_w, wait_h;           /* its box */
+  gboolean wait_mirror_x, wait_mirror_y;        /* mirrored by a handle dragged past the opposite edge (REQ-0043-08) */
+  guint wait_color_button;                      /* the button that dragged it out: its colors (REQ-0043-09) */
+  int drag_handle;                              /* a held drag of a waiting shape: its handle, or -1 for a move (REQ-0043-07) */
+  int drag_px, drag_py;                         /* the pixel under its press */
+  int drag_box[4];                              /* the box, the mirrors and the colors at its press: Esc puts them back */
+  gboolean drag_mirror_x, drag_mirror_y;
+  guint defer_shape_failed;                     /* a put-down at a press, by this button: if refused, its dialog waits for the release (REQ-0043-13) */
+  guint shape_failed_button;                    /* the button whose release shows it */
+  gboolean show_failed;                         /* a shape's preview could not be made; the idle that acts on it is on its way */
+  gboolean show_failed_at_release;              /* ... and a button was held: it acts at the release */
   gboolean smooth;                              /* Smooth chosen (0039): figures and Brush strokes by coverage */
   /* A pending curve or polygon (0011): from its first press until it is put down or dropped. */
   gboolean pending;
@@ -305,6 +320,7 @@ enum
   SIGNAL_POINTER_MOVED,
   SIGNAL_POINTER_LEFT,
   SIGNAL_RESIZE_REQUESTED,
+  SIGNAL_SHAPE_CHANGED,
   N_SIGNALS
 };
 
@@ -2581,6 +2597,12 @@ on_selection (EaselCanvas *self, double x, double y)
 {
   int px, py;
 
+  if (self->tool == EASEL_TOOL_SHAPES && self->img != NULL && self->pending && self->pend_shape)
+    {
+      /* inside a waiting shape's box (REQ-0043-07) */
+      to_pixel (self, x, y, &px, &py);
+      return px >= self->wait_x && py >= self->wait_y && px - self->wait_x < self->wait_w && py - self->wait_y < self->wait_h;
+    }
   if (!easel_tool_selects (self->tool) || self->sel_state == 0 || self->img == NULL)
     return FALSE;
   to_pixel (self, x, y, &px, &py);
@@ -4085,8 +4107,14 @@ easel_canvas_get_selection_handle_rect (EaselCanvas *self, EaselSelHandle handle
   /* The handles of an open text box with Text, else the selection's (REQ-0017-05, REQ-0015-01). */
   if (self->img == NULL)
     return FALSE;
-  if (self->tool == EASEL_TOOL_TEXT ? !easel_canvas_text_box (self, &sx, &sy, &sw, &sh)
-                                    : !easel_canvas_get_selection (self, &sx, &sy, &sw, &sh, &floating))
+  if (self->tool == EASEL_TOOL_SHAPES)
+    {
+      /* a waiting shape's box (REQ-0043-06) */
+      if (!easel_canvas_get_waiting_shape (self, &sx, &sy, &sw, &sh))
+        return FALSE;
+    }
+  else if (self->tool == EASEL_TOOL_TEXT ? !easel_canvas_text_box (self, &sx, &sy, &sw, &sh)
+                                         : !easel_canvas_get_selection (self, &sx, &sy, &sw, &sh, &floating))
     return FALSE;
   rx = sx * l;
   ry = sy * l;
@@ -4141,6 +4169,11 @@ easel_canvas_selection_handle_at (EaselCanvas *self, double x, double y)
       if (!easel_canvas_text_box (self, &sx, &sy, &sw, &sh)
           || (x >= sx * l && x < (sx + sw) * l && y >= sy * l && y < (sy + sh) * l))
         return -1;
+    }
+  else if (self->tool == EASEL_TOOL_SHAPES)
+    {
+      if (!easel_canvas_get_waiting_shape (self, &sx, &sy, &sw, &sh))
+        return -1;                                  /* a waiting shape's handles (REQ-0043-07) */
     }
   else if (!easel_tool_selects (self->tool) || !easel_canvas_get_selection (self, &sx, &sy, &sw, &sh, &floating))
     return -1;
@@ -4198,7 +4231,8 @@ append_selection_handles (EaselCanvas *self, GtkSnapshot *snapshot)
   static const GdkRGBA navy = { 0.0f, 0.0f, 0.5f, 1.0f };
   graphene_rect_t r;
 
-  if (self->guides_hidden || self->no_sel_handles || !(easel_tool_selects (self->tool) || self->tool == EASEL_TOOL_TEXT))
+  if (self->guides_hidden || self->no_sel_handles
+      || !(easel_tool_selects (self->tool) || self->tool == EASEL_TOOL_TEXT || self->tool == EASEL_TOOL_SHAPES))
     return;
   for (guint i = 0; i < G_N_ELEMENTS (order); i++)
     if (easel_canvas_get_selection_handle_rect (self, order[i], &r))
@@ -4297,9 +4331,8 @@ append_magnifier_box (EaselCanvas *self, GtkSnapshot *snapshot)
 static void
 update_shape_end (EaselCanvas *self)
 {
-  EaselFigureKind kind = self->tool == EASEL_TOOL_LINE ? EASEL_FIGURE_LINE
-                         : self->tool == EASEL_TOOL_RECTANGLE ? EASEL_FIGURE_RECTANGLE
-                         : self->tool == EASEL_TOOL_ROUNDED_RECTANGLE ? EASEL_FIGURE_ROUNDED : EASEL_FIGURE_ELLIPSE;
+  /* Shapes' box is a square with Shift, as Rectangle's was (REQ-0043-04, REQ-0010-14). */
+  EaselFigureKind kind = self->tool == EASEL_TOOL_LINE ? EASEL_FIGURE_LINE : EASEL_FIGURE_RECTANGLE;
   int x = self->shape_px, y = self->shape_py;
 
   if (self->shift)
@@ -4416,12 +4449,16 @@ easel_canvas_set_shift (EaselCanvas *self, gboolean down)
 static EaselFigure
 current_figure (EaselCanvas *self)
 {
-  EaselFigureKind kind = self->tool == EASEL_TOOL_LINE ? EASEL_FIGURE_LINE
-                         : self->tool == EASEL_TOOL_RECTANGLE ? EASEL_FIGURE_RECTANGLE
-                         : self->tool == EASEL_TOOL_ROUNDED_RECTANGLE ? EASEL_FIGURE_ROUNDED : EASEL_FIGURE_ELLIPSE;
+  EaselFigure f = { EASEL_FIGURE_LINE, self->shape_x0, self->shape_y0, self->shape_x1, self->shape_y1, self->shape_width, self->shape_style, NULL };
+  int x, y, w, h;
 
-  EaselFigure f = { kind, self->shape_x0, self->shape_y0, self->shape_x1, self->shape_y1, self->shape_width, self->shape_style, NULL };
-
+  if (self->tool == EASEL_TOOL_SHAPES)
+    {
+      /* The chosen shape in the drag's box, at most 10000 on a side (REQ-0043-04); Shift's square is already in the end. */
+      easel_shape_box (self->shape_x0, self->shape_y0, self->shape_x1, self->shape_y1, FALSE, &x, &y, &w, &h);
+      return easel_shape_figure (self->shape_kind, x, y, w, h, self->shape_width, self->shape_style, self->smooth, FALSE, FALSE,
+                                 self->shape_pts);
+    }
   f.smooth = self->smooth;
   return f;
 }
@@ -4454,6 +4491,23 @@ append_shape_run (GtkSnapshot *snapshot, const graphene_rect_t *r, const graphen
    what the view costs and not what the shape does. */
 /* The figure shown over the picture now and its two colors: the waiting one or the one being dragged; none while a gradient waits, which replaces the
    tiles instead (gradient_preview). */
+static EaselFigure pending_figure (EaselCanvas *self);
+
+/* The colors of the pending figure: a waiting shape's are those of REQ-0010-06 for the button that dragged it out, taken from the colors
+   of now (REQ-0043-09); a curve's, a polygon's and a gradient's those of their press. */
+static void
+pending_colors (EaselCanvas *self, uint32_t *draw, uint32_t *other)
+{
+  if (self->pend_shape && !self->pend_held)
+    {
+      *draw = self->wait_color_button == GDK_BUTTON_PRIMARY ? self->foreground : self->background;
+      *other = self->wait_color_button == GDK_BUTTON_PRIMARY ? self->background : self->foreground;
+      return;
+    }
+  *draw = self->pend_draw;
+  *other = self->pend_other;
+}
+
 static gboolean
 shown_figure (EaselCanvas *self, EaselFigure *f, uint32_t *draw, uint32_t *other)
 {
@@ -4462,8 +4516,7 @@ shown_figure (EaselCanvas *self, EaselFigure *f, uint32_t *draw, uint32_t *other
   if (self->pending)
     {
       *f = pending_figure (self);
-      *draw = self->pend_draw;
-      *other = self->pend_other;
+      pending_colors (self, draw, other);
       return TRUE;
     }
   if (self->shaping)
@@ -4494,15 +4547,19 @@ figure_run_color (const EaselFigure *f, const EaselFigureRun *run, uint32_t draw
 /* A smooth figure over the picture (REQ-0039-09 (3)): each run's pixels in the color the put-down gives them,
    easel_figure_cover_color over the picture's pixel; a run whose drawn parts cover all its points does not depend on the
    picture and is one rectangle, any other pixel is its own. At a zoom where a device pixel holds many rows, one row in step. */
+static void shape_preview_failed (EaselCanvas *self);
+
 static void
 append_cover_preview (EaselCanvas *self, GtkSnapshot *snapshot, const EaselFigure *f, int row0, int row1, uint32_t draw,
                       uint32_t other, gboolean by_edges, const graphene_rect_t *picture)
 {
   double scale = easel_canvas_get_scale (self), l = self->zoom / (100.0 * scale);
   size_t max = easel_figure_cover_max_runs (f);
-  g_autofree EaselCoverRun *runs = g_try_new (EaselCoverRun, max);
+  g_autofree EaselCoverRun *runs = max * sizeof (EaselCoverRun) <= self->preview_max_bytes ? g_try_new (EaselCoverRun, max) : NULL;
   int step = (row1 - row0 + 1) / 3000 + 1;
 
+  if (runs == NULL)
+    shape_preview_failed (self);
   if (runs == NULL)
     return;
   for (int y = row0; y <= row1; y += step)
@@ -4537,6 +4594,50 @@ append_cover_preview (EaselCanvas *self, GtkSnapshot *snapshot, const EaselFigur
     }
 }
 
+/* A waiting shape that cannot be shown (REQ-0043-13): with no button held it is dropped and its dialog shows; a button held, both wait
+   for its release. Acted on from an idle, not from inside a frame. */
+static void drop_unshown_shape (EaselCanvas *self);
+
+static gboolean
+shape_show_failed_idle (gpointer data)
+{
+  EaselCanvas *self = data;
+
+  self->show_failed = FALSE;
+  if (self->pending && self->pend_shape && self->pend_held)
+    self->show_failed_at_release = TRUE;
+  else if (self->pending && self->pend_shape)
+    drop_unshown_shape (self);
+  return G_SOURCE_REMOVE;
+}
+
+static void
+drop_unshown_shape (EaselCanvas *self)
+{
+  self->show_failed_at_release = FALSE;
+  set_pending (self, FALSE);
+  g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);           /* the size field clears (0043 Check F2) */
+  gtk_widget_queue_draw (GTK_WIDGET (self));
+  g_signal_emit (self, signals[SIGNAL_SHAPE_FAILED], 0);
+}
+
+static void
+shape_preview_failed (EaselCanvas *self)
+{
+  if (!(self->pending && self->pend_shape) && !(self->shaping && self->tool == EASEL_TOOL_SHAPES))
+    return;                                               /* Line's drag shows what it can, as before */
+  if (self->shaping)
+    {
+      self->show_failed_at_release = TRUE;                /* the first drag: no shape waits at its release */
+      return;
+    }
+  if (!self->show_failed)
+    {
+      self->show_failed = TRUE;
+      g_idle_add_full (G_PRIORITY_DEFAULT, shape_show_failed_idle, g_object_ref (self), g_object_unref);
+    }
+}
+
 static void
 append_shape_preview (EaselCanvas *self, GtkSnapshot *snapshot)
 {
@@ -4567,16 +4668,20 @@ append_shape_preview (EaselCanvas *self, GtkSnapshot *snapshot)
   if (row0 > row1)
     return;
   if (!easel_figure_prepare (&f, row0, row1))
-    return;
+    {
+      shape_preview_failed (self);
+      return;
+    }
   if (f.smooth)
     {
       append_cover_preview (self, snapshot, &f, row0, row1, draw, other, by_edges, &picture);
       easel_figure_release (&f);
       return;
     }
-  runs = malloc (easel_figure_max_runs (&f) * sizeof *runs);
+  runs = easel_figure_max_runs (&f) * sizeof *runs <= self->preview_max_bytes ? malloc (easel_figure_max_runs (&f) * sizeof *runs) : NULL;
   if (runs == NULL)
     {
+      shape_preview_failed (self);
       easel_figure_release (&f);
       return;
     }
@@ -5925,6 +6030,13 @@ easel_canvas_set_magnifier_level (EaselCanvas *self, int pct)
 }
 
 void
+easel_canvas_set_shape_kind (EaselCanvas *self, EaselShapeKind shape)
+{
+  self->shape_kind = shape;
+  gtk_widget_queue_draw (GTK_WIDGET (self));
+}
+
+void
 easel_canvas_set_shape_options (EaselCanvas *self, int width, int style)
 {
   self->shape_width = width;
@@ -5968,8 +6080,8 @@ easel_canvas_set_colors (EaselCanvas *self, uint32_t foreground, uint32_t backgr
 {
   self->foreground = foreground;
   self->background = background;
-  if (self->pending && self->pend_gradient)
-    gtk_widget_queue_draw (GTK_WIDGET (self));         /* a gradient follows the colors at once (REQ-0012-04) */
+  if (self->pending && (self->pend_gradient || self->pend_shape))
+    gtk_widget_queue_draw (GTK_WIDGET (self));         /* a gradient and a waiting shape follow the colors at once (REQ-0012-04, REQ-0043-09) */
 }
 
 gboolean
@@ -6211,10 +6323,84 @@ curve_grab_follow (EaselCanvas *self, int x, int y)
 
 /* The held stage of a curve follows the pointer (REQ-0011-04): the line from its start, Shift constraining it as for Line; a
    bend moves the control points to the pointer, Shift having no effect on it. */
+/* A held drag of a waiting shape follows the pointer (REQ-0043-07, -08): the movement is the pixel under the pointer less the pixel under
+   the press; a move keeps one pixel of the box in the picture, a handle moves its edges (a side 1 to 10000, past the opposite edge a
+   mirror, Shift keeping a corner's ratio) by the core's stretch rule. */
+static void
+shape_drag_follow (EaselCanvas *self)
+{
+  int dx = self->pend_px - self->drag_px, dy = self->pend_py - self->drag_py;
+
+  if (self->drag_handle < 0)
+    {
+      self->wait_x = CLAMP (self->drag_box[0] + dx, 1 - self->drag_box[2], self->img->width - 1);
+      self->wait_y = CLAMP (self->drag_box[1] + dy, 1 - self->drag_box[3], self->img->height - 1);
+    }
+  else
+    {
+      bool mx = false, my = false;
+
+      easel_stretch_rect_mirror ((EaselSelHandle) self->drag_handle, self->drag_box[0], self->drag_box[1], self->drag_box[2],
+                                 self->drag_box[3], dx, dy, self->shift, &self->wait_x, &self->wait_y, &self->wait_w, &self->wait_h, &mx, &my);
+      self->wait_mirror_x = self->drag_mirror_x != mx;
+      self->wait_mirror_y = self->drag_mirror_y != my;
+    }
+  g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);      /* the size field (REQ-0043-06) */
+  gtk_widget_queue_draw (GTK_WIDGET (self));
+}
+
+/* A press on a waiting shape's handle (handle >= 0) or inside its box starts its drag; its colors stay those of now until the release. */
+static void
+shape_drag_begin (EaselCanvas *self, int handle, guint button, double x, double y)
+{
+  self->drag_handle = handle;
+  self->show_failed_at_release = FALSE;             /* a failure of a cancelled drag is not this one's (0043 Check F3) */
+  to_pixel (self, x, y, &self->drag_px, &self->drag_py);
+  self->pend_px = self->drag_px;
+  self->pend_py = self->drag_py;
+  self->drag_box[0] = self->wait_x;
+  self->drag_box[1] = self->wait_y;
+  self->drag_box[2] = self->wait_w;
+  self->drag_box[3] = self->wait_h;
+  self->drag_mirror_x = self->wait_mirror_x;
+  self->drag_mirror_y = self->wait_mirror_y;
+  pending_colors (self, &self->pend_draw, &self->pend_other);
+  self->pend_held = TRUE;
+  self->pend_button = button;
+  g_signal_emit (self, signals[SIGNAL_STROKING_CHANGED], 0, TRUE);
+}
+
+gboolean
+easel_canvas_cancel_shape_drag (EaselCanvas *self)
+{
+  /* Esc or the other button during a drag of a waiting shape: the shape as at its press, still waiting; the button is waited for until
+     its release (REQ-0043-12). */
+  if (!self->pending || !self->pend_shape || !self->pend_held)
+    return FALSE;
+  self->wait_x = self->drag_box[0];
+  self->wait_y = self->drag_box[1];
+  self->wait_w = self->drag_box[2];
+  self->wait_h = self->drag_box[3];
+  self->wait_mirror_x = self->drag_mirror_x;
+  self->wait_mirror_y = self->drag_mirror_y;
+  self->pend_held = FALSE;
+  self->cancelled_button = self->pend_button;
+  g_signal_emit (self, signals[SIGNAL_STROKING_CHANGED], 0, FALSE);
+  g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);
+  gtk_widget_queue_draw (GTK_WIDGET (self));
+  return TRUE;
+}
+
 static void
 pend_follow (EaselCanvas *self)
 {
   int x = self->pend_px, y = self->pend_py;
+
+  if (self->pend_shape)
+    {
+      shape_drag_follow (self);
+      return;
+    }
 
   if (self->pend_gradient)
     {
@@ -6257,6 +6443,14 @@ set_pending (EaselCanvas *self, gboolean pending)
   if (self->pending == pending)
     return;
   self->pending = pending;
+  if (!pending && self->pend_shape && (self->hover_sel || self->hover_sel_handle >= 0))
+    {
+      self->hover_sel = FALSE;                        /* the shape's box and handles go with it: the tool's cursor (0043 Check F6) */
+      self->hover_sel_handle = -1;
+      update_cursor (self);
+    }
+  if (!pending)
+    self->pend_shape = FALSE;                         /* whatever ended it, a later curve or polygon is not a shape */
   if (self->hover_marker)
     {
       self->hover_marker = FALSE;                     /* the markers go with the gradient */
@@ -6271,6 +6465,9 @@ pending_figure (EaselCanvas *self)
 {
   EaselFigure f = { EASEL_FIGURE_CURVE, 0, 0, 0, 0, self->shape_width, self->shape_style, NULL, self->pend_pts, 4, FALSE };
 
+  if (self->pend_shape)
+    return easel_shape_figure (self->shape_kind, self->wait_x, self->wait_y, self->wait_w, self->wait_h, self->shape_width, self->shape_style,
+                               self->smooth, self->wait_mirror_x, self->wait_mirror_y, self->shape_pts);
   if (self->pend_polygon)
     f = (EaselFigure) { EASEL_FIGURE_POLYGON, 0, 0, 0, 0, self->shape_width, self->shape_style, NULL, self->poly, self->poly_n, FALSE };
   f.smooth = self->smooth;
@@ -6307,9 +6504,11 @@ put_down_pending (EaselCanvas *self)
 {
   EaselFigure f = pending_figure (self);
   EaselFigureResult r;
-  gboolean was_held = self->pend_held;
+  gboolean was_held = self->pend_held, shape = self->pend_shape;
+  uint32_t draw, other;
 
-  f.closed = self->pend_polygon;                 /* a polygon is closed when put down (REQ-0011-07) */
+  if (!shape)
+    f.closed = self->pend_polygon;               /* a polygon is closed when put down (REQ-0011-07); a shape's figure says itself */
 
   gboolean gradient = self->pend_gradient;
 
@@ -6325,17 +6524,25 @@ put_down_pending (EaselCanvas *self)
           : gr == EASEL_GRADIENT_NOTHING ? EASEL_FIGURE_NOTHING : EASEL_FIGURE_NO_MEMORY;
     }
   else
-    r = easel_figure_apply_capped (self->img, self->history, &f, self->pend_draw, self->pend_other, NULL,
-                                   self->shape_max_bytes);
+    {
+      pending_colors (self, &draw, &other);
+      r = easel_figure_apply_capped (self->img, self->history, &f, draw, other, NULL, self->shape_max_bytes);
+    }
   if (was_held)
     g_signal_emit (self, signals[SIGNAL_STROKING_CHANGED], 0, FALSE);
   /* No "stroke-finished" here: "pending-changed", emitted just after the apply, makes the window sync the history, the title
      and Undo and Redo, which is all "stroke-finished" does there. */
   set_pending (self, FALSE);
-  if (r == EASEL_FIGURE_DONE && f.closed && !gradient)
+  if (shape && r == EASEL_FIGURE_NO_MEMORY)
+    g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);           /* none waits: the size field clears (0043 Check F2) */
+  if (shape && r != EASEL_FIGURE_NO_MEMORY)
+    g_signal_emit (self, signals[SIGNAL_SHAPE_CHANGED], 0, 1u, 0, 0);       /* "Shape put down" (REQ-0043-17) */
+  if (r == EASEL_FIGURE_DONE && f.closed && !gradient && !shape)
     g_signal_emit (self, signals[SIGNAL_POLYGON_CLOSED], 0);
   if (r == EASEL_FIGURE_DONE)
     easel_canvas_update (self);
+  else if (r == EASEL_FIGURE_NO_MEMORY && shape && self->defer_shape_failed)
+    self->shape_failed_button = self->defer_shape_failed;     /* the press's button: the dialog at its release (REQ-0043-13) */
   else if (r == EASEL_FIGURE_NO_MEMORY)
     g_signal_emit (self, signals[gradient ? SIGNAL_GRADIENT_FAILED : SIGNAL_SHAPE_FAILED], 0);
   gtk_widget_queue_draw (GTK_WIDGET (self));
@@ -6349,6 +6556,13 @@ end_pending_stage (EaselCanvas *self)
 {
   self->pend_held = FALSE;
   g_signal_emit (self, signals[SIGNAL_STROKING_CHANGED], 0, FALSE);
+  if (self->pend_shape)
+    {
+      if (self->show_failed_at_release)
+        drop_unshown_shape (self);                            /* it could not be shown during the drag (REQ-0043-13) */
+      gtk_widget_queue_draw (GTK_WIDGET (self));             /* a move or handle drag ends as last shown, the shape waiting (REQ-0043-12) */
+      return;
+    }
   if (self->pend_gradient && self->moving >= 0)
     {
       /* A moved end ends as last shown; on the other end's pixel the line is put back (REQ-0012-13). */
@@ -6460,6 +6674,11 @@ easel_canvas_drop (EaselCanvas *self)
       self->cancelled_button = self->pend_button;
       g_signal_emit (self, signals[SIGNAL_STROKING_CHANGED], 0, FALSE);
     }
+  if (self->pend_shape)
+    {
+      set_pending (self, FALSE);
+      g_signal_emit (self, signals[SIGNAL_SHAPE_CHANGED], 0, 2u, 0, 0);       /* "Shape removed" (REQ-0043-11, -17) */
+    }
   set_pending (self, FALSE);
   gtk_widget_queue_draw (GTK_WIDGET (self));
 }
@@ -6485,6 +6704,8 @@ easel_canvas_cancel_stroke (EaselCanvas *self)
       finish_pick (self, TRUE);
       return;
     }
+  if (easel_canvas_cancel_shape_drag (self))
+    return;
   if (self->pend_held)
     {
       easel_canvas_drop (self);
@@ -6510,6 +6731,16 @@ easel_canvas_cancel_stroke (EaselCanvas *self)
   easel_canvas_update (self);
 }
 
+/* A put-down refused at a press whose release is lost (a lost focus, a grab): its dialog now, none at a later release (0043 Check F4). */
+static void
+shape_failed_now (EaselCanvas *self)
+{
+  if (self->shape_failed_button == 0)
+    return;
+  self->shape_failed_button = 0;
+  g_signal_emit (self, signals[SIGNAL_SHAPE_FAILED], 0);
+}
+
 void
 easel_canvas_buttons_released (EaselCanvas *self)
 {
@@ -6521,6 +6752,7 @@ easel_canvas_buttons_released (EaselCanvas *self)
     easel_canvas_end_stroke (self);
   if (self->resizing != EASEL_HANDLE_NONE)
     easel_canvas_release (self, self->resize_button);
+  shape_failed_now (self);
   if (self->panning)
     {
       self->panning = FALSE;                     /* Pan's drag ends too, so that zooming is not held off for good (REQ-0036-02) */
@@ -6545,6 +6777,7 @@ easel_canvas_reset_pointer (EaselCanvas *self)
       self->paint_hook (EASEL_PAINT_END, self->paint_x, self->paint_y, self->paint_data);   /* 0038: a lost focus ends it as released */
     }
   easel_canvas_end_stroke (self);
+  shape_failed_now (self);
   self->cancelled_button = 0;
   self->action_button = 0;
   if (self->resizing != EASEL_HANDLE_NONE)
@@ -6871,6 +7104,7 @@ easel_canvas_press_timed (EaselCanvas *self, guint button, double x, double y, g
       if (hit != 0)
         return;
     }
+  if (self->tool != EASEL_TOOL_SHAPES)          /* a waiting shape's handles are its own (below) */
   {
     int handle = easel_canvas_selection_handle_at (self, x, y);
 
@@ -6883,13 +7117,62 @@ easel_canvas_press_timed (EaselCanvas *self, guint button, double x, double y, g
         return;
       }
   }
+  if (self->pending && self->pend_shape)
+    {
+      int handle;
+
+      if (self->pend_held)
+        {
+          if (button != self->pend_button)
+            easel_canvas_cancel_shape_drag (self);         /* the other button cancels the drag (REQ-0043-12) */
+          return;
+        }
+      /* Its handle, else inside its box: the primary button drags it, the others do nothing; it wins over the picture's handles
+         (REQ-0043-07). A keyboard press takes no handle (REQ-0022-07). */
+      handle = easel_canvas_selection_handle_at (self, x, y);
+      if (handle >= 0 || on_selection (self, x, y))
+        {
+          if (button == GDK_BUTTON_PRIMARY)
+            shape_drag_begin (self, handle, button, x, y);
+          return;
+        }
+    }
   if (self->pending && !self->pend_held && handles_shown (self) && easel_canvas_handle_at (self, x, y) != EASEL_HANDLE_NONE)
     {
       /* A press on a resize handle: a secondary one does nothing and keeps the shape (REQ-0004-16); a primary one puts it down
          and goes on as a press on the handle (REQ-0011-12). */
       if (button != GDK_BUTTON_PRIMARY)
         return;
-      put_down_pending (self);
+      if (self->pend_shape)
+        {
+          /* a shape whose put-down is refused: its dialog at the release, and no resize (0043 Check F5) */
+          self->defer_shape_failed = button;
+          if (put_down_pending (self) == EASEL_FIGURE_NO_MEMORY)
+            {
+              self->defer_shape_failed = 0;
+              self->cancelled_button = button;
+              return;
+            }
+          self->defer_shape_failed = 0;
+        }
+      else
+        put_down_pending (self);
+    }
+  if (self->pending && self->pend_shape && !self->pend_held)
+    {
+      /* A press on a waiting shape's canvas (REQ-0043-07): the middle button does nothing; the primary and the secondary put it down,
+         then act as a press of Shapes with nothing waiting, so a drag from it makes the next shape; if the put-down fails (the
+         dialog) the press starts nothing. */
+      if (button != GDK_BUTTON_PRIMARY && button != GDK_BUTTON_SECONDARY)
+        return;
+      self->defer_shape_failed = button;
+      if (put_down_pending (self) == EASEL_FIGURE_NO_MEMORY)
+        {
+          self->defer_shape_failed = 0;
+          self->cancelled_button = button;                 /* no new shape; the dialog at the release (REQ-0043-13) */
+          return;
+        }
+      self->defer_shape_failed = 0;
     }
   if (self->pending && self->pend_gradient && !self->pend_held && marker_at (self, x, y) >= 0)
     {
@@ -7180,7 +7463,9 @@ easel_canvas_press_timed (EaselCanvas *self, guint button, double x, double y, g
       /* A shape drag: the start is the pixel under the press, also outside the picture (REQ-0010-05); the colors are those
          of the press (REQ-0010-06). */
       self->shaping = TRUE;
+      self->show_failed_at_release = FALSE;          /* a failure of a cancelled drag is not this one's (0043 Check F3) */
       self->shape_button = button;
+      self->shape_moved = FALSE;
       self->shape_x0 = self->shape_x1 = self->shape_px = px;
       self->shape_y0 = self->shape_y1 = self->shape_py = py;
       self->shape_draw = button == GDK_BUTTON_PRIMARY ? self->foreground : self->background;
@@ -7417,6 +7702,8 @@ easel_canvas_motion (EaselCanvas *self, double x, double y)
       to_pixel (self, x, y, &px, &py);
       self->shape_px = px;
       self->shape_py = py;
+      if (px != self->shape_x0 || py != self->shape_y0)
+        self->shape_moved = TRUE;                  /* a Shapes press that never leaves its pixel makes nothing (REQ-0043-06) */
       update_shape_end (self);
       return;
     }
@@ -7439,6 +7726,30 @@ end_shape (EaselCanvas *self)
   EaselFigureResult r;
 
   self->shaping = FALSE;
+  if (self->tool == EASEL_TOOL_SHAPES)
+    {
+      /* Shapes: not drawn yet, the shape waits with its handles (REQ-0043-06); a press that never left its pixel makes nothing. */
+      g_signal_emit (self, signals[SIGNAL_STROKING_CHANGED], 0, FALSE);
+      if (self->show_failed_at_release)
+        {
+          self->show_failed_at_release = FALSE;              /* it could not be shown: none waits, the dialog (REQ-0043-13) */
+          g_signal_emit (self, signals[SIGNAL_SHAPE_FAILED], 0);
+        }
+      else if (self->shape_moved)
+        {
+          easel_shape_box (self->shape_x0, self->shape_y0, self->shape_x1, self->shape_y1, FALSE, &self->wait_x, &self->wait_y, &self->wait_w,
+                           &self->wait_h);
+          self->wait_mirror_x = self->wait_mirror_y = FALSE;
+          self->pend_shape = TRUE;
+          self->pend_polygon = self->pend_gradient = FALSE;
+          self->pend_held = FALSE;
+          self->pend_button = self->wait_color_button = self->shape_button;
+          set_pending (self, TRUE);
+          g_signal_emit (self, signals[SIGNAL_SHAPE_CHANGED], 0, 0u, self->wait_w, self->wait_h);
+        }
+      gtk_widget_queue_draw (GTK_WIDGET (self));
+      return;
+    }
   r = easel_figure_apply_capped (self->img, self->history, &f, self->shape_draw, self->shape_other, &changed,
                                  self->shape_max_bytes);
   g_signal_emit (self, signals[SIGNAL_STROKING_CHANGED], 0, FALSE);
@@ -7463,6 +7774,11 @@ easel_canvas_release (EaselCanvas *self, guint button)
     }
   if (button == self->cancelled_button)
     self->cancelled_button = 0;
+  if (button == self->shape_failed_button)
+    {
+      self->shape_failed_button = 0;
+      g_signal_emit (self, signals[SIGNAL_SHAPE_FAILED], 0);       /* a put-down refused at the press (REQ-0043-13) */
+    }
   if (button == self->action_button)
     self->action_button = 0;
   if (self->off_press && button == self->off_button)
@@ -7670,6 +7986,8 @@ easel_canvas_pointer_at (EaselCanvas *self, double x, double y)
   if (!self->key_pressing)
     mouse_takes_marker (self, x, y);
   hover = easel_canvas_handle_at (self, x, y);
+  if (self->pending && self->pend_shape && (easel_canvas_selection_handle_at (self, x, y) >= 0 || on_selection (self, x, y)))
+    hover = EASEL_HANDLE_NONE;                        /* a press there takes the shape (REQ-0043-07): its cursor (0043 Check F1) */
   if (hover != self->hover || marker_hit (self, x, y) != self->hover_marker || on_selection (self, x, y) != self->hover_sel
       || easel_canvas_selection_handle_at (self, x, y) != self->hover_sel_handle || text_hit (self, x, y) % 3 != self->hover_text)
     {
@@ -8078,6 +8396,9 @@ easel_canvas_class_init (EaselCanvasClass *klass)
   signals[SIGNAL_PAINTED] = g_signal_new ("painted", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST, 0, NULL, NULL, NULL, G_TYPE_NONE, 0);
   signals[SIGNAL_CANVAS_MENU] = g_signal_new ("canvas-menu", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST, 0, NULL, NULL, NULL,
                                               G_TYPE_NONE, 2, G_TYPE_DOUBLE, G_TYPE_DOUBLE);
+  /* A shape of Shapes starts waiting (kind 0, with its box's width and height), is put down (1) or dropped (2) (REQ-0043-06, -17). */
+  signals[SIGNAL_SHAPE_CHANGED] = g_signal_new ("shape-changed", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST, 0, NULL, NULL, NULL,
+                                                G_TYPE_NONE, 3, G_TYPE_UINT, G_TYPE_INT, G_TYPE_INT);
   signals[SIGNAL_PENDING_CHANGED] = g_signal_new ("pending-changed", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST, 0, NULL, NULL, NULL,
                                               G_TYPE_NONE, 0);
   signals[SIGNAL_STROKING_CHANGED] = g_signal_new ("stroking-changed", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST, 0, NULL,
@@ -8121,4 +8442,16 @@ easel_canvas_init (EaselCanvas *self)
   gtk_widget_set_margin_bottom (GTK_WIDGET (self), EASEL_VIEW_MARGIN);
   /* The style sheet draws the soft shadow around the canvas's box, which is the picture (REQ-0009-02). */
   gtk_widget_add_css_class (GTK_WIDGET (self), "easel-picture");
+}
+
+gboolean
+easel_canvas_get_waiting_shape (EaselCanvas *self, int *x, int *y, int *w, int *h)
+{
+  if (!self->pending || !self->pend_shape)
+    return FALSE;
+  *x = self->wait_x;
+  *y = self->wait_y;
+  *w = self->wait_w;
+  *h = self->wait_h;
+  return TRUE;
 }

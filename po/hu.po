@@ -774,14 +774,11 @@ msgstr "Módosítja a nagyítást."
 msgid "Draws a straight line with the selected line width."
 msgstr "Egyenes vonalat rajzol a választott vastagsággal."
 
-msgid "Draws a rectangle with the selected fill style."
-msgstr "Téglalapot rajzol a választott kitöltési stílussal."
+msgid "Draws the chosen shape with the selected fill style."
+msgstr "A kiválasztott alakzatot rajzolja a választott kitöltési stílussal."
 
-msgid "Draws a rounded rectangle with the selected fill style."
-msgstr "Lekerekített téglalapot rajzol a választott kitöltési stílussal."
-
-msgid "Draws an ellipse with the selected fill style."
-msgstr "Ellipszist rajzol a választott kitöltési stílussal."
+msgid "Shapes"
+msgstr "Alakzatok"
 
 msgid "Draws a curved line: drag a line, then drag points of it to bend it. A click away from it finishes it."
 msgstr "Görbe vonalat rajzol: húzzon egy vonalat, majd húzza a pontjait a hajlításhoz. A mellé kattintás befejezi."
@@ -1323,3 +1320,68 @@ msgstr "Simított alakzatok és ecsetek"
 
 msgid "Smooth text"
 msgstr "Simított szöveg"
+
+msgid "Triangle"
+msgstr "Háromszög"
+
+msgid "Right Triangle"
+msgstr "Derékszögű háromszög"
+
+msgid "Diamond"
+msgstr "Rombusz"
+
+msgid "Pentagon"
+msgstr "Ötszög"
+
+msgid "Hexagon"
+msgstr "Hatszög"
+
+msgid "Right Arrow"
+msgstr "Jobbra nyíl"
+
+msgid "Left Arrow"
+msgstr "Balra nyíl"
+
+msgid "Up Arrow"
+msgstr "Felfelé nyíl"
+
+msgid "Down Arrow"
+msgstr "Lefelé nyíl"
+
+msgid "4-Point Star"
+msgstr "Négyágú csillag"
+
+msgid "5-Point Star"
+msgstr "Ötágú csillag"
+
+msgid "6-Point Star"
+msgstr "Hatágú csillag"
+
+msgid "Rounded Rectangle Callout"
+msgstr "Lekerekített szövegbuborék"
+
+msgid "Oval Callout"
+msgstr "Ovális szövegbuborék"
+
+msgid "Heart"
+msgstr "Szív"
+
+msgid "Lightning Bolt"
+msgstr "Villám"
+
+msgid "Shape"
+msgstr "Alakzat"
+
+#, c-format
+msgid "Shape: %s"
+msgstr "Alakzat: %s"
+
+#, c-format
+msgid "Shape %d by %d"
+msgstr "Alakzat: %d × %d"
+
+msgid "Shape put down"
+msgstr "Alakzat lerakva"
+
+msgid "Shape removed"
+msgstr "Alakzat eltávolítva"

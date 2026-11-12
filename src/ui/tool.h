@@ -17,9 +17,7 @@ typedef enum
   EASEL_TOOL_PICK,
   EASEL_TOOL_FILL,
   EASEL_TOOL_LINE,
-  EASEL_TOOL_RECTANGLE,
-  EASEL_TOOL_ROUNDED_RECTANGLE,
-  EASEL_TOOL_ELLIPSE,
+  EASEL_TOOL_SHAPES,                 /* 0043: Rectangle, Rounded Rectangle, Ellipse and 16 more, chosen by win.shape */
   EASEL_TOOL_CURVE,
   EASEL_TOOL_POLYGON,
   EASEL_TOOL_GRADIENT,
@@ -28,17 +26,17 @@ typedef enum
   EASEL_TOOL_TEXT,
 } EaselTool;
 
-/* Reads a win.tool action target ("pan", "pencil", "brush", "airbrush", "eraser", "magnifier", "pick", "fill", "line", "rectangle",
-   "rounded-rectangle", "ellipse", "curve", "polygon", "gradient", "select", "free-select", "text"). */
+/* Reads a win.tool action target ("pan", "pencil", "brush", "airbrush", "eraser", "magnifier", "pick", "fill", "line", "shapes",
+   "curve", "polygon", "gradient", "select", "free-select", "text"). */
 gboolean easel_tool_from_name (const char *name, EaselTool *tool);
 
-/* TRUE for Line, Rectangle, Rounded Rectangle and Ellipse: the tools that draw a shape by one drag (0010). */
+/* TRUE for Line and Shapes: the tools that draw a shape by one drag (0010, 0043). */
 gboolean easel_tool_draws_shape (EaselTool tool);
 
 /* TRUE for Curve, Polygon and Gradient: the tools that keep a pending shape until it is put down (0011, 0012). */
 gboolean easel_tool_draws_pending (EaselTool tool);
 
-/* TRUE for Line, the three shapes, Curve and Polygon: the tools whose line width Numpad + and - step (REQ-0010-04). */
+/* TRUE for Line, Shapes, Curve and Polygon: the tools whose line width Numpad + and - step (REQ-0010-04). */
 gboolean easel_tool_uses_line_width (EaselTool tool);
 
 /* TRUE for Select and Free-Form Select: the tools that mark a selection, which move, copy, smear, stamp and clear it alike

@@ -774,14 +774,11 @@ msgstr "Cambia l'ingrandimento."
 msgid "Draws a straight line with the selected line width."
 msgstr "Disegna una linea retta dello spessore scelto."
 
-msgid "Draws a rectangle with the selected fill style."
-msgstr "Disegna un rettangolo con lo stile di riempimento scelto."
+msgid "Draws the chosen shape with the selected fill style."
+msgstr "Disegna la forma selezionata con lo stile di riempimento scelto."
 
-msgid "Draws a rounded rectangle with the selected fill style."
-msgstr "Disegna un rettangolo arrotondato con lo stile di riempimento scelto."
-
-msgid "Draws an ellipse with the selected fill style."
-msgstr "Disegna un'ellisse con lo stile di riempimento scelto."
+msgid "Shapes"
+msgstr "Forme"
 
 msgid "Draws a curved line: drag a line, then drag points of it to bend it. A click away from it finishes it."
 msgstr "Disegna una linea curva: trascina una linea, poi trascinane i punti per curvarla. Un clic fuori la conclude."
@@ -1323,3 +1320,68 @@ msgstr "Forme e pennelli smussati"
 
 msgid "Smooth text"
 msgstr "Testo smussato"
+
+msgid "Triangle"
+msgstr "Triangolo"
+
+msgid "Right Triangle"
+msgstr "Triangolo rettangolo"
+
+msgid "Diamond"
+msgstr "Rombo"
+
+msgid "Pentagon"
+msgstr "Pentagono"
+
+msgid "Hexagon"
+msgstr "Esagono"
+
+msgid "Right Arrow"
+msgstr "Freccia a destra"
+
+msgid "Left Arrow"
+msgstr "Freccia a sinistra"
+
+msgid "Up Arrow"
+msgstr "Freccia su"
+
+msgid "Down Arrow"
+msgstr "Freccia giù"
+
+msgid "4-Point Star"
+msgstr "Stella a 4 punte"
+
+msgid "5-Point Star"
+msgstr "Stella a 5 punte"
+
+msgid "6-Point Star"
+msgstr "Stella a 6 punte"
+
+msgid "Rounded Rectangle Callout"
+msgstr "Fumetto rettangolare"
+
+msgid "Oval Callout"
+msgstr "Fumetto ovale"
+
+msgid "Heart"
+msgstr "Cuore"
+
+msgid "Lightning Bolt"
+msgstr "Fulmine"
+
+msgid "Shape"
+msgstr "Forma"
+
+#, c-format
+msgid "Shape: %s"
+msgstr "Forma: %s"
+
+#, c-format
+msgid "Shape %d by %d"
+msgstr "Forma %d per %d"
+
+msgid "Shape put down"
+msgstr "Forma posata"
+
+msgid "Shape removed"
+msgstr "Forma rimossa"

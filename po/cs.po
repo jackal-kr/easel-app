@@ -782,14 +782,11 @@ msgstr "Mění zvětšení."
 msgid "Draws a straight line with the selected line width."
 msgstr "Kreslí rovnou čáru zvolené šířky."
 
-msgid "Draws a rectangle with the selected fill style."
-msgstr "Kreslí obdélník zvoleným stylem výplně."
+msgid "Draws the chosen shape with the selected fill style."
+msgstr "Kreslí vybraný tvar zvoleným stylem výplně."
 
-msgid "Draws a rounded rectangle with the selected fill style."
-msgstr "Kreslí zaoblený obdélník zvoleným stylem výplně."
-
-msgid "Draws an ellipse with the selected fill style."
-msgstr "Kreslí elipsu zvoleným stylem výplně."
+msgid "Shapes"
+msgstr "Tvary"
 
 msgid "Draws a curved line: drag a line, then drag points of it to bend it. A click away from it finishes it."
 msgstr "Kreslí křivku: táhněte čáru, pak táhněte její body a ohněte ji. Klepnutí mimo ni ji dokončí."
@@ -1333,3 +1330,68 @@ msgstr "Hladké tvary a štětce"
 
 msgid "Smooth text"
 msgstr "Hladký text"
+
+msgid "Triangle"
+msgstr "Trojúhelník"
+
+msgid "Right Triangle"
+msgstr "Pravoúhlý trojúhelník"
+
+msgid "Diamond"
+msgstr "Kosočtverec"
+
+msgid "Pentagon"
+msgstr "Pětiúhelník"
+
+msgid "Hexagon"
+msgstr "Šestiúhelník"
+
+msgid "Right Arrow"
+msgstr "Šipka vpravo"
+
+msgid "Left Arrow"
+msgstr "Šipka vlevo"
+
+msgid "Up Arrow"
+msgstr "Šipka nahoru"
+
+msgid "Down Arrow"
+msgstr "Šipka dolů"
+
+msgid "4-Point Star"
+msgstr "Čtyřcípá hvězda"
+
+msgid "5-Point Star"
+msgstr "Pěticípá hvězda"
+
+msgid "6-Point Star"
+msgstr "Šesticípá hvězda"
+
+msgid "Rounded Rectangle Callout"
+msgstr "Zaoblená bublina"
+
+msgid "Oval Callout"
+msgstr "Oválná bublina"
+
+msgid "Heart"
+msgstr "Srdce"
+
+msgid "Lightning Bolt"
+msgstr "Blesk"
+
+msgid "Shape"
+msgstr "Tvar"
+
+#, c-format
+msgid "Shape: %s"
+msgstr "Tvar: %s"
+
+#, c-format
+msgid "Shape %d by %d"
+msgstr "Tvar %d na %d"
+
+msgid "Shape put down"
+msgstr "Tvar položen"
+
+msgid "Shape removed"
+msgstr "Tvar odstraněn"

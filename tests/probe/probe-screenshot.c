@@ -55,6 +55,11 @@ key (EaselWindow *win, guint keyval)
 static void
 tool (EaselWindow *win, const char *name)
 {
+  if (g_str_equal (name, "rectangle") || g_str_equal (name, "rounded-rectangle") || g_str_equal (name, "ellipse"))
+    {
+      g_action_group_change_action_state (G_ACTION_GROUP (win), "shape", g_variant_new_string (name));   /* 0043: shapes of Shapes */
+      name = "shapes";
+    }
   g_action_group_activate_action (G_ACTION_GROUP (win), "tool", g_variant_new_string (name));
 }
 

@@ -782,14 +782,11 @@ msgstr "Змінює збільшення."
 msgid "Draws a straight line with the selected line width."
 msgstr "Малює пряму лінію вибраної товщини."
 
-msgid "Draws a rectangle with the selected fill style."
-msgstr "Малює прямокутник вибраним стилем заливки."
+msgid "Draws the chosen shape with the selected fill style."
+msgstr "Малює вибрану фігуру заданим стилем заливки."
 
-msgid "Draws a rounded rectangle with the selected fill style."
-msgstr "Малює заокруглений прямокутник вибраним стилем заливки."
-
-msgid "Draws an ellipse with the selected fill style."
-msgstr "Малює еліпс вибраним стилем заливки."
+msgid "Shapes"
+msgstr "Фігури"
 
 msgid "Draws a curved line: drag a line, then drag points of it to bend it. A click away from it finishes it."
 msgstr "Малює криву лінію: проведіть лінію, потім перетягуйте її точки, щоб вигнути. Клацання поруч завершує її."
@@ -1333,3 +1330,68 @@ msgstr "Згладжені фігури та пензлі"
 
 msgid "Smooth text"
 msgstr "Згладжений текст"
+
+msgid "Triangle"
+msgstr "Трикутник"
+
+msgid "Right Triangle"
+msgstr "Прямокутний трикутник"
+
+msgid "Diamond"
+msgstr "Ромб"
+
+msgid "Pentagon"
+msgstr "П’ятикутник"
+
+msgid "Hexagon"
+msgstr "Шестикутник"
+
+msgid "Right Arrow"
+msgstr "Стрілка праворуч"
+
+msgid "Left Arrow"
+msgstr "Стрілка ліворуч"
+
+msgid "Up Arrow"
+msgstr "Стрілка вгору"
+
+msgid "Down Arrow"
+msgstr "Стрілка вниз"
+
+msgid "4-Point Star"
+msgstr "Чотирикутна зірка"
+
+msgid "5-Point Star"
+msgstr "П’ятикутна зірка"
+
+msgid "6-Point Star"
+msgstr "Шестикутна зірка"
+
+msgid "Rounded Rectangle Callout"
+msgstr "Прямокутна виноска"
+
+msgid "Oval Callout"
+msgstr "Овальна виноска"
+
+msgid "Heart"
+msgstr "Серце"
+
+msgid "Lightning Bolt"
+msgstr "Блискавка"
+
+msgid "Shape"
+msgstr "Фігура"
+
+#, c-format
+msgid "Shape: %s"
+msgstr "Фігура: %s"
+
+#, c-format
+msgid "Shape %d by %d"
+msgstr "Фігура %d на %d"
+
+msgid "Shape put down"
+msgstr "Фігуру покладено"
+
+msgid "Shape removed"
+msgstr "Фігуру знято"

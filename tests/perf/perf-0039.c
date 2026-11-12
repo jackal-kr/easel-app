@@ -21,7 +21,8 @@ measure_drag (const char *config_dir, int w, int h, gboolean fit)
   write_settings (config_dir, w, h);
   win = open_window ();
   canvas = easel_window_get_canvas (win);
-  g_action_group_activate_action (G_ACTION_GROUP (win), "tool", g_variant_new_string ("ellipse"));
+  g_action_group_change_action_state (G_ACTION_GROUP (win), "shape", g_variant_new_string ("ellipse"));   /* 0043 */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "tool", g_variant_new_string ("shapes"));
   g_action_group_change_action_state (G_ACTION_GROUP (win), "line-width", g_variant_new_int32 (2));
   g_action_group_change_action_state (G_ACTION_GROUP (win), "fill-style", g_variant_new_int32 (1));
   g_action_group_change_action_state (G_ACTION_GROUP (win), "smooth", g_variant_new_boolean (TRUE));
@@ -60,7 +61,8 @@ measure_release (const char *config_dir, int w, int h)
   write_settings (config_dir, w, h);
   win = open_window ();
   canvas = easel_window_get_canvas (win);
-  g_action_group_activate_action (G_ACTION_GROUP (win), "tool", g_variant_new_string ("ellipse"));
+  g_action_group_change_action_state (G_ACTION_GROUP (win), "shape", g_variant_new_string ("ellipse"));   /* 0043 */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "tool", g_variant_new_string ("shapes"));
   g_action_group_change_action_state (G_ACTION_GROUP (win), "fill-style", g_variant_new_int32 (1));
   g_action_group_change_action_state (G_ACTION_GROUP (win), "smooth", g_variant_new_boolean (TRUE));
   g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-fit", NULL);

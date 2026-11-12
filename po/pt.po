@@ -774,14 +774,11 @@ msgstr "Muda a ampliação."
 msgid "Draws a straight line with the selected line width."
 msgstr "Desenha uma linha reta da espessura escolhida."
 
-msgid "Draws a rectangle with the selected fill style."
-msgstr "Desenha um retângulo com o estilo de preenchimento escolhido."
+msgid "Draws the chosen shape with the selected fill style."
+msgstr "Desenha a forma selecionada com o estilo de preenchimento escolhido."
 
-msgid "Draws a rounded rectangle with the selected fill style."
-msgstr "Desenha um retângulo arredondado com o estilo de preenchimento escolhido."
-
-msgid "Draws an ellipse with the selected fill style."
-msgstr "Desenha uma elipse com o estilo de preenchimento escolhido."
+msgid "Shapes"
+msgstr "Formas"
 
 msgid "Draws a curved line: drag a line, then drag points of it to bend it. A click away from it finishes it."
 msgstr "Desenha uma linha curva: arraste uma linha e depois arraste pontos dela para curvá-la. Um clique fora dela a conclui."
@@ -1323,3 +1320,68 @@ msgstr "Formas e pincéis suaves"
 
 msgid "Smooth text"
 msgstr "Texto suave"
+
+msgid "Triangle"
+msgstr "Triângulo"
+
+msgid "Right Triangle"
+msgstr "Triângulo retângulo"
+
+msgid "Diamond"
+msgstr "Losango"
+
+msgid "Pentagon"
+msgstr "Pentágono"
+
+msgid "Hexagon"
+msgstr "Hexágono"
+
+msgid "Right Arrow"
+msgstr "Seta para a direita"
+
+msgid "Left Arrow"
+msgstr "Seta para a esquerda"
+
+msgid "Up Arrow"
+msgstr "Seta para cima"
+
+msgid "Down Arrow"
+msgstr "Seta para baixo"
+
+msgid "4-Point Star"
+msgstr "Estrela de 4 pontas"
+
+msgid "5-Point Star"
+msgstr "Estrela de 5 pontas"
+
+msgid "6-Point Star"
+msgstr "Estrela de 6 pontas"
+
+msgid "Rounded Rectangle Callout"
+msgstr "Balão retangular"
+
+msgid "Oval Callout"
+msgstr "Balão oval"
+
+msgid "Heart"
+msgstr "Coração"
+
+msgid "Lightning Bolt"
+msgstr "Raio"
+
+msgid "Shape"
+msgstr "Forma"
+
+#, c-format
+msgid "Shape: %s"
+msgstr "Forma: %s"
+
+#, c-format
+msgid "Shape %d by %d"
+msgstr "Forma de %d por %d"
+
+msgid "Shape put down"
+msgstr "Forma solta"
+
+msgid "Shape removed"
+msgstr "Forma removida"

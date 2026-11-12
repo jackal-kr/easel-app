@@ -3,11 +3,11 @@ core_wrap = {
   'stretch-skew': ['-Wl,--wrap=malloc', '-Wl,--wrap=calloc', '-Wl,--wrap=realloc'],
   'settings-edit': ['-Wl,--wrap=malloc'],
 }
-foreach name : ['cursor', 'stretch-skew', 'settings-edit', 'window-extras', 'print-layout', 'catalog', 'figure', 'figure-apply', 'figure-curve', 'figure-polygon', 'figure-step', 'cover', 'stroke-smooth', 'curve-bend', 'black-white', 'remove-bg', 'gradient', 'selection', 'fill', 'footprint', 'format', 'jpeg-exif', 'grid', 'history', 'image', 'lasso', 'lattice', 'magnifier', 'number', 'palette', 'resize', 'settings', 'spray', 'stroke', 'rich-text', 'text-buffer', 'text-put', 'transform', 'view']
+foreach name : ['cursor', 'stretch-skew', 'settings-edit', 'window-extras', 'print-layout', 'catalog', 'figure', 'figure-apply', 'figure-curve', 'figure-polygon', 'figure-step', 'shapes', 'cover', 'stroke-smooth', 'curve-bend', 'black-white', 'remove-bg', 'gradient', 'selection', 'fill', 'footprint', 'format', 'jpeg-exif', 'grid', 'history', 'image', 'lasso', 'lattice', 'magnifier', 'number', 'palette', 'resize', 'settings', 'spray', 'stroke', 'rich-text', 'text-buffer', 'text-put', 'transform', 'view']
   test('core-' + name,
     executable('test-' + name, 'core/test-' + name + '.c', dependencies: easel_core_dep,
                link_args: core_wrap.get(name, [])),
-    env: {'EASEL_TEST_DATA': meson.current_source_dir() / 'data'},
+    env: {'EASEL_TEST_DATA': meson.current_source_dir() / 'data', 'EASEL_SOURCE_ROOT': meson.project_source_root()},
     suite: 'core',
   )
 endforeach
@@ -92,6 +92,8 @@ test('ui-0038', test_window, args: ['-p', '/0038'], env: ui_env, suite: 'ui', ti
 test('ui-0039', test_window, args: ['-p', '/0039'], env: ui_env, suite: 'ui', timeout: 300, is_parallel: false)
 test('ui-0040', test_window, args: ['-p', '/0040'], env: ui_env, suite: 'ui', timeout: 300, is_parallel: false)
 test('ui-0042', test_window, args: ['-p', '/0042'], env: ui_env, suite: 'ui', timeout: 300, is_parallel: false)
+test('ui-0043', test_window, args: ['-p', '/0043'], env: ui_env, suite: 'ui', timeout: 300, is_parallel: false)
+test('ui-0043-a11y', test_window, args: ['-p', '/0043-a11y'], env: ui_a11y_env, suite: 'ui', timeout: 120, is_parallel: false)
 test('ui-0041', test_window, args: ['-p', '/0041'], env: ui_env, suite: 'ui', timeout: 300, is_parallel: false)
 test('ui-0040-scale2', test_window, args: ['-p', '/0040-scale2'], env: ui_env, suite: 'ui', timeout: 180, is_parallel: false)
 test('ui-0036', test_window, args: ['-p', '/0036'], env: ui_env, suite: 'ui', timeout: 300, is_parallel: false)
@@ -239,6 +241,7 @@ long_env.set('GDK_DEBUG', 'no-portals')
 long_env.set('EASEL_TEST_LANGUAGE', 'xl')
 long_env.set('EASEL_LOCALE_DIR', meson.current_build_dir() / 'long-locale')
 test('ui-0023-long', test_window, args: ['-k', '-p', '/0023-long'], env: long_env, depends: long_language, suite: 'ui', timeout: 300, is_parallel: false)
+test('ui-0043-long', test_window, args: ['-p', '/0043-long'], env: long_env, depends: long_language, suite: 'ui', timeout: 120, is_parallel: false)
 
 # AS-13: a German system, and the suite still compares English.
 suite_de_env = ui_env
@@ -248,5 +251,6 @@ test('ui-0023-suite-in-english', test_window, args: ['-p', '/0020'], env: suite_
 # Remove background (spec 0035, ADR-0007): one result at 8000 x 8000 against 1 s; a benchmark, never in the suite.
 benchmark('perf-0035', executable('perf-0035', 'perf/perf-0035.c', dependencies: easel_core_dep), env: perf_env, timeout: 300)
 benchmark('perf-0042', executable('perf-0042', 'perf/perf-0042.c', dependencies: easel_ui_dep), env: perf_env, timeout: 600)
+benchmark('perf-0043', executable('perf-0043', 'perf/perf-0043.c', dependencies: easel_ui_dep), env: perf_env, timeout: 900)
 benchmark('perf-0041', executable('perf-0041', 'perf/perf-0041.c', dependencies: easel_ui_dep), env: perf_env, timeout: 600)
 benchmark('perf-0039', executable('perf-0039', 'perf/perf-0039.c', dependencies: easel_ui_dep), env: perf_env, timeout: 600)

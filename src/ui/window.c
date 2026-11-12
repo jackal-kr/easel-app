@@ -27,6 +27,7 @@
 #include "format.h"
 #include "settings-file.h"
 #include "tool-options.h"
+#include "shapes.h"
 #include "view.h"
 #include "text-render.h"
 #include "transform.h"
@@ -116,6 +117,7 @@ struct _EaselWindow
   GtkWidget *text_menu;               /* its popover, parented to the canvas */
   GtkMenuButton *image_button;
   GtkMenuButton *view_button;
+  GtkWidget *shapes_button;   /* the toolbox's Shapes, its icon the chosen shape's (REQ-0043-01) */
   GtkLabel *zoom_label;       /* the View menu's zoom row, created in code */
 
   EaselSettings settings;
@@ -149,6 +151,7 @@ struct _EaselWindow
 
   /* The color chooser (REQ-0003-11..14): what it edits, a swatch number or one of the CHOOSE_ values. */
   gboolean chooser_open;
+  gboolean shape_popover_open;   /* the Shape popover is open, or closed in this main-loop cycle: presses on the canvas do nothing (REQ-0043-02) */
   int chooser_target;
   gboolean chooser_to_background;   /* a swatch's chooser opened by a secondary double-click (REQ-0003-12) */
   GCancellable *chooser_cancel;
@@ -1445,7 +1448,32 @@ static void
 on_visible_dialog_changed (EaselWindow *self)
 {
   easel_canvas_set_input_blocked (self->canvas, self->chooser_open || self->loading || self->removing || self->rbg_card != NULL
+                                  || self->shape_popover_open
                                   || adw_application_window_get_visible_dialog (ADW_APPLICATION_WINDOW (self)) != NULL);
+}
+
+/* The Shape popover closed: a press that closed it, if GTK hands it on, arrives in this cycle and starts nothing (REQ-0043-02); presses
+   act again from the next. */
+static gboolean
+shape_popover_after_close (gpointer data)
+{
+  EaselWindow *self = data;
+
+  self->shape_popover_open = FALSE;
+  on_visible_dialog_changed (self);
+  return G_SOURCE_REMOVE;
+}
+
+static void
+on_shape_popover_visible (GtkWidget *popover, GParamSpec *pspec, EaselWindow *self)
+{
+  if (gtk_widget_get_visible (popover))
+    {
+      self->shape_popover_open = TRUE;
+      on_visible_dialog_changed (self);
+    }
+  else
+    g_idle_add_full (G_PRIORITY_DEFAULT, shape_popover_after_close, g_object_ref (self), g_object_unref);
 }
 
 /* Colors are not edits: no undo step, no modified mark (REQ-0003-09). */
@@ -1673,12 +1701,8 @@ tool_hint (EaselTool tool, gboolean transparent)
       return _ ("Changes the magnification.");
     case EASEL_TOOL_LINE:
       return _ ("Draws a straight line with the selected line width.");
-    case EASEL_TOOL_RECTANGLE:
-      return _ ("Draws a rectangle with the selected fill style.");
-    case EASEL_TOOL_ROUNDED_RECTANGLE:
-      return _ ("Draws a rounded rectangle with the selected fill style.");
-    case EASEL_TOOL_ELLIPSE:
-      return _ ("Draws an ellipse with the selected fill style.");
+    case EASEL_TOOL_SHAPES:
+      return _ ("Draws the chosen shape with the selected fill style.");
     case EASEL_TOOL_CURVE:
       return _ ("Draws a curved line: drag a line, then drag points of it to bend it. A click away from it finishes it.");
     case EASEL_TOOL_POLYGON:
@@ -2295,6 +2319,8 @@ menu_is_open (EaselWindow *self)
     return TRUE;
   if (self->canvas_menu != NULL && gtk_widget_get_visible (self->canvas_menu))
     return TRUE;
+  if (self->tool_options != NULL && gtk_widget_get_visible (GTK_WIDGET (easel_tool_options_get_shape_popover (self->tool_options))))
+    return TRUE;                                  /* the Shape popover holds the keys as a menu does (REQ-0043-02) */
   for (guint i = 0; i < G_N_ELEMENTS (buttons); i++)
     if (buttons[i] != NULL && gtk_menu_button_get_popover (buttons[i]) != NULL
         && gtk_widget_get_visible (GTK_WIDGET (gtk_menu_button_get_popover (buttons[i]))))
@@ -2452,6 +2478,25 @@ fill_style_changed (GSimpleAction *action, GVariant *value, gpointer user_data)
       g_simple_action_set_state (action, value);
       easel_canvas_set_shape_options (self->canvas, g_variant_get_int32 (width), style);
     }
+}
+
+/* The chosen shape of Shapes (REQ-0043-02): one state for the session, "rectangle" at each start, not a setting; ignored while a button is
+   held, as the width is (REQ-0010-08). The toolbox button shows it (REQ-0043-01). */
+static void
+shape_changed (GSimpleAction *action, GVariant *value, gpointer user_data)
+{
+  EaselWindow *self = user_data;
+  EaselShapeKind shape;
+  g_autofree char *icon = NULL;
+
+  if (!easel_shape_from_name (g_variant_get_string (value, NULL), &shape) || easel_canvas_is_stroking (self->canvas))
+    return;
+  g_simple_action_set_state (action, value);
+  easel_canvas_set_shape_kind (self->canvas, shape);
+  icon = easel_shape_icon_name (shape);
+  gtk_button_set_icon_name (GTK_BUTTON (self->shapes_button), icon);
+  if (self->tool_options != NULL)
+    easel_tool_options_set_shape (self->tool_options, shape);
 }
 
 /* Sharp or Smooth (REQ-0039-01, -02): one state for the seven tools, ignored while a button is held, as the width is. */
@@ -3277,8 +3322,8 @@ tool_title (EaselTool tool)
 {
   static const char *const titles[] = {
     [EASEL_TOOL_PAN] = N_ ("Pan"), [EASEL_TOOL_PENCIL] = N_ ("Pencil"), [EASEL_TOOL_BRUSH] = N_ ("Brush"), [EASEL_TOOL_AIRBRUSH] = N_ ("Airbrush"), [EASEL_TOOL_ERASER] = N_ ("Eraser"),
-    [EASEL_TOOL_MAGNIFIER] = N_ ("Magnifier"), [EASEL_TOOL_PICK] = N_ ("Pick Color"), [EASEL_TOOL_FILL] = N_ ("Fill"), [EASEL_TOOL_LINE] = N_ ("Line"), [EASEL_TOOL_RECTANGLE] = N_ ("Rectangle"),
-    [EASEL_TOOL_ROUNDED_RECTANGLE] = N_ ("Rounded Rectangle"), [EASEL_TOOL_ELLIPSE] = N_ ("Ellipse"), [EASEL_TOOL_CURVE] = N_ ("Curve"), [EASEL_TOOL_POLYGON] = N_ ("Polygon"),
+    [EASEL_TOOL_MAGNIFIER] = N_ ("Magnifier"), [EASEL_TOOL_PICK] = N_ ("Pick Color"), [EASEL_TOOL_FILL] = N_ ("Fill"), [EASEL_TOOL_LINE] = N_ ("Line"), [EASEL_TOOL_SHAPES] = N_ ("Shapes"),
+    [EASEL_TOOL_CURVE] = N_ ("Curve"), [EASEL_TOOL_POLYGON] = N_ ("Polygon"),
     [EASEL_TOOL_GRADIENT] = N_ ("Gradient"), [EASEL_TOOL_SELECT] = N_ ("Select"), [EASEL_TOOL_FREE_SELECT] = N_ ("Free-Form Select"), [EASEL_TOOL_TEXT] = N_ ("Text"),
   };
 
@@ -3289,7 +3334,7 @@ tool_title (EaselTool tool)
 static void
 name_by_tooltip (GtkWidget *w)
 {
-  if (GTK_IS_BUTTON (w) || GTK_IS_MENU_BUTTON (w))
+  if ((GTK_IS_BUTTON (w) || GTK_IS_MENU_BUTTON (w)) && !gtk_widget_has_css_class (w, "shape-button"))   /* it names the chosen shape too (REQ-0043-02) */
     {
       const char *tip = gtk_widget_get_tooltip_text (w);
 
@@ -5236,6 +5281,8 @@ on_key_pressed (EaselWindow *self, guint keyval, guint keycode, GdkModifierType 
       easel_canvas_cancel_stroke (self->canvas);   /* Esc during a drag of Select or of a text box cancels it (REQ-0013-18, -0017-04) */
       return GDK_EVENT_STOP;
     }
+  if (keyval == GDK_KEY_Escape && !dialog_is_open (self) && easel_canvas_cancel_shape_drag (self->canvas))
+    return GDK_EVENT_STOP;                      /* Esc during a drag of a waiting shape cancels the drag, not the shape (REQ-0043-12) */
   if (keyval == GDK_KEY_Escape && easel_canvas_is_pending (self->canvas) && !dialog_is_open (self))
     {
       /* Esc drops a pending curve or polygon (REQ-0011-11); with a dialog, the quit prompt or the color chooser open it acts on
@@ -5546,6 +5593,8 @@ on_selection_changed (EaselWindow *self)
   gboolean exists = easel_canvas_get_selection_size (self->canvas, &w, &h), floating;
   GAction *clear = g_action_map_lookup_action (G_ACTION_MAP (self), "clear-selection");
 
+  if (!exists)
+    exists = easel_canvas_get_waiting_shape (self->canvas, &x, &y, &w, &h);   /* a waiting shape's box (REQ-0043-06) */
   easel_status_bar_set_selection (self->status_bar, exists, w, h);
   announce_selection (self);
   sync_history_ui (self);                          /* a text box opened, edited or closed (REQ-0017-08) */
@@ -5554,6 +5603,21 @@ on_selection_changed (EaselWindow *self)
     g_simple_action_set_enabled (G_SIMPLE_ACTION (clear),
                                  easel_canvas_get_selection (self->canvas, &x, &y, &w, &h, &floating));
   update_clipboard_actions (self);
+}
+
+/* A shape of Shapes starts waiting, is put down or is dropped (REQ-0043-06, -17): the size field and the announcement. */
+static void
+on_shape_changed (EaselWindow *self, guint kind, int w, int h)
+{
+  if (kind == 0)
+    {
+      g_autofree char *text = g_strdup_printf (_ ("Shape %d by %d"), w, h);
+
+      easel_window_announce (self, text);
+    }
+  else
+    easel_window_announce (self, kind == 1 ? _ ("Shape put down") : _ ("Shape removed"));
+  on_selection_changed (self);
 }
 
 /* Select All (REQ-0013-15): ignored when a tool change is (before the picture exists, with a dialog open, during a stroke or
@@ -6282,6 +6346,7 @@ static const GActionEntry win_actions[] = {
   { .name = "line-width", .parameter_type = "i", .state = "1", .change_state = line_width_changed },
   { .name = "fill-style", .parameter_type = "i", .state = "0", .change_state = fill_style_changed },
   { .name = "smooth", .parameter_type = "b", .state = "false", .change_state = smooth_changed },
+  { .name = "shape", .parameter_type = "s", .state = "'rectangle'", .change_state = shape_changed },
   { .name = "text-smooth", .parameter_type = "b", .state = "false", .change_state = text_smooth_changed },
   { .name = "grid", .state = "false", .change_state = grid_state_changed },
   { .name = "thumbnail", .state = "false", .change_state = thumbnail_state_changed },
@@ -6561,6 +6626,7 @@ easel_window_class_init (EaselWindowClass *klass)
   gtk_widget_class_bind_template_child_full (widget_class, "canvas_menu", FALSE, G_STRUCT_OFFSET (EaselWindow, canvas_menu_model));
   gtk_widget_class_bind_template_child_full (widget_class, "text_menu", FALSE, G_STRUCT_OFFSET (EaselWindow, text_menu_model));
   gtk_widget_class_bind_template_child (widget_class, EaselWindow, view_button);
+  gtk_widget_class_bind_template_child (widget_class, EaselWindow, shapes_button);
 }
 
 static void
@@ -6637,6 +6703,7 @@ easel_window_init (EaselWindow *self)
                            G_CONNECT_SWAPPED);
   g_signal_connect_object (self->canvas, "zoom-changed", G_CALLBACK (on_zoom_changed), self, G_CONNECT_SWAPPED);
   g_signal_connect_object (self->canvas, "pointer-moved", G_CALLBACK (on_pointer_moved), self, G_CONNECT_SWAPPED);
+  g_signal_connect_object (self->canvas, "shape-changed", G_CALLBACK (on_shape_changed), self, G_CONNECT_SWAPPED);
   g_signal_connect_object (self->canvas, "pointer-left", G_CALLBACK (on_pointer_left), self, G_CONNECT_SWAPPED);
   easel_status_bar_set_hint (self->status_bar, tool_hint (self->tool, FALSE));
   sync_zoom_ui (self);
@@ -6662,6 +6729,7 @@ easel_window_init (EaselWindow *self)
   self->tool_options = easel_tool_options_new ();
   easel_tool_options_set_start (self->tool_options, self->settings.brush, self->settings.airbrush, self->settings.eraser, self->settings.eraser_transparent);
   easel_tool_options_set_smooth (self->tool_options, self->settings.smooth);
+  g_signal_connect (easel_tool_options_get_shape_popover (self->tool_options), "notify::visible", G_CALLBACK (on_shape_popover_visible), self);
   {
     /* The panel asks for no width beyond its least: a long name wraps in the width the toolbox has instead of
        widening it (REQ-0030-10). It does not scroll itself: the column it is in does (below). */

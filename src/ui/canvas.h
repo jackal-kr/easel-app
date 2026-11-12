@@ -11,6 +11,7 @@
 #include "text-put.h"
 #include "footprint.h"
 #include "gradient.h"
+#include "shapes.h"
 #include "tool.h"
 #include "view.h"
 
@@ -160,6 +161,12 @@ void easel_canvas_set_footprint (EaselCanvas *self, EaselFootprint footprint);
 /* The Magnifier's selected level in percent (200, 400, ...), as the options panel has it (REQ-0007-02). */
 void easel_canvas_set_magnifier_level (EaselCanvas *self, int pct);
 /* The line width (1 to 5) and the fill style (0 outline, 1 outline and fill, 2 fill) of the shape tools (REQ-0010-02). */
+/* Esc during a move or handle drag of a waiting shape: the drag cancelled, the shape as at its press (REQ-0043-12); FALSE if none is held. */
+gboolean easel_canvas_cancel_shape_drag (EaselCanvas *self);
+/* A waiting shape of Shapes (REQ-0043-06): its box; FALSE when none waits. */
+gboolean easel_canvas_get_waiting_shape (EaselCanvas *self, int *x, int *y, int *w, int *h);
+/* The shape that Shapes draws (REQ-0043-02). */
+void easel_canvas_set_shape_kind (EaselCanvas *self, EaselShapeKind shape);
 void easel_canvas_set_shape_options (EaselCanvas *self, int width, int style);
 /* Sharp or Smooth for the seven tools of 0039 (REQ-0039-01); a waiting curve or polygon is shown in it at once (REQ-0039-02). */
 void easel_canvas_set_smooth (EaselCanvas *self, gboolean smooth);

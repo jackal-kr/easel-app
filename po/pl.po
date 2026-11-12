@@ -782,14 +782,11 @@ msgstr "Zmienia powiększenie."
 msgid "Draws a straight line with the selected line width."
 msgstr "Rysuje prostą linię wybranej grubości."
 
-msgid "Draws a rectangle with the selected fill style."
-msgstr "Rysuje prostokąt wybranym stylem wypełnienia."
+msgid "Draws the chosen shape with the selected fill style."
+msgstr "Rysuje wybrany kształt w wybranym stylu wypełnienia."
 
-msgid "Draws a rounded rectangle with the selected fill style."
-msgstr "Rysuje zaokrąglony prostokąt wybranym stylem wypełnienia."
-
-msgid "Draws an ellipse with the selected fill style."
-msgstr "Rysuje elipsę wybranym stylem wypełnienia."
+msgid "Shapes"
+msgstr "Kształty"
 
 msgid "Draws a curved line: drag a line, then drag points of it to bend it. A click away from it finishes it."
 msgstr "Rysuje krzywą: przeciągnij linię, a potem przeciągaj jej punkty, aby ją wygiąć. Kliknięcie obok kończy ją."
@@ -1333,3 +1330,68 @@ msgstr "Wygładzone kształty i pędzle"
 
 msgid "Smooth text"
 msgstr "Wygładzony tekst"
+
+msgid "Triangle"
+msgstr "Trójkąt"
+
+msgid "Right Triangle"
+msgstr "Trójkąt prostokątny"
+
+msgid "Diamond"
+msgstr "Romb"
+
+msgid "Pentagon"
+msgstr "Pięciokąt"
+
+msgid "Hexagon"
+msgstr "Sześciokąt"
+
+msgid "Right Arrow"
+msgstr "Strzałka w prawo"
+
+msgid "Left Arrow"
+msgstr "Strzałka w lewo"
+
+msgid "Up Arrow"
+msgstr "Strzałka w górę"
+
+msgid "Down Arrow"
+msgstr "Strzałka w dół"
+
+msgid "4-Point Star"
+msgstr "Gwiazda czteroramienna"
+
+msgid "5-Point Star"
+msgstr "Gwiazda pięcioramienna"
+
+msgid "6-Point Star"
+msgstr "Gwiazda sześcioramienna"
+
+msgid "Rounded Rectangle Callout"
+msgstr "Dymek prostokątny"
+
+msgid "Oval Callout"
+msgstr "Dymek owalny"
+
+msgid "Heart"
+msgstr "Serce"
+
+msgid "Lightning Bolt"
+msgstr "Błyskawica"
+
+msgid "Shape"
+msgstr "Kształt"
+
+#, c-format
+msgid "Shape: %s"
+msgstr "Kształt: %s"
+
+#, c-format
+msgid "Shape %d by %d"
+msgstr "Kształt %d na %d"
+
+msgid "Shape put down"
+msgstr "Kształt odłożony"
+
+msgid "Shape removed"
+msgstr "Kształt usunięty"

@@ -28,14 +28,18 @@ struct _EaselToolOptions
 
   GtkWidget *line;           /* the separator above the presets */
   GtkWidget *stack;          /* one page per group, and an empty page: as wide as its widest page (REQ-0008-07) */
-  GtkWidget *groups[9];      /* Brush, Airbrush, Eraser, Magnifier, Line, the shapes, Select, Text, Gradient: a vertical box each */
+  GtkWidget *groups[10];     /* Brush, Airbrush, Eraser, Magnifier, Line, Polygon, Select, Text, Gradient, Shapes: a vertical box each */
   GtkToggleButton *brush[EASEL_BRUSH_N_PRESETS];
   GtkToggleButton *airbrush[EASEL_AIRBRUSH_N_PRESETS];
   GtkToggleButton *eraser[EASEL_ERASER_N_SIZES];
   GtkLabel *brush_label[EASEL_BRUSH_N_PRESETS];       /* the number, or the name in the named form (REQ-0030-02, -10) */
   GtkLabel *airbrush_label[EASEL_AIRBRUSH_N_PRESETS];
   GtkLabel *eraser_label[EASEL_ERASER_N_SIZES];
-  GtkLabel *width_label[2][5];                        /* Line's page and the shapes' page */
+  GtkLabel *width_label[3][5];                        /* Line's page, Polygon's and Shapes' */
+  GtkWidget *shape_button;                            /* Shapes' Shape button, its image and its popover (REQ-0043-02) */
+  GtkWidget *shape_image;
+  GtkWidget *shape_popover;
+  char *shape_icon;
   GtkWidget *brush_grid, *air_grid, *eraser_grid;
   GtkWidget *brush_line[3];                           /* the thin lines between the Brush's shapes */
   GtkToggleButton *modes[2];
@@ -449,6 +453,94 @@ new_shape_box (gboolean with_fill_styles, GtkLabel **width_labels)
   return box;
 }
 
+static const char *const shape_labels[EASEL_SHAPE_KIND_COUNT] = {
+  N_ ("Rectangle"), N_ ("Rounded Rectangle"), N_ ("Ellipse"), N_ ("Triangle"), N_ ("Right Triangle"), N_ ("Diamond"), N_ ("Pentagon"),
+  N_ ("Hexagon"), N_ ("Right Arrow"), N_ ("Left Arrow"), N_ ("Up Arrow"), N_ ("Down Arrow"), N_ ("4-Point Star"), N_ ("5-Point Star"),
+  N_ ("6-Point Star"), N_ ("Rounded Rectangle Callout"), N_ ("Oval Callout"), N_ ("Heart"), N_ ("Lightning Bolt")
+};
+
+const char *
+easel_shape_label (EaselShapeKind shape)
+{
+  return _ (shape_labels[shape]);
+}
+
+char *
+easel_shape_icon_name (EaselShapeKind shape)
+{
+  return shape < EASEL_SHAPE_KIND_TRIANGLE ? g_strdup_printf ("easel-tool-%s-symbolic", easel_shape_name (shape))
+                                          : g_strdup_printf ("easel-shape-%s-symbolic", easel_shape_name (shape));
+}
+
+/* A cell of the popover was chosen, also the one already chosen: the popover closes, the focus on the Shape button (REQ-0043-02). */
+static void
+on_shape_cell_clicked (GtkButton *cell, EaselToolOptions *self)
+{
+  gtk_popover_popdown (GTK_POPOVER (self->shape_popover));
+}
+
+/* The Shape well (REQ-0043-02; JOD, layout B of docs/reference/proto-0043/panel-mockup.png): one button the well's width, the chosen
+   shape's outline and a downward arrow, tinted as a chosen cell is; it opens a popover toward larger x of the 19 shapes, five to a row,
+   each a cell on win.shape with its outline and its name. */
+static GtkWidget *
+new_shape_well (EaselToolOptions *self)
+{
+  GtkWidget *well = new_well_box (), *row = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 2), *grid = gtk_grid_new ();
+
+  self->shape_button = gtk_menu_button_new ();
+  self->shape_image = gtk_image_new ();
+  gtk_widget_set_hexpand (self->shape_image, TRUE);
+  gtk_box_append (GTK_BOX (row), self->shape_image);
+  gtk_box_append (GTK_BOX (row), gtk_image_new_from_icon_name ("pan-down-symbolic"));
+  gtk_menu_button_set_child (GTK_MENU_BUTTON (self->shape_button), row);
+  gtk_widget_set_tooltip_text (self->shape_button, _ ("Shape"));
+  gtk_widget_add_css_class (self->shape_button, "shape-button");
+  gtk_widget_set_hexpand (self->shape_button, TRUE);
+  gtk_widget_add_css_class (grid, "options-well");
+  gtk_widget_add_css_class (grid, "shape-cells");
+  gtk_grid_set_row_spacing (GTK_GRID (grid), 2);
+  gtk_grid_set_column_spacing (GTK_GRID (grid), 2);
+  for (int i = 0; i < EASEL_SHAPE_KIND_COUNT; i++)
+    {
+      g_autofree char *icon = easel_shape_icon_name ((EaselShapeKind) i);
+      GtkWidget *cell = gtk_toggle_button_new ();
+
+      make_cell (cell);
+      gtk_button_set_child (GTK_BUTTON (cell), gtk_image_new_from_icon_name (icon));
+      gtk_widget_set_tooltip_text (cell, _ (shape_labels[i]));
+      gtk_accessible_update_property (GTK_ACCESSIBLE (cell), GTK_ACCESSIBLE_PROPERTY_LABEL, _ (shape_labels[i]), -1);
+      gtk_actionable_set_action_name (GTK_ACTIONABLE (cell), "win.shape");
+      gtk_actionable_set_action_target_value (GTK_ACTIONABLE (cell), g_variant_new_string (easel_shape_name ((EaselShapeKind) i)));
+      g_signal_connect (cell, "clicked", G_CALLBACK (on_shape_cell_clicked), self);
+      gtk_grid_attach (GTK_GRID (grid), cell, i % 5, i / 5, 1, 1);
+    }
+  self->shape_popover = gtk_popover_new ();
+  gtk_popover_set_position (GTK_POPOVER (self->shape_popover), GTK_POS_RIGHT);
+  gtk_popover_set_child (GTK_POPOVER (self->shape_popover), grid);
+  gtk_menu_button_set_popover (GTK_MENU_BUTTON (self->shape_button), self->shape_popover);
+  gtk_menu_button_set_direction (GTK_MENU_BUTTON (self->shape_button), GTK_ARROW_RIGHT);   /* the button places its popover so */
+  gtk_box_append (GTK_BOX (well), self->shape_button);
+  easel_tool_options_set_shape (self, EASEL_SHAPE_KIND_RECTANGLE);
+  return well;
+}
+
+void
+easel_tool_options_set_shape (EaselToolOptions *self, EaselShapeKind shape)
+{
+  g_autofree char *label = g_strdup_printf (_ ("Shape: %s"), _ (shape_labels[shape]));
+
+  g_free (self->shape_icon);
+  self->shape_icon = easel_shape_icon_name (shape);
+  gtk_image_set_from_icon_name (GTK_IMAGE (self->shape_image), self->shape_icon);
+  gtk_accessible_update_property (GTK_ACCESSIBLE (self->shape_button), GTK_ACCESSIBLE_PROPERTY_LABEL, label, -1);
+}
+
+GtkPopover *
+easel_tool_options_get_shape_popover (EaselToolOptions *self)
+{
+  return GTK_POPOVER (self->shape_popover);
+}
+
 static GtkWidget *
 new_grid (void)
 {
@@ -587,7 +679,9 @@ build_presets (EaselToolOptions *self)
   self->groups[1] = air_grid;
   self->groups[2] = eraser_box;
   self->groups[4] = new_shape_box (FALSE, self->width_label[0]);          /* Line: the widths */
-  self->groups[5] = new_shape_box (TRUE, self->width_label[1]);           /* the shapes: the fill styles, a line, the widths */
+  self->groups[5] = new_shape_box (TRUE, self->width_label[1]);           /* Polygon: the fill styles, the widths */
+  self->groups[9] = new_shape_box (TRUE, self->width_label[2]);           /* Shapes: the Shape well first, then as Polygon's (REQ-0043-02) */
+  gtk_box_prepend (GTK_BOX (self->groups[9]), new_shape_well (self));
   self->brush_grid = brush_grid;
   self->air_grid = air_grid;
   self->eraser_grid = size_grid;
@@ -597,7 +691,7 @@ build_presets (EaselToolOptions *self)
   gtk_stack_set_hhomogeneous (GTK_STACK (self->stack), TRUE);
   gtk_stack_set_vhomogeneous (GTK_STACK (self->stack), FALSE);
   gtk_stack_set_transition_type (GTK_STACK (self->stack), GTK_STACK_TRANSITION_TYPE_NONE);
-  for (int i = 0; i < 9; i++)
+  for (int i = 0; i < 10; i++)
     gtk_stack_add_named (GTK_STACK (self->stack), self->groups[i], NULL);
   gtk_stack_add_named (GTK_STACK (self->stack), gtk_box_new (GTK_ORIENTATION_VERTICAL, 0), "none");
   gtk_box_append (GTK_BOX (self), self->stack);
@@ -636,8 +730,16 @@ read_selection (EaselToolOptions *self)
 }
 
 static void
+easel_tool_options_finalize (GObject *object)
+{
+  g_free (EASEL_TOOL_OPTIONS (object)->shape_icon);
+  G_OBJECT_CLASS (easel_tool_options_parent_class)->finalize (object);
+}
+
+static void
 easel_tool_options_class_init (EaselToolOptionsClass *klass)
 {
+  G_OBJECT_CLASS (klass)->finalize = easel_tool_options_finalize;
   signals[SIGNAL_PRESET_CHANGED] = g_signal_new ("preset-changed", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST, 0, NULL, NULL,
                                                  NULL, G_TYPE_NONE, 0);
 }
@@ -668,7 +770,7 @@ easel_tool_options_show_tool (EaselToolOptions *self, EaselTool tool)
 {
   int group = tool == EASEL_TOOL_BRUSH ? 0 : tool == EASEL_TOOL_AIRBRUSH ? 1 : tool == EASEL_TOOL_ERASER ? 2
               : tool == EASEL_TOOL_MAGNIFIER ? 3 : tool == EASEL_TOOL_LINE || tool == EASEL_TOOL_CURVE ? 4
-              : easel_tool_draws_shape (tool) || tool == EASEL_TOOL_POLYGON ? 5 : easel_tool_selects (tool) ? 6
+              : tool == EASEL_TOOL_SHAPES ? 9 : tool == EASEL_TOOL_POLYGON ? 5 : easel_tool_selects (tool) ? 6
               : tool == EASEL_TOOL_TEXT ? 7 : tool == EASEL_TOOL_GRADIENT ? 8 : -1;
 
   /* Nothing of the options shows for a tool without any: the empty page, and no line above it (REQ-0006-02). */

@@ -7,6 +7,7 @@
 #include "gradient.h"
 
 #include "footprint.h"
+#include "shapes.h"
 #include "tool.h"
 
 G_BEGIN_DECLS
@@ -50,6 +51,14 @@ EaselGradientType easel_tool_options_get_gradient_type (EaselToolOptions *self);
 void easel_tool_options_set_smooth (EaselToolOptions *self, gboolean smooth);
 /* While a stroke is in progress, choosing a preset is ignored (REQ-0006-03). */
 void easel_tool_options_set_busy (EaselToolOptions *self, gboolean busy);
+
+/* The chosen shape shown on the Shape button: its outline and its accessible name, "Shape:" and the shape's name. */
+void easel_tool_options_set_shape (EaselToolOptions *self, EaselShapeKind shape);
+/* The Shape button's popover of the 19 shapes: while it is open the window's keys and the canvas's presses do nothing. */
+GtkPopover *easel_tool_options_get_shape_popover (EaselToolOptions *self);
+/* A shape's icon (REQ-0043-16): Rectangle, Rounded Rectangle and Ellipse their tool icons, the others their own; and its name, translated. */
+char *easel_shape_icon_name (EaselShapeKind shape);
+const char *easel_shape_label (EaselShapeKind shape);
 
 /* Signal "preset-changed" (EaselToolOptions *, gpointer data): the selected footprint or the Eraser's mode changed. */
 

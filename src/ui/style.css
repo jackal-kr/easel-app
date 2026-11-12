@@ -78,8 +78,10 @@ scrolledwindow.workspace > viewport,
   background-color: color-mix(in srgb, currentColor 7%, transparent);
 }
 
-/* The chosen tool and the chosen option are shown alike (REQ-0030-17): the accent tint and a 1-pixel accent outline. */
+/* The chosen tool and the chosen option are shown alike (REQ-0030-17): the accent tint and a 1-pixel accent outline; Shapes' Shape button
+   shows the chosen shape, so it is tinted so too (REQ-0043-02). */
 .options-well button.cell:checked,
+.options-well menubutton.shape-button > button,
 .tool-grid button:checked {
   /* mixed with the window's color, not see-through, so the toolbox and the wells show the very same tint */
   background-color: color-mix(in srgb, var(--accent-bg-color) 28%, var(--window-bg-color));
@@ -89,4 +91,15 @@ scrolledwindow.workspace > viewport,
 .options-well separator {
   background-color: var(--border-color);
   margin: 0 3px;
+}
+
+/* The Shape popover's cells (REQ-0043-02): room round each 16-pixel outline, so that the 19 read and are easy to hit (JOD, 2026-11-12). */
+.options-well.shape-cells {
+  padding: 4px;
+}
+
+.options-well.shape-cells button.cell {
+  min-width: 30px;
+  min-height: 30px;
+  padding: 0;
 }

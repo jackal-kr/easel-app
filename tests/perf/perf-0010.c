@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 /* Measurements of feature 0010 (the Plan's "Measurements"): a filled Ellipse and a 5-pixel Line being dragged, each pointer
-   move to the next painted frame, and the release of a whole-picture filled Ellipse (time and peak memory). The budget for a
+   move to the next painted frame, and the put-down of a whole-picture filled Ellipse (time and peak memory; its release before 0043). The budget for a
    pointer event is one frame (engineering.md); this prints numbers and does not fail. Run with meson test --benchmark;
    needs a display. */
 
@@ -39,6 +39,11 @@ measure_drag (const char *config_dir, int w, int h, const char *tool, int width,
   write_settings (config_dir, w, h);
   win = open_window ();
   canvas = easel_window_get_canvas (win);
+  if (strcmp (tool, "line") != 0)
+    {
+      g_action_group_change_action_state (G_ACTION_GROUP (win), "shape", g_variant_new_string (tool));   /* 0043: a shape of Shapes */
+      tool = "shapes";
+    }
   g_action_group_activate_action (G_ACTION_GROUP (win), "tool", g_variant_new_string (tool));
   g_action_group_change_action_state (G_ACTION_GROUP (win), "line-width", g_variant_new_int32 (width));
   g_action_group_change_action_state (G_ACTION_GROUP (win), "fill-style", g_variant_new_int32 (style));
@@ -80,7 +85,8 @@ measure_release (const char *config_dir, int w, int h)
   write_settings (config_dir, w, h);
   win = open_window ();
   canvas = easel_window_get_canvas (win);
-  g_action_group_activate_action (G_ACTION_GROUP (win), "tool", g_variant_new_string ("ellipse"));
+  g_action_group_change_action_state (G_ACTION_GROUP (win), "shape", g_variant_new_string ("ellipse"));   /* 0043: a shape of Shapes */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "tool", g_variant_new_string ("shapes"));
   g_action_group_change_action_state (G_ACTION_GROUP (win), "fill-style", g_variant_new_int32 (2));
   g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-fit", NULL);
   wait_for_paint (win);
@@ -89,10 +95,11 @@ measure_release (const char *config_dir, int w, int h)
   zoom = easel_window_get_zoom (win) / 100.0 / scale;
   easel_canvas_press (canvas, 1, 0.5 * zoom, 0.5 * zoom);
   easel_canvas_motion (canvas, (w - 0.5) * zoom, (h - 0.5) * zoom);
+  easel_canvas_release (canvas, 1);                          /* 0043: the shape waits; Enter draws it (REQ-0043-06, -10) */
   wait_for_paint (win);
   start = g_get_monotonic_time ();
-  easel_canvas_release (canvas, 1);
-  g_print ("release of a filled whole-picture Ellipse, %dx%d: %.0f ms to return; ", w, h,
+  easel_canvas_enter (canvas);
+  g_print ("put-down (Enter) of a filled whole-picture Ellipse, %dx%d: %.0f ms to return; ", w, h,
            (g_get_monotonic_time () - start) / 1000.0);
   wait_for_paint (win);
   g_print ("%.0f ms to the next painted frame; peak memory %.0f MB (was %.0f MB)\n",

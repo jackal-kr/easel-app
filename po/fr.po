@@ -774,14 +774,11 @@ msgstr "Change le grossissement."
 msgid "Draws a straight line with the selected line width."
 msgstr "Dessine une ligne droite de l'épaisseur choisie."
 
-msgid "Draws a rectangle with the selected fill style."
-msgstr "Dessine un rectangle du style de remplissage choisi."
+msgid "Draws the chosen shape with the selected fill style."
+msgstr "Dessine la forme sélectionnée du style de remplissage choisi."
 
-msgid "Draws a rounded rectangle with the selected fill style."
-msgstr "Dessine un rectangle arrondi du style de remplissage choisi."
-
-msgid "Draws an ellipse with the selected fill style."
-msgstr "Dessine une ellipse du style de remplissage choisi."
+msgid "Shapes"
+msgstr "Formes"
 
 msgid "Draws a curved line: drag a line, then drag points of it to bend it. A click away from it finishes it."
 msgstr "Dessine une ligne courbe : tracez une ligne, puis faites glisser ses points pour la courber. Un clic à côté la termine."
@@ -1323,3 +1320,68 @@ msgstr "Formes et pinceaux lissés"
 
 msgid "Smooth text"
 msgstr "Texte lissé"
+
+msgid "Triangle"
+msgstr "Triangle"
+
+msgid "Right Triangle"
+msgstr "Triangle rectangle"
+
+msgid "Diamond"
+msgstr "Losange"
+
+msgid "Pentagon"
+msgstr "Pentagone"
+
+msgid "Hexagon"
+msgstr "Hexagone"
+
+msgid "Right Arrow"
+msgstr "Flèche droite"
+
+msgid "Left Arrow"
+msgstr "Flèche gauche"
+
+msgid "Up Arrow"
+msgstr "Flèche haut"
+
+msgid "Down Arrow"
+msgstr "Flèche bas"
+
+msgid "4-Point Star"
+msgstr "Étoile à 4 branches"
+
+msgid "5-Point Star"
+msgstr "Étoile à 5 branches"
+
+msgid "6-Point Star"
+msgstr "Étoile à 6 branches"
+
+msgid "Rounded Rectangle Callout"
+msgstr "Bulle rectangulaire"
+
+msgid "Oval Callout"
+msgstr "Bulle ovale"
+
+msgid "Heart"
+msgstr "Cœur"
+
+msgid "Lightning Bolt"
+msgstr "Éclair"
+
+msgid "Shape"
+msgstr "Forme"
+
+#, c-format
+msgid "Shape: %s"
+msgstr "Forme : %s"
+
+#, c-format
+msgid "Shape %d by %d"
+msgstr "Forme %d sur %d"
+
+msgid "Shape put down"
+msgstr "Forme posée"
+
+msgid "Shape removed"
+msgstr "Forme retirée"

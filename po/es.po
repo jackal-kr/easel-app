@@ -774,14 +774,11 @@ msgstr "Cambia el aumento."
 msgid "Draws a straight line with the selected line width."
 msgstr "Dibuja una línea recta del grosor elegido."
 
-msgid "Draws a rectangle with the selected fill style."
-msgstr "Dibuja un rectángulo con el estilo de relleno elegido."
+msgid "Draws the chosen shape with the selected fill style."
+msgstr "Dibuja la forma seleccionada con el estilo de relleno elegido."
 
-msgid "Draws a rounded rectangle with the selected fill style."
-msgstr "Dibuja un rectángulo redondeado con el estilo de relleno elegido."
-
-msgid "Draws an ellipse with the selected fill style."
-msgstr "Dibuja una elipse con el estilo de relleno elegido."
+msgid "Shapes"
+msgstr "Formas"
 
 msgid "Draws a curved line: drag a line, then drag points of it to bend it. A click away from it finishes it."
 msgstr "Dibuja una línea curva: arrastre una línea y luego arrastre puntos de ella para curvarla. Un clic fuera de ella la termina."
@@ -1323,3 +1320,68 @@ msgstr "Formas y pinceles suaves"
 
 msgid "Smooth text"
 msgstr "Texto suave"
+
+msgid "Triangle"
+msgstr "Triángulo"
+
+msgid "Right Triangle"
+msgstr "Triángulo rectángulo"
+
+msgid "Diamond"
+msgstr "Rombo"
+
+msgid "Pentagon"
+msgstr "Pentágono"
+
+msgid "Hexagon"
+msgstr "Hexágono"
+
+msgid "Right Arrow"
+msgstr "Flecha a la derecha"
+
+msgid "Left Arrow"
+msgstr "Flecha a la izquierda"
+
+msgid "Up Arrow"
+msgstr "Flecha arriba"
+
+msgid "Down Arrow"
+msgstr "Flecha abajo"
+
+msgid "4-Point Star"
+msgstr "Estrella de 4 puntas"
+
+msgid "5-Point Star"
+msgstr "Estrella de 5 puntas"
+
+msgid "6-Point Star"
+msgstr "Estrella de 6 puntas"
+
+msgid "Rounded Rectangle Callout"
+msgstr "Bocadillo rectangular"
+
+msgid "Oval Callout"
+msgstr "Bocadillo ovalado"
+
+msgid "Heart"
+msgstr "Corazón"
+
+msgid "Lightning Bolt"
+msgstr "Rayo"
+
+msgid "Shape"
+msgstr "Forma"
+
+#, c-format
+msgid "Shape: %s"
+msgstr "Forma: %s"
+
+#, c-format
+msgid "Shape %d by %d"
+msgstr "Forma de %d por %d"
+
+msgid "Shape put down"
+msgstr "Forma dejada"
+
+msgid "Shape removed"
+msgstr "Forma quitada"

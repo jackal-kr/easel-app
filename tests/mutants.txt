@@ -1817,18 +1817,18 @@ file: src/ui/tool-options.c
 test: ui-0011
 --- find
 tool == EASEL_TOOL_LINE || tool == EASEL_TOOL_CURVE ? 4
-              : easel_tool_draws_shape (tool) || tool == EASEL_TOOL_POLYGON ? 5 : easel_tool_selects (tool) ? 6
+              : tool == EASEL_TOOL_SHAPES ? 9 : tool == EASEL_TOOL_POLYGON ? 5 : easel_tool_selects (tool) ? 6
 --- replace
 tool == EASEL_TOOL_LINE ? 4
-              : easel_tool_draws_shape (tool) || tool == EASEL_TOOL_POLYGON || tool == EASEL_TOOL_CURVE ? 5 : easel_tool_selects (tool) ? 6
+              : tool == EASEL_TOOL_SHAPES ? 9 : tool == EASEL_TOOL_POLYGON || tool == EASEL_TOOL_CURVE ? 5 : easel_tool_selects (tool) ? 6
 
 === REQ-0011-02 Polygon shows no options
 file: src/ui/tool-options.c
 test: ui-0011
 --- find
-              : easel_tool_draws_shape (tool) || tool == EASEL_TOOL_POLYGON ? 5 : easel_tool_selects (tool) ? 6
+: tool == EASEL_TOOL_POLYGON ? 5 : easel_tool_selects (tool) ? 6
 --- replace
-              : easel_tool_draws_shape (tool) ? 5 : easel_tool_selects (tool) ? 6
+: tool == EASEL_TOOL_POLYGON ? -1 : easel_tool_selects (tool) ? 6
 
 === REQ-0011-03 Curve has Polygon's hint
 file: src/ui/window.c
@@ -2167,11 +2167,11 @@ test: ui-0011
       self->cancelled_button = self->pend_button;
       g_signal_emit (self, signals[SIGNAL_STROKING_CHANGED], 0, FALSE);
     }
-  set_pending (self, FALSE);
+  if (self->pend_shape)
 --- replace
       g_signal_emit (self, signals[SIGNAL_STROKING_CHANGED], 0, FALSE);
     }
-  set_pending (self, FALSE);
+  if (self->pend_shape)
 
 === REQ-0011-12 Save, Save As, New and Open do not put a pending polygon down
 file: src/ui/window.c
@@ -2228,13 +2228,15 @@ test: ui-0011
 file: src/ui/canvas.c
 test: ui-0011
 --- find
-      if (button != GDK_BUTTON_PRIMARY)
-        return;
-      put_down_pending (self);
+      else
+        put_down_pending (self);
+    }
+  if (self->pending && self->pend_shape && !self->pend_held)
 --- replace
-      if (button != GDK_BUTTON_PRIMARY)
-        return;
-      (void) 0;
+      else
+        (void) 0;
+    }
+  if (self->pending && self->pend_shape && !self->pend_held)
 
 === REQ-0011-12 a secondary press on a handle puts a pending curve down
 file: src/ui/canvas.c
@@ -2242,11 +2244,11 @@ test: ui-0011
 --- find
       if (button != GDK_BUTTON_PRIMARY)
         return;
-      put_down_pending (self);
+      if (self->pend_shape)
 --- replace
       if (button != GDK_BUTTON_PRIMARY)
         put_down_pending (self);
-      put_down_pending (self);
+      if (self->pend_shape)
 
 === REQ-0011-12 a pending polygon is drawn with a width of 1 whatever is chosen
 file: src/ui/canvas.c
@@ -2261,12 +2263,14 @@ file: src/ui/canvas.c
 test: ui-0011
 --- find
   easel_canvas_end_stroke (self);
+  shape_failed_now (self);
   self->cancelled_button = 0;
   self->action_button = 0;
   if (self->resizing != EASEL_HANDLE_NONE)
     stop_resizing (self);
 --- replace
   easel_canvas_end_stroke (self);
+  shape_failed_now (self);
   easel_canvas_drop (self);
   self->cancelled_button = 0;
   self->action_button = 0;
@@ -2333,13 +2337,11 @@ test: ui-0011
 file: src/ui/canvas.c
 test: ui-0011
 --- find
-  if (r == EASEL_FIGURE_DONE)
-    easel_canvas_update (self);
+    self->shape_failed_button = self->defer_shape_failed;     /* the press's button: the dialog at its release (REQ-0043-13) */
   else if (r == EASEL_FIGURE_NO_MEMORY)
     g_signal_emit (self, signals[gradient ? SIGNAL_GRADIENT_FAILED : SIGNAL_SHAPE_FAILED], 0);
 --- replace
-  if (r == EASEL_FIGURE_DONE)
-    easel_canvas_update (self);
+    self->shape_failed_button = self->defer_shape_failed;     /* the press's button: the dialog at its release (REQ-0043-13) */
   else if (r == EASEL_FIGURE_NO_MEMORY)
     (void) 0;
 
@@ -2347,11 +2349,9 @@ test: ui-0011
 file: src/ui/canvas.c
 test: ui-0011
 --- find
-    r = easel_figure_apply_capped (self->img, self->history, &f, self->pend_draw, self->pend_other, NULL,
-                                   self->shape_max_bytes);
+      r = easel_figure_apply_capped (self->img, self->history, &f, draw, other, NULL, self->shape_max_bytes);
 --- replace
-    r = easel_figure_apply_capped (self->img, self->history, &f, self->pend_draw, self->pend_other, NULL,
-                                   SIZE_MAX);
+      r = easel_figure_apply_capped (self->img, self->history, &f, draw, other, NULL, SIZE_MAX);
 
 === REQ-0011-07 Enter closes a pending polygon only while the canvas has the focus
 file: src/ui/window.c
@@ -2592,7 +2592,7 @@ test: ui-0012
 --- find
       if (button != GDK_BUTTON_PRIMARY)
         return;
-      put_down_pending (self);
+      if (self->pend_shape)
 --- replace
       if (button != GDK_BUTTON_PRIMARY)
         {
@@ -2600,22 +2600,23 @@ test: ui-0012
             easel_canvas_drop (self);
           return;
         }
-      put_down_pending (self);
+      if (self->pend_shape)
 
 === REQ-0012-12 a primary press on a resize handle drops a gradient the secondary button started
 file: src/ui/canvas.c
 test: ui-0012
 --- find
-      if (button != GDK_BUTTON_PRIMARY)
-        return;
-      put_down_pending (self);
+      else
+        put_down_pending (self);
+    }
+  if (self->pending && self->pend_shape && !self->pend_held)
 --- replace
-      if (button != GDK_BUTTON_PRIMARY)
-        return;
-      if (self->pend_gradient && self->pend_button != button)
+      else if (self->pend_gradient && self->pend_button != button)
         easel_canvas_drop (self);
       else
         put_down_pending (self);
+    }
+  if (self->pending && self->pend_shape && !self->pend_held)
 
 === REQ-0012-11 Enter applies a gradient while its button is held
 file: src/ui/canvas.c
@@ -2736,7 +2737,7 @@ test: ui-0012
 --- find
   self->foreground = foreground;
   self->background = background;
-  if (self->pending && self->pend_gradient)
+  if (self->pending && (self->pend_gradient || self->pend_shape))
 --- replace
   if (self->pending && self->pend_gradient)
     return;
@@ -2756,7 +2757,7 @@ test: ui-0012
 file: src/ui/canvas.c
 test: ui-0012
 --- find
-    gtk_widget_queue_draw (GTK_WIDGET (self));         /* a gradient follows the colors at once (REQ-0012-04) */
+    gtk_widget_queue_draw (GTK_WIDGET (self));         /* a gradient and a waiting shape follow the colors at once (REQ-0012-04, REQ-0043-09) */
 --- replace
     (void) 0;
 
@@ -2772,9 +2773,11 @@ test: ui-0012
 file: src/ui/canvas.c
 test: ui-0012
 --- find
+         drag with this button; if the apply fails (the dialog) the press starts nothing (REQ-0012-08). */
       if (put_down_pending (self) == EASEL_FIGURE_NO_MEMORY)
         return;
 --- replace
+         drag with this button; if the apply fails (the dialog) the press starts nothing (REQ-0012-08). */
       if (FALSE && put_down_pending (self) == EASEL_FIGURE_NO_MEMORY)
         return;
 
@@ -2790,9 +2793,11 @@ test: ui-0012
 file: src/ui/canvas.c
 test: ui-0012
 --- find
+         drag with this button; if the apply fails (the dialog) the press starts nothing (REQ-0012-08). */
       if (put_down_pending (self) == EASEL_FIGURE_NO_MEMORY)
         return;
 --- replace
+         drag with this button; if the apply fails (the dialog) the press starts nothing (REQ-0012-08). */
       (void) put_down_pending (self);
 
 === REQ-0012-08 Esc, the other button or Undo during the new drag also undoes the gradient the press applied
@@ -5300,11 +5305,11 @@ test: core-selection
 file: src/ui/canvas.c
 test: ui-0015
 --- find
-  if (self->guides_hidden || self->no_sel_handles || !(easel_tool_selects (self->tool) || self->tool == EASEL_TOOL_TEXT))
-    return;
+  if (self->guides_hidden || self->no_sel_handles
+      || !(easel_tool_selects (self->tool) || self->tool == EASEL_TOOL_TEXT || self->tool == EASEL_TOOL_SHAPES))
 --- replace
-  if (self->no_sel_handles || !(easel_tool_selects (self->tool) || self->tool == EASEL_TOOL_TEXT))
-    return;
+  if (self->no_sel_handles
+      || !(easel_tool_selects (self->tool) || self->tool == EASEL_TOOL_TEXT || self->tool == EASEL_TOOL_SHAPES))
 
 === REQ-0015-01 an edge handle is not centered on its edge
 file: src/ui/canvas.c
@@ -7612,9 +7617,9 @@ test: ui-0017
 file: src/ui/canvas.c
 test: ui-0017
 --- find
-  if (self->guides_hidden || self->no_sel_handles || !(easel_tool_selects (self->tool) || self->tool == EASEL_TOOL_TEXT))
+      || !(easel_tool_selects (self->tool) || self->tool == EASEL_TOOL_TEXT || self->tool == EASEL_TOOL_SHAPES))
 --- replace
-  if (self->guides_hidden || self->no_sel_handles || !(easel_tool_selects (self->tool)))
+      || !(easel_tool_selects (self->tool) || self->tool == EASEL_TOOL_SHAPES))
 
 === REQ-0017-05 the box has no outline
 file: src/ui/canvas.c
@@ -13302,9 +13307,9 @@ test: ui-0039
 file: src/ui/canvas.c
 test: ui-0039
 --- find
-  EaselFigure f = { kind, self->shape_x0, self->shape_y0, self->shape_x1, self->shape_y1, self->shape_width, self->shape_style, NULL };
+      return easel_shape_figure (self->shape_kind, x, y, w, h, self->shape_width, self->shape_style, self->smooth, FALSE, FALSE,
 --- replace
-  EaselFigure f = { kind, self->shape_x0, self->shape_y0, self->shape_x1, self->shape_y1, self->shape_width, self->shape_style, NULL }; if (self) return f;
+      return easel_shape_figure (self->shape_kind, x, y, w, h, self->shape_width, self->shape_style, FALSE, FALSE, FALSE,
 
 === REQ-0039-08 a smooth figure whose log cannot grow is drawn in part
 file: src/core/figure.c
@@ -14810,3 +14815,569 @@ test: ui-0042
       self->sel_mask = mask;
       easel_path_free (&path);
       *selected = TRUE;
+
+=== REQ-0043-04 a corner's place rounds one short of a half
+file: src/core/shapes.c
+test: core-shapes
+--- find
+    return (u * (n - 1) + 500) / 1000;
+--- replace
+    return (u * (n - 1) + 499) / 1000;
+
+=== REQ-0043-04 a corner past the middle is rounded from the left, not from its own side
+file: src/core/shapes.c
+test: core-shapes
+--- find
+  return (n - 1) - ((1000 - u) * (n - 1) + 500) / 1000;
+--- replace
+  return (u * (n - 1) + 500) / 1000;
+
+=== REQ-0043-04 the inner box starts at half the width, not half of one less
+file: src/core/shapes.c
+test: core-shapes
+--- find
+  *ix = x + (width - 1) / 2;
+--- replace
+  *ix = x + width / 2;
+
+=== REQ-0043-04 the inner box is the width narrower, not one less
+file: src/core/shapes.c
+test: core-shapes
+--- find
+  *iw = w - (width - 1);
+--- replace
+  *iw = w - width;
+
+=== REQ-0043-04 a box narrower than the width puts its corners right of the middle
+file: src/core/shapes.c
+test: core-shapes
+--- find
+      *ix = x + (w - 1) / 2;
+--- replace
+      *ix = x + w / 2;
+
+=== REQ-0043-04 the mirror left to right is ignored
+file: src/core/shapes.c
+test: core-shapes
+--- find
+easel_shape_place (mirror_x ? 1000 - uv[2 * i] : uv[2 * i], iw);
+--- replace
+easel_shape_place (uv[2 * i], iw);
+
+=== REQ-0043-04 the mirror top to bottom is ignored
+file: src/core/shapes.c
+test: core-shapes
+--- find
+easel_shape_place (mirror_y ? 1000 - uv[2 * i + 1] : uv[2 * i + 1], ih);
+--- replace
+easel_shape_place (uv[2 * i + 1], ih);
+
+=== REQ-0043-04 a corner of the Heart differs from corners.md
+file: src/core/shapes.c
+test: core-shapes
+--- find
+500, 239, 500, 236
+--- replace
+500, 238, 500, 236
+
+=== REQ-0043-04 the box's end stops one pixel past the limit
+file: src/core/shapes.c
+test: core-shapes
+--- find
+    return s + EASEL_SHAPE_MAX_SIDE - 1;
+--- replace
+    return s + EASEL_SHAPE_MAX_SIDE;
+
+=== REQ-0043-04 Shift does not make the box a square
+file: src/core/shapes.c
+test: core-shapes
+--- find
+  if (shift)
+    easel_figure_constrain (EASEL_FIGURE_RECTANGLE, x0, y0, &x1, &y1);
+--- replace
+  if (false)
+    easel_figure_constrain (EASEL_FIGURE_RECTANGLE, x0, y0, &x1, &y1);
+
+=== REQ-0043-05 the shape's polygon is left open
+file: src/core/shapes.c
+test: core-shapes
+--- find
+NULL, pts, 0, true };
+--- replace
+NULL, pts, 0, false };
+
+=== REQ-0043-18 the three old shapes are drawn one pixel wider than their box
+file: src/core/shapes.c
+test: core-shapes
+--- find
+      f = (EaselFigure) { own[shape], x, y, x + w - 1, y + h - 1, width, style, NULL };
+--- replace
+      f = (EaselFigure) { own[shape], x, y, x + w, y + h - 1, width, style, NULL };
+
+=== REQ-0043-18 the three old shapes lose Smooth
+file: src/core/shapes.c
+test: core-shapes
+--- find
+      f = (EaselFigure) { own[shape], x, y, x + w - 1, y + h - 1, width, style, NULL };
+      f.smooth = smooth;
+--- replace
+      f = (EaselFigure) { own[shape], x, y, x + w - 1, y + h - 1, width, style, NULL };
+      f.smooth = false;
+
+=== REQ-0043-01 the Shapes button's icon does not follow the chosen shape
+file: src/ui/window.c
+test: ui-0043
+--- find
+  gtk_button_set_icon_name (GTK_BUTTON (self->shapes_button), icon);
+--- replace
+  (void) icon;
+
+=== REQ-0043-02 the chosen shape changes during a drag
+file: src/ui/window.c
+test: ui-0043
+--- find
+  if (!easel_shape_from_name (g_variant_get_string (value, NULL), &shape) || easel_canvas_is_stroking (self->canvas))
+--- replace
+  if (!easel_shape_from_name (g_variant_get_string (value, NULL), &shape))
+
+=== REQ-0043-02 Shapes draws the Rectangle whatever shape is chosen
+file: src/ui/canvas.c
+test: ui-0010
+--- find
+      return easel_shape_figure (self->shape_kind, x, y, w, h, self->shape_width, self->shape_style, self->smooth, FALSE, FALSE,
+--- replace
+      return easel_shape_figure (EASEL_SHAPE_KIND_RECTANGLE, x, y, w, h, self->shape_width, self->shape_style, self->smooth, FALSE, FALSE,
+
+=== REQ-0043-04 Shift constrains the Shapes box as Line's 45-degree steps, not to a square
+file: src/ui/canvas.c
+test: ui-0043
+--- find
+  EaselFigureKind kind = self->tool == EASEL_TOOL_LINE ? EASEL_FIGURE_LINE : EASEL_FIGURE_RECTANGLE;
+--- replace
+  EaselFigureKind kind = self->tool == EASEL_TOOL_LINE ? EASEL_FIGURE_LINE : EASEL_FIGURE_LINE;
+
+=== REQ-0043-03 Shapes' hint names a rectangle
+file: src/ui/window.c
+test: ui-0043
+--- find
+      return _ ("Draws the chosen shape with the selected fill style.");
+--- replace
+      return _ ("Draws a rectangle with the selected fill style.");
+
+=== REQ-0043-02 the window's keys act while the Shape popover is open
+file: src/ui/window.c
+test: ui-0043
+--- find
+    return TRUE;                                  /* the Shape popover holds the keys as a menu does (REQ-0043-02) */
+--- replace
+    return FALSE;                                 /* the Shape popover holds the keys as a menu does (REQ-0043-02) */
+
+=== REQ-0043-02 a press on the canvas acts while the Shape popover is open
+file: src/ui/window.c
+test: ui-0043
+--- find
+                                  || self->shape_popover_open
+--- replace
+                                  || FALSE
+
+=== REQ-0043-02 the press that closes the Shape popover reaches the canvas
+file: src/ui/window.c
+test: ui-0043
+--- find
+    g_idle_add_full (G_PRIORITY_DEFAULT, shape_popover_after_close, g_object_ref (self), g_object_unref);
+--- replace
+    shape_popover_after_close (self);
+
+=== REQ-0043-02 choosing a cell leaves the Shape popover open
+file: src/ui/tool-options.c
+test: ui-0043
+--- find
+  gtk_popover_popdown (GTK_POPOVER (self->shape_popover));
+--- replace
+  (void) self;
+
+=== REQ-0043-02 the Shape popover opens below the button, not toward larger x
+file: src/ui/tool-options.c
+test: ui-0043
+--- find
+  gtk_menu_button_set_direction (GTK_MENU_BUTTON (self->shape_button), GTK_ARROW_RIGHT);
+--- replace
+  gtk_menu_button_set_direction (GTK_MENU_BUTTON (self->shape_button), GTK_ARROW_DOWN);
+
+=== REQ-0043-02 the Shape button's name does not follow the chosen shape
+file: src/ui/tool-options.c
+test: ui-0043-a11y
+--- find
+  gtk_accessible_update_property (GTK_ACCESSIBLE (self->shape_button), GTK_ACCESSIBLE_PROPERTY_LABEL, label, -1);
+--- replace
+  (void) label;
+
+=== REQ-0043-02 the Shape button's outline does not follow the chosen shape
+file: src/ui/tool-options.c
+test: ui-0043
+--- find
+  gtk_image_set_from_icon_name (GTK_IMAGE (self->shape_image), self->shape_icon);
+--- replace
+  (void) self->shape_image;
+
+=== REQ-0043-02 Polygon's page shows the Shape well
+file: src/ui/tool-options.c
+test: ui-0043
+--- find
+              : tool == EASEL_TOOL_SHAPES ? 9 : tool == EASEL_TOOL_POLYGON ? 5 : easel_tool_selects (tool) ? 6
+--- replace
+              : tool == EASEL_TOOL_SHAPES ? 9 : tool == EASEL_TOOL_POLYGON ? 9 : easel_tool_selects (tool) ? 6
+
+=== REQ-0043-06 Shapes draws at the release instead of waiting
+file: src/ui/canvas.c
+test: ui-0043
+--- find
+  self->shaping = FALSE;
+  if (self->tool == EASEL_TOOL_SHAPES)
+--- replace
+  self->shaping = FALSE;
+  if (FALSE)
+
+=== REQ-0043-06 a Shapes click that never left its pixel makes a waiting shape
+file: src/ui/canvas.c
+test: ui-0043
+--- find
+      else if (self->shape_moved)
+--- replace
+      else if (TRUE)
+
+=== REQ-0043-06 a waiting shape shows no handles
+file: src/ui/canvas.c
+test: ui-0043
+--- find
+      if (!easel_canvas_get_waiting_shape (self, &sx, &sy, &sw, &sh))
+        return FALSE;
+--- replace
+      return FALSE;
+
+=== REQ-0043-06 the size field does not show a waiting shape's box
+file: src/ui/window.c
+test: ui-0043
+--- find
+    exists = easel_canvas_get_waiting_shape (self->canvas, &x, &y, &w, &h);   /* a waiting shape's box (REQ-0043-06) */
+--- replace
+    exists = FALSE;
+
+=== REQ-0043-05 a waiting shape is put down as an open polygon
+file: src/ui/canvas.c
+test: ui-0043
+--- find
+  if (!shape)
+    f.closed = self->pend_polygon;
+--- replace
+  if (TRUE)
+    f.closed = self->pend_polygon;
+
+=== REQ-0043-17 a put-down shape is announced as removed
+file: src/ui/canvas.c
+test: ui-0043
+--- find
+    g_signal_emit (self, signals[SIGNAL_SHAPE_CHANGED], 0, 1u, 0, 0);       /* "Shape put down" (REQ-0043-17) */
+--- replace
+    g_signal_emit (self, signals[SIGNAL_SHAPE_CHANGED], 0, 2u, 0, 0);       /* "Shape put down" (REQ-0043-17) */
+
+=== REQ-0043-11 a dropped shape is not announced
+file: src/ui/canvas.c
+test: ui-0043
+--- find
+      g_signal_emit (self, signals[SIGNAL_SHAPE_CHANGED], 0, 2u, 0, 0);       /* "Shape removed" (REQ-0043-11, -17) */
+--- replace
+      (void) 0;
+
+=== REQ-0043-06 a curve after a waiting shape that a new picture ended is drawn as that shape
+file: src/ui/canvas.c
+test: ui-0043 ui-0011
+--- find
+    self->pend_shape = FALSE;                         /* whatever ended it, a later curve or polygon is not a shape */
+--- replace
+    (void) 0;
+
+=== REQ-0043-07 a press on a waiting shape's canvas goes to the curve's stages
+file: src/ui/canvas.c
+test: ui-0043
+--- find
+      if (button != GDK_BUTTON_PRIMARY && button != GDK_BUTTON_SECONDARY)
+        return;
+      self->defer_shape_failed = button;
+      if (put_down_pending (self) == EASEL_FIGURE_NO_MEMORY)
+        {
+          self->defer_shape_failed = 0;
+          self->cancelled_button = button;                 /* no new shape; the dialog at the release (REQ-0043-13) */
+          return;
+        }
+      self->defer_shape_failed = 0;
+--- replace
+      if (button == 99)
+        return;
+
+=== REQ-0043-07 a move lets the box leave the picture
+file: src/ui/canvas.c
+test: ui-0043
+--- find
+      self->wait_x = CLAMP (self->drag_box[0] + dx, 1 - self->drag_box[2], self->img->width - 1);
+--- replace
+      self->wait_x = self->drag_box[0] + dx;
+
+=== REQ-0043-08 a handle dragged past the opposite edge does not mirror the shape
+file: src/ui/canvas.c
+test: ui-0043
+--- find
+      self->wait_mirror_x = self->drag_mirror_x != mx;
+--- replace
+      self->wait_mirror_x = self->drag_mirror_x;
+
+=== REQ-0043-08 Shift does not keep a corner's ratio
+file: src/ui/canvas.c
+test: ui-0043
+--- find
+                                 self->drag_box[3], dx, dy, self->shift, &self->wait_x,
+--- replace
+                                 self->drag_box[3], dx, dy, FALSE, &self->wait_x,
+
+=== REQ-0043-07 the size field does not follow a drag
+file: src/ui/canvas.c
+test: ui-0043
+--- find
+  g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);      /* the size field (REQ-0043-06) */
+--- replace
+  (void) 0;
+
+=== REQ-0043-07 a press on a waiting shape's handle puts it down
+file: src/ui/canvas.c
+test: ui-0043
+--- find
+      handle = easel_canvas_selection_handle_at (self, x, y);
+      if (handle >= 0 || on_selection (self, x, y))
+--- replace
+      handle = -1;
+      if (handle >= 0 || on_selection (self, x, y))
+
+=== REQ-0043-07 a secondary press on the shape puts it down
+file: src/ui/canvas.c
+test: ui-0043
+--- find
+          if (button == GDK_BUTTON_PRIMARY)
+            shape_drag_begin (self, handle, button, x, y);
+          return;
+--- replace
+          if (button == GDK_BUTTON_PRIMARY)
+            shape_drag_begin (self, handle, button, x, y);
+          else
+            put_down_pending (self);
+          return;
+
+=== REQ-0043-07 the move cursor is not shown inside a waiting shape's box
+file: src/ui/canvas.c
+test: ui-0043
+--- find
+      return px >= self->wait_x && py >= self->wait_y && px - self->wait_x < self->wait_w && py - self->wait_y < self->wait_h;
+--- replace
+      return px >= self->wait_x && py >= self->wait_y && px - self->wait_x < self->wait_w && py - self->wait_y < self->wait_h && FALSE;
+
+=== REQ-0043-07 the selection's handle code takes a waiting shape's handles
+file: src/ui/canvas.c
+test: ui-0043
+--- find
+  if (self->tool != EASEL_TOOL_SHAPES)          /* a waiting shape's handles are its own (below) */
+--- replace
+  if (TRUE)          /* a waiting shape's handles are its own (below) */
+
+=== REQ-0043-12 Esc during a drag of a waiting shape drops the shape
+file: src/ui/window.c
+test: ui-0043
+--- find
+  if (keyval == GDK_KEY_Escape && !dialog_is_open (self) && easel_canvas_cancel_shape_drag (self->canvas))
+--- replace
+  if (keyval == GDK_KEY_Escape && !dialog_is_open (self) && FALSE)
+
+=== REQ-0043-09 a waiting shape keeps the colors it was dragged out with
+file: src/ui/canvas.c
+test: ui-0043
+--- find
+      *draw = self->wait_color_button == GDK_BUTTON_PRIMARY ? self->foreground : self->background;
+--- replace
+      *draw = self->pend_draw;
+
+=== REQ-0043-09 a held drag of a waiting shape takes the colors of now, not of its press
+file: src/ui/canvas.c
+test: ui-0043
+--- find
+  if (self->pend_shape && !self->pend_held)
+    {
+      *draw = self->wait_color_button
+--- replace
+  if (self->pend_shape)
+    {
+      *draw = self->wait_color_button
+
+=== REQ-0043-09 a waiting shape keeps the shape it was dragged out as
+file: src/ui/canvas.c
+test: ui-0043
+--- find
+    return easel_shape_figure (self->shape_kind, self->wait_x, self->wait_y,
+--- replace
+    return easel_shape_figure (EASEL_SHAPE_KIND_TRIANGLE, self->wait_x, self->wait_y,
+
+=== REQ-0043-09 the other color of a waiting shape is the foreground
+file: src/ui/canvas.c
+test: ui-0043
+--- find
+      *other = self->wait_color_button == GDK_BUTTON_PRIMARY ? self->background : self->foreground;
+--- replace
+      *other = self->foreground;
+
+=== REQ-0043-12 the other button during a drag of a waiting shape does not cancel the drag
+file: src/ui/canvas.c
+test: ui-0043
+--- find
+            easel_canvas_cancel_shape_drag (self);         /* the other button cancels the drag (REQ-0043-12) */
+--- replace
+            (void) 0;
+
+=== REQ-0043-07 a keyboard press inside a waiting shape's box puts it down instead of moving it
+file: src/ui/canvas.c
+test: ui-0043
+--- find
+      if (handle >= 0 || on_selection (self, x, y))
+        {
+          if (button == GDK_BUTTON_PRIMARY)
+            shape_drag_begin (self, handle, button, x, y);
+--- replace
+      if (handle >= 0 || (on_selection (self, x, y) && !self->key_pressing))
+        {
+          if (button == GDK_BUTTON_PRIMARY)
+            shape_drag_begin (self, handle, button, x, y);
+
+=== REQ-0043-13 a put-down refused at a press shows its dialog while the button is held
+file: src/ui/canvas.c
+test: ui-0043
+--- find
+      self->defer_shape_failed = button;
+      if (put_down_pending (self) == EASEL_FIGURE_NO_MEMORY)
+--- replace
+      self->defer_shape_failed = 0;
+      if (put_down_pending (self) == EASEL_FIGURE_NO_MEMORY)
+
+=== REQ-0043-13 a put-down refused at a press shows no dialog at all
+file: src/ui/canvas.c
+test: ui-0043
+--- find
+      g_signal_emit (self, signals[SIGNAL_SHAPE_FAILED], 0);       /* a put-down refused at the press (REQ-0043-13) */
+--- replace
+      (void) 0;
+
+=== REQ-0043-13 a Smooth shape's preview ignores the memory limit
+file: src/ui/canvas.c
+test: ui-0043
+--- find
+  g_autofree EaselCoverRun *runs = max * sizeof (EaselCoverRun) <= self->preview_max_bytes ? g_try_new (EaselCoverRun, max) : NULL;
+--- replace
+  g_autofree EaselCoverRun *runs = g_try_new (EaselCoverRun, max);
+
+=== REQ-0043-13 a Sharp shape's preview ignores the memory limit
+file: src/ui/canvas.c
+test: ui-0043
+--- find
+  runs = easel_figure_max_runs (&f) * sizeof *runs <= self->preview_max_bytes ? malloc (easel_figure_max_runs (&f) * sizeof *runs) : NULL;
+--- replace
+  runs = malloc (easel_figure_max_runs (&f) * sizeof *runs);
+
+=== REQ-0043-13 a waiting shape that cannot be shown keeps waiting with no dialog
+file: src/ui/canvas.c
+test: ui-0043
+--- find
+  else if (self->pending && self->pend_shape)
+    drop_unshown_shape (self);
+--- replace
+  else if (self->pending && self->pend_shape)
+    (void) 0;
+
+=== REQ-0043-14 a waiting shape is shown in the colors of its press, put down in the colors of now
+file: src/ui/canvas.c
+test: ui-0043
+--- find
+      *f = pending_figure (self);
+      pending_colors (self, draw, other);
+--- replace
+      *f = pending_figure (self);
+      pending_colors (self, draw, other);
+      if (self->pend_shape)
+        {
+          *draw = self->foreground == 0xFF0000FFu ? 0xFF000000u : self->foreground;
+        }
+
+# ---- the check of 0043: the review's findings F1 to F6 ----
+
+=== REQ-0043-07 a picture handle inside a waiting shape's box shows its resize cursor (0043 Check F1)
+file: src/ui/canvas.c
+test: ui-0043
+--- find
+    hover = EASEL_HANDLE_NONE;                        /* a press there takes the shape (REQ-0043-07): its cursor (0043 Check F1) */
+--- replace
+    (void) 0;
+
+=== REQ-0043-06 a refused put-down leaves the size field showing (0043 Check F2)
+file: src/ui/canvas.c
+test: ui-0043
+--- find
+    g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);           /* none waits: the size field clears (0043 Check F2) */
+--- replace
+    (void) 0;
+
+=== REQ-0043-13 a cancelled first drag's failed preview shows a dialog at the next shape's release (0043 Check F3)
+file: src/ui/canvas.c
+test: ui-0043
+--- find
+      self->show_failed_at_release = FALSE;          /* a failure of a cancelled drag is not this one's (0043 Check F3) */
+      self->shape_button = button;
+--- replace
+      self->shape_button = button;
+
+=== REQ-0043-13 a cancelled move's failed preview drops the shape at the next move (0043 Check F3)
+file: src/ui/canvas.c
+test: ui-0043
+--- find
+  self->show_failed_at_release = FALSE;             /* a failure of a cancelled drag is not this one's (0043 Check F3) */
+--- replace
+  (void) 0;
+
+=== REQ-0043-13 a put-down refused at a press whose release is lost shows no dialog (0043 Check F4)
+file: src/ui/canvas.c
+test: ui-0043
+--- find
+  easel_canvas_release (self, self->resize_button);
+  shape_failed_now (self);
+--- replace
+  easel_canvas_release (self, self->resize_button);
+
+=== REQ-0043-13 a put-down refused by a press on a picture handle shows its dialog at the press (0043 Check F5)
+file: src/ui/canvas.c
+test: ui-0043
+--- find
+          self->defer_shape_failed = button;
+          if (put_down_pending (self) == EASEL_FIGURE_NO_MEMORY)
+            {
+              self->defer_shape_failed = 0;
+              self->cancelled_button = button;
+              return;
+            }
+--- replace
+          if (put_down_pending (self) == EASEL_FIGURE_NO_MEMORY)
+            {
+              self->defer_shape_failed = 0;
+              self->cancelled_button = button;
+              return;
+            }
+
+=== REQ-0043-03 the move cursor stays after Enter puts a shape down under a still pointer (0043 Check F6)
+file: src/ui/canvas.c
+test: ui-0043
+--- find
+      self->hover_sel = FALSE;                        /* the shape's box and handles go with it: the tool's cursor (0043 Check F6) */
+--- replace
+      (void) 0;

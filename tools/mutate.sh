@@ -342,6 +342,9 @@ run_worker () {
   # One copy of the sources and one build directory per worker, reused by its mutants: only the mutated file is built again.
   rsync -a --exclude /build --exclude /.git --exclude /.scratch --exclude /.cache --exclude /docs \
         --exclude /.claude --exclude /.vscode ./ "$TREE/" || { echo "the sources could not be copied" > "$W/failed"; exit 2; }
+  # The one file of docs that a test reads: the normative corner table of 0043, which core-shapes checks the code against.
+  mkdir -p "$TREE/docs/reference/proto-0043" && cp docs/reference/proto-0043/corners.md "$TREE/docs/reference/proto-0043/" \
+    || { echo "the sources could not be copied" > "$W/failed"; exit 2; }
   if ! meson setup "$BUILD" "$TREE" >"$W/setup.log" 2>&1 || ! read_tests; then
     tail -20 "$W/setup.log" > "$W/failed"; exit 2
   fi
