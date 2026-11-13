@@ -45257,7 +45257,10 @@ as3_changes (void)
       easel_canvas_set_shape_memory_limit (canvas, SIZE_MAX);
     }
   close_windows ();
-  /* an open text box */
+  /* an open text box, its caret not blinking: a blink between the two frames compared would differ by the caret alone (126 device pixels
+     at scale 2, the flake of 2026-11-13) */
+  g_object_get (gtk_settings_get_default (), "gtk-cursor-blink", &blink_at_start, NULL);
+  caret_blink (FALSE);
   write_settings ("[new-picture]\nwidth=400\nheight=300\nbackground=#FFFFFF\n");
   win = start_window ();
   canvas = easel_window_get_canvas (win);
@@ -45266,6 +45269,7 @@ as3_changes (void)
   shape_press_move (win, 1, 20, 20, 300, 120);
   shape_release (win, 1);
   box_text (win, "Hello");
+  g_assert_true (easel_canvas_text_caret_on (canvas));              /* shown, and held so */
   wrong += kept_against_fresh (win, "a letter typed in an open box");
   easel_canvas_set_text_opaque (canvas, TRUE);
   wrong += kept_against_fresh (win, "the box made Opaque");
@@ -45274,7 +45278,9 @@ as3_changes (void)
   easel_canvas_set_text_show_limit (canvas, 1);
   wrong += kept_against_fresh (win, "setter: the text's memory limit");
   easel_canvas_set_text_show_limit (canvas, SIZE_MAX);
+  g_assert_true (easel_canvas_text_caret_on (canvas));
   close_windows ();
+  caret_blink (blink_at_start);
   /* the picture replaced: New */
   write_settings ("[new-picture]\nwidth=400\nheight=300\nbackground=#FFFFFF\n");
   win = start_window ();
