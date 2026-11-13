@@ -223,6 +223,7 @@ with numbers written in a spec weeks before (0018: `scale_region` made 0015's 80
 | Undo memory | bounded by a user budget (default 512 MB, set in Preferences), never by step count |
 | Undo / redo | shown at the next screen refresh on a 1920x1080 picture |
 | Idle | 0% CPU when nothing is happening |
+| Idle with moving dashes (a selection, a text box or a waiting shape at rest, animations on) | at most 5 % of a core with GTK's default renderer, isolated session at scale 1, confirmed in the real session (ADR-0009, 0044; measured 1.6 to 4.8 %) |
 | Fill, a whole 8000x8000 picture (core) | < 500 ms (JOD, 2026-10-18; measured 160 ms) |
 | Fill or Magnifier press to the painted frame | < 100 ms at 1920x1080 and 8000x8000 (JOD, 2026-10-18; measured one frame) |
 | Text: the font card's family list, first opening to its painted frame | < 250 ms with ~300 families; later openings within two frames (JOD, 2026-10-27; measured 187 to 192 ms and 16 to 20 ms) |

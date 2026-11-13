@@ -223,6 +223,22 @@ struct _EaselCanvas
   gboolean stretch_copied;                      /* the copy of a Ctrl stretch of a floating selection was left (REQ-0015-04) */
   guint ants_tick;                              /* the timer of the moving dashes, 12 a second; 0 when there is none */
   gsize ants_redraws;                           /* test hook: the redraws the moving dashes asked for */
+  guint base_builds;                            /* test hook: the frames that built what lies under the line (REQ-0044-07) */
+  guint base_gen;                               /* goes up at every redraw asked for but the dashes' (REQ-0044-07) */
+  GskRenderNode *base_node;                     /* what lies under the line, as last built; NULL: none kept */
+  int line_part;                                /* the selection's line: 0 whole, 1 its white only (kept), 2 its black dashes only (0044) */
+  struct
+  {
+    guint gen;
+    int zoom, w, h;
+    double scale, dx, dy;
+    graphene_rect_t seen;
+    GdkRGBA accent;
+    gboolean dark, high_contrast;
+  } base_key;                                   /* what base_node was built for */
+  gboolean ants_asked;                          /* the dashes asked a redraw that no frame has drawn yet */
+  guint ants_asked_frame;                       /* frames_drawn when they asked it */
+  gboolean keep_base_off;                       /* test hook: no base kept, every frame built from nothing (REQ-0044-03, -04) */
   gsize ants_calls;                             /* test hook: the times their callback ran */
   gint64 ants_step;                             /* the step of the dashes last drawn (see ants_now_step) */
   gint64 ants_clock;                            /* test hook: a fixed time for the dashes, in microseconds; 0: the real clock */
@@ -371,6 +387,15 @@ logical_per_pixel (EaselCanvas *self)
 
 G_DEFINE_FINAL_TYPE (EaselCanvas, easel_canvas, GTK_TYPE_WIDGET)
 
+/* Every redraw asked for, but the moving dashes' own: what lies under the line may have changed, so the next frame builds it again
+   (REQ-0044-03, -07). */
+static void
+canvas_redraw (EaselCanvas *self)
+{
+  self->base_gen++;
+  gtk_widget_queue_draw (GTK_WIDGET (self));
+}
+
 GdkTexture *
 easel_canvas_get_tile_texture (EaselCanvas *self, int tx, int ty)
 {
@@ -467,6 +492,7 @@ easel_canvas_set_image (EaselCanvas *self, EaselImage *img)
       self->tiles_rebuilt = 0;
     }
   gtk_widget_queue_resize (GTK_WIDGET (self));
+  canvas_redraw (self);                           /* what lies under the line may change (0044) */
 }
 
 void
@@ -480,7 +506,7 @@ easel_canvas_update (EaselCanvas *self)
   for (int ty = r.y0 / EASEL_CANVAS_TILE; ty <= (r.y1 - 1) / EASEL_CANVAS_TILE; ty++)
     for (int tx = r.x0 / EASEL_CANVAS_TILE; tx <= (r.x1 - 1) / EASEL_CANVAS_TILE; tx++)
       build_tile (self, tx, ty);
-  gtk_widget_queue_draw (GTK_WIDGET (self));
+  canvas_redraw (self);
 }
 
 int
@@ -618,6 +644,7 @@ void
 easel_canvas_set_guides_hidden (EaselCanvas *self, gboolean hidden)
 {
   self->guides_hidden = hidden;
+  canvas_redraw (self);                           /* what lies under the line may change (0044) */
 }
 
 gboolean
@@ -752,6 +779,7 @@ void
 easel_canvas_set_selection_transparent (EaselCanvas *self, gboolean transparent)
 {
   self->sel_transparent = transparent;            /* what the next lift and Clear leave behind (REQ-0013-08, -14) */
+  canvas_redraw (self);                           /* what lies under the line may change (0044) */
 }
 
 gboolean
@@ -860,6 +888,7 @@ easel_canvas_set_view_memory_limit (EaselCanvas *self, size_t max_bytes)
 {
   self->view_memory_max = max_bytes;
   self->view_kept = FALSE;
+  canvas_redraw (self);                           /* what lies under the line may change (0044) */
 }
 
 gboolean
@@ -890,7 +919,7 @@ easel_canvas_set_text_smooth (EaselCanvas *self, gboolean smooth)
     }
   text_free_ink (self);
   self->text_ink = ink;
-  gtk_widget_queue_draw (GTK_WIDGET (self));
+  canvas_redraw (self);
   return TRUE;
 }
 
@@ -898,6 +927,7 @@ void
 easel_canvas_set_text_show_limit (EaselCanvas *self, size_t max_bytes)
 {
   self->text_show_max = max_bytes;
+  canvas_redraw (self);                           /* what lies under the line may change (0044) */
 }
 
 void
@@ -926,14 +956,14 @@ easel_canvas_set_gradient_type (EaselCanvas *self, EaselGradientType type)
     return;
   self->grad_type = type;
   if (self->pending && self->pend_gradient)
-    gtk_widget_queue_draw (GTK_WIDGET (self));
+    canvas_redraw (self);
 }
 
 void
 easel_canvas_set_text_opaque (EaselCanvas *self, gboolean opaque)
 {
   self->text_opaque = opaque;
-  gtk_widget_queue_draw (GTK_WIDGET (self));
+  canvas_redraw (self);
 }
 
 static gboolean
@@ -942,7 +972,7 @@ caret_tick (gpointer data)
   EaselCanvas *self = data;
 
   self->caret_on = !self->caret_on;
-  gtk_widget_queue_draw (GTK_WIDGET (self));
+  gtk_widget_queue_draw (GTK_WIDGET (self));       /* the caret is drawn over the line: what lies under it is kept (REQ-0044-07) */
   return G_SOURCE_CONTINUE;
 }
 
@@ -984,7 +1014,7 @@ easel_canvas_text_edited (EaselCanvas *self)
   text_relayout (self);
   caret_restart (self);
   g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);
-  gtk_widget_queue_draw (GTK_WIDGET (self));
+  canvas_redraw (self);
 }
 
 gboolean
@@ -1126,7 +1156,7 @@ text_try (EaselCanvas *self, const TextOp *op)
   self->text_ink = ink;
   caret_restart (self);
   g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);
-  gtk_widget_queue_draw (GTK_WIDGET (self));
+  canvas_redraw (self);
   return TRUE;
 }
 
@@ -1282,7 +1312,7 @@ text_move (EaselCanvas *self, size_t caret, gboolean extend)
   easel_text_buffer_select (self->text_buf, anchor, caret);
   caret_restart (self);
   g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);
-  gtk_widget_queue_draw (GTK_WIDGET (self));
+  canvas_redraw (self);
 }
 
 /* The byte index of the character offset `chars` of the text. */
@@ -1529,7 +1559,7 @@ text_press (EaselCanvas *self, double x, double y)
       easel_text_buffer_select (self->text_buf, index_of_offset (text, len, a), index_of_offset (text, len, z));
       caret_restart (self);
       g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);   /* the card shows the word's style (REQ-0017-14) */
-      gtk_widget_queue_draw (GTK_WIDGET (self));
+      canvas_redraw (self);
       return;
     }
   self->text_selecting = TRUE;
@@ -1583,7 +1613,7 @@ text_close (EaselCanvas *self)
   }
   g_clear_pointer (&self->text_buf, easel_text_buffer_free);
   g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);
-  gtk_widget_queue_draw (GTK_WIDGET (self));
+  canvas_redraw (self);
 }
 
 /* Puts the open box down (REQ-0017-16): its text written into the picture, on the background in Opaque mode, as one step; the box
@@ -1797,7 +1827,7 @@ text_drag_to (EaselCanvas *self, double x, double y)
         }
     }
   g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);
-  gtk_widget_queue_draw (GTK_WIDGET (self));
+  canvas_redraw (self);
 }
 
 /* The end of a drag of the box: at the release a changed box is one edit (REQ-0017-11); cancelled (the other button, Esc, Undo), or
@@ -1824,7 +1854,7 @@ text_drag_end (EaselCanvas *self, gboolean cancel)
     self->cancelled_button = self->sel_button;
   g_signal_emit (self, signals[SIGNAL_STROKING_CHANGED], 0, FALSE);
   g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);
-  gtk_widget_queue_draw (GTK_WIDGET (self));
+  canvas_redraw (self);
 }
 
 /* The part of the picture an open box's drawing covers: the box and its ink, limited to the picture and to the part in view, so that a
@@ -2182,9 +2212,19 @@ ants_tick_cb (gpointer data)
   step = (gint64) floor ((self->ants_clock != 0 ? self->ants_clock : g_get_monotonic_time ()) / 1e6 * 12);
   if (step == self->ants_step && !self->ants_continuous)
     return G_SOURCE_CONTINUE;
+  /* The last redraw they asked was never drawn: the window shows nothing now (minimized, wholly hidden). The timer stops; the next frame
+     drawn starts it again, as drawing the line does (REQ-0044-06). */
+  if (self->ants_asked && self->frames_drawn == self->ants_asked_frame)
+    {
+      self->ants_asked = FALSE;
+      self->ants_tick = 0;
+      return G_SOURCE_REMOVE;
+    }
   self->ants_step = step;
   self->ants_redraws++;
-  gtk_widget_queue_draw (widget);
+  self->ants_asked = TRUE;
+  self->ants_asked_frame = self->frames_drawn;
+  gtk_widget_queue_draw (widget);                 /* only the dashes moved: what lies under them is kept (REQ-0044-07) */
   return G_SOURCE_CONTINUE;
 }
 
@@ -2196,7 +2236,10 @@ ants_phase (EaselCanvas *self, double period)
   if (!ants_active (self))
     return 0;
   if (self->ants_tick == 0)
-    self->ants_tick = g_timeout_add (1000 / 12, ants_tick_cb, self);   /* once a step: nothing runs between two (REQ-0014-16) */
+    {
+      self->ants_asked = FALSE;
+      self->ants_tick = g_timeout_add (1000 / 12, ants_tick_cb, self);   /* once a step: nothing runs between two (REQ-0014-16) */
+    }   /* once a step: nothing runs between two (REQ-0014-16) */
   {
     double t = (self->ants_clock != 0 ? self->ants_clock : g_get_monotonic_time ()) / 1e6 * 12;    /* logical pixels so far */
 
@@ -2223,7 +2266,7 @@ easel_canvas_set_ants_clock (EaselCanvas *self, gint64 usec, gboolean continuous
 {
   self->ants_clock = usec;
   self->ants_continuous = continuous;
-  gtk_widget_queue_draw (GTK_WIDGET (self));
+  gtk_widget_queue_draw (GTK_WIDGET (self));       /* only the dashes move: what lies under them is kept (REQ-0044-07) */
 }
 
 gboolean
@@ -2268,8 +2311,11 @@ append_path_line (EaselCanvas *self, GtkSnapshot *snapshot, const int *xy, size_
   size_t segments = closed && n >= 2 ? n : (n >= 1 ? n - 1 : 0), n_dash;
   EaselDash *dash;
 
-  self->line_strips = 0;
-  if (!self->line_unmerged)
+  if (self->line_part != 2)
+    self->line_strips = 0;                         /* counted where the white is drawn (the test hook of REQ-0014-16) */
+  if (self->line_part == 2)
+    segments = 0;                                  /* the dashes only: the white is in what is kept under them (0044) */
+  else if (!self->line_unmerged)
     {
       /* The white line as one strip per straight run: a path along straight grid lines costs a few strips, however many corners it
          was traced through (REQ-0014-16). The same pixels as a strip per grid step, which the test hook draws. */
@@ -2316,6 +2362,8 @@ append_path_line (EaselCanvas *self, GtkSnapshot *snapshot, const int *xy, size_
           py = y;
         }
     }
+  if (self->line_part == 1)
+    return;                                        /* the white only: it does not move, so it is kept with what lies under it (0044) */
   n_dash = easel_lattice_dashes (xy, n, closed, 4 * th / l, phase / l, NULL, 0);
   dash = n_dash ? g_try_new (EaselDash, n_dash) : NULL;
   if (dash == NULL)
@@ -2528,8 +2576,10 @@ append_selection_outline (EaselCanvas *self, GtkSnapshot *snapshot)
       { X0 - th, Y0, th, hl, FALSE, -1, 2 * wl + hl, hl },             /* the left side, up */
     };
 
-    for (int i = 0; i < 4; i++)
-      gtk_snapshot_append_color (snapshot, &white, &GRAPHENE_RECT_INIT ((float) ring[i].x, (float) ring[i].y, (float) ring[i].w, (float) ring[i].h));
+    if (self->line_part != 2)
+      for (int i = 0; i < 4; i++)
+        gtk_snapshot_append_color (snapshot, &white, &GRAPHENE_RECT_INIT ((float) ring[i].x, (float) ring[i].y, (float) ring[i].w, (float) ring[i].h));
+    if (self->line_part != 1)
     {
       /* A text box's and a waiting shape's dashes move as a selection's (REQ-0017-05, REQ-0043-19) */
       double phase = ants_phase (self, 2 * d);
@@ -2593,7 +2643,7 @@ lasso_extend (EaselCanvas *self, int cx, int cy)
   self->lasso_y0 = MIN (self->lasso_y0, cy);
   self->lasso_y1 = MAX (self->lasso_y1, cy);
   g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);
-  gtk_widget_queue_draw (GTK_WIDGET (self));
+  canvas_redraw (self);
 }
 
 /* A press with Free-Form Select that starts a path at the corner (cx, cy). */
@@ -2609,7 +2659,7 @@ lasso_begin (EaselCanvas *self, guint button, int cx, int cy)
     self->lasso_failed = TRUE;
   g_signal_emit (self, signals[SIGNAL_STROKING_CHANGED], 0, TRUE);
   g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);
-  gtk_widget_queue_draw (GTK_WIDGET (self));
+  canvas_redraw (self);
 }
 
 /* The release of the path (or a lost one): the path is closed and the pixels it encloses marked, limited to the picture; a click, a
@@ -2645,7 +2695,7 @@ end_lasso (EaselCanvas *self)
     }
   g_signal_emit (self, signals[SIGNAL_STROKING_CHANGED], 0, FALSE);
   g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);
-  gtk_widget_queue_draw (GTK_WIDGET (self));
+  canvas_redraw (self);
 }
 
 const int *
@@ -2800,7 +2850,7 @@ easel_canvas_stretch_skew_selection (EaselCanvas *self, int W, int H, int amount
   self->sel_h = f->h;
   self->sel_epoch++;
   g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);
-  gtk_widget_queue_draw (GTK_WIDGET (self));
+  canvas_redraw (self);
   return TRUE;
 }
 
@@ -2833,7 +2883,7 @@ void
 easel_canvas_rbg_float_changed (EaselCanvas *self)
 {
   self->sel_epoch++;
-  gtk_widget_queue_draw (GTK_WIDGET (self));
+  canvas_redraw (self);
 }
 
 void
@@ -2844,7 +2894,7 @@ easel_canvas_rbg_unlift (EaselCanvas *self)
   drop_float (self);                                          /* marked again, as before the dialog (REQ-0035-04) */
   self->sel_state = 1;
   g_signal_emit (self, signals[SIGNAL_PENDING_CHANGED], 0);
-  gtk_widget_queue_draw (GTK_WIDGET (self));
+  canvas_redraw (self);
 }
 
 EaselSelectionResult
@@ -2865,7 +2915,7 @@ easel_canvas_rbg_float_replace (EaselCanvas *self, const uint32_t *px, gboolean 
   self->sel_h = self->sel_float.h;                         /* which it already had */
   self->sel_epoch++;
   g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);
-  gtk_widget_queue_draw (GTK_WIDGET (self));
+  canvas_redraw (self);
   return r;
 }
 
@@ -2900,7 +2950,7 @@ easel_canvas_black_white_selection (EaselCanvas *self, EaselBw how)
   self->sel_h = self->sel_float.h;                         /* (and its place) */
   self->sel_epoch++;
   g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);
-  gtk_widget_queue_draw (GTK_WIDGET (self));
+  canvas_redraw (self);
   return TRUE;
 }
 
@@ -2964,7 +3014,7 @@ easel_canvas_transform_selection (EaselCanvas *self, EaselOp op)
   self->sel_h = self->sel_float.h;
   self->sel_epoch++;
   g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);
-  gtk_widget_queue_draw (GTK_WIDGET (self));
+  canvas_redraw (self);
   return TRUE;
 }
 
@@ -3044,7 +3094,7 @@ finish_selection (EaselCanvas *self, gboolean keep_marked)
       update_cursor (self);
     }
   g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);
-  gtk_widget_queue_draw (GTK_WIDGET (self));
+  canvas_redraw (self);
   return ok;
 }
 
@@ -3082,7 +3132,7 @@ end_failed_smear (EaselCanvas *self)
     }
   end_failed_move (self);
   g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);
-  gtk_widget_queue_draw (GTK_WIDGET (self));
+  canvas_redraw (self);
 }
 
 /* The line of a free-form selection as it was at the press of a stretch that is cancelled: the traced path scaled to that rectangle. */
@@ -3178,7 +3228,7 @@ cancel_selection_drag (EaselCanvas *self)
     return FALSE;
   g_signal_emit (self, signals[SIGNAL_STROKING_CHANGED], 0, FALSE);
   g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);
-  gtk_widget_queue_draw (GTK_WIDGET (self));
+  canvas_redraw (self);
   return TRUE;
 }
 
@@ -3199,7 +3249,7 @@ cancel_float (EaselCanvas *self)
   update_cursor (self);
   g_signal_emit (self, signals[SIGNAL_PENDING_CHANGED], 0);
   g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);
-  gtk_widget_queue_draw (GTK_WIDGET (self));
+  canvas_redraw (self);
 }
 
 void
@@ -3214,7 +3264,7 @@ easel_canvas_select_all (EaselCanvas *self)
   self->sel_w = self->img->width;
   self->sel_h = self->img->height;
   g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);
-  gtk_widget_queue_draw (GTK_WIDGET (self));
+  canvas_redraw (self);
 }
 
 gboolean
@@ -3247,7 +3297,7 @@ easel_canvas_clear_selection (EaselCanvas *self)
     easel_canvas_update (self);
   g_signal_emit (self, signals[SIGNAL_PENDING_CHANGED], 0);
   g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);
-  gtk_widget_queue_draw (GTK_WIDGET (self));
+  canvas_redraw (self);
   return TRUE;
 }
 
@@ -3312,7 +3362,7 @@ easel_canvas_invert_selection (EaselCanvas *self, gboolean *selected)
   update_cursor (self);
   g_signal_emit (self, signals[SIGNAL_PENDING_CHANGED], 0);
   g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);
-  gtk_widget_queue_draw (GTK_WIDGET (self));
+  canvas_redraw (self);
   return EASEL_SELECTION_DONE;
 }
 
@@ -3481,7 +3531,7 @@ easel_canvas_paste_grown (EaselCanvas *self, EaselImage *pic, int width, int hei
   self->sel_lifted_here = FALSE;
   g_signal_emit (self, signals[SIGNAL_PENDING_CHANGED], 0);
   g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);
-  gtk_widget_queue_draw (GTK_WIDGET (self));
+  canvas_redraw (self);
   return TRUE;
 }
 
@@ -3508,7 +3558,7 @@ easel_canvas_paste (EaselCanvas *self, EaselImage *pic, int x, int y)
   self->sel_lifted_here = FALSE;
   g_signal_emit (self, signals[SIGNAL_PENDING_CHANGED], 0);
   g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);
-  gtk_widget_queue_draw (GTK_WIDGET (self));
+  canvas_redraw (self);
   return TRUE;
 }
 
@@ -3593,7 +3643,7 @@ end_failed_stretch (EaselCanvas *self, int kind)
   restore_stretch (self);
   g_signal_emit (self, signals[SIGNAL_STROKING_CHANGED], 0, FALSE);
   g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);
-  gtk_widget_queue_draw (GTK_WIDGET (self));
+  canvas_redraw (self);
 }
 
 /* The selection as the pointer now has it dragged by the handle held (REQ-0015-03): the rectangle from the pointer's movement since the
@@ -3675,7 +3725,7 @@ stretch_apply (EaselCanvas *self)
   self->sel_w = nw;
   self->sel_h = nh;
   g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);
-  gtk_widget_queue_draw (GTK_WIDGET (self));
+  canvas_redraw (self);
 }
 
 static void
@@ -3693,7 +3743,7 @@ end_select (EaselCanvas *self)
       self->sel_for_text = FALSE;
       g_signal_emit (self, signals[SIGNAL_STROKING_CHANGED], 0, FALSE);
       g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);
-      gtk_widget_queue_draw (GTK_WIDGET (self));
+      canvas_redraw (self);
       return;
     }
   if (!click && drag_rect (self, &x, &y, &w, &h))
@@ -3708,7 +3758,7 @@ end_select (EaselCanvas *self)
     self->sel_state = 0;
   g_signal_emit (self, signals[SIGNAL_STROKING_CHANGED], 0, FALSE);
   g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);
-  gtk_widget_queue_draw (GTK_WIDGET (self));
+  canvas_redraw (self);
 }
 
 gboolean
@@ -3733,7 +3783,7 @@ stop_resizing (EaselCanvas *self)
 {
   self->resizing = EASEL_HANDLE_NONE;
   update_cursor (self);
-  gtk_widget_queue_draw (GTK_WIDGET (self));
+  canvas_redraw (self);
 }
 
 void
@@ -3756,7 +3806,7 @@ resize_to (EaselCanvas *self, double x, double y)
   self->outline_h = self->resize_h;
   easel_view_resize_by (self->resizing, (x - self->resize_x) / l, (y - self->resize_y) / l, &self->outline_w,
                         &self->outline_h);
-  gtk_widget_queue_draw (GTK_WIDGET (self));
+  canvas_redraw (self);
 }
 
 static void
@@ -4425,7 +4475,7 @@ update_shape_end (EaselCanvas *self)
     {
       self->shape_x1 = x;
       self->shape_y1 = y;
-      gtk_widget_queue_draw (GTK_WIDGET (self));
+      canvas_redraw (self);
     }
 }
 
@@ -4450,7 +4500,7 @@ key_move_selection (EaselCanvas *self, int dx, int dy, gboolean copy)
   self->sel_x = self->sel_float.x = self->sel_x + dx;
   self->sel_y = self->sel_float.y = self->sel_y + dy;
   g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);
-  gtk_widget_queue_draw (GTK_WIDGET (self));
+  canvas_redraw (self);
   return TRUE;
 }
 
@@ -4494,7 +4544,7 @@ easel_canvas_smear_selection (EaselCanvas *self, int dx, int dy)
           self->sel_state = 1;
         }
       g_signal_emit (self, signals[SIGNAL_SELECTION_FAILED], 0, 0);
-      gtk_widget_queue_draw (GTK_WIDGET (self));
+      canvas_redraw (self);
       return TRUE;
     }
   self->sel_x = self->sel_float.x;
@@ -4502,7 +4552,7 @@ easel_canvas_smear_selection (EaselCanvas *self, int dx, int dy)
   if (lifted)
     g_signal_emit (self, signals[SIGNAL_PENDING_CHANGED], 0);
   g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);
-  gtk_widget_queue_draw (GTK_WIDGET (self));
+  canvas_redraw (self);
   return TRUE;
 }
 
@@ -4521,7 +4571,7 @@ easel_canvas_set_shift (EaselCanvas *self, gboolean down)
   if (self->selecting)
     {
       g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);
-      gtk_widget_queue_draw (GTK_WIDGET (self));
+      canvas_redraw (self);
     }
   if (self->shaping)
     update_shape_end (self);
@@ -4633,13 +4683,96 @@ figure_run_color (const EaselFigure *f, const EaselFigureRun *run, uint32_t draw
    picture and is one rectangle, any other pixel is its own. At a zoom where a device pixel holds many rows, one row in step. */
 static void shape_preview_failed (EaselCanvas *self);
 
+typedef struct
+{
+  int x, xe, y;
+  uint32_t color;
+} CoverSpan;
+
+/* The spans of a smooth figure as rectangles, the way each was drawn before 0044 (and still is when the texture cannot be had). */
+static void
+append_cover_spans (EaselCanvas *self, GtkSnapshot *snapshot, const CoverSpan *spans, size_t n, int step, gboolean by_edges,
+                    const graphene_rect_t *picture)
+{
+  double scale = easel_canvas_get_scale (self), l = self->zoom / (100.0 * scale);
+
+  for (size_t i = 0; i < n; i++)
+    {
+      const CoverSpan *c = &spans[i];
+      graphene_rect_t r = GRAPHENE_RECT_INIT ((float) (c->x * l), (float) (c->y * l), (float) ((c->xe - c->x + 1) * l), (float) (step * l));
+
+      if (by_edges)
+        {
+          int ax = view_edge (self, c->x), ay = view_edge (self, c->y);
+
+          r = GRAPHENE_RECT_INIT ((float) (ax / scale), (float) (ay / scale), (float) ((view_edge (self, c->xe + 1) - ax) / scale),
+                                  (float) ((view_edge (self, c->y + step) - ay) / scale));
+        }
+      append_shape_run (snapshot, &r, picture, c->color);
+    }
+}
+
+/* The opaque spans laid into one buffer of the figure's own box (the box of its drawn pixels in the rows in view, never the whole
+   picture) and drawn as one texture: on the drawn edges where the view is built so (append_cells_by_edges), else scaled as the picture's
+   tiles are, so that each device pixel is the one the rectangles gave (P7.2, 0044: one node in place of the many of a smooth shape's
+   rows, which the renderer walked again at every frame of the moving dashes). FALSE, with nothing drawn: a span with transparency (its
+   checkerboard, append_shape_run), a sampled step, or no memory under the preview's limit (REQ-0044-04: the rectangles, no dialog). */
+static gboolean
+append_cover_texture (EaselCanvas *self, GtkSnapshot *snapshot, const CoverSpan *spans, size_t n, int step, gboolean by_edges)
+{
+  double scale = easel_canvas_get_scale (self), l = self->zoom / (100.0 * scale);
+  int bx0 = INT_MAX, by0 = INT_MAX, bx1 = INT_MIN, by1 = INT_MIN, bw, bh;
+  uint32_t *buf;
+
+  if (step != 1 || n == 0)
+    return FALSE;
+  for (size_t i = 0; i < n; i++)
+    {
+      if ((spans[i].color >> 24) != 0xFF)
+        return FALSE;
+      bx0 = MIN (bx0, spans[i].x);
+      bx1 = MAX (bx1, spans[i].xe);
+      by0 = MIN (by0, spans[i].y);
+      by1 = MAX (by1, spans[i].y);
+    }
+  bw = bx1 - bx0 + 1;
+  bh = by1 - by0 + 1;
+  if ((gsize) bw * (gsize) bh > self->preview_max_bytes / sizeof (uint32_t))
+    return FALSE;
+  buf = g_try_malloc0_n ((gsize) bw * (gsize) bh, sizeof (uint32_t));
+  if (buf == NULL)
+    return FALSE;
+  for (size_t i = 0; i < n; i++)
+    {
+      uint32_t *row = buf + (gsize) (spans[i].y - by0) * bw;
+
+      for (int x = spans[i].x; x <= spans[i].xe; x++)
+        row[x - bx0] = spans[i].color;
+    }
+  if (by_edges)
+    {
+      gboolean drawn = append_cells_by_edges (self, snapshot, buf, bx0, by0, bw, bh);
+
+      g_free (buf);
+      return drawn;
+    }
+  {
+    g_autoptr (GBytes) bytes = g_bytes_new_take (buf, (gsize) bw * (gsize) bh * sizeof (uint32_t));
+    g_autoptr (GdkTexture) texture = gdk_memory_texture_new (bw, bh, PICTURE_FORMAT, bytes, (gsize) bw * sizeof (uint32_t));
+
+    gtk_snapshot_append_scaled_texture (snapshot, texture, GSK_SCALING_FILTER_NEAREST,
+                                        &GRAPHENE_RECT_INIT ((float) (bx0 * l), (float) (by0 * l), (float) (bw * l), (float) (bh * l)));
+  }
+  return TRUE;
+}
+
 static void
 append_cover_preview (EaselCanvas *self, GtkSnapshot *snapshot, const EaselFigure *f, int row0, int row1, uint32_t draw,
                       uint32_t other, gboolean by_edges, const graphene_rect_t *picture)
 {
-  double scale = easel_canvas_get_scale (self), l = self->zoom / (100.0 * scale);
-  size_t max = easel_figure_cover_max_runs (f);
+  size_t max = easel_figure_cover_max_runs (f), n = 0, cap = 0;
   g_autofree EaselCoverRun *runs = max * sizeof (EaselCoverRun) <= self->preview_max_bytes ? g_try_new (EaselCoverRun, max) : NULL;
+  g_autofree CoverSpan *spans = NULL;
   int step = (row1 - row0 + 1) / 3000 + 1;
 
   if (runs == NULL)
@@ -4648,9 +4781,9 @@ append_cover_preview (EaselCanvas *self, GtkSnapshot *snapshot, const EaselFigur
     return;
   for (int y = row0; y <= row1; y += step)
     {
-      size_t n = easel_figure_cover_row (f, y, runs, max);
+      size_t k = easel_figure_cover_row (f, y, runs, max);
 
-      for (size_t i = 0; i < n; i++)
+      for (size_t i = 0; i < k; i++)
         {
           const EaselCoverRun *run = &runs[i];
           unsigned drawn = f->style == EASEL_FIGURE_OUTLINE ? run->out : (unsigned) run->out + run->in;
@@ -4661,21 +4794,27 @@ append_cover_preview (EaselCanvas *self, GtkSnapshot *snapshot, const EaselFigur
           for (int x = x0; x <= x1; x++)
             {
               int xe = drawn == 256 ? x1 : x;                    /* a whole run, or one pixel */
-              uint32_t color = easel_figure_cover_color (f, run, easel_image_get (self->img, x, y), draw, other);
-              graphene_rect_t r = GRAPHENE_RECT_INIT ((float) (x * l), (float) (y * l), (float) ((xe - x + 1) * l), (float) (step * l));
 
-              if (by_edges)
+              if (n == cap)
                 {
-                  int ax = view_edge (self, x), ay = view_edge (self, y);
+                  size_t want = cap ? 2 * cap : 256;
+                  CoverSpan *grown = want * sizeof (CoverSpan) <= self->preview_max_bytes ? g_try_renew (CoverSpan, spans, want) : NULL;
 
-                  r = GRAPHENE_RECT_INIT ((float) (ax / scale), (float) (ay / scale), (float) ((view_edge (self, xe + 1) - ax) / scale),
-                                          (float) ((view_edge (self, y + step) - ay) / scale));
+                  if (grown == NULL)
+                    {
+                      shape_preview_failed (self);
+                      return;
+                    }
+                  spans = grown;
+                  cap = want;
                 }
-              append_shape_run (snapshot, &r, picture, color);
+              spans[n++] = (CoverSpan) { x, xe, y, easel_figure_cover_color (f, run, easel_image_get (self->img, x, y), draw, other) };
               x = xe;
             }
         }
     }
+  if (!append_cover_texture (self, snapshot, spans, n, step, by_edges))
+    append_cover_spans (self, snapshot, spans, n, step, by_edges, picture);
 }
 
 /* A waiting shape that cannot be shown (REQ-0043-13): with no button held it is dropped and its dialog shows; a button held, both wait
@@ -4701,7 +4840,7 @@ drop_unshown_shape (EaselCanvas *self)
   self->show_failed_at_release = FALSE;
   set_pending (self, FALSE);
   g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);           /* the size field clears (0043 Check F2) */
-  gtk_widget_queue_draw (GTK_WIDGET (self));
+  canvas_redraw (self);
   g_signal_emit (self, signals[SIGNAL_SHAPE_FAILED], 0);
 }
 
@@ -5077,11 +5216,24 @@ easel_canvas_get_frames_drawn (EaselCanvas *self)
   return self->frames_drawn;
 }
 
+guint
+easel_canvas_get_base_builds (EaselCanvas *self)
+{
+  return self->base_builds;
+}
+
+void
+easel_canvas_set_keep_base (EaselCanvas *self, gboolean keep)
+{
+  self->keep_base_off = !keep;
+  canvas_redraw (self);
+}
+
 void
 easel_canvas_set_tint (EaselCanvas *self, int percent)
 {
   self->tint = percent;
-  gtk_widget_queue_draw (GTK_WIDGET (self));
+  canvas_redraw (self);
 }
 
 int
@@ -5095,14 +5247,14 @@ easel_canvas_set_overlay_probe (EaselCanvas *self, gboolean line, gboolean tint)
 {
   self->probe_no_line = !line;
   self->probe_no_tint = !tint;
-  gtk_widget_queue_draw (GTK_WIDGET (self));
+  canvas_redraw (self);
 }
 
 void
 easel_canvas_set_tint_bands (EaselCanvas *self, gboolean bands)
 {
   self->tint_rows = !bands;
-  gtk_widget_queue_draw (GTK_WIDGET (self));
+  canvas_redraw (self);
 }
 
 gsize
@@ -5115,14 +5267,14 @@ void
 easel_canvas_set_selection_handles_shown (EaselCanvas *self, gboolean shown)
 {
   self->no_sel_handles = !shown;
-  gtk_widget_queue_draw (GTK_WIDGET (self));
+  canvas_redraw (self);
 }
 
 void
 easel_canvas_set_line_merge (EaselCanvas *self, gboolean merge)
 {
   self->line_unmerged = !merge;
-  gtk_widget_queue_draw (GTK_WIDGET (self));
+  canvas_redraw (self);
 }
 
 gsize
@@ -5135,7 +5287,7 @@ void
 easel_canvas_drop_preview (EaselCanvas *self)
 {
   free_trail (self);
-  gtk_widget_queue_draw (GTK_WIDGET (self));
+  canvas_redraw (self);
 }
 
 void
@@ -5347,7 +5499,7 @@ easel_canvas_marker_show (EaselCanvas *self, gboolean shown)
     return;
   self->marker_on = shown;
   marker_hover (self);
-  gtk_widget_queue_draw (GTK_WIDGET (self));
+  canvas_redraw (self);
 }
 
 gboolean
@@ -5370,7 +5522,7 @@ easel_canvas_marker_set (EaselCanvas *self, int x, int y)
   self->marker_y = y;
   self->marker_placed = TRUE;
   marker_hover (self);
-  gtk_widget_queue_draw (GTK_WIDGET (self));
+  canvas_redraw (self);
 }
 
 gboolean
@@ -5584,6 +5736,8 @@ append_keyboard_marker (EaselCanvas *self, GtkSnapshot *snapshot)
 }
 
 /* The frame, and the CPU it took: this thread's, so that nothing of the GPU or the compositor counts (REQ-0021-12). */
+static void canvas_snapshot_parts (EaselCanvas *self, GtkSnapshot *snapshot);
+
 static void
 easel_canvas_snapshot (GtkWidget *widget, GtkSnapshot *snapshot)
 {
@@ -5602,11 +5756,11 @@ easel_canvas_snapshot (GtkWidget *widget, GtkSnapshot *snapshot)
         /* The picture's corner on a whole device pixel (REQ-0025-07): everything drawn, the picture and every overlay, moves together */
         gtk_snapshot_save (snapshot);
         gtk_snapshot_translate (snapshot, &GRAPHENE_POINT_INIT ((float) -dx, (float) -dy));
-        canvas_snapshot_frame (self, snapshot);
+        canvas_snapshot_parts (self, snapshot);
         gtk_snapshot_restore (snapshot);
       }
     else
-      canvas_snapshot_frame (self, snapshot);
+      canvas_snapshot_parts (self, snapshot);
   }
   if (self->draw_delay_ms > 0)
     {
@@ -5630,6 +5784,8 @@ canvas_snapshot_frame (EaselCanvas *self, GtkSnapshot *snapshot)
   graphene_rect_t bounds;
   GdkTexture **preview;
   gboolean by_edges;
+
+  self->base_builds++;                           /* (REQ-0044-07: today every frame builds the base) */
 
   l = self->zoom / (100.0 * easel_canvas_get_scale (self));
   /* Below 100 % a waiting gradient and a moved selection are laid by the view itself, one pixel per device pixel (REQ-0031-02, -04): no tiles
@@ -5700,11 +5856,74 @@ canvas_snapshot_frame (EaselCanvas *self, GtkSnapshot *snapshot)
     append_selection_tint (self, snapshot);
   append_text_highlight (self, snapshot, l);      /* on top of the tint (REQ-0017-05) */
   if (!self->probe_no_line)
-    append_selection_outline (self, snapshot);
+    {
+      self->line_part = 1;                        /* the line's white, which does not move, under its moving dashes (0044) */
+      append_selection_outline (self, snapshot);
+      self->line_part = 0;
+    }
+}
+
+/* What lies on the moving line and over it, drawn at every frame (REQ-0044-07): the line, the selection's handles, the caret, the Magnifier's
+   box and the keyboard marker. */
+static void
+canvas_snapshot_top (EaselCanvas *self, GtkSnapshot *snapshot)
+{
+  double l = self->zoom / (100.0 * easel_canvas_get_scale (self));
+
+  if (!self->probe_no_line)
+    {
+      self->line_part = 2;                        /* the black dashes only: the white is kept under them (0044) */
+      append_selection_outline (self, snapshot);
+      self->line_part = 0;
+    }
   append_selection_handles (self, snapshot);
   append_text_caret (self, snapshot, l);
   append_magnifier_box (self, snapshot);
   append_keyboard_marker (self, snapshot);
+}
+
+/* A frame: what lies under the line, kept from the last frame while nothing it shows has changed (only the dashes moved), else built
+   again; then the line and what lies over it (REQ-0044-01, -03, -07). The key holds what GTK can change with no redraw asked by the canvas:
+   its size, the screen's scale, the shift, the part in view, the accent and the styles. */
+static void
+canvas_snapshot_parts (EaselCanvas *self, GtkSnapshot *snapshot)
+{
+  AdwStyleManager *style = adw_style_manager_get_default ();
+  g_autoptr (GdkRGBA) accent = adw_style_manager_get_accent_color_rgba (style);
+  double dx, dy;
+  graphene_rect_t seen = GRAPHENE_RECT_INIT (0, 0, 0, 0);
+  gboolean same;
+
+  easel_canvas_get_device_shift (self, &dx, &dy);
+  seen_in_drawing (self, &seen);
+  same = self->base_node != NULL && !self->keep_base_off && self->base_key.gen == self->base_gen && self->base_key.zoom == self->zoom
+         && self->base_key.w == gtk_widget_get_width (GTK_WIDGET (self)) && self->base_key.h == gtk_widget_get_height (GTK_WIDGET (self))
+         && self->base_key.scale == easel_canvas_get_scale (self) && self->base_key.dx == dx && self->base_key.dy == dy
+         && graphene_rect_equal (&self->base_key.seen, &seen) && gdk_rgba_equal (&self->base_key.accent, accent)
+         && self->base_key.dark == adw_style_manager_get_dark (style)
+         && self->base_key.high_contrast == adw_style_manager_get_high_contrast (style);
+  if (!same)
+    {
+      GtkSnapshot *base = gtk_snapshot_new ();
+
+      canvas_snapshot_frame (self, base);
+      g_clear_pointer (&self->base_node, gsk_render_node_unref);
+      self->base_node = gtk_snapshot_free_to_node (base);          /* NULL when nothing was drawn */
+      self->base_key.gen = self->base_gen;
+      self->base_key.zoom = self->zoom;
+      self->base_key.w = gtk_widget_get_width (GTK_WIDGET (self));
+      self->base_key.h = gtk_widget_get_height (GTK_WIDGET (self));
+      self->base_key.scale = easel_canvas_get_scale (self);
+      self->base_key.dx = dx;
+      self->base_key.dy = dy;
+      self->base_key.seen = seen;
+      self->base_key.accent = *accent;
+      self->base_key.dark = adw_style_manager_get_dark (style);
+      self->base_key.high_contrast = adw_style_manager_get_high_contrast (style);
+    }
+  if (self->base_node != NULL)
+    gtk_snapshot_append_node (snapshot, self->base_node);
+  canvas_snapshot_top (self, snapshot);
 }
 
 /* The drawn cursors: each one's file and its hotspot, a pixel of the 24-pixel artwork (REQ-0029-01, REQ-0029-02). */
@@ -5970,7 +6189,7 @@ easel_canvas_set_press_hook (EaselCanvas *self, EaselCanvasPressHook hook, gpoin
   self->press_hook = hook;
   self->press_data = data;
   update_cursor (self);
-  gtk_widget_queue_draw (GTK_WIDGET (self));
+  canvas_redraw (self);
 }
 
 void
@@ -5982,7 +6201,7 @@ easel_canvas_set_paint_hook (EaselCanvas *self, EaselCanvasPaintHook hook, int w
   self->paint_data = data;
   self->paint_width = width_logical;
   update_cursor (self);
-  gtk_widget_queue_draw (GTK_WIDGET (self));
+  canvas_redraw (self);
 }
 
 gboolean
@@ -6006,6 +6225,7 @@ easel_canvas_set_bands (EaselCanvas *self, EaselCanvasBandKind kind, gpointer da
   self->band_kind = kind;
   self->band_data = data;
   easel_canvas_bands_changed (self, 0, 0, 0, 0);
+  canvas_redraw (self);                           /* what lies under the line may change (0044) */
 }
 
 /* The bands' cells over their bounds (a cell of band_step pixels on a side, so that a large area stays near 4 000 000 cells) and their
@@ -6045,7 +6265,7 @@ easel_canvas_bands_changed (EaselCanvas *self, int x0, int y0, int x1, int y1)
       self->band_texture = gdk_memory_texture_new (self->band_w, self->band_h, GDK_MEMORY_B8G8R8A8_PREMULTIPLIED, bytes,
                                                    (gsize) self->band_w * sizeof *argb);
     }
-  gtk_widget_queue_draw (GTK_WIDGET (self));
+  canvas_redraw (self);
 }
 
 /* The bands drawn over the picture (REQ-0038-05): the cells' colors, then a black line and a white one beside it, one device pixel each,
@@ -6122,7 +6342,7 @@ easel_canvas_set_tool (EaselCanvas *self, EaselTool tool)
   self->hover = EASEL_HANDLE_NONE;
   self->hover_sel_handle = -1;
   update_cursor (self);
-  gtk_widget_queue_draw (GTK_WIDGET (self));     /* the preview box comes and goes with the Magnifier */
+  canvas_redraw (self);     /* the preview box comes and goes with the Magnifier */
   gtk_widget_queue_resize (GTK_WIDGET (self));   /* the handles come and go with the room they need */
 }
 
@@ -6137,14 +6357,14 @@ void
 easel_canvas_set_magnifier_level (EaselCanvas *self, int pct)
 {
   self->magnifier_level = pct;
-  gtk_widget_queue_draw (GTK_WIDGET (self));
+  canvas_redraw (self);
 }
 
 void
 easel_canvas_set_shape_kind (EaselCanvas *self, EaselShapeKind shape)
 {
   self->shape_kind = shape;
-  gtk_widget_queue_draw (GTK_WIDGET (self));
+  canvas_redraw (self);
 }
 
 void
@@ -6152,26 +6372,28 @@ easel_canvas_set_shape_options (EaselCanvas *self, int width, int style)
 {
   self->shape_width = width;
   self->shape_style = (EaselFigureStyle) style;
-  gtk_widget_queue_draw (GTK_WIDGET (self));     /* a pending curve or polygon follows the choice at once (REQ-0011-12) */
+  canvas_redraw (self);     /* a pending curve or polygon follows the choice at once (REQ-0011-12) */
 }
 
 void
 easel_canvas_set_smooth (EaselCanvas *self, gboolean smooth)
 {
   self->smooth = smooth;
-  gtk_widget_queue_draw (GTK_WIDGET (self));     /* a pending curve or polygon follows the choice at once (REQ-0039-02) */
+  canvas_redraw (self);     /* a pending curve or polygon follows the choice at once (REQ-0039-02) */
 }
 
 void
 easel_canvas_set_shape_memory_limit (EaselCanvas *self, size_t max_bytes)
 {
   self->shape_max_bytes = max_bytes;
+  canvas_redraw (self);                           /* what lies under the line may change (0044) */
 }
 
 void
 easel_canvas_set_preview_memory_limit (EaselCanvas *self, size_t max_bytes)
 {
   self->preview_max_bytes = max_bytes;
+  canvas_redraw (self);                           /* what lies under the line may change (0044) */
 }
 
 void
@@ -6191,8 +6413,10 @@ easel_canvas_set_colors (EaselCanvas *self, uint32_t foreground, uint32_t backgr
 {
   self->foreground = foreground;
   self->background = background;
-  if (self->pending && (self->pend_gradient || self->pend_shape))
-    gtk_widget_queue_draw (GTK_WIDGET (self));         /* a gradient and a waiting shape follow the colors at once (REQ-0012-04, REQ-0043-09) */
+  /* An open Opaque box fills with the background, a floating selection's hole shows it in Opaque mode (0044: no longer redrawn by the
+     dashes' next step, which keeps what lies under them) */
+  if ((self->pending && (self->pend_gradient || self->pend_shape)) || self->text_open || self->sel_state == 2)
+    canvas_redraw (self);         /* a gradient and a waiting shape follow the colors at once (REQ-0012-04, REQ-0043-09) */
 }
 
 gboolean
@@ -6299,7 +6523,7 @@ curve_line_start (EaselCanvas *self, guint button, int px, int py)
   self->pend_draw = button == GDK_BUTTON_PRIMARY ? self->foreground : self->background;
   self->pend_other = button == GDK_BUTTON_PRIMARY ? self->background : self->foreground;
   g_signal_emit (self, signals[SIGNAL_STROKING_CHANGED], 0, TRUE);
-  gtk_widget_queue_draw (GTK_WIDGET (self));
+  canvas_redraw (self);
 }
 
 /* The runs of a row of the waiting curve for its hit area: its pixels, or with Smooth every pixel it covers at all (REQ-0039-08);
@@ -6457,7 +6681,7 @@ shape_drag_follow (EaselCanvas *self)
       self->wait_mirror_y = self->drag_mirror_y != my;
     }
   g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);      /* the size field (REQ-0043-06) */
-  gtk_widget_queue_draw (GTK_WIDGET (self));
+  canvas_redraw (self);
 }
 
 /* A press on a waiting shape's handle (handle >= 0) or inside its box starts its drag; its colors stay those of now until the release. */
@@ -6498,7 +6722,7 @@ easel_canvas_cancel_shape_drag (EaselCanvas *self)
   self->cancelled_button = self->pend_button;
   g_signal_emit (self, signals[SIGNAL_STROKING_CHANGED], 0, FALSE);
   g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);
-  gtk_widget_queue_draw (GTK_WIDGET (self));
+  canvas_redraw (self);
   return TRUE;
 }
 
@@ -6545,7 +6769,7 @@ pend_follow (EaselCanvas *self)
     }
   else
     curve_grab_follow (self, x, y);
-  gtk_widget_queue_draw (GTK_WIDGET (self));
+  canvas_redraw (self);
 }
 
 static void
@@ -6656,7 +6880,7 @@ put_down_pending (EaselCanvas *self)
     self->shape_failed_button = self->defer_shape_failed;     /* the press's button: the dialog at its release (REQ-0043-13) */
   else if (r == EASEL_FIGURE_NO_MEMORY)
     g_signal_emit (self, signals[gradient ? SIGNAL_GRADIENT_FAILED : SIGNAL_SHAPE_FAILED], 0);
-  gtk_widget_queue_draw (GTK_WIDGET (self));
+  canvas_redraw (self);
   return r;
 }
 
@@ -6671,7 +6895,7 @@ end_pending_stage (EaselCanvas *self)
     {
       if (self->show_failed_at_release)
         drop_unshown_shape (self);                            /* it could not be shown during the drag (REQ-0043-13) */
-      gtk_widget_queue_draw (GTK_WIDGET (self));             /* a move or handle drag ends as last shown, the shape waiting (REQ-0043-12) */
+      canvas_redraw (self);             /* a move or handle drag ends as last shown, the shape waiting (REQ-0043-12) */
       return;
     }
   if (self->pend_gradient && self->moving >= 0)
@@ -6680,7 +6904,7 @@ end_pending_stage (EaselCanvas *self)
       if (self->pend_pts[0] == self->pend_pts[2] && self->pend_pts[1] == self->pend_pts[3])
         memcpy (self->pend_pts, self->move_old, sizeof self->move_old);
       self->moving = -1;
-      gtk_widget_queue_draw (GTK_WIDGET (self));
+      canvas_redraw (self);
       return;
     }
   if (self->pend_gradient)
@@ -6694,7 +6918,7 @@ end_pending_stage (EaselCanvas *self)
         }
       else if (self->pend_pts[2] == self->pend_pts[0] && self->pend_pts[3] == self->pend_pts[1])
         set_pending (self, FALSE);
-      gtk_widget_queue_draw (GTK_WIDGET (self));
+      canvas_redraw (self);
       return;
     }
   if (self->pend_polygon && self->poly_n >= 3)
@@ -6713,7 +6937,7 @@ end_pending_stage (EaselCanvas *self)
           return;
         }
     }
-  gtk_widget_queue_draw (GTK_WIDGET (self));             /* a curve waits after every grab (REQ-0033-02) */
+  canvas_redraw (self);             /* a curve waits after every grab (REQ-0033-02) */
 }
 
 gboolean
@@ -6775,7 +6999,7 @@ easel_canvas_drop (EaselCanvas *self)
       self->pend_held = FALSE;
       self->cancelled_button = self->pend_button;
       g_signal_emit (self, signals[SIGNAL_STROKING_CHANGED], 0, FALSE);
-      gtk_widget_queue_draw (GTK_WIDGET (self));
+      canvas_redraw (self);
       return;
     }
   /* Nothing is drawn and no step is added; a held button is waited for until its release (REQ-0011-11). */
@@ -6791,7 +7015,7 @@ easel_canvas_drop (EaselCanvas *self)
       g_signal_emit (self, signals[SIGNAL_SHAPE_CHANGED], 0, 2u, 0, 0);       /* "Shape removed" (REQ-0043-11, -17) */
     }
   set_pending (self, FALSE);
-  gtk_widget_queue_draw (GTK_WIDGET (self));
+  canvas_redraw (self);
 }
 
 void
@@ -6829,7 +7053,7 @@ easel_canvas_cancel_stroke (EaselCanvas *self)
       self->shaping = FALSE;
       self->cancelled_button = self->shape_button;
       g_signal_emit (self, signals[SIGNAL_STROKING_CHANGED], 0, FALSE);
-      gtk_widget_queue_draw (GTK_WIDGET (self));
+      canvas_redraw (self);
       return;
     }
   if (self->stroke == NULL)
@@ -7296,7 +7520,7 @@ easel_canvas_press_timed (EaselCanvas *self, guint button, double x, double y, g
       self->pend_button = button;
       to_pixel (self, x, y, &self->pend_px, &self->pend_py);
       g_signal_emit (self, signals[SIGNAL_STROKING_CHANGED], 0, TRUE);
-      gtk_widget_queue_draw (GTK_WIDGET (self));
+      canvas_redraw (self);
       return;
     }
   if (self->pending && self->pend_gradient && !self->pend_held)
@@ -7394,7 +7618,7 @@ easel_canvas_press_timed (EaselCanvas *self, guint button, double x, double y, g
               self->resize_w = self->outline_w = self->img->width;
               self->resize_h = self->outline_h = self->img->height;
               update_cursor (self);
-              gtk_widget_queue_draw (GTK_WIDGET (self));
+              canvas_redraw (self);
             }
           return;
         }
@@ -7498,7 +7722,7 @@ easel_canvas_press_timed (EaselCanvas *self, guint button, double x, double y, g
       self->sel_py0 = self->sel_py1 = CLAMP (py, 0, self->img->height - 1);
       g_signal_emit (self, signals[SIGNAL_STROKING_CHANGED], 0, TRUE);
       g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);
-      gtk_widget_queue_draw (GTK_WIDGET (self));
+      canvas_redraw (self);
       return;
     }
   if (self->tool == EASEL_TOOL_SELECT)
@@ -7524,7 +7748,7 @@ easel_canvas_press_timed (EaselCanvas *self, guint button, double x, double y, g
       self->sel_py0 = self->sel_py1 = py;
       g_signal_emit (self, signals[SIGNAL_STROKING_CHANGED], 0, TRUE);
       g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);
-      gtk_widget_queue_draw (GTK_WIDGET (self));
+      canvas_redraw (self);
       return;
     }
   if (self->tool == EASEL_TOOL_GRADIENT)
@@ -7542,7 +7766,7 @@ easel_canvas_press_timed (EaselCanvas *self, guint button, double x, double y, g
       self->pend_pts[0] = self->pend_pts[2] = self->pend_px = px;
       self->pend_pts[1] = self->pend_pts[3] = self->pend_py = py;
       g_signal_emit (self, signals[SIGNAL_STROKING_CHANGED], 0, TRUE);
-      gtk_widget_queue_draw (GTK_WIDGET (self));
+      canvas_redraw (self);
       return;
     }
   if (self->tool == EASEL_TOOL_POLYGON)
@@ -7568,7 +7792,7 @@ easel_canvas_press_timed (EaselCanvas *self, guint button, double x, double y, g
       self->pend_draw = button == GDK_BUTTON_PRIMARY ? self->foreground : self->background;
       self->pend_other = button == GDK_BUTTON_PRIMARY ? self->background : self->foreground;
       g_signal_emit (self, signals[SIGNAL_STROKING_CHANGED], 0, TRUE);
-      gtk_widget_queue_draw (GTK_WIDGET (self));
+      canvas_redraw (self);
       return;
     }
   if (easel_tool_draws_shape (self->tool))
@@ -7584,7 +7808,7 @@ easel_canvas_press_timed (EaselCanvas *self, guint button, double x, double y, g
       self->shape_draw = button == GDK_BUTTON_PRIMARY ? self->foreground : self->background;
       self->shape_other = button == GDK_BUTTON_PRIMARY ? self->background : self->foreground;
       g_signal_emit (self, signals[SIGNAL_STROKING_CHANGED], 0, TRUE);
-      gtk_widget_queue_draw (GTK_WIDGET (self));
+      canvas_redraw (self);
       return;
     }
   if (self->tool == EASEL_TOOL_AIRBRUSH)
@@ -7760,7 +7984,7 @@ easel_canvas_motion (EaselCanvas *self, double x, double y)
           self->sel_y = self->sel_float.y = self->sel_move_y0 + (py - self->sel_py0);
         }
       g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);
-      gtk_widget_queue_draw (GTK_WIDGET (self));
+      canvas_redraw (self);
       return;
     }
   if (self->text_selecting && self->text_open)
@@ -7768,7 +7992,7 @@ easel_canvas_motion (EaselCanvas *self, double x, double y)
       easel_text_buffer_select (self->text_buf, self->text_anchor, text_index_at (self, x, y));
       caret_restart (self);
       g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);   /* the card shows the selection's style (REQ-0017-14) */
-      gtk_widget_queue_draw (GTK_WIDGET (self));
+      canvas_redraw (self);
       return;
     }
   if (self->lassoing)
@@ -7790,7 +8014,7 @@ easel_canvas_motion (EaselCanvas *self, double x, double y)
             {
               self->text_dragged = TRUE;
               g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);
-              gtk_widget_queue_draw (GTK_WIDGET (self));
+              canvas_redraw (self);
             }
         }
       if (px != self->sel_px1 || py != self->sel_py1)
@@ -7798,7 +8022,7 @@ easel_canvas_motion (EaselCanvas *self, double x, double y)
           self->sel_px1 = px;
           self->sel_py1 = py;
           g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);
-          gtk_widget_queue_draw (GTK_WIDGET (self));
+          canvas_redraw (self);
         }
       return;
     }
@@ -7862,7 +8086,7 @@ end_shape (EaselCanvas *self)
           set_pending (self, TRUE);
           g_signal_emit (self, signals[SIGNAL_SHAPE_CHANGED], 0, 0u, self->wait_w, self->wait_h);
         }
-      gtk_widget_queue_draw (GTK_WIDGET (self));
+      canvas_redraw (self);
       return;
     }
   r = easel_figure_apply_capped (self->img, self->history, &f, self->shape_draw, self->shape_other, &changed,
@@ -7875,7 +8099,7 @@ end_shape (EaselCanvas *self)
     }
   else if (r == EASEL_FIGURE_NO_MEMORY)
     g_signal_emit (self, signals[SIGNAL_SHAPE_FAILED], 0);
-  gtk_widget_queue_draw (GTK_WIDGET (self));
+  canvas_redraw (self);
 }
 
 void
@@ -7919,7 +8143,7 @@ easel_canvas_release (EaselCanvas *self, guint button)
   if (button == GDK_BUTTON_PRIMARY)
     {
       if (self->text_selecting)
-        gtk_widget_queue_draw (GTK_WIDGET (self));  /* the frame that starts the box's dashes again (REQ-0017-05) */
+        canvas_redraw (self);  /* the frame that starts the box's dashes again (REQ-0017-05) */
       self->text_selecting = FALSE;
     }
   if (self->text_drag != 0 && button == self->sel_button)
@@ -7933,7 +8157,7 @@ easel_canvas_release (EaselCanvas *self, guint button)
       self->stretching = FALSE;                     /* the selection floats at the size it has (REQ-0015-08) */
       easel_selection_complete (&self->sel_float);  /* the whole image is made at the release */
       g_signal_emit (self, signals[SIGNAL_STROKING_CHANGED], 0, FALSE);
-      gtk_widget_queue_draw (GTK_WIDGET (self));
+      canvas_redraw (self);
     }
   if (self->sel_moving && button == self->sel_button)
     {
@@ -7943,7 +8167,7 @@ easel_canvas_release (EaselCanvas *self, guint button)
           && !easel_selection_stamp (&self->sel_float, self->sel_lift_max))
         g_signal_emit (self, signals[SIGNAL_SELECTION_FAILED], 0, 0);
       g_signal_emit (self, signals[SIGNAL_STROKING_CHANGED], 0, FALSE);
-      gtk_widget_queue_draw (GTK_WIDGET (self));          /* the dashes move on again */
+      canvas_redraw (self);          /* the dashes move on again */
     }
   if (self->pend_held && button == self->pend_button)
     end_pending_stage (self);
@@ -7964,7 +8188,7 @@ commit_zoom (EaselCanvas *self, int zoom, double scroll_h, double scroll_v)
   self->anchor_focus = FALSE;
   self->zoom = zoom;
   gtk_widget_queue_resize (GTK_WIDGET (self));
-  gtk_widget_queue_draw (GTK_WIDGET (self));
+  canvas_redraw (self);
   update_cursor (self);
   g_signal_emit (self, signals[SIGNAL_ZOOM_CHANGED], 0, zoom);
 }
@@ -8050,7 +8274,7 @@ easel_canvas_set_grid (EaselCanvas *self, gboolean on, int cell, gboolean axonom
   self->grid_on = on;
   self->grid_cell = CLAMP (cell, 1, 1000);
   self->grid_axonometric = axonometric;
-  gtk_widget_queue_draw (GTK_WIDGET (self));
+  canvas_redraw (self);
 }
 
 gboolean
@@ -8128,7 +8352,7 @@ easel_canvas_pointer_at (EaselCanvas *self, double x, double y)
         self->pointer_ay = p.y;
         self->pointer_in = TRUE;
         if (self->tool == EASEL_TOOL_MAGNIFIER && (!was_in || px != self->box_px || py != self->box_py))
-          gtk_widget_queue_draw (GTK_WIDGET (self));
+          canvas_redraw (self);
       }
   }
   g_signal_emit (self, signals[SIGNAL_POINTER_MOVED], 0, px, py);
@@ -8138,7 +8362,7 @@ void
 easel_canvas_pointer_left (EaselCanvas *self)
 {
   self->pointer_in = FALSE;
-  gtk_widget_queue_draw (GTK_WIDGET (self));
+  canvas_redraw (self);
   g_signal_emit (self, signals[SIGNAL_POINTER_LEFT], 0);
 }
 
@@ -8390,7 +8614,7 @@ replace_in_viewport (GtkWidget *widget, GdkFrameClock *clock, gpointer data)
 
   if (viewport != NULL)
     gtk_widget_queue_allocate (viewport);
-  gtk_widget_queue_draw (widget);
+  canvas_redraw (EASEL_CANVAS (widget));
   return G_SOURCE_REMOVE;
 }
 
@@ -8433,7 +8657,8 @@ easel_canvas_dispose (GObject *object)
   EaselCanvas *self = EASEL_CANVAS (object);
 
   g_clear_handle_id (&self->painted_idle, g_source_remove);
-  g_clear_handle_id (&self->ants_tick, g_source_remove);   /* a timer, unlike a frame callback, outlives its widget */
+  g_clear_handle_id (&self->ants_tick, g_source_remove);
+  g_clear_pointer (&self->base_node, gsk_render_node_unref);   /* a timer, unlike a frame callback, outlives its widget */
   stop_spray (self);
   if (self->stroke != NULL)
     {
@@ -8534,8 +8759,8 @@ easel_canvas_init (EaselCanvas *self)
   self->im = gtk_im_multicontext_new ();                   /* its client widget is set while the canvas is realized */
   g_signal_connect (self->im, "commit", G_CALLBACK (on_im_commit), self);
   /* The tint of a selection is the system's accent: drawn again when the user changes it (REQ-0014-17 b). */
-  g_signal_connect_object (adw_style_manager_get_default (), "notify::accent-color", G_CALLBACK (gtk_widget_queue_draw), self,
-                           G_CONNECT_SWAPPED);
+  g_signal_connect_object (adw_style_manager_get_default (), "notify::accent-color", G_CALLBACK (canvas_redraw), self,
+                           G_CONNECT_SWAPPED);                 /* the tint lies under the line: built again (0044) */
   self->fill_max_bytes = SIZE_MAX;
   self->shape_max_bytes = SIZE_MAX;
   self->preview_max_bytes = SIZE_MAX;

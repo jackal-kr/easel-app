@@ -61,6 +61,9 @@ double easel_canvas_get_frame_ms (EaselCanvas *self);
 /* Test hooks: a drawing made slower by this many milliseconds of work; how many frames it has drawn. */
 void easel_canvas_set_draw_delay (EaselCanvas *self, int ms);
 guint easel_canvas_get_frames_drawn (EaselCanvas *self);
+/* Test hooks of 0044: the frames that built what lies under the moving line, and the kept base switched off. */
+guint easel_canvas_get_base_builds (EaselCanvas *self);
+void easel_canvas_set_keep_base (EaselCanvas *self, gboolean keep);
 /* The keyboard's marker around one picture pixel (REQ-0022-05). It is unset until placed, and after a reset. */
 void easel_canvas_marker_show (EaselCanvas *self, gboolean shown);
 gboolean easel_canvas_marker_shown (EaselCanvas *self);

@@ -93,6 +93,10 @@ test('ui-0039', test_window, args: ['-p', '/0039'], env: ui_env, suite: 'ui', ti
 test('ui-0040', test_window, args: ['-p', '/0040'], env: ui_env, suite: 'ui', timeout: 300, is_parallel: false)
 test('ui-0042', test_window, args: ['-p', '/0042'], env: ui_env, suite: 'ui', timeout: 300, is_parallel: false)
 test('ui-0043', test_window, args: ['-p', '/0043'], env: ui_env, suite: 'ui', timeout: 300, is_parallel: false)
+test('ui-0044', test_window, args: ['-p', '/0044'], env: ui_env, suite: 'ui', timeout: 300, is_parallel: false)
+# AS-3 of 0044 at other screen scales: tools/isolated.sh --scale 2 meson test -C build ui-0044-scale2, --scale 1.25 for ui-0044-scale125
+test('ui-0044-scale2', test_window, args: ['-p', '/0044/as3_changes'], env: ui_env, suite: 'ui', timeout: 300, is_parallel: false)
+test('ui-0044-scale125', test_window, args: ['-p', '/0044/as3_changes'], env: ui_env, suite: 'ui', timeout: 300, is_parallel: false)
 test('ui-0043-a11y', test_window, args: ['-p', '/0043-a11y'], env: ui_a11y_env, suite: 'ui', timeout: 120, is_parallel: false)
 test('ui-0041', test_window, args: ['-p', '/0041'], env: ui_env, suite: 'ui', timeout: 300, is_parallel: false)
 test('ui-0040-scale2', test_window, args: ['-p', '/0040-scale2'], env: ui_env, suite: 'ui', timeout: 180, is_parallel: false)

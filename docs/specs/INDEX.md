@@ -48,6 +48,7 @@ Vertical slices first (a thin end-to-end feature), breadth later.
 | 0041 | crop-to-selection | Image › Crop to Selection (Ctrl+Shift+K, also in the selection's menu): the picture becomes the selection's rectangle, a floating one as shown; one undo step | Phase 2, the Phase 2 list's Crop to selection; JOD, 2026-11-11. Implemented 2026-11-12 (the check: one redraw bug fixed; core and window measured, a worst-case peak of 1801 MB accepted as 0018's) |
 | 0042 | invert-selection | Edit › Invert Selection (Ctrl+Shift+J, also in the selection's menu): everything outside the selection becomes a Free-Form selection, holes and pieces allowed; no pixel changes | Phase 2, the Phase 2 list's Invert selection; JOD, 2026-11-11 (accepted) |
 | 0043 | extra-shapes | One Shapes tool replaces Rectangle, Rounded Rectangle and Ellipse: 19 shapes (with triangles, arrows, stars, callouts, heart, lightning bolt), each waiting with handles to move, resize, mirror and recolor until Enter or a press away | Phase 2, the Phase 2 list's Extra shapes; JOD, 2026-11-11 (accepted); the change of 2026-11-13 implemented 2026-11-13 (REQ-0043-19: the selection's dashed line round a waiting shape's box, no tint) |
+| 0044 | idle-redraw-cost | At rest with moving dashes (a waiting shape, a marked or floating selection, an open text box), only the dashes are drawn again: at most 5 % of a core with animations on, 0 % with them off; and the fitted 1920 x 1080 Smooth Heart's handle drag measured again on a quiet machine | Phase 2, the plan's "Idle redraw cost" (JOD, 2026-11-13: deferred from 0043's check, F2); implemented 2026-11-13 (release 1.0.4): idle with moving dashes 1.6 to 4.8 % isolated, 2.0 to 4.1 % in JOD's session (ADR-0009); the fitted 1080p Smooth shape's handle drag a known case |
 
 ### Phase 2: Modern extras (optional, starts only after the core XP scope is delivered)
 | Feature | One line |
@@ -65,6 +66,7 @@ Vertical slices first (a thin end-to-end feature), breadth later.
 Before it: 2026-11-04, `2e6954e` (the phase 1 gate): 1258 mutants, 1247 killed, the same 8 survived, 735 s with 8 workers.
 
 ## Known flakes
+- `ui-0044-scale2` in the scale 2 list (0044's gate, 2026-11-13): killed by `SIGABRT` 15.9 s in, right after `Gdk-Message: Error reading events from display: Broken pipe`, with no assertion of ours: the isolated session's display went away. Alone at scale 2 `/0044/as3_changes` passed, and the whole scale 2 list passed twice more (6 of 6 each). Cause not found; the same shape as `ui-0036`'s below.
 - `ui-0036` under ASan in the full ui run (1.0.0 gate, 2026-11-12): killed by `Gdk-WARNING: gdk_frame_timings_presented() called on discarded frame` (GTest makes warnings fatal), with no assertion of ours; alone under ASan it passed. A frame dropped under the load of an ASan build; GTK's own warning. Not seen in the normal build.
 - `/0006/as6_airbrush_sprays` and `/0006/as6_airbrush_follows_the_pointer` (found in 0006, failed again in 0007 and 0008). Cause
   established in the 0011 check (2026-10-19): a real pointer motion over the test window with no button down reads as a lost

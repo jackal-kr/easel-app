@@ -2737,13 +2737,11 @@ test: ui-0012
 --- find
   self->foreground = foreground;
   self->background = background;
-  if (self->pending && (self->pend_gradient || self->pend_shape))
 --- replace
   if (self->pending && self->pend_gradient)
     return;
   self->foreground = foreground;
   self->background = background;
-  if (self->pending && self->pend_gradient)
 
 === REQ-0012-04 every gradient follows the background color, also one the primary button started
 file: src/ui/canvas.c
@@ -2757,7 +2755,7 @@ test: ui-0012
 file: src/ui/canvas.c
 test: ui-0012
 --- find
-    gtk_widget_queue_draw (GTK_WIDGET (self));         /* a gradient and a waiting shape follow the colors at once (REQ-0012-04, REQ-0043-09) */
+    canvas_redraw (self);         /* a gradient and a waiting shape follow the colors at once (REQ-0012-04, REQ-0043-09) */
 --- replace
     (void) 0;
 
@@ -3024,7 +3022,7 @@ test: ui-0032
 --- find
   self->grad_type = type;
   if (self->pending && self->pend_gradient)
-    gtk_widget_queue_draw (GTK_WIDGET (self));
+    canvas_redraw (self);
 --- replace
   self->grad_type = type;
 
@@ -3532,14 +3530,14 @@ test: ui-0013
     easel_canvas_update (self);
   g_signal_emit (self, signals[SIGNAL_PENDING_CHANGED], 0);
   g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);
-  gtk_widget_queue_draw (GTK_WIDGET (self));
+  canvas_redraw (self);
   return TRUE;
 --- replace
   if (r == EASEL_SELECTION_DONE)
     easel_canvas_update (self);
   g_signal_emit (self, signals[SIGNAL_PENDING_CHANGED], 0);
   g_signal_emit (self, signals[SIGNAL_SELECTION_CHANGED], 0);
-  gtk_widget_queue_draw (GTK_WIDGET (self));
+  canvas_redraw (self);
   return TRUE;
 
 === REQ-0013-14 Clear Selection on a floating selection drops its hole too
@@ -4266,7 +4264,7 @@ file: src/ui/canvas.c
 test: ui-0004
 --- find
     gtk_widget_queue_allocate (viewport);
-  gtk_widget_queue_draw (widget);
+  canvas_redraw (EASEL_CANVAS (widget));
 --- replace
     gtk_widget_queue_allocate (viewport);
 
@@ -4495,9 +4493,13 @@ test: ui-0014
 file: src/ui/canvas.c
 test: ui-0014
 --- find
+  if (!ants_active (self))
+    {
       self->ants_tick = 0;
       return G_SOURCE_REMOVE;
 --- replace
+  if (!ants_active (self))
+    {
       return G_SOURCE_CONTINUE;
 
 === REQ-0014-17 the tint is a fixed blue, not the system's accent
@@ -4512,8 +4514,8 @@ test: ui-0014
 file: src/ui/canvas.c
 test: ui-0014
 --- find
-  g_signal_connect_object (adw_style_manager_get_default (), "notify::accent-color", G_CALLBACK (gtk_widget_queue_draw), self,
-                           G_CONNECT_SWAPPED);
+  g_signal_connect_object (adw_style_manager_get_default (), "notify::accent-color", G_CALLBACK (canvas_redraw), self,
+                           G_CONNECT_SWAPPED);                 /* the tint lies under the line: built again (0044) */
 --- replace
   (void) 0;
 
@@ -4975,10 +4977,10 @@ test: core-lattice
 file: src/ui/canvas.c
 test: ui-0014
 --- find
-  if (!self->line_unmerged)
+  else if (!self->line_unmerged)
     {
 --- replace
-  if (0)
+  else if (0)
     {
 
 === REQ-0014-17 below 100 % the tint is a rectangle per picture row
@@ -5081,9 +5083,9 @@ test: ui-0014
 file: src/ui/canvas.c
 test: ui-0014
 --- find
-    self->ants_tick = g_timeout_add (1000 / 12, ants_tick_cb, self);   /* once a step: nothing runs between two (REQ-0014-16) */
+      self->ants_tick = g_timeout_add (1000 / 12, ants_tick_cb, self);   /* once a step: nothing runs between two (REQ-0014-16) */
 --- replace
-    self->ants_tick = g_timeout_add (1000 / 60, ants_tick_cb, self);
+      self->ants_tick = g_timeout_add (1000 / 60, ants_tick_cb, self);
 
 # ---- the scale of a selection's pixels and shape (0015 T001) ----
 
@@ -10647,7 +10649,7 @@ file: src/ui/canvas.c
 test: ui-0017
 --- find
       if (self->text_selecting)
-        gtk_widget_queue_draw (GTK_WIDGET (self));  /* the frame that starts the box's dashes again (REQ-0017-05) */
+        canvas_redraw (self);  /* the frame that starts the box's dashes again (REQ-0017-05) */
 --- replace
       if (self->text_selecting)
         (void) 0;
@@ -12219,11 +12221,11 @@ test: ui-0033
 file: src/ui/canvas.c
 test: ui-0033
 --- find
-  gtk_widget_queue_draw (GTK_WIDGET (self));             /* a curve waits after every grab (REQ-0033-02) */
+  canvas_redraw (self);             /* a curve waits after every grab (REQ-0033-02) */
 --- replace
   if (!self->pend_polygon && self->curve_n == 2)
     put_down_pending (self);
-  gtk_widget_queue_draw (GTK_WIDGET (self));             /* a curve waits after every grab (REQ-0033-02) */
+  canvas_redraw (self);             /* a curve waits after every grab (REQ-0033-02) */
 
 === REQ-0033-04 a grab exactly 1/8 from the one bend moves it
 file: src/core/curve-bend.c
@@ -13285,9 +13287,9 @@ test: ui-0039
 file: src/ui/canvas.c
 test: ui-0039
 --- find
-              uint32_t color = easel_figure_cover_color (f, run, easel_image_get (self->img, x, y), draw, other);
+              spans[n++] = (CoverSpan) { x, xe, y, easel_figure_cover_color (f, run, easel_image_get (self->img, x, y), draw, other) };
 --- replace
-              uint32_t color = drawn == 256 ? easel_figure_cover_color (f, run, easel_image_get (self->img, x, y), draw, other) : draw;
+              spans[n++] = (CoverSpan) { x, xe, y, drawn == 256 ? easel_figure_cover_color (f, run, easel_image_get (self->img, x, y), draw, other) : draw };
 
 === REQ-0039-08 a press on a pixel the smooth curve covers only in part is off it
 file: src/ui/canvas.c
@@ -15478,13 +15480,17 @@ test: ui-0043
 file: src/ui/canvas.c
 test: ui-0043
 --- find
-  if (!self->probe_no_line)
-    append_selection_outline (self, snapshot);
+      self->line_part = 2;                        /* the black dashes only: the white is kept under them (0044) */
+      append_selection_outline (self, snapshot);
+      self->line_part = 0;
+    }
   append_selection_handles (self, snapshot);
 --- replace
-  append_selection_handles (self, snapshot);
-  if (!self->probe_no_line)
-    append_selection_outline (self, snapshot);
+      self->line_part = 2;                        /* the black dashes only: the white is kept under them (0044) */
+      append_selection_handles (self, snapshot);
+      append_selection_outline (self, snapshot);
+      self->line_part = 0;
+    }
 
 === REQ-0043-19 the line before the first drag leaves its press's pixel
 file: src/ui/canvas.c
@@ -15500,21 +15506,16 @@ test: ui-0043
 file: src/ui/canvas.c
 test: ui-0043
 --- find
-  append_handles (self, snapshot);                /* the picture's handles lie under the selection's pixels and tint (REQ-0015-01) */
-  append_float_outside (self, snapshot, l);
-  if (!self->probe_no_tint)
-    append_selection_tint (self, snapshot);
-  append_text_highlight (self, snapshot, l);      /* on top of the tint (REQ-0017-05) */
-  if (!self->probe_no_line)
-    append_selection_outline (self, snapshot);
+      self->line_part = 0;
+    }
+  append_selection_handles (self, snapshot);
+  append_text_caret (self, snapshot, l);
 --- replace
-  append_float_outside (self, snapshot, l);
-  if (!self->probe_no_tint)
-    append_selection_tint (self, snapshot);
-  append_text_highlight (self, snapshot, l);      /* on top of the tint (REQ-0017-05) */
-  if (!self->probe_no_line)
-    append_selection_outline (self, snapshot);
+      self->line_part = 0;
+    }
   append_handles (self, snapshot);
+  append_selection_handles (self, snapshot);
+  append_text_caret (self, snapshot, l);
 
 # ---- a screen whose scale is not whole, the change of 2026-11-13 (0025, REQ-0025-07) ----
 # The canvas's breaks (the shift left out of the drawing, of the pointer, its sign) need a session of scale 1.25, which tools/mutate.sh
@@ -15545,3 +15546,99 @@ test: core-view
   return origin - floor (origin);
 --- replace
   return 0;
+
+# ---- Idle redraw cost (0044) ----
+
+=== REQ-0044-07 a redraw asked for does not mark what lies under the line changed
+file: src/ui/canvas.c
+test: ui-0044
+--- find
+  self->base_gen++;
+  gtk_widget_queue_draw (GTK_WIDGET (self));
+--- replace
+  gtk_widget_queue_draw (GTK_WIDGET (self));
+
+=== REQ-0044-07 the dashes' step builds what lies under the line again
+file: src/ui/canvas.c
+test: ui-0044
+--- find
+  gtk_widget_queue_draw (widget);                 /* only the dashes moved: what lies under them is kept (REQ-0044-07) */
+--- replace
+  canvas_redraw (self);
+
+=== REQ-0044-07 the caret's blink builds what lies under the line again
+file: src/ui/canvas.c
+test: ui-0044
+--- find
+  gtk_widget_queue_draw (GTK_WIDGET (self));       /* the caret is drawn over the line: what lies under it is kept (REQ-0044-07) */
+--- replace
+  canvas_redraw (self);
+
+=== REQ-0044-06 the dashes go on asking for redraws in a window that draws nothing
+file: src/ui/canvas.c
+test: ui-0044
+--- find
+  if (self->ants_asked && self->frames_drawn == self->ants_asked_frame)
+--- replace
+  if (FALSE)
+
+=== REQ-0044-03 the line and the handles drawn under what lies under the line
+file: src/ui/canvas.c
+test: ui-0043 ui-0044
+--- find
+  if (self->base_node != NULL)
+    gtk_snapshot_append_node (snapshot, self->base_node);
+  canvas_snapshot_top (self, snapshot);
+--- replace
+  canvas_snapshot_top (self, snapshot);
+  if (self->base_node != NULL)
+    gtk_snapshot_append_node (snapshot, self->base_node);
+
+=== REQ-0044-04 the frame from nothing asked for keeps the base anyway
+file: src/ui/canvas.c
+test: ui-0044
+--- find
+  same = self->base_node != NULL && !self->keep_base_off && self->base_key.gen == self->base_gen
+--- replace
+  same = self->base_node != NULL && self->base_key.gen == self->base_gen
+
+=== REQ-0044-03 the kept base's key without the canvas's size
+file: src/ui/canvas.c
+test: ui-0044
+--- find
+         && self->base_key.w == gtk_widget_get_width (GTK_WIDGET (self)) && self->base_key.h == gtk_widget_get_height (GTK_WIDGET (self))
+--- replace
+         && TRUE
+
+=== REQ-0044-03 the kept base's key without the part in view
+file: src/ui/canvas.c
+test: ui-0044
+--- find
+         && graphene_rect_equal (&self->base_key.seen, &seen) && gdk_rgba_equal (&self->base_key.accent, accent)
+--- replace
+         && gdk_rgba_equal (&self->base_key.accent, accent)
+
+=== REQ-0044-03 the kept base's key without the accent
+file: src/ui/canvas.c
+test: ui-0044
+--- find
+         && graphene_rect_equal (&self->base_key.seen, &seen) && gdk_rgba_equal (&self->base_key.accent, accent)
+--- replace
+         && graphene_rect_equal (&self->base_key.seen, &seen)
+
+=== REQ-0044-03 the kept base's key without the scale and the shift
+file: src/ui/canvas.c
+test: ui-0044
+--- find
+         && self->base_key.scale == easel_canvas_get_scale (self) && self->base_key.dx == dx && self->base_key.dy == dy
+--- replace
+         && TRUE
+
+=== REQ-0044-03 the kept base's key without the styles
+file: src/ui/canvas.c
+test: ui-0044
+--- find
+         && self->base_key.dark == adw_style_manager_get_dark (style)
+         && self->base_key.high_contrast == adw_style_manager_get_high_contrast (style);
+--- replace
+         && TRUE;

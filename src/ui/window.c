@@ -56,6 +56,7 @@ struct _EaselWindow
   gboolean grabbing_by_key;
   gboolean key_releasing, said_key_held;
   GtkWidget *text_access;                       /* unseen, while a box is open: its name and text for a screen reader (REQ-0022-14) */
+  char *text_access_value;                       /* the value last given to text_access: set again only when it changes (0044) */
   guint card_idle;
   guint card_focus_idle;
   gint64 tab_time;                              /* when Tab or Shift+Tab was last pressed: keyboard navigation */
@@ -2772,10 +2773,17 @@ on_canvas_painted (EaselWindow *self)
     {
       size_t len;
       const char *utf8 = easel_text_buffer_text (text, &len);
-      g_autofree char *value = g_strndup (utf8, len);
 
-      gtk_accessible_update_property (GTK_ACCESSIBLE (self->text_access), GTK_ACCESSIBLE_PROPERTY_VALUE_TEXT, value, -1);
+      /* at rest the frames only move the dashes or blink the caret: the value is set when the text changed, not at each frame (0044) */
+      if (self->text_access_value == NULL || strlen (self->text_access_value) != len || memcmp (self->text_access_value, utf8, len) != 0)
+        {
+          g_free (self->text_access_value);
+          self->text_access_value = g_strndup (utf8, len);
+          gtk_accessible_update_property (GTK_ACCESSIBLE (self->text_access), GTK_ACCESSIBLE_PROPERTY_VALUE_TEXT, self->text_access_value, -1);
+        }
     }
+  else
+    g_clear_pointer (&self->text_access_value, g_free);
   if (!self->settings.frame_time || self->frame_time_timer != 0)
     return;
   if (easel_frame_time_due (now, self->frame_time_shown))
@@ -6528,6 +6536,8 @@ static void
 easel_window_finalize (GObject *object)
 {
   EaselWindow *self = EASEL_WINDOW (object);
+
+  g_free (self->text_access_value);
 
   easel_image_free (self->picture);
   easel_history_free (self->history);

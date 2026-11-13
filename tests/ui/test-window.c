@@ -44184,7 +44184,8 @@ as15_shape_line_pixels (void)
   easel_canvas_set_selection_handles_shown (canvas, TRUE);
   sel_handle_center (canvas, EASEL_SEL_HANDLE_T, &x, &y);
   a = render_at_clock (win, t0, &w, &h, &cx, &cy);
-  g_assert_cmphex (a[(gsize) (cy + 10 * 4 - 1) * w + cx + (int) x], ==, 0xFF000080u);
+  for (int i = -2; i <= 2; i++)                    /* the handle's 5 pixels on the line's row: a black dash over it would show in one (dashes 4 long) */
+    g_assert_cmphex (a[(gsize) (cy + 10 * 4 - 1) * w + cx + (int) x + i], ==, 0xFF000080u);
   g_clear_pointer (&a, g_free);
   easel_canvas_set_selection_handles_shown (canvas, FALSE);
   /* 800 %: 2 thick, dashes of 8 */
@@ -44860,6 +44861,535 @@ open_fractional_matrix (void)
     }
   close_windows ();
   write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* ---- 0044 Idle redraw cost ---- */
+
+#include <sys/resource.h>
+
+/* The cases of 0044's AS-1: 0 Smooth Heart, 1 Sharp Heart, 2 marked selection, 3 floating selection, 4 Free-Form selection of 400 corners,
+   5 open text box (each on 1920 x 1080 at Fit), 6 Smooth Heart on 200 x 150 at Fit. */
+enum { IDLE_CASES = 7 };
+static const char *const idle_case_names[IDLE_CASES] = { "1920 x 1080 Smooth Heart", "1920 x 1080 Sharp Heart", "1920 x 1080 marked selection",
+                                                         "1920 x 1080 floating selection", "1920 x 1080 Free-Form selection, 400 corners",
+                                                         "1920 x 1080 open text box", "200 x 150 Smooth Heart" };
+
+static EaselWindow *
+idle_case_window (int c)
+{
+  int w = c == 6 ? 200 : 1920, h = c == 6 ? 150 : 1080;
+  EaselWindow *win = window_of (w, h);
+
+  g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-fit", NULL);
+  wait_for_layout (win);
+  switch (c)
+    {
+    case 0: case 1: case 6:
+      use_shape (win, "heart");
+      set_smooth (win, c != 1);
+      g_action_group_change_action_state (G_ACTION_GROUP (win), "line-width", g_variant_new_int32 (5));
+      g_action_group_change_action_state (G_ACTION_GROUP (win), "fill-style", g_variant_new_int32 (1));
+      shape_press_move (win, 1, 2, 2, w - 3, h - 3);
+      shape_release (win, 1);
+      g_assert_true (shape_waits (easel_window_get_canvas (win)));
+      break;
+    case 2: case 3:
+      use_select (win);
+      shape_press_move (win, 1, 2, 2, w - 3, h - 3);
+      shape_release (win, 1);
+      if (c == 3)
+        {
+          shape_press_move (win, 1, 100, 100, 110, 110);
+          shape_release (win, 1);
+        }
+      break;
+    case 4:
+      use_free_select (win);
+      trace_press (win, 10, 10);
+      for (int k = 1; k < 400; k++)
+        {
+          double a = 2 * G_PI * k / 400;
+
+          corner_to (win, (int) (w / 2 + (w / 2 - 20) * cos (a + G_PI)), (int) (h / 2 + (h / 2 - 20) * sin (a + G_PI)));
+        }
+      shape_release (win, 1);
+      break;
+    case 5:
+      use_tool (win, "text");
+      shape_press_move (win, 1, 100, 100, 700, 300);
+      shape_release (win, 1);
+      box_text (win, "Hello");
+      break;
+    }
+  return win;
+}
+
+/* AS-7 (REQ-0044-07): at rest with the dashes moving, in each case of AS-1, a second of frames builds nothing of what lies under the
+   line; a change of the picture makes the next frame build it. Deterministic: counts, no time measured. */
+static void
+as7_no_base_build_at_rest (void)
+{
+  animations (TRUE);
+  for (int c = 0; c < IDLE_CASES; c++)
+    {
+      EaselWindow *win = idle_case_window (c);
+      EaselCanvas *canvas = easel_window_get_canvas (win);
+      guint f0, b0, f1, b1;
+
+      run_for_ms (300);
+      f0 = easel_canvas_get_frames_drawn (canvas);
+      b0 = easel_canvas_get_base_builds (canvas);
+      run_for_ms (1000);
+      f1 = easel_canvas_get_frames_drawn (canvas);
+      b1 = easel_canvas_get_base_builds (canvas);
+      g_test_message ("%s: frames %u, base builds %u", idle_case_names[c], f1 - f0, b1 - b0);
+      g_assert_cmpuint (f1 - f0, >=, 10);
+      g_assert_cmpuint (b1 - b0, ==, 0);
+      /* the picture changes: the next frame builds the base */
+      easel_image_set ((EaselImage *) easel_window_get_picture (win), 0, 0, 0xFF123456u);
+      easel_canvas_update (canvas);
+      wait_for_next_frame (win);
+      g_assert_cmpuint (easel_canvas_get_base_builds (canvas), >, b1);
+      close_windows ();
+    }
+  animations (FALSE);
+}
+
+/* AS-6 (REQ-0044-06): a minimized window's dashes stop asking for redraws. After the minimize's own frames (about a second), over 3 s: the
+   dashes ask no more redraws than the window draws, and at most one (the session draws a minimized window about once in 5 s; the
+   dashes then ask once and stop: T003's probe, second by second). Before 0044 they asked 12 a second. */
+static void
+as6_minimized_no_redraw (void)
+{
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  gsize r0, r1;
+  gint64 step;
+  guint f0, f1;
+
+  animations (TRUE);
+  win = idle_case_window (2);
+  canvas = easel_window_get_canvas (win);
+  run_for_ms (300);
+  gtk_window_minimize (GTK_WINDOW (win));
+  run_for_ms (1500);
+  easel_canvas_get_ants_counts (canvas, &r0, &step);
+  f0 = easel_canvas_get_frames_drawn (canvas);
+  run_for_ms (3000);
+  easel_canvas_get_ants_counts (canvas, &r1, &step);
+  f1 = easel_canvas_get_frames_drawn (canvas);
+  g_test_message ("minimized: the dashes asked %zu redraws in 3 s, the window drew %u frames", r1 - r0, f1 - f0);
+  close_windows ();
+  animations (FALSE);
+  g_assert_cmpuint (r1 - r0, <=, f1 - f0);
+  g_assert_cmpuint (r1 - r0, <=, 1);
+}
+
+static gboolean area_report;                   /* the first differing pixels are told (AS-3's kept against fresh) */
+
+/* Whether two frames of the same size have the same pixels inside the area. */
+static int
+area_pixels_differing (const uint32_t *a, const uint32_t *b, int w, const graphene_rect_t *area)
+{
+  int n = 0;
+
+  for (int y = (int) ceil (area->origin.y); y < (int) floor (area->origin.y + area->size.height); y++)
+    for (int x = (int) ceil (area->origin.x); x < (int) floor (area->origin.x + area->size.width); x++)
+      if (a[(gsize) y * w + x] != b[(gsize) y * w + x])
+        {
+          if (n < 3 && area_report)
+            g_test_message ("differing at frame (%d, %d): %08x against %08x", x, y, a[(gsize) y * w + x], b[(gsize) y * w + x]);
+          n++;
+        }
+  return n;
+}
+
+/* AS-3 (REQ-0044-03), the dashes alone: in each case of AS-1, after the dashes moved with the base kept, the canvas area equals the frame
+   built from nothing at the same moment; and the dashes did move. */
+static void
+as3_kept_frame_equals_fresh (void)
+{
+  const gint64 t0 = 10 * G_USEC_PER_SEC, t1 = t0 + 3 * G_USEC_PER_SEC / 10;
+
+  animations (TRUE);
+  for (int c = 0; c < IDLE_CASES; c++)
+    {
+      EaselWindow *win = idle_case_window (c);
+      EaselCanvas *canvas = easel_window_get_canvas (win);
+      g_autofree uint32_t *first = NULL, *kept = NULL, *fresh = NULL;
+      graphene_rect_t area;
+      int w, h, cxu, cyu, differ, moved;
+
+      first = render_at_clock (win, t0, &w, &h, &cxu, &cyu);
+      kept = render_at_clock (win, t1, &w, &h, &cxu, &cyu);
+      easel_canvas_set_keep_base (canvas, FALSE);
+      fresh = render_at_clock (win, t1, &w, &h, &cxu, &cyu);
+      easel_canvas_set_keep_base (canvas, TRUE);
+      area = view_area (win);
+      moved = area_pixels_differing (first, kept, w, &area);
+      area_report = TRUE;
+      differ = area_pixels_differing (kept, fresh, w, &area);
+      area_report = FALSE;
+      g_test_message ("%s: the dashes changed %d device pixels; kept against fresh %d differ", idle_case_names[c], moved, differ);
+      easel_canvas_set_ants_clock (canvas, 0, FALSE);
+      close_windows ();
+      g_assert_cmpint (moved, >, 0);
+      g_assert_cmpint (differ, ==, 0);
+    }
+  animations (FALSE);
+}
+
+/* The canvas area drawn with the base kept against the same frame built from nothing (REQ-0044-03): the number of device pixels that
+   differ. A change that did not mark what lies under the line leaves the kept frame showing the state before it. */
+static int
+kept_against_fresh (EaselWindow *win, const char *what)
+{
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  g_autofree uint32_t *kept = NULL, *fresh = NULL;
+  graphene_rect_t area;
+  int w, h, cx, cy, differ;
+
+  wait_for_next_frame (win);
+  kept = render_pixels (win, &w, &h, &cx, &cy);
+  easel_canvas_set_keep_base (canvas, FALSE);
+  wait_for_next_frame (win);
+  fresh = render_pixels (win, &w, &h, &cx, &cy);
+  easel_canvas_set_keep_base (canvas, TRUE);
+  wait_for_next_frame (win);
+  area = view_area (win);
+  area_report = TRUE;
+  differ = area_pixels_differing (kept, fresh, w, &area);
+  area_report = FALSE;
+  g_test_message ("%s: %d device pixels differ, kept against fresh", what, differ);
+  return differ;
+}
+
+static int band_left_half (int x, int y, gpointer data) { (void) y; (void) data; return x < 100 ? 1 : 0; }
+
+/* The isolated session's monitor set to a scale through Mutter's display configuration, as tools/isolated.sh does at its start; FALSE
+   outside the isolated session or if Mutter refused. */
+static gboolean
+isolated_set_scale (const char *scale)
+{
+  g_autofree char *script = g_strdup_printf (
+    "STATE=$(gdbus call --session --dest org.gnome.Mutter.DisplayConfig --object-path /org/gnome/Mutter/DisplayConfig "
+    "--method org.gnome.Mutter.DisplayConfig.GetCurrentState) || exit 1; "
+    "SERIAL=$(echo \"$STATE\" | grep -o '^(uint32 [0-9]*' | grep -o '[0-9]*$'); "
+    "MODE=$(echo \"$STATE\" | grep -o \"'1920x1200@[0-9.]*'\" | head -1 | tr -d \"'\"); "
+    "gdbus call --session --dest org.gnome.Mutter.DisplayConfig --object-path /org/gnome/Mutter/DisplayConfig "
+    "--method org.gnome.Mutter.DisplayConfig.ApplyMonitorsConfig \"$SERIAL\" 1 \"[(0, 0, %s, uint32 0, true, [('Meta-0', '$MODE', {})])]\" \"{}\"",
+    scale);
+  const char *argv[] = { "bash", "-c", script, NULL };
+  int status = 1;
+
+  if (g_strcmp0 (g_getenv ("EASEL_ISOLATED"), "1") != 0)
+    return FALSE;
+  if (!g_spawn_sync (NULL, (char **) argv, NULL, G_SPAWN_SEARCH_PATH | G_SPAWN_STDOUT_TO_DEV_NULL, NULL, NULL, NULL, NULL, &status, NULL))
+    return FALSE;
+  return g_spawn_check_wait_status (status, NULL);
+}
+
+/* AS-3 (REQ-0044-03), every change at rest: each one, made with the base kept and nothing else asking for a frame, shows at its next
+   frame exactly as a frame built from nothing (the list of AS-3, and the eight setters found at T003 to ask no redraw). On a 400 x 300
+   picture at 200 %, animations off so that the dashes stand still between the two frames compared. Run at scale 1 here, and at 2 and
+   1.25 by ui-0044-scale2 and ui-0044-scale125. */
+static void
+as3_changes (void)
+{
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  View view;
+  int wrong = 0;
+  double x, y;
+
+  write_settings ("[new-picture]\nwidth=400\nheight=300\nbackground=#FFFFFF\n");
+  animations (FALSE);
+  /* a marked selection over a picture with an edit to undo */
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  view = view_of (win);
+  wait_for_layout (win);
+  easel_canvas_set_zoom (canvas, 200);
+  wait_for_layout (win);
+  fill_with_places (win);
+  use_tool (win, "pencil");
+  shape_press_move (win, 1, 20, 20, 60, 40);
+  shape_release (win, 1);
+  use_select (win);
+  shape_press_move (win, 1, 10, 10, 120, 90);
+  shape_release (win, 1);
+  wrong += kept_against_fresh (win, "a marked selection at rest");
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  wrong += kept_against_fresh (win, "Undo");
+  g_action_group_activate_action (G_ACTION_GROUP (win), "redo", NULL);
+  wrong += kept_against_fresh (win, "Redo");
+  use_select (win);
+  shape_press_move (win, 1, 10, 10, 120, 90);
+  shape_release (win, 1);
+  gtk_adjustment_set_value (view.h, gtk_adjustment_get_value (view.h) + 1);
+  wrong += kept_against_fresh (win, "a scroll by 1 logical pixel");
+  easel_canvas_set_zoom (canvas, 300);
+  wait_for_layout (win);
+  wrong += kept_against_fresh (win, "a zoom change");
+  easel_canvas_set_zoom (canvas, 200);
+  wait_for_layout (win);
+  gtk_window_set_default_size (GTK_WINDOW (win), gtk_widget_get_width (GTK_WIDGET (win)) + 1, gtk_widget_get_height (GTK_WIDGET (win)));
+  wait_for_layout (win);
+  wrong += kept_against_fresh (win, "the window 1 pixel wider");
+  easel_canvas_set_grid (canvas, TRUE, 1, FALSE);
+  wrong += kept_against_fresh (win, "the grid on");
+  easel_canvas_set_grid (canvas, FALSE, 1, FALSE);
+  easel_canvas_set_selection_handles_shown (canvas, FALSE);
+  wrong += kept_against_fresh (win, "the selection's handles hidden");
+  easel_canvas_set_selection_handles_shown (canvas, TRUE);
+  easel_canvas_marker_show (canvas, TRUE);
+  easel_canvas_marker_set (canvas, 50, 50);
+  wrong += kept_against_fresh (win, "the keyboard marker moved");
+  easel_window_apply_tint (win, 30);
+  wrong += kept_against_fresh (win, "the tint changed in Preferences");
+  easel_window_apply_tint (win, 12);
+  g_object_notify (G_OBJECT (adw_style_manager_get_default ()), "accent-color");
+  wrong += kept_against_fresh (win, "the accent color notified (a real change cannot be made here)");
+  adw_style_manager_set_color_scheme (adw_style_manager_get_default (), ADW_COLOR_SCHEME_FORCE_DARK);
+  wait_for_layout (win);
+  wrong += kept_against_fresh (win, "the dark style");
+  adw_style_manager_set_color_scheme (adw_style_manager_get_default (), ADW_COLOR_SCHEME_DEFAULT);
+  wait_for_layout (win);
+  g_object_notify (G_OBJECT (adw_style_manager_get_default ()), "high-contrast");
+  wrong += kept_against_fresh (win, "the high-contrast style notified (a real change cannot be made here)");
+  {
+    GtkWidget *other = gtk_window_new ();                          /* a plain window takes the focus */
+
+    gtk_window_present (GTK_WINDOW (other));
+    run_for_ms (300);
+    wrong += kept_against_fresh (win, "the window losing the focus");
+    gtk_window_destroy (GTK_WINDOW (other));
+    gtk_window_present (GTK_WINDOW (win));
+    run_for_ms (300);
+    wrong += kept_against_fresh (win, "the window getting the focus back");
+  }
+  animations (TRUE);
+  easel_canvas_set_ants_clock (canvas, 10 * G_USEC_PER_SEC + G_USEC_PER_SEC / 4, FALSE);
+  wrong += kept_against_fresh (win, "animations switched on (a fixed clock)");
+  animations (FALSE);
+  wrong += kept_against_fresh (win, "animations switched off (the first dash at the start)");
+  easel_canvas_set_ants_clock (canvas, 0, FALSE);
+  sel_handle_center (canvas, EASEL_SEL_HANDLE_R, &x, &y);
+  easel_canvas_pointer_at (canvas, x, y);
+  wrong += kept_against_fresh (win, "the pointer over a handle");
+  /* the screen's scale changed at rest, 1 to 2 and back (only in the isolated session, at scale 1) */
+  if (easel_canvas_get_scale (canvas) == 1 && isolated_set_scale ("2.0"))
+    {
+      run_for_ms (2000);                                           /* the monitor settles at its new scale */
+      g_assert_cmpfloat (easel_canvas_get_scale (canvas), ==, 2);
+      wrong += kept_against_fresh (win, "the screen's scale changed from 1 to 2 at rest");
+      g_assert_true (isolated_set_scale ("1.0"));
+      run_for_ms (2000);
+      g_assert_cmpfloat (easel_canvas_get_scale (canvas), ==, 1);
+      wrong += kept_against_fresh (win, "and back to 1");
+    }
+  else
+    g_test_message ("the scale change at rest: not run (not the isolated session at scale 1)");
+  easel_canvas_set_guides_hidden (canvas, TRUE);
+  wrong += kept_against_fresh (win, "setter: the guides hidden");
+  easel_canvas_set_guides_hidden (canvas, FALSE);
+  easel_canvas_set_bands (canvas, band_left_half, NULL);
+  wrong += kept_against_fresh (win, "setter: the bands");
+  easel_canvas_set_bands (canvas, NULL, NULL);
+  easel_canvas_set_zoom (canvas, 129);
+  wait_for_layout (win);
+  easel_canvas_set_view_memory_limit (canvas, 1);
+  wrong += kept_against_fresh (win, "setter: the view's memory limit (129 %)");
+  easel_canvas_set_view_memory_limit (canvas, SIZE_MAX);
+  easel_canvas_set_zoom (canvas, 200);
+  wait_for_layout (win);
+  use_tool (win, "magnifier");
+  canvas_point (win, 60.5, 60.5, &x, &y);
+  easel_canvas_pointer_at (canvas, x, y);
+  wrong += kept_against_fresh (win, "the Magnifier's box over the picture");
+  /* a floating selection */
+  use_select (win);
+  shape_press_move (win, 1, 10, 10, 120, 90);
+  shape_release (win, 1);
+  shape_press_move (win, 1, 50, 50, 60, 60);
+  shape_release (win, 1);
+  easel_canvas_set_selection_transparent (canvas, TRUE);
+  wrong += kept_against_fresh (win, "setter: Transparent on a floating selection");
+  easel_canvas_set_selection_transparent (canvas, FALSE);
+  wrong += kept_against_fresh (win, "setter: Opaque again");
+  easel_palette_bar_press (easel_window_get_palette_bar (win), 18, 3, 1);
+  wrong += kept_against_fresh (win, "a background color under a floating selection's hole");
+  g_action_group_activate_action (G_ACTION_GROUP (win), "copy", NULL);
+  g_action_group_activate_action (G_ACTION_GROUP (win), "paste", NULL);
+  wait_for_layout (win);
+  wrong += kept_against_fresh (win, "Paste");
+  g_action_group_activate_action (G_ACTION_GROUP (win), "clear-image", NULL);
+  wrong += kept_against_fresh (win, "Clear Image");
+  /* a waiting Smooth shape */
+  use_shape (win, "heart");
+  set_smooth (win, TRUE);
+  shape_press_move (win, 1, 30, 30, 200, 150);
+  shape_release (win, 1);
+  g_assert_true (shape_waits (canvas));
+  easel_palette_bar_press (easel_window_get_palette_bar (win), 17, 1, 1);
+  wrong += kept_against_fresh (win, "a palette color on a waiting shape");
+  g_action_group_change_action_state (G_ACTION_GROUP (win), "line-width", g_variant_new_int32 (4));
+  wrong += kept_against_fresh (win, "a width on a waiting shape");
+  g_action_group_change_action_state (G_ACTION_GROUP (win), "fill-style", g_variant_new_int32 (1));
+  wrong += kept_against_fresh (win, "a fill style on a waiting shape");
+  set_smooth (win, FALSE);
+  wrong += kept_against_fresh (win, "Sharp on a waiting shape");
+  set_smooth (win, TRUE);
+  {
+    AdwDialog *last = NULL;
+
+    /* enough for the spans (about 64 KB), not for the texture of the Heart's box (about 81 KB): the rectangles, no dialog (REQ-0044-04) */
+    easel_canvas_set_preview_memory_limit (canvas, 70000);
+    wrong += kept_against_fresh (win, "setter: the preview's memory limit (the rectangles in place of the texture)");
+    g_assert_true (shape_waits (canvas));
+    g_assert_cmpint (count_alert_dialogs (GTK_WIDGET (win), &last), ==, 0);
+    easel_canvas_set_preview_memory_limit (canvas, SIZE_MAX);
+  }
+  if (shape_waits (canvas))
+    {
+      easel_canvas_set_shape_memory_limit (canvas, 1);
+      wrong += kept_against_fresh (win, "setter: the shape's memory limit");
+      easel_canvas_set_shape_memory_limit (canvas, SIZE_MAX);
+    }
+  close_windows ();
+  /* an open text box */
+  write_settings ("[new-picture]\nwidth=400\nheight=300\nbackground=#FFFFFF\n");
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  wait_for_layout (win);
+  use_tool (win, "text");
+  shape_press_move (win, 1, 20, 20, 300, 120);
+  shape_release (win, 1);
+  box_text (win, "Hello");
+  wrong += kept_against_fresh (win, "a letter typed in an open box");
+  easel_canvas_set_text_opaque (canvas, TRUE);
+  wrong += kept_against_fresh (win, "the box made Opaque");
+  easel_palette_bar_press (easel_window_get_palette_bar (win), 18, 3, 1);
+  wrong += kept_against_fresh (win, "a background color under an Opaque box");
+  easel_canvas_set_text_show_limit (canvas, 1);
+  wrong += kept_against_fresh (win, "setter: the text's memory limit");
+  easel_canvas_set_text_show_limit (canvas, SIZE_MAX);
+  close_windows ();
+  /* the picture replaced: New */
+  write_settings ("[new-picture]\nwidth=400\nheight=300\nbackground=#FFFFFF\n");
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  wait_for_layout (win);
+  use_select (win);
+  shape_press_move (win, 1, 10, 10, 120, 90);
+  shape_release (win, 1);
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+  g_action_group_activate_action (G_ACTION_GROUP (win), "new", NULL);
+  wait_for_layout (win);
+  wrong += kept_against_fresh (win, "setter: the picture replaced (New)");
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+  animations (FALSE);
+  g_assert_cmpint (wrong, ==, 0);
+}
+
+/* AS-4 (REQ-0044-04): with nothing kept between frames (as when memory runs short), the dashes move, every frame is built from nothing,
+   and no dialog shows. */
+static void
+as4_keep_refused (void)
+{
+  const gint64 t0 = 10 * G_USEC_PER_SEC, t1 = t0 + 3 * G_USEC_PER_SEC / 10;
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  g_autofree uint32_t *a = NULL, *b = NULL;
+  graphene_rect_t area;
+  AdwDialog *last = NULL;
+  int w, h, cxu, cyu;
+  guint b0;
+
+  animations (TRUE);
+  win = idle_case_window (2);
+  canvas = easel_window_get_canvas (win);
+  easel_canvas_set_keep_base (canvas, FALSE);
+  a = render_at_clock (win, t0, &w, &h, &cxu, &cyu);
+  b0 = easel_canvas_get_base_builds (canvas);
+  b = render_at_clock (win, t1, &w, &h, &cxu, &cyu);
+  area = view_area (win);
+  g_assert_cmpint (area_pixels_differing (a, b, w, &area), >, 0);
+  g_assert_cmpuint (easel_canvas_get_base_builds (canvas), >, b0);
+  g_assert_cmpint (count_alert_dialogs (GTK_WIDGET (win), &last), ==, 0);
+  easel_canvas_set_ants_clock (canvas, 0, FALSE);
+  close_windows ();
+  animations (FALSE);
+}
+
+static double
+idle_cpu_seconds (void)
+{
+  struct rusage u;
+
+  getrusage (RUSAGE_SELF, &u);
+  return u.ru_utime.tv_sec + u.ru_utime.tv_usec / 1e6 + u.ru_stime.tv_sec + u.ru_stime.tv_usec / 1e6;
+}
+
+/* A wait that sleeps (a loop that spun would count itself). */
+static void
+idle_sleep_ms (int ms)
+{
+  GMainLoop *loop = g_main_loop_new (NULL, FALSE);
+
+  g_timeout_add_once (ms, (GSourceOnceFunc) (void (*) (void)) g_main_loop_quit, loop);
+  g_main_loop_run (loop);
+  g_main_loop_unref (loop);
+}
+
+/* AS-1, AS-2 and AS-6's CPU (REQ-0044-01, -02, -06): each case at rest, 0.5 s then 3 s (10 s with animations off or minimized), the share
+   of a core this process used. Under GTK's default renderer the bound is 5 % (0 %: 50 ms over 10 s); under Cairo (forced) a case is no
+   worse than T001's today (the guard), with a tenth over it allowed for noise. A record under /0044-open/: run in tools/isolated.sh, with
+   and without GSK_RENDERER=cairo, and with --scale 2 and --scale 1.25. */
+static void
+open_idle_cpu (void)
+{
+  /* the guard under Cairo: T002's same-day run of 2026-11-13, before any change of 0044 (JOD: not T001's numbers) */
+  static const double cairo_today[IDLE_CASES] = { 33.4, 19.9, 14.6, 50.6, 23.6, 18.1, 18.3 };
+  static const double cairo_off_today[IDLE_CASES] = { 0, 0, 0, 0, 0, 2.1, 0 };     /* animations off and minimized, T002 */
+  gboolean cairo = FALSE;
+  int over = 0;
+
+  for (int pass = 0; pass < 3; pass++)          /* 0: animations on; 1: animations off; 2: minimized (the marked selection only) */
+    for (int c = 0; c < IDLE_CASES; c++)
+      {
+        EaselWindow *win;
+        double c0, t0, share;
+        int ms = pass == 0 ? 3000 : 10000;
+
+        if (pass == 2 && c != 2)
+          continue;
+        animations (pass != 1);
+        win = idle_case_window (c);
+        cairo = g_str_equal (G_OBJECT_TYPE_NAME (gtk_native_get_renderer (GTK_NATIVE (win))), "GskCairoRenderer");
+        if (pass == 2)
+          gtk_window_minimize (GTK_WINDOW (win));
+        idle_sleep_ms (500);
+        c0 = idle_cpu_seconds ();
+        t0 = g_get_monotonic_time () / 1e6;
+        idle_sleep_ms (ms);
+        share = 100 * (idle_cpu_seconds () - c0) / (g_get_monotonic_time () / 1e6 - t0);
+        g_printerr ("IDLE scale %.2f %s %-44s %s: %5.1f %% of a core (%.0f ms in %d s)\n", easel_canvas_get_scale (easel_window_get_canvas (win)),
+                    G_OBJECT_TYPE_NAME (gtk_native_get_renderer (GTK_NATIVE (win))), idle_case_names[c],
+                    pass == 0 ? "animations on " : pass == 1 ? "animations off" : "minimized     ", share, share * ms / 100.0, ms / 1000);
+        if (pass == 0 && !cairo && share > 5)
+          over++;
+        if (pass == 0 && cairo && share > cairo_today[c] * 1.1)
+          over++;
+        if (pass > 0 && !cairo && share * ms / 100.0 > 50)
+          over++;                                    /* 0 %, read as 50 ms in 10 s, under the default renderer (REQ-0044-02) */
+        if (pass > 0 && cairo && share > MAX (0.5, cairo_off_today[c]) * 1.1)
+          over++;                                    /* under Cairo a guard: no worse than T002's same-day run */
+        close_windows ();
+      }
+  animations (FALSE);
+  g_assert_cmpint (over, ==, 0);
 }
 
 /* ---- 0043 T011: memory ---- */
@@ -46009,6 +46539,12 @@ main (int argc, char **argv)
   g_test_add_func ("/0043/as15_line_pixels", as15_shape_line_pixels);
   g_test_add_func ("/0043/as15_line_not_in_picture", as15_shape_line_not_in_picture);
   g_test_add_func ("/0043/check_line_findings", check_shape_line_findings);
+  g_test_add_func ("/0044/as7_no_base_build_at_rest", as7_no_base_build_at_rest);
+  g_test_add_func ("/0044/as6_minimized_no_redraw", as6_minimized_no_redraw);
+  g_test_add_func ("/0044/as3_kept_frame_equals_fresh", as3_kept_frame_equals_fresh);
+  g_test_add_func ("/0044/as4_keep_refused", as4_keep_refused);
+  g_test_add_func ("/0044/as3_changes", as3_changes);
+  g_test_add_func ("/0044-open/idle_cpu", open_idle_cpu);
   g_test_add_func ("/0025-frac/as7_rows_and_columns", frac_as7_rows_and_columns);
   g_test_add_func ("/0025-frac/as8_shapes_outlines", frac_as8_shapes_outlines);
   g_test_add_func ("/0025-frac/as9_pointer", frac_as9_pointer);
