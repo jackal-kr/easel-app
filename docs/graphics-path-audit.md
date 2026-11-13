@@ -36,7 +36,7 @@ picture pixel).
    only the renderer's is used, and the pointer maps by the division there (`easel_view_to_pixel`).
 4. **`append_float_outside` builds a texture it does not use, and rebuilds the cells once per band** (low, known from
    0025): a small waste on a rare path.
-5. **A fractional desktop scale is untried** (known gap, in `docs/phase2-plan.md` "Before the first beta").
+5. **A fractional desktop scale is untried** (known gap, in `docs/phase2-plan.md` "Before the next release").
 
 ## Proposal
 

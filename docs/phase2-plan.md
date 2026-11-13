@@ -176,8 +176,8 @@ Order suggestion: A and B first, C after the graphics path audit, D with file in
 - Mouse cursors consistent (Magnifier, Pick Color, Fill): A, spec 0029, implemented 2026-11-07.
 - Gradient with Linear, Radial and Reflected: C.
 
-## Before the first beta
-Gathered from the sections above; none has written steps yet.
+## Before the next release
+Gathered from the sections above; none has written steps yet. All four are still open in 1.0.x (renamed from "Before the first beta", 2026-11-13).
 - Orca on the app, an open text box included (From 0022).
 - A fractional desktop scale (125 %, 150 %) and a scale 2 screen by eye (From 0025, 0029's edge case).
 - JOD's reading of ru, uk and pl and their Help pages (From 0023).

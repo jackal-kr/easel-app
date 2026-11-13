@@ -1,3 +1,10 @@
+easel (1.0.2) stonking; urgency=low
+
+  * A waiting shape is outlined by the same dashed line as a selection, so
+    its box can be seen.
+
+ -- JOD <20030596+jackal-kr@users.noreply.github.com>  Fri, 13 Nov 2026 18:00:00 +0100
+
 easel (1.0.1) stonking; urgency=low
 
   * Typed text takes the color shown in the color box, also after Undo or a
