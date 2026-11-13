@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Usage: tools/spec.sh new <NNNN> <slug> | status | lint [--names <NNNN>]
 # Specs are single files: docs/specs/NNNN-slug.md (template: docs/specs/_template.md).
 cd "$(dirname "$0")/.."

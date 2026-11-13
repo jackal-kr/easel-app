@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Checks that tools/mutate.sh builds only the tests the mutant names, and what those tests need, not the whole project:
 #
 #   tools/check-mutate-build.sh

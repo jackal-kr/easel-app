@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Mutation tool: puts one deliberate bug at a time into a scratch copy of the sources, builds, runs the tests that must
 # catch it, and says whether the bug was KILLED (a test failed) or SURVIVED (all passed: a hole in the tests).
 #

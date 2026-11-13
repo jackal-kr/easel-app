@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Checks that `tools/mutate.sh --lint` refuses a blank line inside the find or the replace text of a mutant (a blank line
 # ends the entry, so the rest would be dropped and the mutant would test unchanged code). Needs no display:
 #

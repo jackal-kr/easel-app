@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Checks the progress reporting of tools/mutate.sh on the three mutants of REQ-0011-04, with one worker and no kept case, so that
 # each mutant runs its whole test (ui tests, in the session the tool starts):
 #

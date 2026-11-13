@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Checks the parallel workers of tools/mutate.sh on the mutants of REQ-0011-04 (ui tests; each worker has its own session):
 #
 #   tools/check-mutate-workers.sh

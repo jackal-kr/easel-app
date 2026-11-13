@@ -23,7 +23,7 @@ ONNX Runtime 1.23.2 C, 4 threads): 1.2 to 1.4 s and 1.2 to 2.0 s, at most 1.17 G
 | Same pixels twice on one machine | yes | yes | yes | yes |
 | Weights licence, as stated | none needed | "license: mit" | "license: apache-2.0" | not stated |
 | Training data, as stated | none | "the DIS5k and our 22K proprietary segmentation dataset" | synthetic humans; "based on" the DIS research | DIS V1.0 (DIS5K: "non-commercial use in research or educational purpose") |
-| Builds without sudo | yes (no dependency) | yes, with ONNX Runtime's official archive in the home folder (`~/.local/opt/easel-dev-env.sh`); a distribution's package needs sudo | same | same |
+| Builds without sudo | yes (no dependency) | yes, with ONNX Runtime's official archive unpacked in the user's home folder and a script that sets its paths; a distribution's package needs sudo | same | same |
 | Flatpak | nothing to add | ONNX Runtime as a module (T001: the 8.3 MB archive runs in the GNOME 51 sandbox) | same | same |
 
 ## What the numbers say

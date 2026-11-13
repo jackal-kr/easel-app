@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Checks how tools/mutate.sh uses the case that last killed a mutant (ui tests, in the sessions the tool starts):
 #
 #   tools/check-mutate-kills.sh

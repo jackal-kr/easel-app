@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 /* The README's and the metadata's screenshot (data/screenshots/main.png), made again for a release: a 1100 x 720 window with a picture
-   drawn through the app's own tools (a gradient sky, smooth shapes, a smooth brush stroke, smooth text), Line chosen so that its
-   options show Sharp | Smooth, rendered by GTK and saved as PNG. Run through tools/isolated.sh, so that the desktop is untouched and the
+   drawn through the app's own tools (a gradient sky, smooth shapes, a smooth brush stroke, smooth text), then Shapes with a star left
+   waiting (its dashed line and handles), rendered by GTK and saved as PNG. Run through tools/isolated.sh, so that the desktop is untouched and the
    theme is GNOME's default: tools/isolated.sh build/tests/probe-screenshot data/screenshots/main.png */
 
 #include <glib/gstdio.h>
@@ -103,15 +103,19 @@ main (int argc, char **argv)
   easel_canvas_set_colors (canvas, 0xFF7FB6F0u, 0xFFFFFFFFu);
   drag (canvas, (const double[]) { 520, 60, 160, 400 }, 2);
   key (win, GDK_KEY_Return);
-  /* a smooth sun, a hill and a house's walls and roof */
+  /* a smooth sun, a hill and a house's walls and roof; each shape of Shapes waits after its release (0043), so Enter puts it down
+     before the colors change (a color change would recolor a waiting shape, REQ-0043-09) */
   tool (win, "ellipse");
   easel_canvas_set_colors (canvas, 0xFFE0A000u, 0xFFFFD84Au);
   drag (canvas, (const double[]) { 470, 40, 560, 130 }, 2);
+  key (win, GDK_KEY_Return);
   easel_canvas_set_colors (canvas, 0xFF2F7D32u, 0xFF4CAF50u);
   drag (canvas, (const double[]) { -80, 300, 720, 560 }, 2);
+  key (win, GDK_KEY_Return);
   tool (win, "rounded-rectangle");
   easel_canvas_set_colors (canvas, 0xFF7A3E1Du, 0xFFF4E3C1u);
   drag (canvas, (const double[]) { 90, 230, 220, 330 }, 2);
+  key (win, GDK_KEY_Return);
   tool (win, "polygon");
   easel_canvas_set_colors (canvas, 0xFF7A3E1Du, 0xFFC0392Bu);
   drag (canvas, (const double[]) { 80, 232, 155, 175 }, 2);
@@ -136,9 +140,12 @@ main (int argc, char **argv)
         easel_canvas_text_edited (canvas);
       }
   }
-  /* Line chosen: its options show the widths and Sharp | Smooth whole; a tool change puts the text down; the focus on the canvas */
-  tool (win, "line");
-  easel_canvas_set_colors (canvas, 0xFF000000u, 0xFFFFFFFFu);
+  /* Shapes chosen, a star left waiting in the sky: its dashed line and handles show (0043), and the options show the Shape button, the
+     fill styles, the widths and Sharp | Smooth; a tool change puts the text down; the focus on the canvas */
+  g_action_group_change_action_state (G_ACTION_GROUP (win), "shape", g_variant_new_string ("5-point-star"));
+  tool (win, "shapes");
+  easel_canvas_set_colors (canvas, 0xFFB8860Bu, 0xFFFFE066u);
+  drag (canvas, (const double[]) { 60, 40, 150, 125 }, 2);
   gtk_widget_grab_focus (GTK_WIDGET (canvas));
   gtk_window_set_focus_visible (GTK_WINDOW (win), FALSE);              /* no focus mark on a button in the picture */
   {

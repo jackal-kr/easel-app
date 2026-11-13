@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Checks that the private session of tools/isolated.sh sees nothing of the person's own desktop or accounts:
 #
 #   tools/isolated.sh tools/check-isolated-private.sh

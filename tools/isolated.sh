@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Runs a command in a private session, so that a real pointer, the windows of the person at the keyboard and their desktop
 # services cannot touch the ui tests: a headless GNOME Shell with one virtual monitor and its own Wayland socket, in a private
 # D-Bus session, with a throwaway HOME and runtime folder and GSETTINGS_BACKEND=memory. These are set before the D-Bus session
