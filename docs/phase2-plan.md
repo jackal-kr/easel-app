@@ -117,13 +117,16 @@ Order suggestion: A and B first, C after the graphics path audit, D with file in
 - G1: resizing a waiting shape from the keyboard (a keyboard press never takes a handle, REQ-0022-07); its keys and
   announcements are a design of their own. A keyboard user can move, put down or drop a waiting shape.
 - `perf-0043`, the fitted 1920 x 1080 Smooth Heart's handle drag: median 16.7 to 16.8 ms on 2026-11-12, just over a frame (17 to 33 ms) under higher load on 2026-11-13, the same with and without the dashed line of REQ-0043-19: measure again at the Phase 2 gate on a quiet machine.
-- G2 (0043 Check of 2026-11-13, F2): a waiting shape is drawn again at each step of its moving dashes, 12 a second: idle, up to about 18 points of a core more than a selection's line (32 % in all, a large Smooth Heart, isolated session, cairo); a preview kept between frames whose shape, colors and view are unchanged would remove it.
+- G2 (0043 Check of 2026-11-13, F2): a waiting shape is drawn again at each step of its moving dashes; taken up by "Idle redraw cost" below.
 
 ## From 0041's check (2026-11-12)
 - The key with a menu open: GTK holds the popup's keys, so only a manual try (the walk of Phase 2).
 - The gates of REQ-0041-01 for the quit prompt, the font card's field and a picture resize drag are reached only through the item's insensitivity (a selection cannot exist then).
 - ui cases for a Ctrl-copy floating selection and an ordinary pasted one cropped (the core has both); a floating selection wholly outside the picture.
 - Help's prose on the Image menu does not name Crop to Selection; the `.pot` references of its two messages are approximate.
+
+## Idle redraw cost (JOD, 2026-11-13: deferred from 0043's check, F2)
+- While moving dashes are shown (animations on), each step (12 a second) draws the whole canvas again: idle, a waiting shape costs 32 % of a core (a large Smooth Heart) or 19 % (Sharp), a marked selection 14 % (1920 x 1080 fitted, isolated session, cairo renderer). Keep the drawn picture between frames and redraw only the moving dashes; budget: idle CPU at most 5 % of a core with animations on, measured on the same large cases. Its own spec, after the 0041 and 0043 builds.
 
 ## From the mutation list
 - REQ-0017-14, the popover's scroll guard: survives on GTK 4.24, accepted (JOD, 2026-11-02). Re-decide at packaging-release, when the minimum GTK is chosen.

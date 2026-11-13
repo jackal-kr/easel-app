@@ -237,7 +237,7 @@ same width, fill style, colors and smoothing, closed.
   the start. Known gap (JOD, 2026-11-11); also in `docs/phase2-plan.md`.
 - G2: while a shape waits with animations on, the shape is drawn again at each step of its moving dashes (12 a second): up to about
   18 points of a core more than a selection's moving line, 32 % in all for a large Smooth shape in the isolated session (0043 Check of
-  2026-11-13, F2); no pixel changes. Also in `docs/phase2-plan.md`.
+  2026-11-13, F2); no pixel changes. Deferred (JOD, 2026-11-13) to "Idle redraw cost" in `docs/phase2-plan.md`, its own spec.
 
 ## Open questions
 None.
@@ -481,8 +481,8 @@ Findings (a review agent read the diff and the spec blind; each checked in the c
   preview keeps nothing between frames. Measured idle in the isolated session (cairo renderer, 3 s, a temporary probe not kept): a
   1920 x 1080 fitted Heart, width 5, Outline and fill, 32 % of a core Smooth and 19 % Sharp, a 200 x 150 one 17 %; a marked selection of the
   same size, whose dashes move since 0014, 14 % and 12 %; with animations off 0 % for all. The moving line's own cost is a selection's, as
-  REQ-0014-17 (c) chose; the shape's redraw adds up to about 18 points of a core. No pixel is wrong; recorded as G2 and in
-  `docs/phase2-plan.md`.
+  REQ-0014-17 (c) chose; the shape's redraw adds up to about 18 points of a core. No pixel is wrong; recorded as G2. JOD, 2026-11-13:
+  deferred to "Idle redraw cost" in `docs/phase2-plan.md` (a budget of 5 % of a core idle), its own spec.
 - F3 (fixed, tests): cases no test observed, the code right: no line while the first drag has not left its pixel; none for Line's drag;
   the timer starting by itself at the release and ending by itself after Enter, the line gone; the line over the picture's resize handle.
   `/0043/check_line_findings` (passed at its first run, characterization) and two mutants that it kills: the "left its pixel" check

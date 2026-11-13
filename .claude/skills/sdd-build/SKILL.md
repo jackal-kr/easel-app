@@ -74,7 +74,7 @@ Precondition: `Status: accepted` in the spec. Otherwise stop and say so.
      and for the end of a group, and how to run the suites is in that section too (the ui tests and the mutation tool run through
      `tools/isolated.sh`, the benchmarks in the real session). A test that fails once and then passes is logged with its values and how it was hunted,
      never just re-run until green;
-   - after a task run the feature's ui cases and the core and io tests, no `tools/mutate.sh`; at the end of the spec run `tools/mutate.sh --core` once, in the background (`docs/engineering.md`, What to run when); a kill counts only when the same case fails twice: the tool repeats it and reports `UNREPEATED` otherwise;
+   - after a task run the feature's ui cases and the core and io tests, no `tools/mutate.sh`; a task that changes how a tool's drag or preview is drawn also runs every ui suite that compares screen captures of that tool (0043: 0010's and 0039's broke); at the end of the spec run `tools/mutate.sh --core` once, in the background (`docs/engineering.md`, What to run when); a kill counts only when the same case fails twice: the tool repeats it and reports `UNREPEATED` otherwise;
    - a claim (in a Result, a note or the scenario-to-test map) that a test covers a requirement names the mutant or the manual break that
      made that test fail; a requirement met by an absence (nothing is pushed, nothing is drawn) is proved by a break written into the spec:
      the old line, the inserted line and the tests that failed (0018: two runs were named for REQ-0018-08 that did not observe it);
