@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
-/* The README's and the metadata's screenshot (data/screenshots/main.png), made again for a release: a 1100 x 720 window with a picture
+/* The README's and the metadata's screenshot (data/screenshots/main.png), made again for a release: the window as Easel opens it on a 1920 x 1200 screen at 100 %, a picture
    drawn through the app's own tools (a gradient sky, smooth shapes, a smooth brush stroke, smooth text), then Shapes with a star left
    waiting (its dashed line and handles), rendered by GTK and saved as PNG. Run through tools/isolated.sh, so that the desktop is untouched and the
    theme is GNOME's default: tools/isolated.sh build/tests/probe-screenshot data/screenshots/main.png */
@@ -91,7 +91,7 @@ main (int argc, char **argv)
   g_application_register (G_APPLICATION (app), NULL, NULL);
   g_application_activate (G_APPLICATION (app));
   win = EASEL_WINDOW (gtk_application_get_active_window (app));
-  gtk_window_set_default_size (GTK_WINDOW (win), 1100, 720);
+  /* the window at the size Easel opens at on the 1920 x 1200 screen at scale 1, 100 % in Settings (JOD, 2026-11-13) */
   deadline = g_get_monotonic_time () + 5 * G_USEC_PER_SEC;
   while (easel_window_get_picture (win) == NULL && g_get_monotonic_time () < deadline)
     g_main_context_iteration (NULL, FALSE);
