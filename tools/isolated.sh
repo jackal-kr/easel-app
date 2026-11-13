@@ -9,6 +9,8 @@
 #   tools/isolated.sh meson test -C build --print-errorlogs      all the tests, the ui ones in the isolated display
 #   tools/isolated.sh tools/mutate.sh                            a full mutation run
 #   tools/isolated.sh --scale 2 meson test -C build ui-0025-scale2   on a screen of scale 2: a virtual monitor of 3840 x 2400 (1920 x 1200 logical)
+#   tools/isolated.sh --scale 1.25 COMMAND                         a fractional scale: the 1920 x 1200 monitor at 1.25 (1536 x 960 logical),
+#                                                                  or at 1.5 (1280 x 800); the shell offers both for that mode
 #
 # Not for the benchmarks (perf-*): they stay in the real session, with no Easel window open (docs/engineering.md, Testing and
 # Performance budgets); this script refuses them.
@@ -24,15 +26,16 @@ DBUS_PROGRAM=${EASEL_ISOLATED_DBUS:-dbus-run-session}
 
 if [ "${1:-}" != "--inner" ]; then
   if [ "${1:-}" = --scale ]; then
-    if [ "${2:-}" != 2 ]; then
-      echo "tools/isolated.sh: --scale takes 2 (no other scale has been tried)" >&2
-      exit 2
-    fi
-    export EASEL_ISOLATED_SCALE=2
+    case "${2:-}" in
+      2|1.25|1.5) ;;
+      *) echo "tools/isolated.sh: --scale takes 2, 1.25 or 1.5" >&2
+         exit 2 ;;
+    esac
+    export EASEL_ISOLATED_SCALE=$2
     shift 2
   fi
   if [ $# -eq 0 ]; then
-    echo "usage: tools/isolated.sh [--scale 2] COMMAND [ARGUMENT]..." >&2
+    echo "usage: tools/isolated.sh [--scale 2|1.25|1.5] COMMAND [ARGUMENT]..." >&2
     exit 2
   fi
   for arg in "$@"; do
@@ -136,7 +139,9 @@ fi
 sleep 2                                             # the shell settles: the monitor, the first frame
 
 # A monitors.xml in the throwaway HOME is not honored (0006's Plan): the scale is asked of the running shell (0025's Plan).
-if [ "${EASEL_ISOLATED_SCALE:-}" = 2 ]; then
+if [ -n "${EASEL_ISOLATED_SCALE:-}" ]; then
+  SCALE_DOUBLE=$EASEL_ISOLATED_SCALE
+  [ "$SCALE_DOUBLE" = 2 ] && SCALE_DOUBLE=2.0          # a GVariant double, not an int
   STATE=$(gdbus call --session --dest org.gnome.Mutter.DisplayConfig --object-path /org/gnome/Mutter/DisplayConfig \
           --method org.gnome.Mutter.DisplayConfig.GetCurrentState 2>>"$LOG")
   SERIAL=$(echo "$STATE" | grep -o "^(uint32 [0-9]*" | grep -o "[0-9]*$")
@@ -144,8 +149,8 @@ if [ "${EASEL_ISOLATED_SCALE:-}" = 2 ]; then
   if [ -z "$SERIAL" ] || [ -z "$MODE" ] \
      || ! gdbus call --session --dest org.gnome.Mutter.DisplayConfig --object-path /org/gnome/Mutter/DisplayConfig \
           --method org.gnome.Mutter.DisplayConfig.ApplyMonitorsConfig "$SERIAL" 1 \
-          "[(0, 0, 2.0, uint32 0, true, [('Meta-0', '$MODE', {})])]" "{}" >>"$LOG" 2>&1; then
-    echo "tools/isolated.sh: the shell did not take scale 2 (serial '$SERIAL', mode '$MODE'); its log: $LOG" >&2
+          "[(0, 0, $SCALE_DOUBLE, uint32 0, true, [('Meta-0', '$MODE', {})])]" "{}" >>"$LOG" 2>&1; then
+    echo "tools/isolated.sh: the shell did not take scale $EASEL_ISOLATED_SCALE (serial '$SERIAL', mode '$MODE'); its log: $LOG" >&2
     exit 90
   fi
   sleep 2                                           # the monitor settles at its new scale
