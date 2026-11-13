@@ -1,3 +1,12 @@
+easel (1.0.4) stonking; urgency=low
+
+  * A selection, text box or waiting shape now uses far less CPU while idle.
+  * The picture, grid, guides, Transparent mode and color changes in an open
+    text box or a lifted selection now redraw at once instead of waiting for
+    the next movement.
+
+ -- JOD <20030596+jackal-kr@users.noreply.github.com>  Fri, 13 Nov 2026 23:00:00 +0100
+
 easel (1.0.3) stonking; urgency=low
 
   * At fractional screen scales such as 125 % and 150 %, thin lines no longer
