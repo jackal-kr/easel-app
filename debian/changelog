@@ -1,3 +1,11 @@
+easel (1.0.3) stonking; urgency=low
+
+  * At fractional screen scales such as 125 % and 150 %, thin lines no longer
+    look faint or missing on screen. The picture and saved files were not
+    affected.
+
+ -- JOD <20030596+jackal-kr@users.noreply.github.com>  Fri, 13 Nov 2026 22:00:00 +0100
+
 easel (1.0.2) stonking; urgency=low
 
   * A waiting shape is outlined by the same dashed line as a selection, so
