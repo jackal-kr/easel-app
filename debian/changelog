@@ -1,3 +1,10 @@
+easel (1.0.1) stonking; urgency=low
+
+  * Typed text takes the color shown in the color box, also after Undo or a
+    move of the caret.
+
+ -- JOD <20030596+jackal-kr@users.noreply.github.com>  Fri, 13 Nov 2026 12:00:00 +0100
+
 easel (1.0.0) stonking; urgency=low
 
   * First full release: Shapes with 19 shapes that wait with handles, Crop to
