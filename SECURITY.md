@@ -4,4 +4,4 @@ Please report a vulnerability privately, through GitHub's private vulnerability 
 
 Easel opens picture files and reads the clipboard, so the most likely problems are a damaged or crafted picture that makes it crash or use too much memory. A report with the file (or how to make it) is the most useful.
 
-Only the latest release is supported. This is a beta, made by one person, so replies may take a few days.
+Only the latest release is supported. Easel is made by one person, so replies may take a few days.

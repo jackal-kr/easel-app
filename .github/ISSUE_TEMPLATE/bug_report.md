@@ -18,7 +18,8 @@ A short description. A screenshot helps if it is about how something looks.
 **Your setup**
 - Easel version (About Easel): 
 - Installed from: Flatpak / .deb / built from source
-- Distribution and desktop (for example Ubuntu 26.10, GNOME 49):
+- Distribution and desktop (for example Ubuntu 26.10, GNOME 51):
+- Screen scale (Settings › Displays, for example 100 %, 125 %, 200 %):
 - Language and style (light or dark):
 
 **A picture that shows it**
