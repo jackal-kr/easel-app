@@ -19008,7 +19008,7 @@ as5_wrap_grow_shrink (void)
 /* AS-16 (REQ-0017-05, REQ-0017-16), the box on screen: black "Hi" in DejaVu Sans 24 in a box on a white picture is shown as exactly the
    pixels its ink says (black where a character covers half a pixel or more, the picture's own white elsewhere; no other color, no
    tint), at 100 %, at 800 % and in a scrolled view; the outline round the box; eight navy handles; the caret black at the box's left,
-   1 pixel wide at 100 % and 2 at 800 %. */
+   1 pixel wide at 100 % and 2 at 800 %, between white edges 1 pixel wide (REQ-0017-29). */
 static void
 as16_box_shows_put_down_pixels (void)
 {
@@ -19034,7 +19034,7 @@ as16_box_shows_put_down_pixels (void)
   wait_for_next_frame (win);
   px = render_pixels (win, &w, &h, &cx, &cy);
   for (int y = by; y < by + bh; y++)
-    for (int x = bx + 1; x < bx + bw; x++)                                       /* the caret's column (bx) apart */
+    for (int x = bx + 2; x < bx + bw; x++)                                       /* the caret (bx) and its edge (bx + 1) apart */
       {
         uint32_t want = 0xFFFFFFFFu, got = rendered_pixel (px, w, cx, cy, x, y);
 
@@ -19045,7 +19045,11 @@ as16_box_shows_put_down_pixels (void)
       }
   g_assert_cmpint (black, >, 50);                                                /* "Hi" is there */
   for (int y = by + 2; y < by + 20; y++)
-    g_assert_cmphex (rendered_pixel (px, w, cx, cy, bx, y), ==, 0xFF000000u);    /* the caret, 1 pixel wide */
+    {
+      g_assert_cmphex (rendered_pixel (px, w, cx, cy, bx, y), ==, 0xFF000000u);    /* the caret, 1 pixel wide */
+      g_assert_cmphex (rendered_pixel (px, w, cx, cy, bx - 1, y), ==, 0xFFFFFFFFu);  /* between white edges (REQ-0017-29) */
+      g_assert_cmphex (rendered_pixel (px, w, cx, cy, bx + 1, y), ==, 0xFFFFFFFFu);
+    }
   {
     /* the outline: black and white dashes on the row just above the box (between the corner handles) */
     int dash_black = 0, dash_white = 0;
@@ -20525,7 +20529,7 @@ as12_starting_style (void)
 }
 
 /* AS-13 (REQ-0017-13, REQ-0017-02): an empty box, red picked, "red" typed, blue picked, " blue" typed: "red" red, " blue" blue; the
-   caret moved into "red" and "x" typed: "x" red, the foreground still blue; "blue" selected and the green swatch pressed: "blue" green
+   caret moved into "red" and "x" typed: "x" blue, the foreground (JOD, 2026-11-13), which stays blue; "blue" selected and the green swatch pressed: "blue" green
    as one edit, the foreground green; the colors swapped: no text changes; Opaque with a yellow background: yellow behind the text, then
    green after a green background pick; Transparent: the picture shows through. */
 static void
@@ -20559,7 +20563,8 @@ as13_text_color (void)
   easel_text_buffer_select (b, 1, 1);
   type_keys (win, "x");
   g_assert_true (box_text_is (win, "rxed blue"));
-  g_assert_cmphex (run_style_at (win, 1).color, ==, 0xFFFF0000u);
+  g_assert_cmphex (run_style_at (win, 1).color, ==, 0xFF0000FFu);
+  g_assert_cmphex (run_style_at (win, 0).color, ==, 0xFFFF0000u);
   g_assert_cmphex (easel_window_get_foreground (win), ==, 0xFF0000FFu);
   /* "blue" selected, green pressed: one edit */
   easel_text_buffer_select (b, 5, 9);
@@ -20574,7 +20579,7 @@ as13_text_color (void)
   /* a swap changes no text */
   g_action_group_activate_action (G_ACTION_GROUP (win), "swap-colors", NULL);
   g_assert_cmphex (run_style_at (win, 6).color, ==, 0xFF00FF00u);
-  g_assert_cmphex (run_style_at (win, 1).color, ==, 0xFFFF0000u);
+  g_assert_cmphex (run_style_at (win, 0).color, ==, 0xFFFF0000u);
   g_action_group_activate_action (G_ACTION_GROUP (win), "swap-colors", NULL);
   /* the background behind an Opaque box follows its color; a Transparent one shows the picture */
   easel_text_buffer_select (b, 0, 0);
@@ -20594,20 +20599,141 @@ as13_text_color (void)
   wait_for_next_frame (win);
   px = render_pixels (win, &w, &h, &cx, &cy);
   assert_near (rendered_pixel (px, w, cx, cy, bx + bw - 2, by + bh - 2), tinted (0xFFFFFFFFu));
-  /* the background picks set no color for the text typed next: a "z" at the start takes the style at the caret, the red "r"'s */
+  /* the background picks set no color for the text typed next: a "z" at the start, before the red "r", is in the foreground, green */
   type_keys (win, "z");
-  g_assert_cmphex (run_style_at (win, 0).color, ==, 0xFFFF0000u);
+  g_assert_cmphex (run_style_at (win, 0).color, ==, 0xFF00FF00u);
+  g_assert_cmphex (run_style_at (win, 1).color, ==, 0xFFFF0000u);
   /* a foreground chosen in the color chooser colors the selected text */
   {
     GdkRGBA magenta = { 1, 0, 1, 1 };
 
-    easel_text_buffer_select (b, 0, 1);
+    easel_text_buffer_select (b, 1, 2);
     easel_palette_bar_press_indicator (pal, TRUE);
     g_assert_true (easel_window_is_choosing_color (win));
     easel_window_finish_color_choice (win, &magenta);
-    g_assert_cmphex (run_style_at (win, 0).color, ==, 0xFFFF00FFu);
-    g_assert_cmphex (run_style_at (win, 1).color, ==, 0xFFFF0000u);
+    g_assert_cmphex (run_style_at (win, 1).color, ==, 0xFFFF00FFu);
+    g_assert_cmphex (run_style_at (win, 0).color, ==, 0xFF00FF00u);
   }
+  caret_blink (blink_at_start);
+  close_windows ();
+}
+
+static void press_key (EaselWindow *win, guint keyval, GdkModifierType state);
+
+/* In the rendered window, along picture row y from x0 to x1 (100 %, scale 1): the first column whose pixel is `mid` exactly with a pixel of
+   exactly `edge` on each side of it, the caret between its two edges (REQ-0017-29); -1 if none. */
+static int
+caret_column (const uint32_t *px, int w, int cx, int cy, int y, int x0, int x1, uint32_t mid, uint32_t edge)
+{
+  for (int x = x0; x < x1; x++)                     /* an empty box's caret is on its left edge, its edge outside */
+    if (rendered_pixel (px, w, cx, cy, x, y) == mid && rendered_pixel (px, w, cx, cy, x - 1, y) == edge
+        && rendered_pixel (px, w, cx, cy, x + 1, y) == edge)
+      return x;
+  return -1;
+}
+
+/* AS-29 (REQ-0017-29, -13, -08) through the user's path: the swatches picked by Space on a focused swatch (REQ-0022-04), Undo by the header
+   bar's button, letters through the window's keys, plain text by Paste as Plain Text. A white caret on a white picture shows between black
+   edges; "B" typed black, made white, "C" typed, Undo twice: "x" typed after the black "B" is white, the color box white, plain text
+   pasted there white; "red" in red with the box blue, "y" typed into it blue, the caret blue between white edges. With a box open a
+   swatch focused by a click leaves the keys with the box (REQ-0022-04), so those picks call what the swatch's click handler calls with
+   the primary button; the first pick, with no box, is Space on the focused swatch. */
+static void
+as29_typed_color_real_path (void)
+{
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  EaselPaletteBar *bar;
+  EaselMemoryClipboard *clipboard;
+  GtkButton *undo;
+  g_autofree uint32_t *px = NULL;
+  int w, h, cx, cy, bx, by, bw, bh, at;
+
+  g_object_get (gtk_settings_get_default (), "gtk-cursor-blink", &blink_at_start, NULL);
+  caret_blink (FALSE);
+  write_settings (TEXT_SETTINGS);
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  bar = easel_window_get_palette_bar (win);
+  clipboard = memory_clipboard (win);
+  undo = find_action_button (GTK_WIDGET (win), "win.undo");
+  g_assert_nonnull (undo);
+  use_tool (win, "text");
+  /* white on white: the caret's black edges */
+  gtk_widget_grab_focus (GTK_WIDGET (easel_palette_bar_get_swatch (bar, 15)));
+  press_key (win, GDK_KEY_space, 0);
+  g_assert_cmphex (easel_window_get_foreground (win), ==, 0xFFFFFFFFu);
+  shape_press_move (win, 1, 10, 10, 110, 50);
+  shape_release (win, 1);
+  g_assert_true (easel_canvas_text_box (canvas, &bx, &by, &bw, &bh));
+  g_assert_cmphex (easel_image_get (easel_window_get_picture (win), bx + 50, by + 30), ==, 0xFFFFFFFFu);
+  wait_for_next_frame (win);
+  px = render_pixels (win, &w, &h, &cx, &cy);
+  g_assert_cmpint (caret_column (px, w, cx, cy, by + 6, bx, bx + bw, 0xFFFFFFFFu, 0xFF000000u), >=, 0);
+  g_clear_pointer (&px, g_free);
+  /* JOD's report: black "B", made white, "C", two Undos, "x" */
+  easel_palette_bar_press (bar, 1, GDK_BUTTON_PRIMARY, 1);                    /* the swatch's click handler's call */
+  g_assert_cmphex (easel_window_get_foreground (win), ==, 0xFF000000u);
+  gtk_widget_grab_focus (GTK_WIDGET (canvas));
+  type_keys (win, "B");
+  g_assert_cmphex (run_style_at (win, 0).color, ==, 0xFF000000u);
+  press_key (win, GDK_KEY_Left, GDK_SHIFT_MASK);                                 /* "B" selected */
+  easel_palette_bar_press (bar, 15, GDK_BUTTON_PRIMARY, 1);                    /* the swatch's click handler's call */
+  g_assert_cmphex (run_style_at (win, 0).color, ==, 0xFFFFFFFFu);
+  gtk_widget_grab_focus (GTK_WIDGET (canvas));
+  press_key (win, GDK_KEY_End, 0);
+  type_keys (win, "C");
+  g_assert_true (box_text_is (win, "BC"));
+  g_assert_cmphex (run_style_at (win, 1).color, ==, 0xFFFFFFFFu);
+  g_signal_emit_by_name (undo, "clicked");                                        /* the "C", by the header bar's button */
+  g_signal_emit_by_name (undo, "clicked");                                        /* the white */
+  g_assert_true (box_text_is (win, "B"));
+  g_assert_cmphex (run_style_at (win, 0).color, ==, 0xFF000000u);
+  g_assert_cmphex (easel_window_get_foreground (win), ==, 0xFFFFFFFFu);          /* Undo leaves the color box */
+  /* the caret after the black "B" is in the color box's white, between black edges: the color the next letter takes */
+  gtk_widget_grab_focus (GTK_WIDGET (canvas));
+  press_key (win, GDK_KEY_End, 0);
+  g_assert_true (easel_canvas_text_box (canvas, &bx, &by, &bw, &bh));
+  wait_for_next_frame (win);
+  px = render_pixels (win, &w, &h, &cx, &cy);
+  g_assert_cmpint (caret_column (px, w, cx, cy, by + 6, bx, bx + bw, 0xFFFFFFFFu, 0xFF000000u), >, bx);
+  g_clear_pointer (&px, g_free);
+  gtk_widget_grab_focus (GTK_WIDGET (canvas));
+  press_key (win, GDK_KEY_End, 0);
+  type_keys (win, "x");
+  g_assert_true (box_text_is (win, "Bx"));
+  g_assert_cmphex (run_style_at (win, 1).color, ==, 0xFFFFFFFFu);
+  g_assert_cmphex (run_style_at (win, 0).color, ==, 0xFF000000u);
+  g_assert_cmphex (easel_window_get_foreground (win), ==, 0xFFFFFFFFu);
+  press_key (win, GDK_KEY_Home, 0);
+  press_key (win, GDK_KEY_Right, 0);                                             /* after the black "B" */
+  easel_memory_clipboard_set_other_text (clipboard, "e");
+  g_action_group_activate_action (G_ACTION_GROUP (win), "paste-plain", NULL);
+  wait_for_layout (win);
+  g_assert_true (box_text_is (win, "Bex"));
+  g_assert_cmphex (run_style_at (win, 1).color, ==, 0xFFFFFFFFu);
+  easel_canvas_put_down (canvas);
+  /* "red" in red, the box blue, "y" typed into it */
+  easel_palette_bar_press (bar, 17, GDK_BUTTON_PRIMARY, 1);                    /* the swatch's click handler's call */
+  shape_press_move (win, 1, 10, 100, 110, 140);
+  shape_release (win, 1);
+  gtk_widget_grab_focus (GTK_WIDGET (canvas));
+  type_keys (win, "red");
+  easel_palette_bar_press (bar, 21, GDK_BUTTON_PRIMARY, 1);                    /* the swatch's click handler's call */
+  g_assert_cmphex (easel_window_get_foreground (win), ==, 0xFF0000FFu);
+  gtk_widget_grab_focus (GTK_WIDGET (canvas));
+  press_key (win, GDK_KEY_Home, 0);
+  press_key (win, GDK_KEY_Right, 0);                                             /* into "red", after the "r" */
+  g_assert_cmphex (easel_window_get_foreground (win), ==, 0xFF0000FFu);          /* a caret move leaves the color box */
+  type_keys (win, "y");
+  g_assert_true (box_text_is (win, "ryed"));
+  g_assert_cmphex (run_style_at (win, 1).color, ==, 0xFF0000FFu);
+  g_assert_cmphex (run_style_at (win, 0).color, ==, 0xFFFF0000u);
+  g_assert_true (easel_canvas_text_box (canvas, &bx, &by, &bw, &bh));
+  wait_for_next_frame (win);
+  px = render_pixels (win, &w, &h, &cx, &cy);
+  at = caret_column (px, w, cx, cy, by + 6, bx, bx + bw, 0xFF0000FFu, 0xFFFFFFFFu);
+  g_assert_cmpint (at, >=, 0);
   caret_blink (blink_at_start);
   close_windows ();
 }
@@ -40313,7 +40439,7 @@ text_as5_switch_open_box (void)
       wait_for_next_frame (win);
       px = render_pixels (win, &w, &h, &cx, &cy);
       for (int y = 0; y < MIN (bh, 30); y++)
-        for (int x = 1; x < MIN (bw, 60); x++)                                  /* the caret's column (bx) apart */
+        for (int x = zoom == 100 ? 2 : 1; x < MIN (bw, 60); x++)               /* the caret (bx) apart, and at 100 % its edge (REQ-0017-29) */
           {
             int sx = cx + (bx + x) * z + z / 2, sy = cy + (by + y) * z + z / 2;
 
@@ -44536,6 +44662,7 @@ main (int argc, char **argv)
   g_test_add_func ("/0017/as11_card_shows_style", as11_card_shows_style);
   g_test_add_func ("/0017/as12_starting_style", as12_starting_style);
   g_test_add_func ("/0017/as13_text_color", as13_text_color);
+  g_test_add_func ("/0017/as29_typed_color_real_path", as29_typed_color_real_path);
   g_test_add_func ("/0017/as14_card_place_and_focus", as14_card_place_and_focus);
   g_test_add_func ("/0017/as15_size_field", as15_size_field);
   g_test_add_func ("/0017/as15_family_popover", as15_family_popover);

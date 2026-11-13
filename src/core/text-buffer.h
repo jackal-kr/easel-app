@@ -88,6 +88,10 @@ bool easel_text_buffer_selection (const EaselTextBuffer *b, size_t *from, size_t
    starting style. */
 void easel_text_buffer_style_at_caret (const EaselTextBuffer *b, bool at_line_start, EaselTextStyle *out);
 
+/* The style text typed at the caret takes (REQ-0017-29): the style at the caret, its color the given foreground, whatever color the text
+   at the caret or a style set for the text typed next has. */
+void easel_text_buffer_typed_style (const EaselTextBuffer *b, bool at_line_start, uint32_t foreground, EaselTextStyle *out);
+
 /* The style of the selected text, and in `mixed` the fields that differ within it (REQ-0017-14: shown empty or off). With nothing
    selected, the style at the caret and no mixed field. */
 void easel_text_buffer_selection_style (const EaselTextBuffer *b, bool at_line_start, EaselTextStyle *out, unsigned *mixed);

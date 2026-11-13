@@ -1009,7 +1009,7 @@ caret_at_line_start (const EaselTextBuffer *b)
 }
 
 static gboolean
-apply_op (EaselTextBuffer *b, const TextOp *op)
+apply_op (EaselTextBuffer *b, const TextOp *op, uint32_t foreground)
 {
   EaselTextStyle st;
   bool changed;
@@ -1022,7 +1022,7 @@ apply_op (EaselTextBuffer *b, const TextOp *op)
     return easel_text_buffer_insert_runs (b, op->text, op->len, op->runs, op->n_runs, op->kind);
   if (op->text == NULL)
     return easel_text_buffer_delete (b, op->from, op->to, op->kind);
-  style_at_caret_of (b, &st);                         /* typed text takes the style at the caret (REQ-0017-12) */
+  easel_text_buffer_typed_style (b, caret_at_line_start (b), foreground, &st);   /* the caret's style, the color box's color (REQ-0017-29) */
   return easel_text_buffer_insert (b, op->text, op->len, &st, op->kind);
 }
 
@@ -1037,7 +1037,7 @@ text_try (EaselCanvas *self, const TextOp *op)
   EaselTextInk ink = { 0 };
   int h;
   size_t len;
-  gboolean ok = copy != NULL && apply_op (copy, op), no_memory = !ok;   /* an edit fails only for memory (REQ-0017-08) */
+  gboolean ok = copy != NULL && apply_op (copy, op, self->foreground), no_memory = !ok;   /* an edit fails only for memory (REQ-0017-08) */
 
   if (ok)
     {
@@ -1048,7 +1048,7 @@ text_try (EaselCanvas *self, const TextOp *op)
       else if (!easel_text_render_ink (layout, copy, self->tb_x, self->tb_y, self->text_show_max, self->text_smooth, &ink))
         ok = FALSE, no_memory = TRUE;
     }
-  if (ok && !apply_op (self->text_buf, op))
+  if (ok && !apply_op (self->text_buf, op, self->foreground))
     ok = FALSE, no_memory = TRUE;
   easel_text_buffer_free (copy);
   if (!ok)
@@ -1170,8 +1170,8 @@ easel_canvas_text_paste (EaselCanvas *self, const char *text, size_t len, const 
     }
   at[len] = k;
   out[k] = '\0';
-  style_at_caret_of (self->text_buf, &caret);
-  /* Each part's own style; what a part does not give, and a family not installed, is the caret's (REQ-0017-20) */
+  easel_text_buffer_typed_style (self->text_buf, caret_at_line_start (self->text_buf), self->foreground, &caret);
+  /* Each part's own style (a part with no color in the foreground's, REQ-0017-29); what a part does not give, and a family not installed, is the caret's (REQ-0017-20) */
   for (size_t r = 0; r < n_rich || (r == 0 && n_rich == 0); r++)
     {
       EaselTextStyle st = caret;
@@ -1989,26 +1989,30 @@ append_text_highlight (EaselCanvas *self, GtkSnapshot *snapshot, double l)
       }
 }
 
-/* The caret at the place of the next character, in the color of the style at the caret, as tall as its line's text, 1 logical pixel
-   wide below 400 % and 2 from 400 % (REQ-0017-05). */
+/* The caret at the place of the next character, as tall as its line's text, 1 logical pixel wide below 400 % and 2 from 400 % (REQ-0017-05),
+   in the foreground color, the color of the next letter, between two 1-logical-pixel edges in black or white, whichever is farther from it,
+   so that it shows over any color, a white caret over a white picture too (REQ-0017-29). */
 static void
 append_text_caret (EaselCanvas *self, GtkSnapshot *snapshot, double l)
 {
   PangoRectangle strong;
-  EaselTextStyle st;
-  GdkRGBA c;
-  double w;
+  uint32_t fg = self->foreground;
+  GdkRGBA c, edge;
+  double w, x, y, h, luma;
 
   if (self->tool != EASEL_TOOL_TEXT || !self->text_open || self->text_layout == NULL || !self->caret_on || self->guides_hidden)
     return;
   pango_layout_get_cursor_pos (self->text_layout, (int) easel_text_buffer_caret (self->text_buf), &strong, NULL);
-  easel_canvas_text_style_at_caret (self, &st);
-  c = (GdkRGBA) { ((st.color >> 16) & 255) / 255.0f, ((st.color >> 8) & 255) / 255.0f, (st.color & 255) / 255.0f, 1.0f };
+  c = (GdkRGBA) { ((fg >> 16) & 255) / 255.0f, ((fg >> 8) & 255) / 255.0f, (fg & 255) / 255.0f, 1.0f };
+  luma = 0.2126 * c.red + 0.7152 * c.green + 0.0722 * c.blue;
+  edge = luma >= 0.5 ? (GdkRGBA) { 0, 0, 0, 1 } : (GdkRGBA) { 1, 1, 1, 1 };
   w = self->zoom >= 400 ? 2 : 1;
-  gtk_snapshot_append_color (snapshot, &c,
-                             &GRAPHENE_RECT_INIT ((float) ((self->tb_x + (double) strong.x / PANGO_SCALE) * l),
-                                                  (float) ((self->tb_y + (double) strong.y / PANGO_SCALE) * l), (float) w,
-                                                  (float) ((double) strong.height / PANGO_SCALE * l)));
+  x = (self->tb_x + (double) strong.x / PANGO_SCALE) * l;
+  y = (self->tb_y + (double) strong.y / PANGO_SCALE) * l;
+  h = (double) strong.height / PANGO_SCALE * l;
+  gtk_snapshot_append_color (snapshot, &edge, &GRAPHENE_RECT_INIT ((float) (x - 1), (float) y, 1.0f, (float) h));
+  gtk_snapshot_append_color (snapshot, &edge, &GRAPHENE_RECT_INIT ((float) (x + w), (float) y, 1.0f, (float) h));
+  gtk_snapshot_append_color (snapshot, &c, &GRAPHENE_RECT_INIT ((float) x, (float) y, (float) w, (float) h));
 }
 
 /* The part of a floating selection outside the picture, drawn over the canvas area so that the user sees what they move

@@ -23,7 +23,7 @@ belongs to (see `docs/specs/INDEX.md`). Behavior only.
 ## Text
 - Font controls: a card over the canvas, next to the text box, holds the font family, size and Bold / Italic / Underline / Strikethrough in one row; there is no separate dialog, and the text color is the foreground color picked on the palette: a palette color colors the selected text, or the text typed next; to color all of a box's text, select all (Ctrl+A) first.
 - Formatting can differ within one text box: select part of the text and change font, size, color and styles for just that part.
-- Copying or cutting text from a box keeps its formatting: the clipboard gets rich text as well as plain text, and pasting rich text into a box keeps each part's font, size, color and styles; plain text takes the style of the box at the caret.
+- Copying or cutting text from a box keeps its formatting: the clipboard gets rich text as well as plain text, and pasting rich text into a box keeps each part's font, size, color and styles; plain text takes the style of the box at the caret, in the foreground color.
 - Default text size is 12. Esc closes the Font card and the Thumbnail card.
 
 ## Colors

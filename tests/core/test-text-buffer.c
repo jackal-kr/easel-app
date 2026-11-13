@@ -134,6 +134,49 @@ style_at_caret_rule (void)
   easel_text_buffer_free (b);
 }
 
+/* REQ-0017-29 (JOD, 2026-11-13): typed text takes the style at the caret with the foreground's color, whatever color the text at the caret
+   has: after a 20-point bold black "a" and before a 12-point red "b", with the foreground white: white, 20, bold; at a line's start, "b"'s
+   12 points, white; a style set for the text typed next (Bold, a color) kept but its color the foreground's; a foreground with alpha 0 kept
+   as given; an empty buffer: the starting style, the foreground's color. */
+static void
+as29_typed_style (void)
+{
+  EaselTextStyle start = plain (), v = { 0 }, st;
+  EaselTextBuffer *b = easel_text_buffer_new (&start);
+  const uint32_t white = 0xFFFFFFFFu, clear = 0x00000000u;
+
+  CHECK (b != NULL);
+  easel_text_buffer_typed_style (b, false, white, &st);
+  CHECK (st.color == white && st.size_pt == 12 && st.flags == 0);             /* empty: the starting style, the foreground */
+  type (b, "ab");
+  easel_text_buffer_select (b, 0, 1);
+  v.size_pt = 20;
+  CHECK (easel_text_buffer_apply (b, EASEL_TEXT_SIZE, &v, false));
+  v.flags = EASEL_TEXT_BOLD;
+  CHECK (easel_text_buffer_apply (b, EASEL_TEXT_FLAG_BOLD, &v, false));
+  easel_text_buffer_select (b, 1, 2);
+  v.color = RED;
+  CHECK (easel_text_buffer_apply (b, EASEL_TEXT_COLOR, &v, false));
+  easel_text_buffer_select (b, 1, 1);
+  easel_text_buffer_style_at_caret (b, false, &st);
+  CHECK (st.color == BLACK && st.size_pt == 20);                              /* the caret's own: the black "a" */
+  easel_text_buffer_typed_style (b, false, white, &st);
+  CHECK (st.color == white && st.size_pt == 20 && (st.flags & EASEL_TEXT_BOLD) && strcmp (st.family, "DejaVu Sans") == 0);
+  easel_text_buffer_typed_style (b, true, white, &st);
+  CHECK (st.color == white && st.size_pt == 12 && !(st.flags & EASEL_TEXT_BOLD));   /* at a line's start: "b"'s, not red */
+  easel_text_buffer_typed_style (b, false, clear, &st);
+  CHECK (st.color == clear);                                                  /* alpha 0 as given (holes, as the Pencil) */
+  /* a style for the text typed next: its Bold kept, its color not */
+  easel_text_buffer_select (b, 2, 2);
+  v.flags = EASEL_TEXT_BOLD;
+  CHECK (easel_text_buffer_apply (b, EASEL_TEXT_FLAG_BOLD, &v, false));
+  v.color = RED;
+  CHECK (easel_text_buffer_apply (b, EASEL_TEXT_COLOR, &v, false));
+  easel_text_buffer_typed_style (b, false, white, &st);
+  CHECK (st.color == white && (st.flags & EASEL_TEXT_BOLD));
+  easel_text_buffer_free (b);
+}
+
 /* Inserting replaces the selection and puts the caret after the text; deleting puts it at the start; runs stay minimal (no empty run,
    no two equal neighbours) and on UTF-8 boundaries. */
 static void
@@ -694,5 +737,6 @@ main (void)
   RUN (paste_runs_one_edit);
   RUN (copy_is_independent);
   RUN (as26_step_size);
+  RUN (as29_typed_style);
   return 0;
 }

@@ -15381,3 +15381,49 @@ test: ui-0043
       self->hover_sel = FALSE;                        /* the shape's box and handles go with it: the tool's cursor (0043 Check F6) */
 --- replace
       (void) 0;
+
+# ---- text color, the change of 2026-11-13 (0017, REQ-0017-29) ----
+
+=== REQ-0017-29 typed text takes the color at the caret, not the foreground
+file: src/core/text-buffer.c
+test: core-text-buffer
+--- find
+  out->color = foreground;                       /* the color box's, never the caret's (REQ-0017-29) */
+--- replace
+  (void) foreground;
+
+=== REQ-0017-29 typed text takes the color at the caret in the canvas
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+  easel_text_buffer_typed_style (b, caret_at_line_start (b), foreground, &st);   /* the caret's style, the color box's color (REQ-0017-29) */
+--- replace
+  easel_text_buffer_style_at_caret (b, caret_at_line_start (b), &st); (void) foreground;
+
+=== REQ-0017-29 plain pasted text takes the color at the caret
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+  easel_text_buffer_typed_style (self->text_buf, caret_at_line_start (self->text_buf), self->foreground, &caret);
+--- replace
+  easel_text_buffer_style_at_caret (self->text_buf, caret_at_line_start (self->text_buf), &caret);
+
+=== REQ-0017-29 the caret is drawn in the color at the caret, not the foreground
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+  uint32_t fg = self->foreground;
+  GdkRGBA c, edge;
+--- replace
+  EaselTextStyle at;
+  uint32_t fg = (easel_canvas_text_style_at_caret (self, &at), at.color);
+  GdkRGBA c, edge;
+
+=== REQ-0017-29 the caret has no edges and vanishes over its own color
+file: src/ui/canvas.c
+test: ui-0017
+--- find
+  gtk_snapshot_append_color (snapshot, &edge, &GRAPHENE_RECT_INIT ((float) (x - 1), (float) y, 1.0f, (float) h));
+  gtk_snapshot_append_color (snapshot, &edge, &GRAPHENE_RECT_INIT ((float) (x + w), (float) y, 1.0f, (float) h));
+--- replace
+  (void) edge;

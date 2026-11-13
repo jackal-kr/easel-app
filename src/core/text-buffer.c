@@ -258,6 +258,13 @@ easel_text_buffer_style_at_caret (const EaselTextBuffer *b, bool at_line_start, 
 }
 
 void
+easel_text_buffer_typed_style (const EaselTextBuffer *b, bool at_line_start, uint32_t foreground, EaselTextStyle *out)
+{
+  easel_text_buffer_style_at_caret (b, at_line_start, out);
+  out->color = foreground;                       /* the color box's, never the caret's (REQ-0017-29) */
+}
+
+void
 easel_text_buffer_selection_style (const EaselTextBuffer *b, bool at_line_start, EaselTextStyle *out, unsigned *mixed)
 {
   size_t from, to;
