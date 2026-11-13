@@ -108,11 +108,61 @@ format_round_trip (void)
   free (text);
 }
 
+/* The text into a buffer too small for it, at every size short of the whole text (the longest: every entry with alpha): refused, nothing
+   written past the buffer, and the text in it ended right after the last whole entry that fits (no part of the next one); the exact size
+   fits. */
+static void
+format_into_small_buffer (void)
+{
+  enum { GUARD = 64 };
+  EaselPalette p;
+  char *whole;
+  size_t need;
+  char *buf;
+
+  easel_palette_defaults (&p);
+  for (int i = 0; i < EASEL_PALETTE_SIZE; i++)
+    p.colors[i] = (p.colors[i] & 0xFFFFFFu) | 0x80000000u;
+  whole = easel_palette_format (&p);
+  CHECK (whole != NULL);
+  need = strlen (whole) + 1;
+  CHECK (need == 10 + 9 * 17 + 19 * 18 + 1);                      /* the longest text: 505 bytes and its NUL */
+  buf = malloc (need + GUARD);
+  CHECK (buf != NULL);
+  for (size_t cap = 0; cap < need; cap++)
+    {
+      memset (buf, 0x5A, need + GUARD);
+      CHECK (!easel_palette_format_into (&p, buf, cap));
+      for (size_t k = cap; k < need + GUARD; k++)
+        CHECK (buf[k] == 0x5A);
+      if (cap > 0)
+        {
+          size_t kept = 0, end = 10;                              /* the header, then each entry: 17 bytes for color1..9, 18 after */
+
+          for (int i = 0; end < cap; i++)
+            {
+              kept = end;
+              end += i < 9 ? 17 : 18;
+            }
+          CHECK (strlen (buf) == kept);
+          CHECK (memcmp (buf, whole, kept) == 0);
+        }
+    }
+  memset (buf, 0x5A, need + GUARD);
+  CHECK (easel_palette_format_into (&p, buf, need));
+  CHECK (strcmp (buf, whole) == 0);
+  for (size_t k = need; k < need + GUARD; k++)
+    CHECK (buf[k] == 0x5A);
+  free (buf);
+  free (whole);
+}
+
 int
 main (void)
 {
   RUN (as1_default_palette);
   RUN (as16_palette_syntax);
   RUN (format_round_trip);
+  RUN (format_into_small_buffer);
   return 0;
 }

@@ -15642,3 +15642,11 @@ test: ui-0044
          && self->base_key.high_contrast == adw_style_manager_get_high_contrast (style);
 --- replace
          && TRUE;
+
+=== REQ-0003-15 the palette text takes an entry cut short by one byte as fitting
+file: src/core/palette.c
+test: core-palette
+--- find
+      if (n < 0 || (size_t) n >= cap - len)
+--- replace
+      if (n < 0 || (size_t) n > cap - len)

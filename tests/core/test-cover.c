@@ -295,7 +295,7 @@ line_reference (int x0, int y0, int x1, int y1, int w, int px, int py)
         __int128 t = (__int128) vx * dx + (__int128) vy * dy, c = (__int128) vx * dy - (__int128) vy * dx;
 
         if (l2 == 0)
-          n += vx * vx <= hh && vy * vy <= hh;
+          n += (__int128) vx * vx <= hh && (__int128) vy * vy <= hh;
         else
           n += c * c <= hh * l2 && (t >= 0 || t * t <= hh * l2) && (t <= l2 || (t - l2) * (t - l2) <= hh * l2);
       }

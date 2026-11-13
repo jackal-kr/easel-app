@@ -215,3 +215,11 @@ Data that grows with use: none. The palette is a fixed 28 colors; the file is re
 - [x] T008 Remember the palette: load at start, write on each confirmed edit (REQ-0003-15, REQ-0003-16, REQ-0003-17; AS-14, AS-15) - done when ui `as15_swatch_changes_when_write_fails` passes and a confirmed edit in the window leaves palette.ini with that value, which the next window shows
 - [x] T009 Bar dimensions and swap button (REQ-0003-18, REQ-0003-19; AS-18) - done when ui `as18_bar_geometry_and_swap_button` passes (indicator 46x42 with the two squares at their positions, swatch pitch 22, swap button swaps, and does nothing while the chooser is open) and manual M9 passes
 - [x] T010 Close the gaps /sdd-check 0003 found (REQ-0003-09, REQ-0003-15) - done when io `as15_existing_file_kept_when_write_fails` passes and fails when the palette is written in place, and ui `as9` shows a swatch edit leaves no hidden undo step
+- [x] T011 (Change note, 2026-11-13, after 1.0.4; no change of behavior) The palette file's text writer bounds-safe (REQ-0003-15), from two
+  CodeQL alerts (cpp/overflowing-snprintf): each entry is written only while it fits, and a buffer too small is refused with the text
+  ended after the last whole entry. The buffer was already large enough (515 bytes for at most 505 and the NUL). - done when core
+  `format_into_small_buffer` passes over every buffer size short of the longest text, with guard bytes after it.
+  Result: core `format_into_small_buffer` (every size from 0 to 505 bytes refused, nothing written past the buffer, the text ended after
+  the last whole entry; 506 fits and equals the file text); first red at `test-palette.c:134` (the moved code never refused); the
+  terminator removed, it failed at `test-palette.c:147`; mutant REQ-0003-15 "an entry cut short by one byte as fitting" killed at
+  `test-palette.c:136` (one byte written past the buffer).

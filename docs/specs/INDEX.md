@@ -7,7 +7,7 @@ Vertical slices first (a thin end-to-end feature), breadth later.
 |---|---|---|---|
 | 0001 | walking-skeleton | Start in Pan mode on a blank canvas (size and background from the configuration file), pan and zoom it, draw with the pencil, save as PNG, quit with an unsaved-changes prompt | **Pilot.** Includes Pan and the settings file. Write together, slowly |
 | 0002 | undo-redo | Undo/redo with memory budget and "saved" state | Deferred idea: keep old undo steps on disk instead of dropping them; revisit only if 512 MB proves too small |
-| 0003 | colors-palette | Palette, fore/background colors, Edit Colors | |
+| 0003 | colors-palette | Palette, fore/background colors, Edit Colors | 2026-11-13: the palette text writer made bounds-safe after two CodeQL alerts, no change of behavior (T011) |
 | 0004 | canvas-view | Zoom range and commands, Fit to Window, View and Image menus with panel toggles, status bar, pixel grid and Grid dialog, resize handles, Attributes dialog | Builds on Pan from 0001. History steps store pixel indexes; any change of picture size must clear the history or record the size. 8000x8000 now draws, undoes and redoes within one refresh: the picture is shown as tiles (T001, T002, measured in the 0004 Plan) |
 | 0005 | file-io | New, Open and Save As, open/save formats (png, jpeg, bmp, tiff, webp; gif open-only), modified tracking for Open and New, a file on the command line, errors | gif open-only; the saved state itself is 0002. Open and New clear the undo history; sizes may differ (a resize inside one picture is a history step, 0004; a different picture is not) |
 | 0006 | freehand-tools | Brush shapes/sizes, airbrush, eraser | |

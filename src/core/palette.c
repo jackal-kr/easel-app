@@ -67,26 +67,54 @@ easel_palette_parse (const char *text, size_t len, EaselPalette *p)
   *p = parsed;
 }
 
+/* Each entry appended only while it fits: snprintf's result is checked before `len` grows, so `len` stays below `cap` and `cap - len`
+   cannot wrap. */
+bool
+easel_palette_format_into (const EaselPalette *p, char *text, size_t cap)
+{
+  size_t len = 0;
+  int n;
+
+  if (cap == 0)
+    return false;
+  n = snprintf (text, cap, "[" SECTION "]\n");
+  if (n < 0 || (size_t) n >= cap)
+    {
+      text[0] = '\0';
+      return false;
+    }
+  len = (size_t) n;
+  for (int i = 0; i < EASEL_PALETTE_SIZE; i++)
+    {
+      uint32_t c = p->colors[i];
+
+      if ((c >> 24) == 0xFF)
+        n = snprintf (text + len, cap - len, "color%d=#%06X\n", i + 1, (unsigned) (c & 0xFFFFFF));
+      else
+        n = snprintf (text + len, cap - len, "color%d=#%06X%02X\n", i + 1, (unsigned) (c & 0xFFFFFF), (unsigned) (c >> 24));
+      if (n < 0 || (size_t) n >= cap - len)
+        {
+          text[len] = '\0';                     /* the entries that fitted, no part of this one */
+          return false;
+        }
+      len += (size_t) n;
+    }
+  return true;
+}
+
 char *
 easel_palette_format (const EaselPalette *p)
 {
   /* "[palette]\n" plus at most "color28=#RRGGBBAA\n" (18 bytes) per entry. */
   size_t cap = 10 + EASEL_PALETTE_SIZE * 18 + 1;
   char *text = malloc (cap);
-  size_t len;
 
   if (text == NULL)
     return NULL;
-  len = (size_t) snprintf (text, cap, "[" SECTION "]\n");
-  for (int i = 0; i < EASEL_PALETTE_SIZE; i++)
+  if (!easel_palette_format_into (p, text, cap))
     {
-      uint32_t c = p->colors[i];
-
-      if ((c >> 24) == 0xFF)
-        len += (size_t) snprintf (text + len, cap - len, "color%d=#%06X\n", i + 1, (unsigned) (c & 0xFFFFFF));
-      else
-        len += (size_t) snprintf (text + len, cap - len, "color%d=#%06X%02X\n", i + 1, (unsigned) (c & 0xFFFFFF),
-                                  (unsigned) (c >> 24));
+      free (text);                              /* not reached: `cap` (515) holds the longest text, 505 bytes and its NUL */
+      return NULL;
     }
   return text;
 }
