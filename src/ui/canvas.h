@@ -105,6 +105,8 @@ gsize easel_canvas_get_bytes_copied (EaselCanvas *self);
 
 /* Device pixels per logical pixel of the canvas's surface. */
 double easel_canvas_get_scale (EaselCanvas *self);
+/* The logical distance the canvas draws up and left of its origin, so the picture's corner is on a whole device pixel (REQ-0025-07). */
+void easel_canvas_get_device_shift (EaselCanvas *self, double *dx, double *dy);
 
 /* While blocked (the color chooser is open, REQ-0003-14), presses on the canvas do nothing. */
 /* A primary press (the mouse's, or Space at the keyboard's marker) given as the picture pixel under it (REQ-0025-02). */

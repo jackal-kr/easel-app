@@ -498,6 +498,59 @@ easel_canvas_get_scale (EaselCanvas *self)
   return surface ? gdk_surface_get_scale (surface) : 1.0;
 }
 
+/* How far the canvas draws up and to the left of its own origin, in logical pixels, so that the picture's corner falls on a whole device pixel
+   on a screen whose scale is not whole (REQ-0025-07): the fraction of its device position in its surface, over the scale. 0 on a whole scale.
+   Read at each use, never kept: the window can move or change scale (the change of 2026-11-13). */
+void
+easel_canvas_get_device_shift (EaselCanvas *self, double *dx, double *dy)
+{
+  GtkNative *native = gtk_widget_get_native (GTK_WIDGET (self));
+  double scale = easel_canvas_get_scale (self), tx = 0, ty = 0;
+  graphene_point_t p;
+
+  *dx = *dy = 0;
+  if (native == NULL || !gtk_widget_compute_point (GTK_WIDGET (self), GTK_WIDGET (native), &GRAPHENE_POINT_INIT (0, 0), &p))
+    return;
+  gtk_native_get_surface_transform (native, &tx, &ty);
+  *dx = easel_view_device_shift ((p.x + tx) * scale) / scale;
+  *dy = easel_view_device_shift ((p.y + ty) * scale) / scale;
+}
+
+/* The part of the canvas the view shows, in the drawing's places (the widget's, moved by the shift, REQ-0025-07). */
+static gboolean
+seen_in_drawing (EaselCanvas *self, graphene_rect_t *seen)
+{
+  double dx, dy;
+
+  if (!gtk_widget_compute_bounds (gtk_widget_get_parent (GTK_WIDGET (self)), GTK_WIDGET (self), seen))
+    return FALSE;
+  easel_canvas_get_device_shift (self, &dx, &dy);
+  seen->origin.x += (float) dx;
+  seen->origin.y += (float) dy;
+  return TRUE;
+}
+
+/* A position of the widget as a place in the drawing (the snapshot drawn moved back by the shift), and back. */
+static void
+to_drawing (EaselCanvas *self, double *x, double *y)
+{
+  double dx, dy;
+
+  easel_canvas_get_device_shift (self, &dx, &dy);
+  *x += dx;
+  *y += dy;
+}
+
+static void
+from_drawing (EaselCanvas *self, double *x, double *y)
+{
+  double dx, dy;
+
+  easel_canvas_get_device_shift (self, &dx, &dy);
+  *x -= dx;
+  *y -= dy;
+}
+
 gboolean
 easel_canvas_get_handle_rect (EaselCanvas *self, EaselHandle handle, graphene_rect_t *rect)
 {
@@ -1801,7 +1854,7 @@ text_box_area (EaselCanvas *self, double l, int *bx, int *by, int *x0, int *y0, 
   *y0 = MAX (*y0, 0);
   *x1 = MIN (*x1, self->img->width);
   *y1 = MIN (*y1, self->img->height);
-  if (gtk_widget_compute_bounds (gtk_widget_get_parent (GTK_WIDGET (self)), GTK_WIDGET (self), &seen))
+  if (seen_in_drawing (self, &seen))
     {
       *x0 = MAX (*x0, (int) floor (seen.origin.x / l) - 1);
       *y0 = MAX (*y0, (int) floor (seen.origin.y / l) - 1);
@@ -2032,7 +2085,7 @@ append_float_outside (EaselCanvas *self, GtkSnapshot *snapshot, double l)
 
   if (self->sel_state != 2 || f->px == NULL)
     return;
-  if (!gtk_widget_compute_bounds (gtk_widget_get_parent (GTK_WIDGET (self)), GTK_WIDGET (self), &seen))
+  if (!seen_in_drawing (self, &seen))
     return;
   vx0 = (int) floor (seen.origin.x / l) - 1;
   vy0 = (int) floor (seen.origin.y / l) - 1;
@@ -3342,7 +3395,7 @@ easel_canvas_top_left_in_view (EaselCanvas *self, int *x, int *y)
   graphene_rect_t seen;
 
   *x = *y = 0;
-  if (self->img == NULL || !gtk_widget_compute_bounds (gtk_widget_get_parent (GTK_WIDGET (self)), GTK_WIDGET (self), &seen))
+  if (self->img == NULL || !seen_in_drawing (self, &seen))
     return;
   /* The pixel that holds the top-left point of the part of the picture in view; the margin before the picture counts as (0, 0). */
   *x = (int) CLAMP (floor (seen.origin.x / l), 0, self->img->width - 1);
@@ -3812,7 +3865,7 @@ append_cells_by_edges (EaselCanvas *self, GtkSnapshot *snapshot, const uint32_t 
   g_autoptr (GBytes) bytes = NULL;
   g_autoptr (GdkTexture) texture = NULL;
 
-  if (!gtk_widget_compute_bounds (gtk_widget_get_parent (GTK_WIDGET (self)), GTK_WIDGET (self), &seen))
+  if (!seen_in_drawing (self, &seen))
     return TRUE;
   dx0 = MAX (view_edge (self, x0), (int) floor (seen.origin.x * scale));
   dy0 = MAX (view_edge (self, y0), (int) floor (seen.origin.y * scale));
@@ -3938,7 +3991,7 @@ append_view_by_edges (EaselCanvas *self, GtkSnapshot *snapshot, GdkTexture **pre
   graphene_rect_t seen;
   int x0, y0, x1, y1, vw, vh;
 
-  if (!gtk_widget_compute_bounds (gtk_widget_get_parent (GTK_WIDGET (self)), GTK_WIDGET (self), &seen))
+  if (!seen_in_drawing (self, &seen))
     return TRUE;
   x0 = MAX (0, (int) floor (seen.origin.x * scale));
   y0 = MAX (0, (int) floor (seen.origin.y * scale));
@@ -4095,7 +4148,7 @@ append_grid (EaselCanvas *self, GtkSnapshot *snapshot)
 
   /* The part of the picture the view shows, in the canvas's own coordinates: the viewport's bounds seen from the canvas,
      so that the margin around the picture (REQ-0009-01) needs no arithmetic here. */
-  if (!gtk_widget_compute_bounds (gtk_widget_get_parent (GTK_WIDGET (self)), GTK_WIDGET (self), &seen))
+  if (!seen_in_drawing (self, &seen))
     return;
   vx0 = fmax (0, seen.origin.x);
   vy0 = fmax (0, seen.origin.y);
@@ -4304,7 +4357,12 @@ magnifier_box (EaselCanvas *self, int *bx, int *by, int *bw, int *bh)
   if (!gtk_widget_compute_point (self->area != NULL ? self->area : GTK_WIDGET (self), GTK_WIDGET (self),
                                  &GRAPHENE_POINT_INIT ((float) self->pointer_ax, (float) self->pointer_ay), &p))
     return FALSE;
-  to_pixel (self, p.x, p.y, &px, &py);
+  {
+    double x = p.x, y = p.y;
+
+    to_drawing (self, &x, &y);                     /* (REQ-0025-07) */
+    to_pixel (self, x, y, &px, &py);
+  }
   if (px < 0 || py < 0 || px >= self->img->width || py >= self->img->height)
     return FALSE;
   h = adjustment (self, GTK_ORIENTATION_HORIZONTAL);
@@ -4679,7 +4737,7 @@ append_shape_preview (EaselCanvas *self, GtkSnapshot *snapshot)
 
   if (!shown_figure (self, &f, &draw, &other))
     return;
-  if (!gtk_widget_compute_bounds (gtk_widget_get_parent (GTK_WIDGET (self)), GTK_WIDGET (self), &seen))
+  if (!seen_in_drawing (self, &seen))
     return;
   by_edges = view_built_by_edges (self);
   scale = easel_canvas_get_scale (self);
@@ -4855,7 +4913,7 @@ selection_preview (EaselCanvas *self)
   double l = self->zoom / (100.0 * easel_canvas_get_scale (self));
 
   if (self->sel_state != 2 || !easel_selection_bounds (f, TRUE, self->img, &bx0, &by0, &bx1, &by1)
-      || !gtk_widget_compute_bounds (gtk_widget_get_parent (GTK_WIDGET (self)), GTK_WIDGET (self), &seen))
+      || !seen_in_drawing (self, &seen))
     {
       free_trail (self);
       return NULL;
@@ -5105,7 +5163,7 @@ gradient_preview (EaselCanvas *self, double l)
 
   if (!gradient)
     return NULL;
-  if (!gtk_widget_compute_bounds (gtk_widget_get_parent (GTK_WIDGET (self)), GTK_WIDGET (self), &seen))
+  if (!seen_in_drawing (self, &seen))
     return NULL;
   textures = g_try_new0 (GdkTexture *, n);
   for (int i = 0; textures != NULL && i < n; i++)
@@ -5264,20 +5322,21 @@ static void append_bands (EaselCanvas *self, GtkSnapshot *snapshot, double l);
 /* ---- The keyboard's marker (0022) ---- */
 
 static void mouse_takes_marker (EaselCanvas *self, double x, double y);
+static void marker_center (EaselCanvas *self, double *x, double *y);
 void easel_canvas_marker_bounds (EaselCanvas *self, double *x0, double *y0, double *x1, double *y1);
 
 /* While the marker shows, the hover of the position and the Magnifier's box is its (REQ-0022-11). */
 static void
 marker_hover (EaselCanvas *self)
 {
-  double x0, y0, x1, y1;
+  double mx, my;
   gboolean pressing = self->key_pressing;
 
   if (!self->marker_on || self->img == NULL)
     return;
-  easel_canvas_marker_bounds (self, &x0, &y0, &x1, &y1);
+  marker_center (self, &mx, &my);                  /* the marker is drawn in the drawing; the entry takes the widget's place */
   self->key_pressing = TRUE;
-  easel_canvas_pointer_at (self, (x0 + x1) / 2, (y0 + y1) / 2);
+  easel_canvas_pointer_at (self, mx, my);
   self->key_pressing = pressing;
 }
 
@@ -5354,20 +5413,32 @@ easel_canvas_is_key_held (EaselCanvas *self)
   return self->key_button != 0;
 }
 
+/* The marker's middle as a place of the widget, the one the pointer's entry points take (the marker is drawn in the drawing, REQ-0025-07). */
+static void
+marker_center (EaselCanvas *self, double *x, double *y)
+{
+  double x0, y0, x1, y1;
+
+  easel_canvas_marker_bounds (self, &x0, &y0, &x1, &y1);
+  *x = (x0 + x1) / 2;
+  *y = (y0 + y1) / 2;
+  from_drawing (self, x, y);
+}
+
 void
 easel_canvas_key_press (EaselCanvas *self, guint button, gboolean ctrl, gboolean shift)
 {
-  double x0, y0, x1, y1;
+  double mx, my;
 
   /* In Pan the arrows already move the view: a primary press there is nothing. */
   if (self->img == NULL || easel_canvas_is_key_held (self) || (self->tool == EASEL_TOOL_PAN && button == GDK_BUTTON_PRIMARY))
     return;
-  easel_canvas_marker_bounds (self, &x0, &y0, &x1, &y1);
+  marker_center (self, &mx, &my);
   self->key_pressing = TRUE;
   self->click_count = 0;
   easel_canvas_set_ctrl (self, ctrl);
   easel_canvas_set_shift (self, shift);
-  easel_canvas_press (self, button, (x0 + x1) / 2, (y0 + y1) / 2);
+  easel_canvas_press (self, button, mx, my);
   easel_canvas_set_shift (self, FALSE);
   self->key_pressing = FALSE;
   self->key_button = button;
@@ -5397,16 +5468,16 @@ easel_canvas_key_release (EaselCanvas *self)
 void
 easel_canvas_key_move (EaselCanvas *self, int dx, int dy)
 {
-  double x0, y0, x1, y1;
+  double mx, my;
 
   if (self->img == NULL)
     return;
   easel_canvas_marker_set (self, CLAMP (self->marker_x + dx, 0, self->img->width - 1), CLAMP (self->marker_y + dy, 0, self->img->height - 1));
   if (!easel_canvas_is_key_held (self))
     return;
-  easel_canvas_marker_bounds (self, &x0, &y0, &x1, &y1);
+  marker_center (self, &mx, &my);
   self->key_pressing = TRUE;
-  easel_canvas_motion (self, (x0 + x1) / 2, (y0 + y1) / 2);
+  easel_canvas_motion (self, mx, my);
   self->key_pressing = FALSE;
 }
 
@@ -5421,11 +5492,11 @@ easel_canvas_key_hold_event (EaselCanvas *self, GdkEventType type, guint button)
     return TRUE;
   other = self->key_button == GDK_BUTTON_PRIMARY ? GDK_BUTTON_SECONDARY : GDK_BUTTON_PRIMARY;
   {
-    double x0, y0, x1, y1;
+    double mx, my;
 
-    easel_canvas_marker_bounds (self, &x0, &y0, &x1, &y1);
+    marker_center (self, &mx, &my);
     self->key_pressing = TRUE;
-    easel_canvas_press (self, other, (x0 + x1) / 2, (y0 + y1) / 2);
+    easel_canvas_press (self, other, mx, my);
     easel_canvas_release (self, other);
     self->key_pressing = FALSE;
   }
@@ -5522,7 +5593,21 @@ easel_canvas_snapshot (GtkWidget *widget, GtkSnapshot *snapshot)
   if (self->tiles == NULL)
     return;
   clock_gettime (CLOCK_THREAD_CPUTIME_ID, &start);
-  canvas_snapshot_frame (self, snapshot);
+  {
+    double dx, dy;
+
+    easel_canvas_get_device_shift (self, &dx, &dy);
+    if (dx != 0 || dy != 0)
+      {
+        /* The picture's corner on a whole device pixel (REQ-0025-07): everything drawn, the picture and every overlay, moves together */
+        gtk_snapshot_save (snapshot);
+        gtk_snapshot_translate (snapshot, &GRAPHENE_POINT_INIT ((float) -dx, (float) -dy));
+        canvas_snapshot_frame (self, snapshot);
+        gtk_snapshot_restore (snapshot);
+      }
+    else
+      canvas_snapshot_frame (self, snapshot);
+  }
   if (self->draw_delay_ms > 0)
     {
       struct timespec now;
@@ -7019,6 +7104,8 @@ easel_canvas_press_timed (EaselCanvas *self, guint button, double x, double y, g
 {
   int px, py;
 
+  to_drawing (self, &x, &y);                       /* the place in the drawing, as the frame shows it (REQ-0025-07) */
+
   /* Something comes to be held (every press, of a button or of a key): a touchpad's partial notch is dropped and the pinch counts again
      from its scale now, also when no scale comes during the hold (REQ-0036-02; 0036 Check F2). */
   self->notch_acc = 0;
@@ -7554,6 +7641,8 @@ easel_canvas_motion (EaselCanvas *self, double x, double y)
 {
   int px, py;
 
+  to_drawing (self, &x, &y);                       /* (REQ-0025-07) */
+
   if (self->painting)
     {
       to_pixel (self, x, y, &px, &py);
@@ -8004,6 +8093,8 @@ void
 easel_canvas_pointer_at (EaselCanvas *self, double x, double y)
 {
   int px, py;
+
+  to_drawing (self, &x, &y);                       /* (REQ-0025-07) */
 
   EaselHandle hover;
 

@@ -45,7 +45,7 @@ Order suggestion: A and B first, C after the graphics path audit, D with file in
 
 ## From 0025 (pixel contract tests)
 - The tint, the outline, the box's frame and the picture's far-edge resize handles may lie up to 2 device pixels off the drawn cell edges at a fractional zoom (accepted, JOD, 2026-11-02). `/0025-open/overlay_sides_at_fractional_zoom` is the known-red record.
-- A fractional desktop scale (125 %, 150 %) keeps the renderer's scaling and has no test: only scale 1 and scale 2 have been tried.
+- A fractional desktop scale (125 %, 150 %) keeps the renderer's scaling and has no test: only scale 1 and scale 2 have been tried. Done 2026-11-13 from 100 % (0025's change, REQ-0025-07, release 1.0.3): built on the device edges, tested at 1.25 and 1.5 (`ui-0025-scale125`, `ui-0025-scale150`), seen by JOD at 125 %. Below 100 % on such a screen the look is still the renderer's, not specified.
 - A screen of scale 2 has been tried only in the headless session, never by eye.
 - The frame times of fractional zooms are not reliably measured: a covered window gets no frame callbacks on Wayland. The CPU figures stand, and M1 was smooth by eye (JOD, 2026-11-02).
 - `append_float_outside` builds a texture it does not use and rebuilds the cells once per band: a small waste on a rare path.
@@ -128,6 +128,9 @@ Order suggestion: A and B first, C after the graphics path audit, D with file in
 ## Idle redraw cost (JOD, 2026-11-13: deferred from 0043's check, F2)
 - While moving dashes are shown (animations on), each step (12 a second) draws the whole canvas again: idle, a waiting shape costs 32 % of a core (a large Smooth Heart) or 19 % (Sharp), a marked selection 14 % (1920 x 1080 fitted, isolated session, cairo renderer). Keep the drawn picture between frames and redraw only the moving dashes; budget: idle CPU at most 5 % of a core with animations on, measured on the same large cases. Its own spec, after the 0041 and 0043 builds.
 
+## Considered and declined
+- Polygon: a right press while a polygon waits closes it (instead of dropping it, as in XP) - declined 2026-11-13; the XP behaviour stays.
+
 ## From the mutation list
 - REQ-0017-14, the popover's scroll guard: survives on GTK 4.24, accepted (JOD, 2026-11-02). Re-decide at packaging-release, when the minimum GTK is chosen.
 
@@ -179,6 +182,6 @@ Order suggestion: A and B first, C after the graphics path audit, D with file in
 ## Before the next release
 Gathered from the sections above; none has written steps yet. All four are still open in 1.0.x (renamed from "Before the first beta", 2026-11-13).
 - Orca on the app, an open text box included (From 0022).
-- A fractional desktop scale (125 %, 150 %) and a scale 2 screen by eye (From 0025, 0029's edge case).
+- A fractional desktop scale (125 %, 150 %) and a scale 2 screen by eye (From 0025, 0029's edge case). 125 % by eye: done 2026-11-13 (0025's T023); 150 % and scale 2 by eye still open.
 - JOD's reading of ru, uk and pl and their Help pages (From 0023).
 - REQ-0017-14's scroll guard re-decided with the minimum GTK (From the mutation list; in 0024's row).

@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 /* Measurements of the view built by the edges (0025, T007): the real canvas with a 4000 x 3000 picture, the view in the middle, at 800 %
-   (the renderer's scaling, as a control), 129 % and 150 %: process CPU and frame time per frame while scrolling by a pixel, while drawing
+   (the renderer's scaling, as a control), 100 % (built on a screen whose scale is not whole, REQ-0025-07), 129 % and 150 %: process CPU and frame time per frame while scrolling by a pixel, while drawing
    with the Pencil, for a repaint with nothing changed, with the grid and a marked selection (tint, outline, handles) over a scroll, and
    with a floating selection over a scroll. Run in the real session with no other Easel window open and the pointer outside its window;
    it prints numbers and does not fail.
@@ -283,6 +283,7 @@ main (int argc, char **argv)
 
     if (argc <= 1 || g_strcmp0 (argv[1], "fractional") != 0)
       measure_zoom (config_dir, 800, pencil_only);
+    measure_zoom (config_dir, 100, pencil_only);       /* on a screen whose scale is not whole, built by edges from 2026-11-13 (REQ-0025-07) */
     measure_zoom (config_dir, 129, pencil_only);
     measure_zoom (config_dir, 150, pencil_only);
   }

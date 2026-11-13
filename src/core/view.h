@@ -49,9 +49,13 @@ int easel_view_edge_below (int k, int pct);
 bool easel_view_thumbnail_fits (int w, int h);
 /* Whether the view places its squares by those edges: from 100 % up, when a square is not a whole number of device pixels. */
 bool easel_view_draws_by_edges (int pct);
-/* Whether the view is built device pixel by device pixel on those edges, on a whole `scale`: where the renderer's scaling is not exact, a
-   square that is not a whole number of device pixels and any zoom on a scale above 1 (0025's Plan; REQ-0001-18). */
+/* Whether the view is built device pixel by device pixel on those edges: where the renderer's scaling is not exact, a square that is not a
+   whole number of device pixels and any zoom on a scale above 1 (0025's Plan; REQ-0001-18); from 100 % on a scale that is not whole (the
+   renderer interpolates there, REQ-0025-07); below 100 % on a whole scale only. */
 bool easel_view_built_by_edges (int pct, double scale);
+/* How far a view whose first device pixel would start at `origin` (in device pixels, maybe fractional) is moved back so that it starts on a
+   whole device pixel: origin less its floor, in [0, 1) (REQ-0025-07). */
+double easel_view_device_shift (double origin);
 
 /* Picture pixel under a point given relative to the picture's top-left (negative left of or above it); on a border, the square that starts there. */
 void easel_view_to_pixel (double x, double y, int pct, double scale, int *px, int *py);

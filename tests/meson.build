@@ -108,6 +108,10 @@ test('ui-0028-uk', test_window, args: ['-p', '/0028-uk'], env: journey_uk_env, s
 test('ui-0028-scale2', test_window, args: ['-p', '/0028-scale2'], env: ui_env, suite: 'ui', timeout: 180, is_parallel: false)
 # AS-1b of 0025 needs a screen of scale 2 and skips elsewhere: tools/isolated.sh --scale 2 meson test -C build ui-0025-scale2
 test('ui-0025-scale2', test_window, args: ['-p', '/0025-scale2'], env: ui_env, suite: 'ui', timeout: 180, is_parallel: false)
+# REQ-0025-07 needs a screen whose scale is not whole and skips elsewhere: tools/isolated.sh --scale 1.25 meson test -C build ui-0025-scale125,
+# and --scale 1.5 for ui-0025-scale150 (the same cases)
+test('ui-0025-scale125', test_window, args: ['-p', '/0025-frac'], env: ui_env, suite: 'ui', timeout: 600, is_parallel: false)
+test('ui-0025-scale150', test_window, args: ['-p', '/0025-frac'], env: ui_env, suite: 'ui', timeout: 600, is_parallel: false)
 test('ui-0019-scale2', test_window, args: ['-p', '/0019-scale2'], env: ui_env, suite: 'ui', timeout: 180, is_parallel: false)
 test('ui-0021-scale2', test_window, args: ['-p', '/0021-scale2'], env: ui_env, suite: 'ui', timeout: 180, is_parallel: false)
 test('ui-0022-scale2', test_window, args: ['-p', '/0022-scale2'], env: ui_a11y_env, suite: 'ui', timeout: 180, is_parallel: false)

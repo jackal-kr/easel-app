@@ -2317,6 +2317,18 @@ snapshot_withheld (void)
   return many != NULL && calls++ < atoi (many);
 }
 
+/* The fraction of a device pixel by which the window lies off the screen's grid in its surface (its shadow's margin times the scale); 0 on a
+   whole scale (REQ-0025-07). The frames of render_pixels are shifted by it, so that their device pixels are the screen's. */
+static void
+surface_fraction (EaselWindow *win, double *fx, double *fy)
+{
+  double tx, ty, scale = easel_canvas_get_scale (easel_window_get_canvas (win));
+
+  gtk_native_get_surface_transform (GTK_NATIVE (win), &tx, &ty);
+  *fx = tx * scale - floor (tx * scale);
+  *fy = ty * scale - floor (ty * scale);
+}
+
 /* The window's pixels as drawn now (premultiplied 0xAARRGGBB), and the position of the canvas in them. */
 static uint32_t *
 render_pixels (EaselWindow *win, int *w, int *h, int *canvas_x, int *canvas_y)
@@ -2327,7 +2339,7 @@ render_pixels (EaselWindow *win, int *w, int *h, int *canvas_x, int *canvas_y)
   GskRenderNode *node = NULL;
   g_autoptr (GdkTexture) texture = NULL;
   graphene_rect_t r;
-  double scale = easel_canvas_get_scale (canvas);
+  double scale = easel_canvas_get_scale (canvas), frac_x = 0, frac_y = 0;
   uint32_t *px;
 
   /* The window's last frame as a render node. A window that has painted none gives no node and GSK aborts on it; so up to 30
@@ -2365,10 +2377,14 @@ render_pixels (EaselWindow *win, int *w, int *h, int *canvas_x, int *canvas_y)
       fflush (stderr);
       _exit (NO_SNAPSHOT_STATUS);
     }
-  /* In device pixels, as the window is shown: a viewport of logical pixels gives a frame at scale 1 on any screen (0025's AS-1b). */
+  /* In device pixels, as the window is shown: a viewport of logical pixels gives a frame at scale 1 on any screen (0025's AS-1b). The window
+     lies in its surface at the surface transform (its shadow's margin); on a scale that is not whole, the fraction of a device pixel that puts
+     there is kept, so that the frame's device pixels are the screen's (REQ-0025-07; 0 on a whole scale). */
+  surface_fraction (win, &frac_x, &frac_y);
   if (scale != 1)
     {
-      g_autoptr (GskTransform) to_device = gsk_transform_scale (NULL, (float) scale, (float) scale);
+      g_autoptr (GskTransform) to_device = gsk_transform_translate (gsk_transform_scale (NULL, (float) scale, (float) scale),
+                                                                    &GRAPHENE_POINT_INIT ((float) (frac_x / scale), (float) (frac_y / scale)));
       GskRenderNode *scaled = gsk_transform_node_new (node, to_device);
 
       gsk_render_node_unref (node);
@@ -2384,8 +2400,8 @@ render_pixels (EaselWindow *win, int *w, int *h, int *canvas_x, int *canvas_y)
   px = g_malloc ((gsize) *w * (gsize) *h * 4);
   gdk_texture_download (texture, (guchar *) px, (gsize) *w * 4);
   g_assert_true (gtk_widget_compute_bounds (GTK_WIDGET (canvas), widget, &r));
-  *canvas_x = (int) (r.origin.x * scale);
-  *canvas_y = (int) (r.origin.y * scale);
+  *canvas_x = (int) floor (r.origin.x * scale + frac_x);   /* a fractional origin (a screen of scale 1.25) rounds down, also when negative */
+  *canvas_y = (int) floor (r.origin.y * scale + frac_y);
   return px;
 }
 
@@ -6025,10 +6041,11 @@ view_of (EaselWindow *win)
 static void
 canvas_point (EaselWindow *win, double px, double py, double *x, double *y)
 {
-  double scale = easel_canvas_get_scale (easel_window_get_canvas (win));
+  double scale = easel_canvas_get_scale (easel_window_get_canvas (win)), sx, sy;
 
-  *x = px * easel_window_get_zoom (win) / 100.0 / scale;
-  *y = py * easel_window_get_zoom (win) / 100.0 / scale;
+  easel_canvas_get_device_shift (easel_window_get_canvas (win), &sx, &sy);   /* 0 on a whole scale (REQ-0025-07) */
+  *x = px * easel_window_get_zoom (win) / 100.0 / scale - sx;
+  *y = py * easel_window_get_zoom (win) / 100.0 / scale - sy;
 }
 
 /* The picture point at the center of the view now, in picture pixels. */
@@ -24764,27 +24781,29 @@ static ViewFrame
 view_frame (EaselWindow *win)
 {
   EaselCanvas *canvas = easel_window_get_canvas (win);
-  double scale = easel_canvas_get_scale (canvas);
+  double scale = easel_canvas_get_scale (canvas), fx, fy;
   graphene_rect_t r;
   ViewFrame f;
 
   f.px = render_pixels (win, &f.w, &f.h, &f.ox, &f.oy);
+  surface_fraction (win, &fx, &fy);
   g_assert_true (gtk_widget_compute_bounds (gtk_widget_get_parent (GTK_WIDGET (canvas)), GTK_WIDGET (win), &r));
-  /* Inset: a scrolled view has GTK's shading over its first rows (it is the window's, not the picture's). */
-  f.vx0 = (int) ((r.origin.x + VIEW_INSET) * scale);
-  f.vy0 = (int) ((r.origin.y + VIEW_INSET) * scale);
-  f.vx1 = (int) ((r.origin.x + r.size.width - VIEW_INSET) * scale);
-  f.vy1 = (int) ((r.origin.y + r.size.height - VIEW_INSET) * scale);
+  /* Inset: a scrolled view has GTK's shading over its first rows (it is the window's, not the picture's). On a scale that is not whole the
+     view's sides fall inside device pixels: the device pixels read are those wholly inside (REQ-0025-07; the same on a whole scale). */
+  f.vx0 = (int) ceil ((r.origin.x + VIEW_INSET) * scale + fx);
+  f.vy0 = (int) ceil ((r.origin.y + VIEW_INSET) * scale + fy);
+  f.vx1 = (int) floor ((r.origin.x + r.size.width - VIEW_INSET) * scale + fx);
+  f.vy1 = (int) floor ((r.origin.y + r.size.height - VIEW_INSET) * scale + fy);
   /* The overlay scrollbars lie over the view's far sides once the picture outgrows it: the window's too, read from where they are. */
   {
     GtkScrolledWindow *scroller = GTK_SCROLLED_WINDOW (gtk_widget_get_ancestor (GTK_WIDGET (canvas), GTK_TYPE_SCROLLED_WINDOW));
     GtkWidget *bar = gtk_scrolled_window_get_vscrollbar (scroller);
 
     if (gtk_widget_get_mapped (bar) && gtk_widget_compute_bounds (bar, GTK_WIDGET (win), &r))
-      f.vx1 = MIN (f.vx1, (int) (r.origin.x * scale));
+      f.vx1 = MIN (f.vx1, (int) floor (r.origin.x * scale + fx));
     bar = gtk_scrolled_window_get_hscrollbar (scroller);
     if (gtk_widget_get_mapped (bar) && gtk_widget_compute_bounds (bar, GTK_WIDGET (win), &r))
-      f.vy1 = MIN (f.vy1, (int) (r.origin.y * scale));
+      f.vy1 = MIN (f.vy1, (int) floor (r.origin.y * scale + fy));
   }
   return f;
 }
@@ -25487,8 +25506,13 @@ run_point (const DragRun *run, int k)
 static void
 run_drag (const DragRun *run, int x0, int y0, int x1, int y1)
 {
-  double ax = run_point (run, x0), ay = run_point (run, y0), bx = run_point (run, x1), by = run_point (run, y1);
+  double ax = run_point (run, x0), ay = run_point (run, y0), bx = run_point (run, x1), by = run_point (run, y1), sx, sy;
 
+  easel_canvas_get_device_shift (run->canvas, &sx, &sy);   /* the drawing's places as the widget's (REQ-0025-07; 0 on a whole scale) */
+  ax -= sx;
+  bx -= sx;
+  ay -= sy;
+  by -= sy;
   easel_canvas_press (run->canvas, 1, ax, ay);
   for (int i = 1; i <= run->steps; i++)
     easel_canvas_motion (run->canvas, i == run->steps ? bx : ax + (bx - ax) * i / run->steps, i == run->steps ? by : ay + (by - ay) * i / run->steps);
@@ -25499,7 +25523,10 @@ run_drag (const DragRun *run, int x0, int y0, int x1, int y1)
 static void
 run_click (const DragRun *run, int x, int y)
 {
-  easel_canvas_press (run->canvas, 1, run_point (run, x), run_point (run, y));
+  double sx, sy;
+
+  easel_canvas_get_device_shift (run->canvas, &sx, &sy);
+  easel_canvas_press (run->canvas, 1, run_point (run, x) - sx, run_point (run, y) - sy);
   easel_canvas_release (run->canvas, 1);
 }
 
@@ -44367,6 +44394,474 @@ check_shape_line_findings (void)
   close_windows ();
 }
 
+/* ---- 0025, change of 2026-11-13: a screen whose scale is not a whole number (REQ-0025-07) ---- */
+
+/* The session's screen scale, as the monitor reports it (1.25 under tools/isolated.sh --scale 1.25). */
+static double
+session_scale (void)
+{
+  GdkMonitor *monitor = g_list_model_get_item (gdk_display_get_monitors (gdk_display_get_default ()), 0);
+  double scale = gdk_monitor_get_scale (monitor);
+
+  g_object_unref (monitor);
+  return scale;
+}
+
+/* Whether this is a session of a scale that is not whole; else the case is skipped. */
+static gboolean
+session_of_fractional_scale (void)
+{
+  double scale = session_scale ();
+
+  if (scale == floor (scale))
+    g_test_skip ("needs a session of scale 1.25 or 1.5: tools/isolated.sh --scale 1.25 (or 1.5)");
+  return scale != floor (scale);
+}
+
+static void
+fill_with_one_color (EaselWindow *win, uint32_t color)
+{
+  EaselImage *img = (EaselImage *) easel_window_get_picture (win);
+
+  for (int y = 0; y < img->height; y++)
+    for (int x = 0; x < img->width; x++)
+      easel_image_set (img, x, y, color);                 /* marks the picture changed, so the canvas builds its tiles again */
+  easel_canvas_update (easel_window_get_canvas (win));
+}
+
+/* One frame of AS-7: the squares read from every row and column of the view (REQ-0025-02 by assert_squares, with nothing skipped or blended),
+   or, for a picture of one color, every device pixel over it that color. Counts what is wrong and says where, the first time. */
+static int
+frac_frame_wrong (EaselWindow *win, int pw, int ph, gboolean one_color, uint32_t color, const char *where)
+{
+  int zoom = easel_window_get_zoom (win), wrong = 0;
+  double d = zoom / 100.0;
+  ViewFrame f = view_frame (win);
+
+  if (one_color)
+    {
+      int x0 = MAX (f.vx0, f.ox), y0 = MAX (f.vy0, f.oy), x1 = MIN (f.vx1, f.ox + (int) floor (pw * d)), y1 = MIN (f.vy1, f.oy + (int) floor (ph * d));
+
+      g_assert_cmpint (x1, >, x0);
+      for (int r = y0; r < y1; r++)
+        for (int c = x0; c < x1; c++)
+          if (f.px[(gsize) r * f.w + c] != color)
+            {
+              if (wrong == 0)
+                {
+                  int whites = 0, row_end = c;
+
+                  for (int k = c; k < x1 && f.px[(gsize) r * f.w + k] != color; k++)
+                    row_end = k, whites++;
+                  g_test_message ("%s at %d %%: device pixel (%d, %d) from the picture's corner is %08x, not %08x (the picture's pixel there %08x; "
+                                  "%d such in a row, to %d; read from %d, %d to %d, %d)", where, zoom, c - f.ox, r - f.oy, f.px[(gsize) r * f.w + c], color,
+                                  easel_image_get (easel_window_get_picture (win), MAX (0, (int) ((c - f.ox) / d)), MAX (0, (int) ((r - f.oy) / d))),
+                                  whites, row_end - f.ox, x0 - f.ox, y0 - f.oy, x1 - f.ox, y1 - f.oy);
+                }
+              wrong++;
+            }
+    }
+  else
+    {
+      DrawnEdges e = drawn_edges (f.px, f.w, f.ox, f.oy, f.vx0, f.vy0, f.vx1, f.vy1, pw, ph, zoom);
+      int fl = (int) floor (d), ce = (int) ceil (d), off = 0, width = 0, seen = 0;
+
+      for (int axis = 0; axis < 2; axis++)
+        {
+          const int *t = axis ? e.y : e.x;
+          int n = axis ? e.h : e.w;
+
+          for (int k = 0; k < n; k++)
+            if (t[k] >= 0)
+              {
+                seen++;
+                /* at most half a device pixel from k x zoom/100, in whole numbers (1.15 has no exact double: 50 x 1.15 is 57.4999...) */
+                gboolean far = abs (100 * t[k] - k * zoom) > 50;
+
+                if (far && off == 0)
+                  g_test_message ("%s at %d %%: the first edge off its place: %s %d at device %d, k x zoom/100 = %.2f", where, zoom, axis ? "row" : "column",
+                                  k, t[k], k * d);
+                off += far;
+                if (t[k + 1] >= 0)
+                  width += t[k + 1] - t[k] < fl || t[k + 1] - t[k] > ce;
+              }
+        }
+      wrong = e.strange + e.skipped + e.differing_x + e.differing_y + off + width + (seen == 0);
+      if (wrong)
+        {
+          /* where: the first device pixel that is no picture pixel, or whose place is not the one before it plus one or the same */
+          int x0 = MAX (f.vx0, f.ox), y0 = MAX (f.vy0, f.oy), x1 = MIN (f.vx1, f.ox + (int) floor (pw * d)), y1 = MIN (f.vy1, f.oy + (int) floor (ph * d));
+          gboolean said = FALSE;
+
+          for (int r = y0; r < y1 && !said; r++)
+            for (int c = x0 + 1; c < x1 && !said; c++)
+              {
+                uint32_t v = f.px[(gsize) r * f.w + c], u = f.px[(gsize) r * f.w + c - 1];
+                int kx = unwrap_place ((v >> 12) & 0xfff, (int) ((c - f.ox) / d)), ku = unwrap_place ((u >> 12) & 0xfff, (int) ((c - 1 - f.ox) / d));
+
+                if ((v >> 24) != 0xff || (kx != ku && kx != ku + 1))
+                  {
+                    g_test_message ("%s at %d %%: first at device (%d, %d) from the corner (frame %d, %d; view %d..%d x %d..%d; origin %d, %d): %08x after %08x",
+                                    where, zoom, c - f.ox, r - f.oy, c, r, f.vx0, f.vx1, f.vy0, f.vy1, f.ox, f.oy, v, u);
+                    said = TRUE;
+                  }
+              }
+        }
+      if (wrong)
+        g_test_message ("%s at %d %%: squares read %d; blended or no picture pixel %d, skipped %d, edges differing %d and %d, off their place %d, "
+                        "wrong width %d", where, zoom, seen, e.strange, e.skipped, e.differing_x, e.differing_y, off, width);
+      drawn_edges_clear (&e);
+    }
+  g_free (f.px);
+  return wrong;
+}
+
+/* AS-7 (REQ-0025-07, REQ-0025-02): on a screen of scale 1.25 or 1.5, from 100 %, every square whole, none skipped, none blended, each the
+   floor or the ceiling of zoom/100, each edge where k x zoom/100 puts it from the picture's corner; 1:1 at 100 %; for the window as it opens
+   and a 1001 x 577 area, at the scroll's start, 1, 3 and 7 logical pixels, the middle and the far corner; after Fit to Window, and after
+   200 -> 100 -> 129 % scrolled to the middle; for an 800 x 600 and a 3000 x 2000 picture of distinct pixels and a 3000 x 2000 one of one
+   color. */
+static void
+frac_as7_rows_and_columns (void)
+{
+  static const struct { int w, h; gboolean one; } pictures[] = { { 800, 600, FALSE }, { 3000, 2000, FALSE }, { 3000, 2000, TRUE } };
+  static const int zooms[] = { 100, 125, 129, 150, 200 };
+  const uint32_t one = 0xFF3465A4u;
+  int wrong = 0;
+
+  if (!session_of_fractional_scale ())
+    return;
+  for (guint p = 0; p < G_N_ELEMENTS (pictures); p++)
+    {
+      g_autofree char *settings = g_strdup_printf ("[new-picture]\nwidth=%d\nheight=%d\n", pictures[p].w, pictures[p].h);
+      EaselWindow *win;
+      EaselCanvas *canvas;
+      View view;
+
+      write_settings (settings);
+      win = start_window ();
+      canvas = easel_window_get_canvas (win);
+      view = view_of (win);
+      wait_for_layout (win);
+      if (pictures[p].one)
+        fill_with_one_color (win, one);
+      else
+        fill_with_places (win);
+      for (int area = 0; area < 2; area++)
+        {
+          if (area)
+            set_area (win, 1001, 577);
+          for (guint z = 0; z < G_N_ELEMENTS (zooms); z++)
+            {
+              double far_x, far_y;
+
+              easel_canvas_set_zoom (canvas, zooms[z]);
+              wait_for_layout (win);
+              g_assert_cmpint (easel_window_get_zoom (win), ==, zooms[z]);
+              far_x = gtk_adjustment_get_upper (view.h) - gtk_adjustment_get_page_size (view.h);
+              far_y = gtk_adjustment_get_upper (view.v) - gtk_adjustment_get_page_size (view.v);
+              {
+                const double sx[] = { 0, 1, 3, 7, far_x / 2, far_x }, sy[] = { 0, 1, 3, 7, far_y / 2, far_y };
+
+                for (guint s = 0; s < G_N_ELEMENTS (sx); s++)
+                  {
+                    g_autofree char *where = g_strdup_printf ("%d x %d%s, area %s, scroll (%.1f, %.1f)", pictures[p].w, pictures[p].h,
+                                                              pictures[p].one ? " (one color)" : "", area ? "1001 x 577" : "as opened",
+                                                              MIN (sx[s], far_x), MIN (sy[s], far_y));
+
+                    if (s > 0 && far_x <= 0 && far_y <= 0)
+                      break;                              /* the picture fits: no scroll */
+                    scroll_to (win, MIN (sx[s], far_x), MIN (sy[s], far_y));
+                    wrong += frac_frame_wrong (win, pictures[p].w, pictures[p].h, pictures[p].one, one, where);
+                  }
+              }
+            }
+        }
+      /* Fit to Window, where it gives 100 % or more */
+      g_action_group_activate_action (G_ACTION_GROUP (win), "zoom-fit", NULL);
+      wait_for_layout (win);
+      wait_for_next_frame (win);
+      if (easel_window_get_zoom (win) >= 100)
+        wrong += frac_frame_wrong (win, pictures[p].w, pictures[p].h, pictures[p].one, one, "after Fit to Window");
+      /* 200 -> 100 -> 129 % scrolled to the middle */
+      easel_canvas_set_zoom (canvas, 200);
+      wait_for_layout (win);
+      scroll_to (win, (gtk_adjustment_get_upper (view.h) - gtk_adjustment_get_page_size (view.h)) / 2,
+                 (gtk_adjustment_get_upper (view.v) - gtk_adjustment_get_page_size (view.v)) / 2);
+      easel_canvas_set_zoom (canvas, 100);
+      wait_for_layout (win);
+      easel_canvas_set_zoom (canvas, 129);
+      wait_for_layout (win);
+      wait_for_next_frame (win);
+      g_assert_cmpint (easel_window_get_zoom (win), ==, 129);
+      wrong += frac_frame_wrong (win, pictures[p].w, pictures[p].h, pictures[p].one, one, "after 200, 100, 129 % in the middle");
+      close_windows ();
+    }
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+  g_assert_cmpint (wrong, ==, 0);
+}
+
+/* AS-8 (REQ-0025-07): a Rectangle from (10, 10) to (790, 590), a 5-Point Star from (100, 100) to (700, 500) and a Polygon through (50, 550),
+   (750, 60), (700, 580) and (60, 40), width 1, put down on a white 800 x 600 picture at 100 %: every device pixel over the picture is its picture pixel (1:1), each outline pixel in its exact color, and no
+   device row or column between two picture rows or columns shows another color. */
+static void
+frac_as8_shapes_outlines (void)
+{
+  EaselWindow *win;
+  const EaselImage *img;
+  ViewFrame f;
+  int wrong = 0, black = 0, x0, y0, x1, y1;
+
+  if (!session_of_fractional_scale ())
+    return;
+  win = window_of (800, 600);
+  img = easel_window_get_picture (win);
+  g_assert_cmpint (easel_window_get_zoom (win), ==, 100);
+  use_shape (win, "rectangle");
+  shape_press_move (win, 1, 10, 10, 790, 590);
+  shape_release (win, 1);
+  g_assert_true (key_taken (win, GDK_KEY_Return, 0));
+  use_shape (win, "5-point-star");
+  shape_press_move (win, 1, 100, 100, 700, 500);
+  shape_release (win, 1);
+  g_assert_true (key_taken (win, GDK_KEY_Return, 0));
+  g_assert_false (shape_waits (easel_window_get_canvas (win)));
+  /* a Polygon with long diagonals, put down (JOD, 2026-11-13: at 125 % a put-down polygon showed dashed, its rubber band solid) */
+  use_tool (win, "polygon");
+  shape_press_move (win, 1, 50, 550, 750, 60);
+  shape_release (win, 1);
+  shape_press_move (win, 1, 700, 580, 700, 580);
+  shape_release (win, 1);
+  shape_press_move (win, 1, 60, 40, 60, 40);
+  shape_release (win, 1);
+  g_assert_true (easel_canvas_is_pending (easel_window_get_canvas (win)));
+  g_assert_true (key_taken (win, GDK_KEY_Return, 0));
+  g_assert_false (easel_canvas_is_pending (easel_window_get_canvas (win)));
+  g_assert_cmphex (easel_image_get (img, 400, 305), ==, 0xFF000000u);    /* on the diagonal from (50, 550) to (750, 60): y = 305 at x = 400 */
+  g_assert_cmpint (count_color (img, 0xFF000000u), >, 2 * 780 + 2 * 580);
+  wait_for_next_frame (win);
+  f = view_frame (win);
+  x0 = MAX (f.vx0, f.ox);
+  y0 = MAX (f.vy0, f.oy);
+  x1 = MIN (f.vx1, f.ox + 800);
+  y1 = MIN (f.vy1, f.oy + 600);
+  g_assert_cmpint (x1 - x0, >, 700);
+  g_assert_cmpint (y1 - y0, >, 500);
+  for (int r = y0; r < y1; r++)
+    for (int c = x0; c < x1; c++)
+      {
+        uint32_t want = easel_image_get (img, c - f.ox, r - f.oy), got = f.px[(gsize) r * f.w + c];
+
+        black += want == 0xFF000000u;
+        if (got != want)
+          {
+            if (wrong == 0)
+              g_test_message ("device pixel (%d, %d) from the picture's corner is %08x, the picture's pixel there %08x", c - f.ox, r - f.oy, got, want);
+            wrong++;
+          }
+      }
+  g_test_message ("device pixels over the picture %d, outline pixels among them %d, wrong %d", (x1 - x0) * (y1 - y0), black, wrong);
+  g_free (f.px);
+  close_windows ();
+  g_assert_cmpint (black, >, 2 * 700);
+  g_assert_cmpint (wrong, ==, 0);
+}
+
+/* AS-9 (REQ-0025-07, REQ-0025-06): at 100, 125 and 129 %, at the scroll's start and 3 logical pixels on, the canvas's pointer at 0.1 and 0.9
+   of each device pixel along a row and a column of the view maps to the picture pixel the frame shows there. The pointer's logical place is
+   its device place less the canvas's own device origin (not rounded), over the scale. */
+static void
+frac_as9_pointer (void)
+{
+  static const int zooms[] = { 100, 125, 129 };
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  double scale;
+  int at[2] = { 0, 0 }, wrong = 0, compared = 0;
+
+  if (!session_of_fractional_scale ())
+    return;
+  write_settings ("[new-picture]\nwidth=3000\nheight=2000\n");
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  wait_for_layout (win);
+  scale = easel_canvas_get_scale (canvas);
+  fill_with_places (win);
+  g_signal_connect (canvas, "pointer-moved", G_CALLBACK (on_pointer_moved), at);
+  for (guint z = 0; z < G_N_ELEMENTS (zooms); z++)
+    for (int s = 0; s < 2; s++)
+      {
+        ViewFrame f;
+        graphene_rect_t cb;
+        double odx, ody;
+        int x0, y0, x1, y1, row, col;
+
+        easel_canvas_set_zoom (canvas, zooms[z]);
+        wait_for_layout (win);
+        scroll_to (win, s * 3, s * 3);
+        f = view_frame (win);
+        g_assert_true (gtk_widget_compute_bounds (GTK_WIDGET (canvas), GTK_WIDGET (win), &cb));
+        {
+          double fx, fy;
+
+          surface_fraction (win, &fx, &fy);
+          odx = cb.origin.x * scale + fx;                  /* the canvas's device origin in the frame, not rounded */
+          ody = cb.origin.y * scale + fy;
+        }
+        x0 = MAX (f.vx0, f.ox);
+        y0 = MAX (f.vy0, f.oy);
+        x1 = MIN (f.vx1, f.ox + 3000 * zooms[z] / 100);
+        y1 = MIN (f.vy1, f.oy + 2000 * zooms[z] / 100);
+        row = (y0 + y1) / 2;
+        col = (x0 + x1) / 2;
+        for (int axis = 0; axis < 2; axis++)
+          for (int i = axis ? y0 : x0; i < (axis ? y1 : x1); i++)
+            for (int h = 0; h < 2; h++)
+              {
+                int c = axis ? col : i, r = axis ? i : row;
+                uint32_t v = f.px[(gsize) r * f.w + c];
+                int kx = unwrap_place ((v >> 12) & 0xfff, (int) ((c - f.ox) / (zooms[z] / 100.0)));
+                int ky = unwrap_place (v & 0xfff, (int) ((r - f.oy) / (zooms[z] / 100.0)));
+                double fr = h ? 0.9 : 0.1;
+
+                easel_canvas_pointer_at (canvas, (c + fr - odx) / scale, (r + fr - ody) / scale);
+                compared++;
+                if (at[0] != kx || at[1] != ky)
+                  {
+                    if (wrong == 0)
+                      g_test_message ("%d %%, scroll %d: device pixel (%d, %d) + %.1f shows (%d, %d), the pointer maps to (%d, %d)", zooms[z], s * 3,
+                                      c - f.ox, r - f.oy, fr, kx, ky, at[0], at[1]);
+                    wrong++;
+                  }
+              }
+        g_free (f.px);
+      }
+  g_test_message ("pointer positions compared %d, wrong %d", compared, wrong);
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+  g_assert_cmpint (compared, >, 1000);
+  g_assert_cmpint (wrong, ==, 0);
+}
+
+/* AS-10 (REQ-0025-07, REQ-0025-04, REQ-0025-05): AS-2's drags at 129 %, 50 % and the others give the 100 % run's pixels on this screen too;
+   a picture drawn on at 100 % and saved as PNG is the file's pixels when opened again. */
+static void
+frac_as10_same_pixels_and_file (void)
+{
+  g_autofree char *dir = NULL, *path = NULL;
+  g_autoptr (EaselImage) saved = NULL;
+  EaselWindow *win, *again;
+
+  if (!session_of_fractional_scale ())
+    return;
+  as2_same_figure_at_any_zoom ();
+  dir = g_dir_make_tmp ("easel-ui-XXXXXX", NULL);
+  path = g_build_filename (dir, "frac.png", NULL);
+  write_settings ("[new-picture]\nwidth=400\nheight=300\n");
+  win = start_window ();
+  wait_for_layout (win);
+  fill_with_places (win);
+  use_shape (win, "5-point-star");
+  shape_press_move (win, 1, 20, 20, 300, 250);
+  shape_release (win, 1);
+  g_assert_true (key_taken (win, GDK_KEY_Return, 0));
+  saved = distinct_copy_of (easel_window_get_picture (win));
+  g_assert_true (easel_window_save_to (win, path));
+  again = start_window ();
+  open_and_wait (again, path);
+  assert_same_pixels (easel_window_get_picture (again), saved);
+  close_windows ();
+  g_unlink (path);
+  g_rmdir (dir);
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
+/* AS-11 (REQ-0025-07, REQ-0025-05): the grid of cell 4 on at 100, 129 and 200 %: each line on the device column or row where square 4k starts,
+   none inside a square, every such start in view with its line (AS-1d's count). */
+static void
+frac_as11_grid (void)
+{
+  static const int zooms[] = { 100, 129, 200 };
+  EdgeCounts c = { 0 };
+  EaselWindow *win;
+  EaselCanvas *canvas;
+
+  if (!session_of_fractional_scale ())
+    return;
+  write_settings ("[new-picture]\nwidth=757\nheight=100\n");
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  wait_for_layout (win);
+  fill_with_places (win);
+  for (guint z = 0; z < G_N_ELEMENTS (zooms); z++)
+    {
+      ViewFrame off, on;
+      DrawnEdges e;
+      double d = zooms[z] / 100.0;
+
+      easel_canvas_set_zoom (canvas, zooms[z]);
+      wait_for_layout (win);
+      scroll_to (win, 0, 0);
+      off = view_frame (win);
+      e = drawn_edges (off.px, off.w, off.ox, off.oy, off.vx0, off.vy0, off.vx1, off.vy1, 757, 100, zooms[z]);
+      easel_canvas_set_grid (canvas, TRUE, 4, FALSE);
+      g_assert_true (easel_canvas_grid_is_drawn (canvas));
+      wait_for_next_frame (win);
+      on = view_frame (win);
+      count_grid_lines (&c, &off, &on, &e, 4, 757, 100, d);
+      easel_canvas_set_grid (canvas, FALSE, 4, FALSE);
+      wait_for_next_frame (win);
+      drawn_edges_clear (&e);
+      g_free (off.px);
+      g_free (on.px);
+    }
+  g_test_message ("vertical lines %d (not on a square's edge %d, an edge without its line %d); horizontal lines %d (not on an edge %d, without a line %d)",
+                  c.lines[0], c.line_extra[0], c.line_missing[0], c.lines[1], c.line_extra[1], c.line_missing[1]);
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+  g_assert_cmpint (c.lines[0], >, 0);
+  for (int a = 0; a < 2; a++)
+    {
+      g_assert_cmpint (c.line_extra[a], ==, 0);
+      g_assert_cmpint (c.line_missing[a], ==, 0);
+    }
+}
+
+/* T020 of 0025's change of 2026-11-13 (REQ-0025-07): on the session's scale and renderer, for each zoom of the matrix (100, 125, 150, 200 %),
+   whether a 3000 x 2000 picture of distinct pixels is exact (AS-7's reading) at the scroll's start and in its middle. A record, under
+   /0025-open/ (no meson test runs it): run it in tools/isolated.sh with --scale 1.25, 1.5, 2 and none, GSK_RENDERER cairo and vulkan. */
+static void
+open_fractional_matrix (void)
+{
+  static const int zooms[] = { 100, 125, 150, 200 };
+  EaselWindow *win;
+  EaselCanvas *canvas;
+  View view;
+
+  write_settings ("[new-picture]\nwidth=3000\nheight=2000\n");
+  win = start_window ();
+  canvas = easel_window_get_canvas (win);
+  view = view_of (win);
+  wait_for_layout (win);
+  fill_with_places (win);
+  for (guint z = 0; z < G_N_ELEMENTS (zooms); z++)
+    {
+      int wrong;
+
+      easel_canvas_set_zoom (canvas, zooms[z]);
+      wait_for_layout (win);
+      scroll_to (win, 0, 0);
+      wrong = frac_frame_wrong (win, 3000, 2000, FALSE, 0, "matrix, scroll start");
+      scroll_to (win, (gtk_adjustment_get_upper (view.h) - gtk_adjustment_get_page_size (view.h)) / 2,
+                 (gtk_adjustment_get_upper (view.v) - gtk_adjustment_get_page_size (view.v)) / 2);
+      wrong += frac_frame_wrong (win, 3000, 2000, FALSE, 0, "matrix, scroll middle");
+      g_printerr ("MATRIX scale %.2f renderer %s zoom %d: %s (%d wrong reads)\n", easel_canvas_get_scale (canvas),
+                  G_OBJECT_TYPE_NAME (gtk_native_get_renderer (GTK_NATIVE (win))), zooms[z], wrong == 0 ? "exact" : "NOT exact", wrong);
+    }
+  close_windows ();
+  write_settings ("[new-picture]\nwidth=300\nheight=200\nbackground=#FFFF00\n");
+}
+
 /* ---- 0043 T011: memory ---- */
 
 /* The preview's buffer for a figure as the canvas makes it (REQ-0043-13): the runs of a row, Sharp or Smooth. */
@@ -45514,6 +46009,12 @@ main (int argc, char **argv)
   g_test_add_func ("/0043/as15_line_pixels", as15_shape_line_pixels);
   g_test_add_func ("/0043/as15_line_not_in_picture", as15_shape_line_not_in_picture);
   g_test_add_func ("/0043/check_line_findings", check_shape_line_findings);
+  g_test_add_func ("/0025-frac/as7_rows_and_columns", frac_as7_rows_and_columns);
+  g_test_add_func ("/0025-frac/as8_shapes_outlines", frac_as8_shapes_outlines);
+  g_test_add_func ("/0025-frac/as9_pointer", frac_as9_pointer);
+  g_test_add_func ("/0025-frac/as10_same_pixels_and_file", frac_as10_same_pixels_and_file);
+  g_test_add_func ("/0025-frac/as11_grid", frac_as11_grid);
+  g_test_add_func ("/0025-open/fractional_matrix", open_fractional_matrix);
   g_test_add_func ("/0043-long/as1_least_size", as1_shapes_least_size);
   g_test_add_func ("/0043/as16_shape_icons_at_16", as16_shape_icons_at_16);
   g_test_add_func ("/0042/as4_pasted_and_free_form", as4_invert_pasted_and_free_form);

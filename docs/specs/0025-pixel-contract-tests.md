@@ -77,8 +77,8 @@ device pixel is one dot of the screen. P7.2 is stated from 100 % up, where a pic
 - AS-5 (REQ-0025-01) Given the Pencil, the Brush, the Eraser (with the background color #00000000, #FF000080 and an opaque one), Fill, the Line, the Rectangle, the Ellipse, the Curve, the Polygon and the Gradient, each with each of the colors #00000000, #FF000080 and #336699FF, and a paste, a text put-down and a transform, When each is used, Then every pixel it changes has exactly the color its rule gives (the given color; for the Eraser the background color; for a transform and a paste the colors the pixels already had, moved or inverted), every other pixel keeps its value, and no pixel is a blend of the given color and the one under it (the Airbrush is not in this list: REQ-0025-01) | Verified by: automated (core)
 - AS-6 (REQ-0025-04) Given the text of 0017's AS-28, which proves at 100 % that every "h" has the same pixels as every other "h", in the same families, styles and sizes, When it is put down at 800 % with the view scrolled, Then the picture's pixels are those of the same text put down at 100 % | Verified by: automated (ui)
 
-- AS-7 (REQ-0025-07, REQ-0025-02) Given an 800 × 600 picture (smaller than the view) and a 3000 × 2000 picture (larger), every pixel opaque and different from its neighbours, on the 1920 × 1200 screen at scale 1.25 and at 1.5, with the grid off, no selection, no text box, nothing pending and the pointer outside the window, When the canvas is drawn at 100, 125, 129, 150 and 200 %, in the window as it opens and with a canvas area of 1001 × 777 logical pixels, at the scroll's start, scrolled by 1, 3 and 7 logical pixels, to the middle and to the far corner (where the picture is larger than the area), after Fit to Window where it gives 100 % or more, and after 200 % → 100 % → 129 % while scrolled to the middle, Then the picture's top-left corner is on a whole device pixel; every picture row and column whose square lies wholly inside the visible area shows; every device pixel over the picture is exactly one picture pixel's color; each square's side is the floor or the ceiling of zoom/100 device pixels, each edge where k × zoom/100 from the corner puts it (REQ-0025-02's rule, computed by the test); at 100 % each picture pixel is one device pixel; the view's shaded border (4 logical pixels: 5 device pixels at 1.25, 6 at 1.5) and the picture's shadow are not counted, and a square cut by the view's edge is counted for its visible part; Given a 3000 × 2000 picture of one color at each of those combinations, Then every device pixel over the picture is that color; Given scale 1 and scale 2, Then AS-1 and AS-1b to AS-1e pass unchanged | Verified by: automated (ui, isolated at scales 1.25 and 1.5, a rendered window) + automated (core)
-- AS-8 (REQ-0025-07) Given a white 800 × 600 picture at scale 1.25 and 100 %, When a Rectangle from (10, 10) to (790, 590) and a 5-Point Star from (100, 100) to (700, 500) are drawn with Shapes, width 1, and put down, Then every pixel of their outlines shows in the render in its exact color, and between any two neighbouring picture rows or columns no device row or column shows a color other than theirs | Verified by: automated (ui, isolated at scale 1.25) + manual M2 (T023: JOD at desktop scale 1.25)
+- AS-7 (REQ-0025-07, REQ-0025-02) Given an 800 × 600 picture (smaller than the view) and a 3000 × 2000 picture (larger), every pixel opaque and different from its neighbours, on the 1920 × 1200 screen at scale 1.25 and at 1.5, with the grid off, no selection, no text box, nothing pending and the pointer outside the window, When the canvas is drawn at 100, 125, 129, 150 and 200 %, in the window as it opens and with a canvas area of 1001 × 577 logical pixels (it fits the 1280 × 800 logical screen of scale 1.5; 1001 × 777 of the first draft did not), at the scroll's start, scrolled by 1, 3 and 7 logical pixels, to the middle and to the far corner (where the picture is larger than the area), after Fit to Window where it gives 100 % or more, and after 200 % → 100 % → 129 % while scrolled to the middle, Then the picture's top-left corner is on a whole device pixel; every picture row and column whose square lies wholly inside the visible area shows; every device pixel over the picture is exactly one picture pixel's color; each square's side is the floor or the ceiling of zoom/100 device pixels, each edge where k × zoom/100 from the corner puts it (REQ-0025-02's rule, computed by the test); at 100 % each picture pixel is one device pixel; the view's shaded border (4 logical pixels: 5 device pixels at 1.25, 6 at 1.5) and the picture's shadow are not counted, and a square cut by the view's edge is counted for its visible part; Given a 3000 × 2000 picture of one color at each of those combinations, Then every device pixel over the picture is that color; Given scale 1 and scale 2, Then AS-1 and AS-1b to AS-1e pass unchanged | Verified by: automated (ui, isolated at scales 1.25 and 1.5, a rendered window) + automated (core)
+- AS-8 (REQ-0025-07) Given a white 800 × 600 picture at scale 1.25 and 100 %, When a Rectangle from (10, 10) to (790, 590) and a 5-Point Star from (100, 100) to (700, 500) are drawn with Shapes, and a Polygon through (50, 550), (750, 60), (700, 580) and (60, 40) with the Polygon tool (long diagonals; JOD, 2026-11-13: at 125 % a put-down polygon showed dashed while its rubber band looked solid), width 1, and put down, Then every pixel of their outlines shows in the render in its exact color, and between any two neighbouring picture rows or columns no device row or column shows a color other than theirs | Verified by: automated (ui, isolated at scale 1.25) + manual M2 (T023: JOD at desktop scale 1.25)
 - AS-9 (REQ-0025-07, REQ-0025-06) Given scale 1.25 and 1.5, at 100, 125 and 129 %, at the scroll's start and scrolled by 3 logical pixels, When the pointer is at 0.1 and at 0.9 of each device pixel over the picture (its logical position the device position over the scale), Then it maps to the picture pixel drawn on that device pixel, read from the frame (at 1.25 and 100 %, from the picture's left edge, logical x 0.79, device 0.9875, is pixel 0, and logical x 0.8, device 1.0, is pixel 1) | Verified by: automated (core) + automated (ui, isolated at scale 1.25)
 - AS-10 (REQ-0025-07, REQ-0025-04, REQ-0025-05) Given AS-2's drags at scale 1.25 and 1.5, at 100 %, 129 % and 50 %, Then the picture's pixels equal AS-2's run at scale 1 and 100 %; When the picture is saved as PNG at scale 1.25 and opened again, Then the file's pixels equal the picture's | Verified by: automated (ui, isolated at scales 1.25 and 1.5)
 - AS-11 (REQ-0025-07, REQ-0025-05) Given AS-1d's pictures with the grid on, at scale 1.25 and 1.5, at 100, 129 and 200 %, Then each grid line lies on the device column or row where square 4k starts and none falls inside a square | Verified by: automated (ui, isolated at scales 1.25 and 1.5)
@@ -192,11 +192,11 @@ The numbers (`probe-edge-drawing frames`, 2026-11-02, real session, `GskVulkanRe
 | AS-4b | `as4b_preview_equals_release` |
 | AS-5 | the existing tests of the table above, and core `as5_shapes_write_exact_colors`, `as5_text_writes_exact_colors` |
 | AS-6 | `as6_letters_at_800_scrolled` |
-| AS-7 | core and ui at 1.25 and 1.5 (T018, T019; names when built); T020's matrix |
-| AS-8 | ui at 1.25 (T018, T019); M2 (T023) |
-| AS-9 | core and ui at 1.25 (T018, T019) |
-| AS-10 | ui at 1.25 and 1.5 (T018, T021) |
-| AS-11 | ui at 1.25 and 1.5 (T018, T019) |
+| AS-7 | core `as7_fractional_screen_rule`; ui `/0025-frac/as7_rows_and_columns` (`ui-0025-scale125`, `ui-0025-scale150`); T020's `/0025-open/fractional_matrix` |
+| AS-8 | ui `/0025-frac/as8_shapes_outlines`; M2 (T023) |
+| AS-9 | core `as7_fractional_screen_rule`; ui `/0025-frac/as9_pointer` |
+| AS-10 | ui `/0025-frac/as10_same_pixels_and_file` |
+| AS-11 | ui `/0025-frac/as11_grid` |
 
 ### The rest of the Plan
 
@@ -211,7 +211,7 @@ The numbers (`probe-edge-drawing frames`, 2026-11-02, real session, `GskVulkanRe
 - The tests see `render_texture`, not the screen: M1 is JOD's look in the real session.
 - The probe is horizontal only: AS-1c tests both axes.
 
-### Change of 2026-11-13 (a fractional screen scale, REQ-0025-07, AS-7 to AS-10; accepted 2026-11-13)
+### Change of 2026-11-13 (a fractional screen scale, REQ-0025-07, AS-7 to AS-11; implemented 2026-11-13, release 1.0.3)
 (Opus, 2026-11-13.) From JOD's bug at desktop scale 1.25 and the probe of 2026-11-13 (`tools/isolated.sh --scale 1.25` and `1.5`, an
 800 × 600 picture of distinct pixels at 100 %, read from the window's render): under Cairo and Vulkan about 476 000 device pixels of 480 000
 were a blend of two to four picture pixels (a pixel at 1.25 read `0x001713` for `0x001014`), at scale 1 none. Two causes:
@@ -240,7 +240,7 @@ and 10 776 (Vulkan) blended pixels remained.
     device column 0 to 2999 `easel_view_to_pixel` gives the cell `easel_view_cell_at` draws there; at 100 % cell d is pixel d; no cell is
     skipped and the widths differ by at most one; scales 1 and 2 as before; `easel_view_device_shift` on 123.75, 72.5, 15, 0.
   - ui `/0025-frac/as7_rows_and_columns` (AS-7: the 800 × 600 and 3000 × 2000 pictures of distinct pixels and the one-color 3000 × 2000,
-    each edge computed as k × zoom/100 from the picture's corner; at 100, 125, 129, 150 and 200 %; the window as it opens and a 1001 × 777
+    each edge computed as k × zoom/100 from the picture's corner; at 100, 125, 129, 150 and 200 %; the window as it opens and a 1001 × 577
     area (`set_area`); the scroll's start, 1, 3 and 7 logical pixels, the middle and the far corner; Fit to Window; 200 → 100 → 129 %
     scrolled; the shaded border, the shadow and the scrollbars left out as AS-1 does), `/0025-frac/as8_shapes_outlines` (AS-8, Shapes
     through the canvas's press path, the neighbour rule over the whole picture), `/0025-frac/as9_pointer` (AS-9, the canvas's mapping at
@@ -251,6 +251,91 @@ and 10 776 (Vulkan) blended pixels remained.
 - **Proof that GTK leaves the pixels exact (T020, JOD's matrix):** the AS-7 reading run at zooms 100, 125, 150 and 200 % on scales 1, 1.25, 1.5
   and 2, under Cairo and Vulkan; each of the 32 combinations recorded exact or not, with its counts. If one stays blended, the work stops and
   JOD hears it before anything builds on it.
+- **T020's matrix (2026-11-13):** exact at every one of the 32 combinations: scales 1, 1.25, 1.5 and 2, zooms 100, 125, 150 and 200 %,
+  Cairo and Vulkan (`/0025-open/fractional_matrix`, 0 wrong reads each).
+- **Measured (T022, 2026-11-13, JOD's real session, Vulkan, the 1920 x 1200 screen):** `perf-0025` (100 % added to its zooms for this
+  change), the working tree against `797639b` (1.0.2, a worktree build), interleaved, three runs each at each scale; each cell the range of
+  the three runs' medians, in ms, a frame's time being the compositor's (16.7 ms at 60 Hz); "-" where no frame was presented. Scale checked
+  from Mutter before each set.
+
+  Scale 1 (view 1766 x 1043; load 2.0 falling to 0.7, not quiet: the first set, run when the desktop was found at 1.0, not 1.25):
+
+| Case | CPU median, 1.0.2 | CPU median, the fix | Frame median, 1.0.2 | Frame median, the fix |
+|---|---|---|---|---|
+| 100 % nothing changed | 0.5-0.51 | 0.5-0.52 | - | - |
+| 100 % pencil | 0.84-0.99 | 0.88-0.96 | 16.7-16.7 | 16.7-16.7 |
+| 100 % scroll | 0.67-1.41 | 0.62-1.25 | 16.7-16.7 | 16.7-16.7 |
+| 100 % scroll, float | 1.03-1.43 | 1.29-1.43 | 16.7-16.7 | 16.7-16.7 |
+| 100 % scroll, grid, selection | 6.29-7.05 | 6.2-6.34 | 16.7-16.7 | 16.7-16.7 |
+| 129 % nothing changed | 0.47-0.47 | 0.47-0.49 | 16.7-16.7 | 16.7-16.7 |
+| 129 % pencil | 3.81-4.1 | 3.82-4.25 | 16.7-16.7 | 16.7-16.7 |
+| 129 % scroll | 4.18-4.35 | 4.2-6.41 | 16.7-16.7 | 16.7-16.7 |
+| 129 % scroll, float | 4.88-5.11 | 4.64-7.24 | 16.7-16.7 | 16.7-16.7 |
+| 129 % scroll, grid, selection | 6.5-6.7 | 6.49-8.45 | 16.7-16.7 | 16.7-16.7 |
+| 150 % nothing changed | 0.46-0.48 | 0.48-0.5 | 16.7-16.7 | 16.7-16.7 |
+| 150 % pencil | 2.29-2.38 | 2.15-2.3 | 16.7-16.7 | 16.7-16.7 |
+| 150 % scroll | 3.96-4.15 | 4.05-4.22 | 16.7-16.7 | 16.7-16.7 |
+| 150 % scroll, float | 4.82-7 | 4.35-6.87 | 16.7-16.7 | 16.7-16.7 |
+| 150 % scroll, grid, selection | 5.8-5.94 | 5.8-5.99 | 16.7-16.7 | 16.7-16.7 |
+| 800 % nothing changed | 0.51-0.52 | 0.52-0.52 | - | - |
+| 800 % pencil | 0.92-1.05 | 0.79-0.97 | 16.7-16.7 | 16.7-16.7 |
+| 800 % scroll | 0.58-1.29 | 1.16-1.32 | 16.7-16.7 | 16.7-16.7 |
+| 800 % scroll, float | 1.28-1.5 | 1.11-1.31 | 16.7-16.7 | 16.7-16.7 |
+| 800 % scroll, grid, selection | 2.41-2.55 | 2.27-2.45 | 16.7-16.7 | 16.7-16.7 |
+
+  Scale 1.25 (view 1382 x 803; load 1.1 to 1.5):
+
+| Case | CPU median, 1.0.2 | CPU median, the fix | Frame median, 1.0.2 | Frame median, the fix |
+|---|---|---|---|---|
+| 100 % nothing changed | 0.47-0.67 | 0.47-0.48 | 16.7-16.7 | 16.7-16.7 |
+| 100 % pencil | 0.47-0.6 | 0.44-0.48 | 16.7-16.7 | 16.7-16.7 |
+| 100 % scroll | 1.11-1.62 | 3.47-3.87 | 16.7-16.7 | 16.7-16.7 |
+| 100 % scroll, float | 1.19-1.25 | 4.36-4.73 | 16.7-16.7 | 16.7-16.7 |
+| 100 % scroll, grid, selection | 6.43-6.9 | 7.23-7.58 | 16.7-16.7 | 16.7-16.7 |
+| 129 % nothing changed | 0.49-0.51 | 0.46-0.54 | 16.7-16.7 | 16.7-16.7 |
+| 129 % pencil | 0.44-0.53 | 0.47-0.55 | 16.7-16.7 | 16.7-16.7 |
+| 129 % scroll | 1.22-1.27 | 3.51-3.68 | 16.7-16.7 | 16.7-16.7 |
+| 129 % scroll, float | 1.24-1.47 | 4.05-4.37 | 16.7-16.7 | 16.7-16.7 |
+| 129 % scroll, grid, selection | 9.3-9.91 | 10.62-11.21 | 16.7-16.7 | 16.7-16.7 |
+| 150 % nothing changed | 0.51-1.04 | 0.48-0.57 | 16.7-16.7 | 16.7-16.7 |
+| 150 % pencil | 0.51-0.61 | 0.43-0.49 | 16.7-16.7 | 16.7-16.7 |
+| 150 % scroll | 1.21-1.36 | 3.6-6.1 | 16.7-16.7 | 16.7-16.7 |
+| 150 % scroll, float | 1.08-1.37 | 4.1-5.54 | 16.7-16.7 | 16.7-16.7 |
+| 150 % scroll, grid, selection | 7.7-8.24 | 8.55-10.17 | 16.7-16.7 | 16.7-16.7 |
+| 800 % nothing changed | 0.54-0.67 | 0.5-1.04 | 16.7-16.7 | 16.7-16.7 |
+| 800 % pencil | 0.46-0.49 | 0.5-0.53 | 16.7-16.7 | 16.7-16.7 |
+| 800 % scroll | 0.9-1.03 | 3.21-3.55 | 16.7-16.7 | 16.7-16.7 |
+| 800 % scroll, float | 0.91-1.99 | 3.35-3.36 | 16.7-16.7 | 16.7-16.7 |
+| 800 % scroll, grid, selection | 3.34-3.62 | 3.76-3.88 | 16.7-16.7 | 16.7-16.7 |
+
+  Scale 2 (view 806 x 443; load 1.0 to 1.55):
+
+| Case | CPU median, 1.0.2 | CPU median, the fix | Frame median, 1.0.2 | Frame median, the fix |
+|---|---|---|---|---|
+| 100 % nothing changed | 0.44-0.99 | 0.45-0.54 | - | - |
+| 100 % pencil | 0.43-3.5 | 0.47-5.26 | 16.7-16.7 | 16.7-16.7 |
+| 100 % scroll | 3.38-4.21 | 3.82-5.54 | 16.7-16.7 | 16.7-16.7 |
+| 100 % scroll, float | 4.3-5.02 | 4.31-6.06 | 16.7-16.7 | 16.7-16.7 |
+| 100 % scroll, grid, selection | 6.62-7.76 | 6.54-8.22 | 16.7-16.7 | 16.7-16.7 |
+| 129 % nothing changed | 0.4-0.52 | 0.45-0.5 | 16.7-16.7 | - |
+| 129 % pencil | 0.44-3.37 | 0.45-3.45 | 16.7-16.7 | 16.7-16.7 |
+| 129 % scroll | 3.12-3.8 | 3.54-5.38 | 16.7-16.7 | 16.7-16.7 |
+| 129 % scroll, float | 3.73-4.57 | 4.1-6.1 | 16.7-16.7 | 16.7-16.7 |
+| 129 % scroll, grid, selection | 5.41-5.75 | 5.53-8.1 | 16.7-16.7 | 16.7-16.7 |
+| 150 % nothing changed | 0.46-0.5 | 0.42-0.47 | - | - |
+| 150 % pencil | 0.5-3.3 | 0.51-4.91 | 16.7-16.7 | 16.7-16.7 |
+| 150 % scroll | 3.3-3.9 | 3.12-5.15 | 16.7-16.7 | 16.7-16.7 |
+| 150 % scroll, float | 4-4.09 | 3.94-5.58 | 16.7-16.7 | 16.7-16.7 |
+| 150 % scroll, grid, selection | 5.13-5.36 | 5.22-7.49 | 16.7-16.7 | 16.7-16.7 |
+| 800 % nothing changed | 0.39-0.47 | 0.46-0.58 | - | - |
+| 800 % pencil | 0.55-2.55 | 0.56-2.57 | 16.7-16.7 | 16.7-16.7 |
+| 800 % scroll | 2.66-3.16 | 2.53-2.82 | 16.7-16.7 | 16.7-16.7 |
+| 800 % scroll, float | 2.82-3.35 | 2.82-4.96 | 16.7-16.7 | 16.7-16.7 |
+| 800 % scroll, grid, selection | 4.24-4.53 | 4.13-5.66 | 16.7-16.7 | 16.7-16.7 |
+
+  Every median frame is one frame in both builds at every scale and zoom: the budget holds. At 1.25 the built view costs about 2 to 3 ms
+  more CPU a scrolled frame than the renderer's scaling did (100 % scroll 1.1-1.6 against 3.5-3.9 ms), 800 % too (built there now), all
+  well inside a frame. At scales 1 and 2 the path is 1.0.2's (the shift is 0): the two builds overlap, the spread is the load's.
 - **Regression (every task from T019):** the ui suites that compare screen captures: `ui-0010`, `ui-0013`, `ui-0014`, `ui-0017`, `ui-0025`,
   `ui-0031`, `ui-0039`, `ui-0043`; the scale 2 list; `ui-0025-scale125` and `ui-0025-scale150`; core and io.
 - **Cost (T022):** the built view costs more than a scaled texture. `perf-0025`'s cases (a scroll and a drag at 100 % and 150 %) on a
@@ -303,31 +388,88 @@ and 10 776 (Vulkan) blended pixels remained.
 - [x] T017 The first check's findings (REQ-0001-18, REQ-0017-14, REQ-0017-16, REQ-0025-02, REQ-0025-03, REQ-0025-05, REQ-0025-06; AS-1b, AS-1e, AS-3, AS-3b) - done when each finding is settled, with its test or JOD's decision, and the tests are green under the breaks named
   Result: probe first: below 100 % on scale 2, black and white columns gave up to 263000 grey device pixels of 393750 at 75 % under cairo (all three renderers blend, none at scale 1), so REQ-0001-18 was broken there. `as1e_no_blend_below_100_at_scale_2` failed first with `wrong == 0: 43750`, core `built_by_edges_at_any_zoom_on_a_scale_above_1` with `CHECK failed: py == easel_view_cell_at (d, 75)`; green under cairo, ngl and vulkan once the view and the pointer use one rule (`easel_view_built_by_edges`). Characterizations, each passed at its first run and proven by a mutant: `as1b_far_corner_of_8000` (passed already; its cases share the code of `as1_far_corner_of_8000`), `view_without_memory_falls_back` (the four "no memory" mutants; two survived its first version, so its counts were tightened), the caret and the saved-file checks of AS-3 and the float and box of AS-3b (their mutants). Coverage values: a histogram over 5 fonts, 6 styles and 14 sizes gives no partial value on letters, and every value on a color emoji; the 102 and 154 of the survivor came from the ends of an underline under italic text, which REQ-0017-16 already names, so no defect: `as16_half_covered_underline_ends` kills both threshold mutants (64 and 192). The popover mutant of REQ-0017-14 is marked accepted (JOD, 2026-11-02; GTK 4.24 cannot kill it; re-decide at packaging-release). The long-only mutant of REQ-0014-16 was killed by hand by `as14_long_trace`, the same way twice.
 
-Change of 2026-11-13 (JOD; a fractional screen scale, REQ-0025-07, AS-7 to AS-10; for 1.0.3).
-- [ ] T018 The failing tests (REQ-0025-07, REQ-0025-06; AS-7 to AS-11) - done when core `as7_fractional_screen_rule` and the five
+Change of 2026-11-13 (JOD; a fractional screen scale, REQ-0025-07, AS-7 to AS-11; for 1.0.3). Implemented 2026-11-13 (T018 to T025).
+- [x] T018 The failing tests (REQ-0025-07, REQ-0025-06; AS-7 to AS-11) - done when core `as7_fractional_screen_rule` and the five
   `/0025-frac/` cases, with `ui-0025-scale125` and `ui-0025-scale150` and the tool's `--scale 1.25` and `1.5`, are written and seen red
   today (core at the rule; ui at 1.25 and 1.5 at the blended pixels, AS-11 at a grid line off its edge if the grid is off there; AS-10
   likely green, a characterization whose break is named in T021), and the five ui cases skip at scale 1; no product code changed
-- [ ] T019 The fix (REQ-0025-07, REQ-0025-06; AS-7, AS-8, AS-9, AS-11) - done when the core rule from 100 % at any scale and `easel_view_device_shift`
+  Result (2026-11-13): written and seen red, no product code changed. Core `as7_fractional_screen_rule` (in `test-view`, run by `core-view`):
+  red at the rule, `CHECK failed: easel_view_built_by_edges (129, 1.5)` (the old case of `built_by_edges_at_any_zoom_on_a_scale_above_1`
+  that said FALSE now says TRUE; the new case checks 1.25 and 1.5 at 100, 125, 129, 150, 200 %, the pointer against the drawn cell over
+  3000 device columns at 0.1 and 0.9, 1:1 at 100 %, AS-9's example, 75 % and 50 % unchanged). `easel_view_device_shift`'s checks moved to
+  T019, written red there (here they would stop the build every ui test needs). ui, each alone (an abort ends a `-k` run), Cairo,
+  `tools/isolated.sh --scale 1.25` and `1.5` (the tool's new values): `/0025-frac/as7_rows_and_columns` red at both (58 257 002 and
+  68 081 557 wrong reads over the combinations; the first, 800 x 600 at 100 %, scroll 0, scale 1.25: 415 917 blended device pixels, 349
+  squares skipped), `as8_shapes_outlines` red (26 079 and 23 052 wrong device pixels of 480 000, with the Polygon of JOD's screencast,
+  added 2026-11-13), `as9_pointer` red (24 184 of 24 270 and 23 414 of 23 502 positions wrong), `as11_grid` red (419 and 538 vertical lines
+  off a square's edge), `as10_same_pixels_and_file` green at both (characterization, as the task said; its break in T021). All five skip
+  at scale 1. Changes on the way: AS-7's second area is 1001 x 577 (1001 x 777 cannot fit the 1280 x 800 logical screen of scale 1.5);
+  `render_pixels` rounds the canvas's device origin down (`floor`), not toward zero, so a scrolled fractional origin is read right. New
+  meson tests `ui-0025-scale125` and `ui-0025-scale150` (`-p /0025-frac`; at scale 1 both pass by skipping).
+- [x] T019 The fix (REQ-0025-07, REQ-0025-06; AS-7, AS-8, AS-9, AS-11) - done when the core rule from 100 % at any scale and `easel_view_device_shift`
   are in `view.c` with their mutants, the canvas shifts its snapshot and its pointer by it, the `easel_canvas_get_scale` calls are read for
   integer casts, T018's core test and AS-7, AS-8, AS-9 and AS-11 at 1.25 and 1.5 are green, and the regression list of the Plan is green; warning-free;
   `--lint` 0 stale
-- [ ] T020 Prove exact (REQ-0025-07; AS-7) - done when the AS-7 reading has run at zooms 100, 125, 150 and 200 % on scales 1, 1.25, 1.5 and 2
+  Result (2026-11-13): core first: `easel_view_device_shift`'s checks red by build (`implicit declaration`), then green with the function and
+  the rule (`easel_view_built_by_edges`: below 100 % a whole scale only, from 100 % any scale but 1 where the zoom is whole); `core-view` OK.
+  Canvas: `easel_canvas_get_device_shift` (the fraction of the canvas's device place in its surface, from `gtk_widget_compute_point` to
+  the native plus `gtk_native_get_surface_transform`, over the scale; read at every use, no field holds it), the snapshot translated by
+  minus it, the three entry points (`easel_canvas_press_timed`, `_motion`, `_pointer_at`) moving the widget's place into the drawing's,
+  the keyboard marker's four calls (`marker_center`) and the Magnifier's box taking it back, and the nine readers of the visible area
+  (`seen_in_drawing`). Found on the way: the surface transform at 1.25 is (25, 25), 31.25 device pixels, so the canvas at window (99, 58)
+  is at device (155, 103.75): only y needs the shift. Test helpers brought to the screen's device pixels, 0 on a whole scale: `render_pixels`
+  and `view_frame` add the surface's fraction (`surface_fraction`) and round the view's sides inward, `canvas_point` and AS-2's drag runs
+  subtract the shift; three mistakes of T018's tests fixed (the one-color fill written past `easel_image_set`, so no tile was rebuilt;
+  50 x 1.15 compared in doubles; AS-9's origin without the surface's fraction). The corrected tests made red again against the old
+  behavior (the old rule and no shift, a temporary break): AS-7, AS-8, AS-9, AS-11 red at 1.25 and 1.5, AS-10 green. Green after: the five
+  `/0025-frac` cases at 1.25 and 1.5. No integer cast of the scale in `src/ui` (grep). Mutants: core, 3 new (the fractional scale left to
+  the renderer from 100 %, below 100 % built at a fractional scale, no shift) and 3 repointed (REQ-0001-18, REQ-0031-01 to the new rule,
+  REQ-0013-07 to `seen_in_drawing`): by id REQ-0025-07, REQ-0001-18, REQ-0031-01 7 of 7 killed, REQ-0013-07 6 of 6; `--lint` 1636, 0 stale.
+  The canvas's breaks need a session of 1.25, which `tools/mutate.sh` does not start, so they ran by hand, each red: the shift left out of
+  the drawing (AS-8 9 644 wrong, AS-9 19 950), out of the pointer (AS-8 at the diagonal's pixel, AS-9 9 975), its sign (AS-8 15 213).
+  Regression: `ui-0007`, `ui-0010`, `ui-0013`, `ui-0014`, `ui-0017`, `ui-0022`, `ui-0025`, `ui-0031`, `ui-0039`, `ui-0043` 10 of 10; core and
+  io 52 of 52; the scale 2 list 5 of 5; `ui-0025-scale125` at 1.25 and `ui-0025-scale150` at 1.5, each 1 of 1 with its five cases run, not
+  skipped; warning-free.
+- [x] T020 Prove exact (REQ-0025-07; AS-7) - done when the AS-7 reading has run at zooms 100, 125, 150 and 200 % on scales 1, 1.25, 1.5 and 2
   under Cairo and Vulkan and the 32 results are recorded in the Plan, each exact or with its counts; any that is not stops the work for JOD
-- [ ] T021 The same pixels and the saved file (REQ-0025-07, REQ-0025-04, REQ-0025-05; AS-10) - done when `/0025-frac/as10_same_pixels_and_file`
+  Result (2026-11-13): `/0025-open/fractional_matrix` (a record under `/0025-open/`, which no meson test runs; a 3000 x 2000 picture of
+  distinct pixels, AS-7's reading at the scroll's start and its middle), in `tools/isolated.sh` with no scale, `--scale 1.25`, `1.5` and
+  `2`, under `GSK_RENDERER=cairo` and `vulkan`: all 32 combinations exact, 0 wrong reads each (scales 1, 1.25, 1.5, 2 x zooms 100, 125,
+  150, 200 % x Cairo, Vulkan). What it reads is GTK's render of the window at the surface's place, not the compositor's output: M2 (T023)
+  is the look on JOD's screen.
+- [x] T021 The same pixels and the saved file (REQ-0025-07, REQ-0025-04, REQ-0025-05; AS-10) - done when `/0025-frac/as10_same_pixels_and_file`
   passes at 1.25 and 1.5 and its Result names the breaks that make it red (a drag's pixel taken from the logical position without the
   scale; the file written from the rendered view)
-- [ ] T022 Measure (the budget "pointer event to pixels within one frame") - done when `perf-0025` has run in the real session at scale 1.25,
+  Result (2026-11-13): characterization, as planned: `/0025-frac/as10_same_pixels_and_file` passed before the fix (T018) and after it, at
+  1.25 and 1.5. Case: AS-2's drags (Pencil, Brush, Line, the shapes, Fill) at 129, 400, 800, 25 and 50 % against the 100 % run, then a
+  5-Point Star put down on a 400 x 300 picture of distinct pixels, saved as PNG, opened in a second window: the same pixels. Made red by
+  two breaks, each run at 1.25 and reverted: the drag's pixel taken without the scale (`to_pixel` passing 1.0: "pencil at 25 %: 140
+  pixels differ from the 100 % run"), and the file written with a pixel the picture did not hold (`easel_window_save_to` setting (0, 0)
+  first: `assert_same_pixels` failed).
+- [x] T022 Measure (the budget "pointer event to pixels within one frame") - done when `perf-0025` has run in the real session at scale 1.25,
   and at 1 and 2 after JOD sets them, the working tree interleaved with `797639b`, three runs each, the numbers in the Plan
-- [ ] T023 Manual M2 (AS-8) - done when JOD, at desktop scale 1.25, has drawn rectangles and a star at 100 %, 125 %, 150 % and 200 % and seen
+  Result (2026-11-13): passed (JOD: within one frame at 100 % and 150 %). The numbers in the Plan: every median frame 16.7 ms at scales 1,
+  1.25 and 2, both builds; at 1.25 the built view costs 2 to 3 ms more CPU per scrolled frame. `perf-0025` gained a 100 % case (the zoom this
+  change is about). The first set ran at scale 1 when 1.25 was asked (the desktop was at 1.0): kept as the scale 1 set.
+- [x] T023 Manual M2 (AS-8) - done when JOD, at desktop scale 1.25, has drawn rectangles and a star at 100 %, 125 %, 150 % and 200 % and seen
   every outline and no line across the picture; his words in the Result
-- [ ] T024 Gate of the change - done when `tools/mutate.sh --core` once, the ui mutants of REQ-0025-07 by id, the full `meson test`, the
+  Result: JOD, 2026-11-13, the real session at desktop scale 125 %: "M2 passed at 125 % (my manual check): all borders complete at 100 %
+  and higher zooms, the hairline is gone, pointer and Magnifier are right." (Taken before T022's measurement, which waits for a quiet
+  machine.)
+- [x] T024 Gate of the change - done when `tools/mutate.sh --core` once, the ui mutants of REQ-0025-07 by id, the full `meson test`, the
   scale lists (2, 1.25, 1.5), `spec.sh lint` and `--names 0025`, the map brought to the names as built, `docs/engineering.md`'s runs, and
   the change marked implemented in the spec, the INDEX and `docs/phase2-plan.md` (its fractional-scale item)
-- [ ] T025 Version 1.0.3 (after the gate) - done when the version is 1.0.3 in `meson.build`, `debian/changelog` (1.0.3) and the metainfo (a
+  Result (2026-11-13): `tools/mutate.sh --core`: 626 mutants, 622 killed, 0 killed by crash, 0 inconclusive, 3 survived, 0 errors, 1
+  accepted (270 s); the survivors are the three accepted before (REQ-0037-02, REQ-0038-03, REQ-0041-06). `ui-0007`, `ui-0010`, `ui-0013`,
+  `ui-0014`, `ui-0017`, `ui-0022`, `ui-0025`, `ui-0031`, `ui-0039`, `ui-0043` 10 of 10; core and io 52 of 52; the scale 2 list 5 of 5;
+  `ui-0025-scale125` at 1.25 and `ui-0025-scale150` at 1.5, 1 of 1 each; warning-free; `spec.sh lint` and `--names 0025` ok; the map by the
+  names as built; `docs/engineering.md` names the two new runs; marked implemented here, in the INDEX and in `docs/phase2-plan.md`.
+- [x] T025 Version 1.0.3 (after the gate) - done when the version is 1.0.3 in `meson.build`, `debian/changelog` (1.0.3) and the metainfo (a
   stable release entry above 1.0.2), `docs/release-notes-1.0.3.md` holds the one line "Fixed: at fractional screen scales such as 125 % and
   150 %, thin lines could look faint or missing on screen. The picture itself and saved files were not affected.", `version-sync`,
   `metainfo` and `ui-0021` pass; not pushed, no release
+  Result (2026-11-13): 1.0.3 in `meson.build`, `debian/changelog` and the metainfo (a stable entry above 1.0.2); `docs/release-notes-1.0.3.md`
+  holds the agreed line; no new strings. `version-sync`, `metainfo`, `desktop-entry` and `ui-0021` (About's version) pass; not pushed, no release.
 
 ## Known gaps
 What stays open after this spec is in `docs/phase2-plan.md`: the overlay limit at a fractional zoom (accepted), fractional desktop scales, a real screen of scale 2, the frame times of fractional zooms, two small leftovers in the code and the benchmark, and the graphics path audit.

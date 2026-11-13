@@ -3487,11 +3487,11 @@ test: ui-0013
 --- find
   if (self->sel_state != 2 || f->px == NULL)
     return;
-  if (!gtk_widget_compute_bounds
+  if (!seen_in_drawing (self, &seen))
 --- replace
   if (TRUE)
     return;
-  if (!gtk_widget_compute_bounds
+  if (!seen_in_drawing (self, &seen))
 
 === REQ-0013-07 a press on the part of a floating selection outside the picture starts a rectangle
 file: src/ui/canvas.c
@@ -10836,9 +10836,11 @@ test: ui-0025
 file: src/core/view.c
 test: core-view
 --- find
-  return scale == floor (scale) && (pct < 100 || easel_view_draws_by_edges (pct) || scale != 1);
+  if (pct < 100)
+    return scale == floor (scale);
 --- replace
-  return scale == floor (scale) && ((pct < 100 && scale == 1) || easel_view_draws_by_edges (pct) || (scale != 1 && pct >= 100));
+  if (pct < 100)
+    return scale == 1;
 
 === REQ-0025-02 a view with no memory draws nothing
 file: src/ui/canvas.c
@@ -12171,9 +12173,11 @@ test: core-view
 file: src/core/view.c
 test: core-view
 --- find
-  return scale == floor (scale) && (pct < 100 || easel_view_draws_by_edges (pct) || scale != 1);
+  if (pct < 100)
+    return scale == floor (scale);
 --- replace
-  return scale == floor (scale) && (easel_view_draws_by_edges (pct) || scale != 1);
+  if (pct < 100)
+    return false;
 
 === REQ-0033-02 Shift constrains a grab
 file: src/ui/canvas.c
@@ -15511,3 +15515,33 @@ test: ui-0043
   if (!self->probe_no_line)
     append_selection_outline (self, snapshot);
   append_handles (self, snapshot);
+
+# ---- a screen whose scale is not whole, the change of 2026-11-13 (0025, REQ-0025-07) ----
+# The canvas's breaks (the shift left out of the drawing, of the pointer, its sign) need a session of scale 1.25, which tools/mutate.sh
+# does not start: they are run by hand and recorded in 0025's T019.
+
+=== REQ-0025-07 a fractional scale left to the renderer from 100 %
+file: src/core/view.c
+test: core-view
+--- find
+  return easel_view_draws_by_edges (pct) || scale != 1;
+--- replace
+  return easel_view_draws_by_edges (pct) || (scale != 1 && scale == floor (scale));
+
+=== REQ-0025-07 below 100 % built on edges at a fractional scale too
+file: src/core/view.c
+test: core-view
+--- find
+  if (pct < 100)
+    return scale == floor (scale);
+--- replace
+  if (pct < 100)
+    return true;
+
+=== REQ-0025-07 no shift to a whole device pixel
+file: src/core/view.c
+test: core-view
+--- find
+  return origin - floor (origin);
+--- replace
+  return 0;

@@ -443,7 +443,7 @@ built_by_edges_at_any_zoom_on_a_scale_above_1 (void)
   CHECK (easel_view_built_by_edges (129, 2));
   CHECK (easel_view_built_by_edges (800, 2));
   CHECK (!easel_view_built_by_edges (75, 1.5));
-  CHECK (!easel_view_built_by_edges (129, 1.5));
+  CHECK (easel_view_built_by_edges (129, 1.5));               /* from 100 % at a fractional scale too (REQ-0025-07, 2026-11-13) */
   for (int d = 0; d < 500; d++)
     {
       int px, py;
@@ -545,6 +545,53 @@ as5_scale2_below (void)
   CHECK (px == 1 && py == 3);
 }
 
+/* REQ-0025-07, AS-7 and AS-9 (2026-11-13): on a screen whose scale is not whole, from 100 % the view is built on the device edges, a
+   pointer maps to the cell drawn on its device pixel, 1:1 at 100 %; below 100 % nothing changes; the shift that puts the view's first
+   device pixel on a whole one. */
+static void
+as7_fractional_screen_rule (void)
+{
+  static const double scales[] = { 1.25, 1.5 };
+  static const int pcts[] = { 100, 125, 129, 150, 200 };
+  int px, py;
+
+  for (unsigned i = 0; i < 2; i++)
+    {
+      CHECK (!easel_view_built_by_edges (75, scales[i]));        /* below 100 %: as before (REQ-0025-07) */
+      CHECK (!easel_view_built_by_edges (50, scales[i]));
+      for (unsigned j = 0; j < 5; j++)
+        {
+          CHECK (easel_view_built_by_edges (pcts[j], scales[i]));
+          for (int d = 0; d < 3000; d++)
+            for (int f = 0; f < 2; f++)
+              {
+                double x = (d + (f ? 0.9 : 0.1)) / scales[i];
+
+                easel_view_to_pixel (x, x, pcts[j], scales[i], &px, &py);
+                CHECK (px == easel_view_cell_at (d, pcts[j]));
+                CHECK (py == easel_view_cell_at (d, pcts[j]));
+              }
+        }
+    }
+  for (int d = 0; d < 3000; d++)
+    CHECK (easel_view_cell_at (d, 100) == d);                     /* 1:1 at 100 % */
+  /* AS-9's example: at 1.25 and 100 %, logical 0.79 (device 0.9875) is pixel 0, logical 0.8 (device 1.0) is pixel 1 */
+  easel_view_to_pixel (0.79, 0.79, 100, 1.25, &px, &py);
+  CHECK (px == 0);
+  easel_view_to_pixel (0.8, 0.8, 100, 1.25, &px, &py);
+  CHECK (px == 1);
+  /* whole scales as before */
+  CHECK (!easel_view_built_by_edges (100, 1));
+  CHECK (easel_view_built_by_edges (100, 2));
+  /* the shift that puts a view starting at device 123.75 on device 123 (REQ-0025-07: the picture's corner on a whole device pixel) */
+  CHECK (easel_view_device_shift (123.75) == 0.75);
+  CHECK (easel_view_device_shift (72.5) == 0.5);
+  CHECK (easel_view_device_shift (15) == 0);
+  CHECK (easel_view_device_shift (0) == 0);
+  CHECK (easel_view_device_shift (-0.25) == 0.75);
+  CHECK (easel_view_device_shift (-1240) == 0);
+}
+
 int
 main (void)
 {
@@ -571,5 +618,6 @@ main (void)
   RUN (as2_count_below);
   RUN (as4_pointer_below);
   RUN (as5_scale2_below);
+  RUN (as7_fractional_screen_rule);
   return 0;
 }

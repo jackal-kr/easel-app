@@ -123,8 +123,16 @@ easel_view_draws_by_edges (int pct)
 bool
 easel_view_built_by_edges (int pct, double scale)
 {
-  /* Below 100 % the view is built by REQ-0031-01's rule at a whole screen scale. */
-  return scale == floor (scale) && (pct < 100 || easel_view_draws_by_edges (pct) || scale != 1);
+  /* Below 100 % the view is built by REQ-0031-01's rule at a whole screen scale; from 100 % at any scale that is not 1 (REQ-0025-07). */
+  if (pct < 100)
+    return scale == floor (scale);
+  return easel_view_draws_by_edges (pct) || scale != 1;
+}
+
+double
+easel_view_device_shift (double origin)
+{
+  return origin - floor (origin);
 }
 
 void
