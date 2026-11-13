@@ -87,7 +87,8 @@ Pointer notes to add at acceptance:
   Only the shape's pixels inside the picture are shown and drawn.
 
 ### Waiting with handles
-- REQ-0043-06 (Changes REQ-0010-05, -08, -09, -18 and -19 for Shapes; JOD, 2026-11-11.) A Shapes press that never leaves its
+- REQ-0043-06 (Pointer note, change of 2026-11-13: the waiting shape's box is also outlined by the selection's dashed line, REQ-0043-19;
+  the handles are as here.) (Changes REQ-0010-05, -08, -09, -18 and -19 for Shapes; JOD, 2026-11-11.) A Shapes press that never leaves its
   pixel before its release makes nothing (JOD, 2026-11-11: no 1 x 1 shape from a click); "a move" below is the pointer
   leaving the press's pixel. When the button that drags out a shape (one that moved) is released, the app shall not draw it
   yet: the shape waits. A first drag whose release is lost (REQ-0007-18) or during which the window loses focus ends as last
@@ -136,6 +137,20 @@ Pointer notes to add at acceptance:
   REQ-0010-06 for a waiting shape). During its first drag, a move or a handle drag, a color change is made at once (REQ-0003)
   but the shape keeps the colors of that drag's press until the release, then takes the colors current then; widths, fill
   styles, Sharp | Smooth, Numpad + or − and shapes chosen during such a drag are ignored (REQ-0010-08).
+- REQ-0043-19 (Change of 2026-11-13; JOD, 2026-11-13.) While a shape waits, the app shall outline its box with the line of a
+  rectangle selection, the line a text box has too (REQ-0013-05, REQ-0014-17 (a) and (c), REQ-0017-05): white with black dashes,
+  just outside the box's pixels on all four sides, one line counted clockwise from the top-left corner of the box as shown (also
+  when the shape is mirrored; after a handle drag, from the new box's top-left corner), its thickness and the length of its
+  dashes and gaps as REQ-0014-17 (a) gives them at the zoom; at a new zoom it takes that zoom's thickness and dash length and its
+  dashes are counted again. It lies over the shape, the picture, the grid, the picture's resize handles and the canvas area (where
+  the box lies outside the picture), under the shape's eight handles (REQ-0043-06, unchanged), and scrolls and moves with the box.
+  Its dashes move as a selection's while no drag of the shape is held. They stand still during the shape's first drag, a move
+  drag and a handle drag, by the mouse or by a keyboard press (REQ-0022-10); a press that does nothing (REQ-0043-07) changes
+  nothing. When the user's settings turn animations off they never move, and the first dash starts the line. During the first
+  drag, once it has left its press's pixel, the line is shown round the box, over the canvas area too, as round a selection's
+  rectangle while it is dragged out (the handles come at the release, REQ-0043-06). The line goes when the shape is put down or
+  dropped, or its first drag is cancelled. No tint is drawn over the box (REQ-0014-17 (b) does not apply). The line is not part
+  of the picture: no pixel of it enters the picture, a put-down, the history, a saved file or a printed page.
 
 ### Putting down and dropping
 - REQ-0043-10 A waiting shape shall be put down as shown, as one undo step that marks the picture modified (REQ-0010-07: no
@@ -162,7 +177,8 @@ Pointer notes to add at acceptance:
   Draw the Shape" of REQ-0010-20 when no button is held (at the release if one is), drop the shape (nothing waits) and change
   nothing else: neither the picture nor the history (as REQ-0011-15). The action that asked for the put-down then goes on,
   except Print, which stops (REQ-0026-12); a step larger than the whole budget is kept as the only step (REQ-0002-17).
-- REQ-0043-14 The pixel contract (P7): (1) every pixel is whole and exactly the part's color, with Sharp; with Smooth the mix
+- REQ-0043-14 (Pointer note, change of 2026-11-13: "the handles are not part of the picture" holds for the dashed line of REQ-0043-19
+  too.) The pixel contract (P7): (1) every pixel is whole and exactly the part's color, with Sharp; with Smooth the mix
   of REQ-0039-06 (smoothing, opt-in, as P7.1 allows); (2) the view only magnifies; the handles are not part of the picture;
   (3) the shown waiting shape and the shape put down are the same pixels, made the same way; (4) the same corners, box,
   mirroring, width, fill style, colors and smoothing always give the same pixels: the corners come from exact whole-number
@@ -191,8 +207,12 @@ same width, fill style, colors and smoothing, closed.
 - AS-12 (REQ-0043-15) Given each language, Then "Shapes", "Shape", its hint, the 19 names and the announcements are translated (no English left), and Help names Shapes and not the three old tools | Verified by: automated (ui)
 - AS-13 (REQ-0043-06, REQ-0043-07) Given Rectangle and the keyboard marker on the canvas, When Space is held, the marker moved by 5 and 3, and Space released, Then a rectangle waits with handles; When Space is held inside its box and Right pressed twice, Then the shape moves by (2, 0); When Space is pressed and released away with no move, Then it is put down and nothing more waits; Given a shape waiting and no Space held, When Right, Then only the marker moves | Verified by: automated (ui)
 - AS-14 (REQ-0043-01, REQ-0043-02, REQ-0043-06, REQ-0043-16) Manual M1: JOD approves the sheet of the 19 outlines at real size, light and dark; draws each shape, moves, resizes and mirrors it, changes its color and width while it waits, and puts it down by a click away and by Enter; the toolbox and the panel look right in light and dark style and at the window's least size | Verified by: manual M1
+- AS-15 (REQ-0043-19, REQ-0043-14) Given Triangle at 400 % at display scale 1, When the user drags from (10, 10) to (20, 18) and holds the button, Then the line is shown round the 11 x 9 box and, at two times 0.3 s apart, its dashes are in the same places; When the user releases, Then a line 1 logical pixel thick lies just outside the box on each of its four sides (in logical pixels from the picture's top-left corner: the rows 39 and 76 across the columns 39 to 84, the columns 39 and 84 down the rows 39 to 76), each of its pixels white or black, with black on each side in runs of 4 logical pixels except where a dash turns a corner or meets the line's start; the box's pixels outside the triangle show the picture's white with no tint; the eight handles show over the line; When 0.3 s pass with no button held, Then the black dashes are in other places; Given a handle drag held, or animations off, Then at two times 0.3 s apart they are in the same places, with animations off the first dash at the box's top-left corner; When the zoom becomes 800 %, Then the line is 2 logical pixels thick just outside the box, its dashes and gaps 8 long; Given a shape waiting in (35, 25) to (45, 32), Then the line shows over the canvas area beyond the picture's right and bottom edges, and when the view is scrolled it keeps its place round the box; Given the first shape, When Enter, Then the picture is Polygon P through (15, 10), (20, 18), (10, 18), every picture pixel under the line's place (the columns 9 and 21, the rows 9 and 19) still white, one step; Given width 5 and a Triangle in (10, 10) to (12, 12), whose outline reaches beyond its box under the line, When Enter, Then the picture equals Polygon P there, with no pixel of the line in it; When the picture is saved as PNG and opened again, Then its pixels are those of the picture | Verified by: automated (ui, a rendered window) + manual M2 (JOD compares the line round a waiting shape with a rectangle selection's at 100 % and 800 %, light and dark)
 
 ## Edge cases
+- The dashed line round a box narrower or lower than w, or round a Smooth shape, whose soft edge may reach half a pixel beyond any
+  box (REQ-0043-05, REQ-0043-19): the shape's pixels under the line are hidden by it while it waits, and put down as computed,
+  without the line.
 - A 1 x 1 box (a drag that left its pixel and came back): every corner is the one pixel; with Sharp the w x w square of the
   drawing color at it (REQ-0011-08's Line of one point), with Smooth the disc of diameter w at its center, by coverage.
 - A box narrower or lower than w: its inner box is 1 pixel at the middle, and the outline may reach beyond the box.
@@ -215,6 +235,9 @@ same width, fill style, colors and smoothing, closed.
   each of eight handles, or a mode that picks one, is a design of its own, as is announcing the size as it changes. A keyboard
   user can move a waiting shape (Space and the arrows, REQ-0043-07), put it down or drop it, and draws the size wanted from
   the start. Known gap (JOD, 2026-11-11); also in `docs/phase2-plan.md`.
+- G2: while a shape waits with animations on, the shape is drawn again at each step of its moving dashes (12 a second): up to about
+  18 points of a core more than a selection's moving line, 32 % in all for a large Smooth shape in the isolated session (0043 Check of
+  2026-11-13, F2); no pixel changes. Also in `docs/phase2-plan.md`.
 
 ## Open questions
 None.
@@ -265,6 +288,7 @@ Scenario map.
 | AS-12 | ui `/0023-lang/as12_shapes_translated` in the 24 language runs, 0023's `as9_help_page` and 0021's `as4_help_page_text` |
 | AS-13 | ui `/0043/as13_keyboard` |
 | AS-14 | M1 (T014), the icon sheet approved (T002), ui `/0043/as16_shape_icons_at_16` |
+| AS-15 | ui `/0043/as15_line_pixels` (rendered, 400 %), `/0043/as15_line_not_in_picture` (the user's path, the saved file), M2 (T018) |
 Constitution: the pixels come from `figure.c` alone, the same call for the preview and the put-down (P7.3); the new arithmetic is whole numbers in `src/core` with its own tests and mutants; the toolbox stays one list (`tool.h`), the chosen shape one action; no thread, no cache.
 
 Risks.
@@ -273,6 +297,69 @@ Risks.
 3. Cost: a Smooth Heart (96 sides) or Oval Callout in a 10000 x 10000 box, previewed at every motion of a handle drag, against the budget "pointer event to pixels within one frame at 1920 x 1080". Measured by `perf-0043` right after the task that makes the handle drag (frames of a handle drag at 1920 x 1080 and 8000 x 8000 fit, Sharp and Smooth); a fix, if one is needed, only after that measure (P5).
 4. The migration of about 40 ui cases is wide but mechanical; a case is edited only to choose Shapes and put the shape down with Enter, never in its expected pixels. The diff of those tests is reviewed for that at the end of their task.
 5. The 10000 limit is new for the three old shapes (REQ-0043-04): a box above it was drawn before. No core test draws one; the change is visible only past 10000 pixels, as the spec says.
+
+### Change of 2026-11-13 (the waiting shape's dashed line, REQ-0043-19, AS-15; implemented 2026-11-13)
+(Opus, 2026-11-13.) Read with REQ-0013-05, REQ-0014-17 and REQ-0017-05 and the code that draws their line.
+- **One line, one drawing code.** `append_selection_outline` already draws a rectangle's ring (the white strips and `ring_dashes`)
+  for a selection being dragged out, a marked or floating one, and an open text box, choosing the box by tool. Shapes becomes a
+  third branch of that choice, reading a new `shape_line_box (self, &x, &y, &w, &h)`: the waiting box (`wait_x` .. `wait_h`, as
+  `easel_canvas_get_waiting_shape` gives it) while a shape waits, and during the first drag of Shapes, once `shape_moved`, the
+  box `easel_shape_box` makes of the drag (as `current_figure` does); FALSE otherwise, and always FALSE for Line. The thickness
+  and the dashes are `line_thickness` and `ants_phase` as for the others, so REQ-0014-17 (a) and (c) hold by construction.
+- **Movement.** `ants_active` gains a Shapes branch: active while a shape waits with no held drag (`pending && pend_shape &&
+  !pend_held`); not during the first drag (`shaping`). A keyboard press's move drag sets `pend_held` as the mouse's does (the same
+  press path, REQ-0022-10); a press that does nothing sets none. The zoom's thickness and dash length, and the count from the
+  shown box's top-left corner (mirrored or resized), come from the shared ring code at each frame. Animations off and the stepped clock are its existing tail. The timer
+  starts from the frame that draws the line (`ants_phase`), and ends itself when nothing moves, as now.
+- **No tint.** `append_selection_tint` is not changed: Shapes has no selection, so it draws nothing; a test asserts it.
+- **Order.** The snapshot order stays: the shape's preview, the grid, the picture's handles (`append_handles`), then the line,
+  then `append_selection_handles` (the shape's handles over the line, REQ-0015-01).
+- **Never in the picture.** The line is a snapshot overlay only; the put-down (`put_down_pending`) and Save read the picture's
+  buffer, which no overlay touches. Proved by AS-15's real-path case, and by a manual break written in the task's Result.
+- **Every reader** of the selection line's gate (grep `ants_active`, `append_selection_outline`): the Select and Free-Form
+  branches and the Text branch keep their conditions; the new branch is reached only with Shapes the tool. 0013's, 0014's and
+  0017's line cases (`ui-0013`, `ui-0014`, `ui-0017`) run with the task.
+- **Tests.** ui `/0043/as15_line_pixels` (a rendered window at 400 %, the scale asserted 1: the first drag held, the line round the
+  11 x 9 box the same at two clock values 0.3 s apart; after the release the four sides at the logical rows 39 and 76 and columns
+  39 and 84 from the picture's corner, every pixel white or black, black on each side, black runs of 4 away from the corners and the
+  start; no tint inside the box; a handle's navy over the line; the clock 0.3 s on, the dashes moved; a handle drag held, and a
+  keyboard move held, and animations off, the line the same at two clock values, with animations off black at the top-left; at
+  800 % the line 2 thick, runs of 8; a shape in (35, 25) to (45, 32), the line over the canvas area right of and below the picture,
+  and at the same place round the box after a scroll). ui `/0043/as15_line_not_in_picture` through the user's path: the drags by
+  the canvas's gesture, Enter by the window's key controller, Save to a PNG through `win.save` with a file set, and the file
+  opened again: the triangle's picture is Polygon P with the line's places (columns 9 and 21, rows 9 and 19) white; the width-5
+  Triangle in (10, 10) to (12, 12) equals Polygon P; in the window's picture and in the file. The process-wide animations setting
+  is set back to the test program's start value.
+- **Mutants** (ui, REQ-0043-19): the Shapes branch of the line left out; the line during the first drag left out; the dashes
+  moving during a held drag (`!pend_held` dropped); a tint drawn over the waiting box; the line under the shape's handles.
+- **Cost** (`docs/engineering.md`, the budget "pointer event to pixels within one frame"): the dashes are not clipped to the view,
+  so a 10000 x 10000 box at 100 % adds about 5000 rectangles to each frame of a handle drag. `perf-0043` is run in the task right
+  after the line exists, three runs interleaved with a build of the last commit (a worktree), the numbers recorded here.
+- Constitution: a ui-only change, one drawing path shared with the selection and the text box; no pixel of the picture changes
+  (P7.2); tests first. Risks: the cost above (fallback, if a case leaves the budget: clip the dashes to the visible area, which
+  changes no pixel shown, and measure again); none other.
+- Measured (T017, 2026-11-13, the real session, no other Easel window, load 0.2 to 1.6): `perf-0043` at `b01a2e5` (a worktree
+  build) and with the line, interleaved, three runs each; median, 90th and worst of the handle drag's events, in ms:
+
+| Case | Without the line | With the line |
+|---|---|---|
+| 1920 x 1080 at 100 %, Heart, Sharp | 16.5-16.7, 17.7-18.5, 21-22.5 | 16.7-16.8, 18.4-21, 22.1-27.9 |
+| 1920 x 1080 fitted, Heart, Sharp | 16.7, 17.5-18.2, 18.3-36.3 | 16.6-16.7, 18.2-18.6, 19-19.7 |
+| 8000 x 8000 fitted, Heart, Sharp | 16.2-16.6, 17.5-18.4, 17.7-34.7 | 16.6-16.8, 17.6-18.3, 18.9-40.6 |
+| 1920 x 1080 at 100 %, Heart, Smooth | 16.8-16.9, 17.8-29.3, 18.8-40.6 | 16.6-16.8, 17.5-17.6, 18.6-22.4 |
+| 1920 x 1080 fitted, Heart, Smooth | 24.9-33.1, 34.9-40.8, 36.4-42.6 | 17-33.4, 34.7-35.4, 36.1-36.5 |
+| 8000 x 8000 fitted, Heart, Smooth | 32-37.9, 41.1-49.6, 43.9-50.4 | 28.7-29.5, 40.5-41.8, 43.6-47.4 |
+| 1920 x 1080 at 100 %, Oval Callout, Sharp | 16.7, 17.9-18.3, 18.9-41.2 | 16.7-16.8, 18-18.9, 18.4-19.8 |
+| 1920 x 1080 fitted, Oval Callout, Sharp | 16.6-16.7, 17.7-18.6, 19.1-19.5 | 16.5-16.7, 17.9-19.2, 18-34 |
+| 8000 x 8000 fitted, Oval Callout, Sharp | 16.5-16.7, 17.6-21.4, 18.3-62.4 | 16.5-16.8, 17.8-19, 18.6-41.9 |
+| 1920 x 1080 at 100 %, Oval Callout, Smooth | 16.6-16.7, 18.2-18.5, 21.4-25.8 | 16.7-16.8, 17.7-21.6, 18.3-27.2 |
+| 1920 x 1080 fitted, Oval Callout, Smooth | 16.6-16.8, 24.5-32.9, 34.4-39.8 | 16.6, 17.8-20.7, 25.7-32 |
+| 8000 x 8000 fitted, Oval Callout, Smooth | 28.3-31.6, 40.3-48.3, 46.6-50.1 | 24.6-28.4, 39.2-43.4, 42.7-46.9 |
+
+  The line costs nothing that shows: every case of the build with it lies within the other build's spread or below it. Put-downs
+  as T007's. One case is over a frame in both builds: the fitted 1920 x 1080 Smooth Heart, median 24.9 to 33.1 ms without the line
+  and 17 to 33.4 with it, against 16.7 to 16.8 at T007 (load 0.4 to 0.9 then); its cost is the Smooth polygon's, not the line's, so
+  the Plan's fallback (clipping the dashes) would not change it. Reported to JOD; not hunted in this change.
 
 ## Tasks
 Group A: the core.
@@ -307,6 +394,53 @@ Group C: the waiting shape.
 - [x] T014 Manual M1 (AS-14) - done when JOD has drawn each shape, moved, resized and mirrored it, changed its color and width while it waits, put it down by a click away and by Enter, and looked at the toolbox and the panel in light and dark and at the least size, in the real session; his notes in the Result.
   Result: JOD, 2026-11-12, the real session: "t014 is ok" (each shape drawn, moved, resized and mirrored, its color and width changed while it waits, put down by a click away and by Enter, the toolbox and the panel in light and dark and at the least size).
 
+Change of 2026-11-13 (JOD; the waiting shape's dashed line, REQ-0043-19, AS-15). Implemented 2026-11-13 (T015 to T019).
+- [x] T015 The line round a waiting shape (REQ-0043-19, REQ-0043-14; AS-15 pixels) - done when ui `/0043/as15_line_pixels` is red
+  first (no line round the box) and green after `shape_line_box`, the Shapes branch of `append_selection_outline` and of
+  `ants_active`; the five ui mutants killed; `ui-0043`, `ui-0013`, `ui-0014`, `ui-0017` and core and io green; `--lint` 0 stale;
+  warning-free
+  Result: red first: `/0043/as15_line_pixels` failed at the first drag's line (`the line at (39, 39), its pixel 0: 0xffffffff, not
+  0xff000000`: nothing round the box). Built: `shape_line_box` (the waiting box, or the first drag's once it has left its pixel) as the
+  Shapes branch of `append_selection_outline`'s choice of box, and a Shapes branch of `ants_active` (a shape waits, no drag held, no
+  first drag). Case `/0043/as15_line_pixels`, scale 1 asserted: a Triangle from (10, 10) to (20, 18) at 400 %; the first drag held, the
+  whole line round the 11 x 9 box (164 pixels, each the pattern's black or white from the top-left corner) at two clock values 0.3 s
+  apart; released, animations off, the same 164 pixels, a box pixel off the triangle exactly white (no tint); animations on, the top side
+  changed after 0.3 s; held the same during a handle press and a keyboard press (Space) inside the box, changed during a secondary press
+  on the shape; a navy handle pixel on the top side's row; at 800 % the 656 pixels of a line 2 thick with dashes of 8; a 600 x 400
+  picture at 400 %, the shape in (591, 393) to (601, 400), scrolled to its end with overlay scroll bars off: the 156 pixels, 91 of them
+  past the picture's edges, then after a scroll of (20, 12) the visible part in its new place, read 16 pixels inside the view's edges
+  (GTK shades them where the picture goes on). Mutants, 5 of 5 killed (`tests/mutants.txt`): no line for a waiting shape, none in the
+  first drag, dashes moving during a held drag, a tint over the box, the line over the handles. `ui-0013`, `ui-0014`, `ui-0017`,
+  `ui-0043` green; core and io 52 of 52; `--lint` 1631, 0 stale; warning-free.
+- [x] T016 Never in the picture (REQ-0043-19, REQ-0043-14; AS-15 put-down and file) - done when ui `/0043/as15_line_not_in_picture`
+  (the user's path: drag, Enter, Save, the file opened again) passes; likely to pass at once, since the line is an overlay only:
+  its Result names the manual break that makes it red (the line's places written into the picture at the put-down) and that run
+  Result: characterization, as the task said: the line is drawn by the snapshot only, so `/0043/as15_line_not_in_picture` passed at its
+  first run. The break that makes it red: in `put_down_pending`, after the shape's `easel_figure_apply_capped`, the line's left side
+  (the column `wait_x - 1`, the box's rows) written black into the picture; the case alone failed at the first put-down
+  (`assert_same_pixels`, -255), and passed again with the line taken out (the full `ui-0043` stops earlier on that break, at
+  `as4_shift_square_box`'s count of black pixels). Case: at 400 %, the picture given a file first; a Triangle dragged from (10, 10) to
+  (20, 18), the line drawn (a frame waited for), Enter by the window's keys: Polygon P, the columns 9 and 21 and the rows 9 and 19 white;
+  Undo; "5 pixels" clicked; a Triangle in (10, 10) to (12, 12) (its outline asserted to reach the column 9), Enter: Polygon P; Save
+  (no dialog), the file opened in a second window: the same pixels. `ui-0043` and core and io 52 of 52 green; warning-free.
+- [x] T017 Measure (the budget "pointer event to pixels within one frame") - done when `perf-0043`, three runs interleaved with a
+  build of the last commit, is recorded in the Plan, every 1920 x 1080 case within the budget, or the fallback of the Plan's risk
+  is taken and measured again
+  Result: `perf-0043` at `b01a2e5` and with the line, three runs each interleaved (`.scratch/perf-0043-ab.sh`), numbers in the Plan. No
+  cost from the line; the fallback not taken. The fitted 1920 x 1080 Smooth Heart is over a frame in both builds at this run's load
+  (reported to JOD).
+- [x] T018 Manual M2 (AS-15) - done when JOD has drawn shapes in the real session at 100 %, 400 % and 800 %, light and dark, and
+  seen the line move while a shape waits, stand still while it is dragged and with animations off, and leave nothing after Enter;
+  his words in the Result
+  Result: JOD, 2026-11-13, the real session: "i checked, all is good. i see the flowing boarer." (shapes drawn, the line against a
+  selection's at 100 % and 800 %, light and dark, standing still during drags and with animations off, nothing left after the put-down).
+- [x] T019 Gate of the change - done when one `tools/mutate.sh --core` run, `spec.sh lint` and `--names 0043`, `ui-0043` and core
+  and io green, the Plan's map gains AS-15 by the names as built, and the change is marked implemented in the spec and the INDEX
+  Result: `tools/mutate.sh --core`: 623 mutants, 619 killed, 0 killed by crash, 0 inconclusive, 3 survived, 0 errors, 1 accepted
+  (225 s); the survivors are the three accepted before (REQ-0037-02, REQ-0038-03, REQ-0041-06). `spec.sh lint` and `--names 0043` ok;
+  `ui-0043` and core and io 52 of 52 green; warning-free; the map's AS-15 row names the cases as built; the spec and the INDEX say
+  implemented.
+
 ## Check
 - Date and commit: 2026-11-12, on `8e08fc3` with the uncommitted work of T001 to T014 and the six fixes below (about 50 changed files; `src/core/shapes.{c,h}`, `tests/core/test-shapes.c`, `tests/perf/perf-0043.c`, `tools/shape-icons.py` and 16 icons new).
 - Tests: `tools/isolated.sh meson test` 146 of 146 before the fixes and 146 of 146 after them; the scale 2 list 5 of 5. The cases of this feature: core `test-shapes` (11 cases); ui `/0043/*`: `as1_toolbox`, `as1_popover`, `as4_shift_square_box`, `as2_waits_then_enter`, `as7_esc_undo_redo`, `as6_put_down_sites`, `as4_move_resize_mirror`, `as9_handles_over_picture_handles`, `as5_options_while_waiting`, `as6_press_away`, `as8_during_a_drag`, `as13_keyboard`, `as10_memory`, `as11_shown_is_put_down`, `as16_shape_icons_at_16`, `check_findings`; `/0043-a11y/as1_shape_button_name`, `/0043-long/as1_least_size`, `/0023-lang/as12_shapes_translated` in the 24 language runs; `perf-0043`.
@@ -325,3 +459,40 @@ Findings (a review agent read the diff and the spec blind; each checked in the c
 - F6 (fixed, REQ-0043-03): after Enter or Esc ended a shape under a still pointer, the move cursor stayed until the pointer moved. Ending a waiting shape now drops its hover and shows the tool's crosshair (a picture handle under the pointer gets its own cursor at the next motion).
 - F7 (checked, none): the core's arithmetic (p(u, N) below 10 000 000, the 10000 limit, the inset), the frees on each failure path, one undo step per put-down, the press order (a shape's handle, its box, a picture handle, away) and every user-visible string against the spec were read by the agent and by me; nothing more found.
 - Known gaps: G1 (above). Not tested, sharing a tested path: Quit, Open, Save As and Paste From put a shape down through the same `easel_canvas_put_down` as Save and New (tested); the swap and the color chooser set the colors through the palette's path (tested); Enter on the Shape button opens the popover as GTK's own menu button does (the probe and M1).
+
+### Check of the change of 2026-11-13 (REQ-0043-19, the dashed line)
+- Date and commit: 2026-11-13, on `b01a2e5` with the change uncommitted (`src/ui/canvas.c`, `tests/ui/test-window.c`, `tests/mutants.txt`, the
+  docs).
+- Tests: `tools/isolated.sh meson test` 144 of 146 at first (F1), 146 of 146 after its fix; the scale 2 list 5 of 5. The cases of the change:
+  `/0043/as15_line_pixels`, `/0043/as15_line_not_in_picture`, `/0043/check_line_findings` (F3).
+- Mutants: `tools/mutate.sh --core` (T019): 623 mutants, 619 killed, 0 killed by crash, 0 inconclusive, 3 survived, 0 errors, 1 accepted
+  (225 s); survivors the three accepted before (REQ-0037-02, REQ-0038-03, REQ-0041-06). REQ-0043-19 by id: 7 mutants, 7 killed (the five of
+  T015 and the two of F3). `--lint` 1633, 0 stale.
+- Warnings: 0. Lint and `--names 0043` clean; `tools/spec.sh status`: 19 requirements, 15 scenarios, 19 of 19 tasks.
+- Results: T015 red first; T016 characterization, proved by the break its Result names (the line written into the picture at the
+  put-down); T017 measured; T018 JOD's words; T019 the gate.
+
+Findings (a review agent read the diff and the spec blind; each checked in the code):
+- F1 (fixed, tests): two cases that compare the view during a shape's drag with the put-down, `/0010/as4_preview_equals_drawing` and
+  `/0039/as7_preview_is_put_down`, failed in the full run: the line of the first drag is in the render now. The Plan listed the readers of
+  the line's code, not the tests that compare renders of a shape drag, and T015 ran only 0013, 0014, 0017 and 0043. Both now hide the
+  guides (the shape's pixels are their subject; AS-15 is the line's).
+- F2 (accepted, known gap G2): while a shape waits with animations on, each step of the dashes (12 a second) draws the shape again; the
+  preview keeps nothing between frames. Measured idle in the isolated session (cairo renderer, 3 s, a temporary probe not kept): a
+  1920 x 1080 fitted Heart, width 5, Outline and fill, 32 % of a core Smooth and 19 % Sharp, a 200 x 150 one 17 %; a marked selection of the
+  same size, whose dashes move since 0014, 14 % and 12 %; with animations off 0 % for all. The moving line's own cost is a selection's, as
+  REQ-0014-17 (c) chose; the shape's redraw adds up to about 18 points of a core. No pixel is wrong; recorded as G2 and in
+  `docs/phase2-plan.md`.
+- F3 (fixed, tests): cases no test observed, the code right: no line while the first drag has not left its pixel; none for Line's drag;
+  the timer starting by itself at the release and ending by itself after Enter, the line gone; the line over the picture's resize handle.
+  `/0043/check_line_findings` (passed at its first run, characterization) and two mutants that it kills: the "left its pixel" check
+  dropped, the picture's handles drawn over the line.
+- F4 (checked, as the spec says): at the press of a move or handle drag the dashes go to their start (phase 0) and at the release back to
+  the clock's phase, as a selection's do (REQ-0014-17 (c)); a shape that cannot be shown in its first drag (no memory) shows the line
+  round its box until the release's dialog, as REQ-0043-19 says.
+- F5 (checked, none): the states of REQ-0043-19 (first drag, waiting, move and handle drags by the mouse and the keyboard, a press that
+  does nothing, mirrored, past the picture, scroll, zoom, put-down, drop, refused put-down), the tint, the drawing order, and the picture,
+  the saved file and the thumbnail (`easel_canvas_compose_view` draws no line) read in the code by the agent and by me.
+
+Verdict: the change meets REQ-0043-19 and AS-15; F1 and F3 fixed in the tests, F2 accepted as G2.
+

@@ -2095,7 +2095,12 @@ ants_active (EaselCanvas *self)
 
   if (self->guides_hidden)
     return FALSE;
-  if (self->tool == EASEL_TOOL_TEXT)
+  if (self->tool == EASEL_TOOL_SHAPES)
+    {
+      if (!(self->pending && self->pend_shape) || self->pend_held || self->shaping)
+        return FALSE;                           /* no shape waits, or a drag of it is held (REQ-0043-19) */
+    }
+  else if (self->tool == EASEL_TOOL_TEXT)
     {
       if (!easel_canvas_text_box (self, &x, &y, &w, &h) || self->text_drag != 0 || self->text_selecting || self->selecting)
         return FALSE;                           /* no box, or a button held on it (a move, a resize, a selection of its text) */
@@ -2411,6 +2416,22 @@ append_selection_tint (EaselCanvas *self, GtkSnapshot *snapshot)
       }
 }
 
+/* The box a Shapes line goes round (REQ-0043-19): a waiting shape's, or that of its first drag once it has left its press's pixel. */
+static gboolean
+shape_line_box (EaselCanvas *self, int *x, int *y, int *w, int *h)
+{
+  if (self->tool != EASEL_TOOL_SHAPES)
+    return FALSE;
+  if (self->shaping)
+    {
+      if (!self->shape_moved)
+        return FALSE;
+      easel_shape_box (self->shape_x0, self->shape_y0, self->shape_x1, self->shape_y1, FALSE, x, y, w, h);
+      return TRUE;
+    }
+  return easel_canvas_get_waiting_shape (self, x, y, w, h);
+}
+
 /* The selection's outline (REQ-0013-05, REQ-0014-17): a ring just outside its pixels, white, with black dashes counted along it as
    one line clockwise from its top-left corner; drawn as rectangles, so that its edges fall on whole pixels with no blended corner. */
 static void
@@ -2440,6 +2461,7 @@ append_selection_outline (EaselCanvas *self, GtkSnapshot *snapshot)
       return;
     }
   if (self->selecting ? !drag_rect (self, &x, &y, &w, &h)
+      : self->tool == EASEL_TOOL_SHAPES ? !shape_line_box (self, &x, &y, &w, &h)
       : self->tool == EASEL_TOOL_TEXT ? !easel_canvas_text_box (self, &x, &y, &w, &h)
                                       : !easel_canvas_get_selection (self, &x, &y, &w, &h, &floating))
     return;
@@ -2456,7 +2478,7 @@ append_selection_outline (EaselCanvas *self, GtkSnapshot *snapshot)
     for (int i = 0; i < 4; i++)
       gtk_snapshot_append_color (snapshot, &white, &GRAPHENE_RECT_INIT ((float) ring[i].x, (float) ring[i].y, (float) ring[i].w, (float) ring[i].h));
     {
-      /* A text box's dashes move as a selection's (REQ-0017-05) */
+      /* A text box's and a waiting shape's dashes move as a selection's (REQ-0017-05, REQ-0043-19) */
       double phase = ants_phase (self, 2 * d);
 
       for (int i = 0; i < 4; i++)

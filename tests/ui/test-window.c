@@ -8065,6 +8065,7 @@ as4_preview_equals_drawing (void)
       g_action_group_change_action_state (G_ACTION_GROUP (win), "line-width", g_variant_new_int32 (3));
       use_tool (win, "ellipse");
       wait_for_layout (win);
+      easel_canvas_set_guides_hidden (canvas, TRUE);     /* the shape's pixels are the subject, not its dashed line (0043 AS-15) */
       /* From the view's center to 120 view pixels right and 80 down. */
       x = view_to_canvas (view.h, gtk_adjustment_get_page_size (view.h) / 2);
       y = view_to_canvas (view.v, gtk_adjustment_get_page_size (view.v) / 2);
@@ -39630,6 +39631,7 @@ smooth_as7_preview_is_put_down (void)
 
   set_shape_options (win, 2, 1);
   easel_canvas_set_colors (canvas, 0xFF000000u, 0xFFFF0000u);
+  easel_canvas_set_guides_hidden (canvas, TRUE);       /* the shape's pixels are the subject, not its dashed line (0043 AS-15) */
   set_smooth (win, TRUE);
   f.smooth = true;
   g_assert_cmpint (easel_figure_apply (want, NULL, &f, 0xFF000000u, 0xFFFF0000u, NULL), ==, EASEL_FIGURE_DONE);
@@ -43975,6 +43977,396 @@ as13_shape_keyboard (void)
   close_windows ();
 }
 
+/* ---- 0043, change of 2026-11-13: the dashed line round a waiting shape ---- */
+
+/* The color of the line's pixel k counted along it from its start, with the first dash there: black for d, white for d. */
+static uint32_t
+ring_color_at (int k, int d)
+{
+  return (k / d) % 2 == 0 ? 0xFF000000u : 0xFFFFFFFFu;
+}
+
+/* The line of a rectangle (REQ-0013-05, REQ-0014-17 a, c with its first dash at the start) just outside the box (x, y, bw, bh) of
+   picture pixels, z logical pixels per picture pixel, t thick, read from the render (scale 1): the top left to right, the right side
+   down, the bottom right to left, the left side up, one line. Only the pixels inside the view (the scrolled window's area in the
+   render, `view`) are read; returns how many were read, and in *beyond those right of or below the picture of pw x ph. */
+static int
+assert_box_ring (const uint32_t *px, int w, const graphene_rect_t *view, int cx, int cy, int x, int y, int bw, int bh, int z, int t,
+                 int pw, int ph, int *beyond_out)
+{
+  int checked = 0;
+
+  int X0 = cx + x * z, X1 = cx + (x + bw) * z, Y0 = cy + y * z, Y1 = cy + (y + bh) * z;
+  int wl = X1 - X0 + 2 * t, hl = Y1 - Y0, d = 4 * t, beyond = 0;
+  int vx0 = (int) ceil (view->origin.x), vy0 = (int) ceil (view->origin.y);
+  int vx1 = (int) floor (view->origin.x + view->size.width), vy1 = (int) floor (view->origin.y + view->size.height);
+
+#define RING_AT(X, Y, K)                                                                                                    \
+  do                                                                                                                        \
+    {                                                                                                                       \
+      int X_ = (X), Y_ = (Y);                                                                                               \
+      if (X_ >= vx0 && Y_ >= vy0 && X_ < vx1 && Y_ < vy1)                                                                   \
+        {                                                                                                                   \
+          checked++;                                                                                                        \
+          if (px[(gsize) Y_ * w + X_] != ring_color_at ((K), d))                                                            \
+            g_test_message ("the line at (%d, %d), its pixel %d", X_ - cx, Y_ - cy, (K));                                   \
+          g_assert_cmphex (px[(gsize) Y_ * w + X_], ==, ring_color_at ((K), d));                                            \
+          if (X_ - cx >= pw * z || Y_ - cy >= ph * z)                                                                       \
+            beyond++;                                                                                                       \
+        }                                                                                                                   \
+    }                                                                                                                       \
+  while (0)
+  for (int r = 0; r < t; r++)
+    {
+      for (int i = 0; i < wl; i++)
+        RING_AT (X0 - t + i, Y0 - t + r, i);                         /* the top, left to right */
+      for (int i = 0; i < hl; i++)
+        RING_AT (X1 + r, Y0 + i, wl + i);                            /* the right side, down */
+      for (int j = 0; j < wl; j++)
+        RING_AT (X1 + t - 1 - j, Y1 + r, wl + hl + j);               /* the bottom, right to left */
+      for (int j = 0; j < hl; j++)
+        RING_AT (X0 - t + r, Y1 - 1 - j, 2 * wl + hl + j);           /* the left side, up */
+    }
+#undef RING_AT
+  if (beyond_out != NULL)
+    *beyond_out = beyond;
+  return checked;
+}
+
+/* The area the picture is seen in, in the window's render (scale 1): the scrolled window's child, its scroll bars beside it and not
+   over it, so that what is read is the canvas's own drawing. */
+static graphene_rect_t
+view_area (EaselWindow *win)
+{
+  GtkScrolledWindow *scroller = GTK_SCROLLED_WINDOW (view_of (win).scroller);
+  graphene_rect_t r;
+
+  gtk_scrolled_window_set_overlay_scrolling (scroller, FALSE);
+  wait_for_layout (win);
+  g_assert_true (gtk_widget_compute_bounds (gtk_scrolled_window_get_child (scroller), GTK_WIDGET (win), &r));
+  return r;
+}
+
+/* The render now, the dashes' clock at usec. */
+static uint32_t *
+render_at_clock (EaselWindow *win, gint64 usec, int *w, int *h, int *cx, int *cy)
+{
+  easel_canvas_set_ants_clock (easel_window_get_canvas (win), usec, FALSE);
+  gtk_widget_queue_draw (GTK_WIDGET (easel_window_get_canvas (win)));
+  wait_for_next_frame (win);
+  return render_pixels (win, w, h, cx, cy);
+}
+
+/* Whether the top side of the line round the box (x, y, bw) at z, 1 thick, is the same in two renders. */
+static gboolean
+top_line_same (const uint32_t *a, const uint32_t *b, int w, int cx, int cy, int x, int y, int bw, int z)
+{
+  for (int i = -1; i <= bw * z; i++)
+    if (a[(gsize) (cy + y * z - 1) * w + cx + x * z + i] != b[(gsize) (cy + y * z - 1) * w + cx + x * z + i])
+      return FALSE;
+  return TRUE;
+}
+
+/* AS-15 (REQ-0043-19, REQ-0043-14), the line's pixels in a rendered window at 400 %, scale 1: a Triangle dragged from (10, 10) to
+   (20, 18); the line round the 11 x 9 box, standing still during the first drag; after the release on all four sides, black and white
+   only, with no tint inside the box and the handles over it; its dashes moving with no button held, standing still during a handle
+   drag, a keyboard move and with animations off; moving during a press that does nothing; 2 thick at 800 %; over the canvas area
+   beyond the picture, and in its place round the box after a scroll. */
+static void
+as15_shape_line_pixels (void)
+{
+  const gint64 t0 = 10 * G_USEC_PER_SEC, t1 = t0 + 3 * G_USEC_PER_SEC / 10;
+  EaselWindow *win = window_of (40, 30);
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  View view = view_of (win);
+  g_autofree uint32_t *a = NULL, *b = NULL;
+  graphene_rect_t area;
+  int w, h, cx, cy, beyond;
+  double x, y;
+
+  g_assert_cmpfloat (easel_canvas_get_scale (canvas), ==, 1);
+  easel_canvas_set_zoom (canvas, 400);
+  wait_for_layout (win);
+  gtk_adjustment_set_value (view.h, 0);
+  gtk_adjustment_set_value (view.v, 0);
+  wait_for_layout (win);
+  g_assert_cmpint (easel_canvas_get_zoom (canvas), ==, 400);
+  area = view_area (win);
+  use_shape (win, "triangle");
+  easel_canvas_set_selection_handles_shown (canvas, FALSE);       /* the line is the subject; the handles over it are checked below */
+  animations (TRUE);
+  /* the first drag held: the line round the box, standing still */
+  shape_press_move (win, 1, 10, 10, 20, 18);
+  a = render_at_clock (win, t0, &w, &h, &cx, &cy);
+  g_assert_cmpint (assert_box_ring (a, w, &area, cx, cy, 10, 10, 11, 9, 4, 1, 40, 30, NULL), ==, 164);
+  g_clear_pointer (&a, g_free);
+  a = render_at_clock (win, t1, &w, &h, &cx, &cy);
+  g_assert_cmpint (assert_box_ring (a, w, &area, cx, cy, 10, 10, 11, 9, 4, 1, 40, 30, NULL), ==, 164);
+  g_clear_pointer (&a, g_free);
+  shape_release (win, 1);
+  assert_waiting_box (canvas, 10, 10, 11, 9);
+  /* waiting, animations off: the four sides, the first dash at the start; no tint inside the box */
+  animations (FALSE);
+  a = render_at_clock (win, t0, &w, &h, &cx, &cy);
+  g_assert_cmpint (assert_box_ring (a, w, &area, cx, cy, 10, 10, 11, 9, 4, 1, 40, 30, NULL), ==, 164);
+  g_assert_cmphex (a[(gsize) (cy + 11 * 4 + 1) * w + cx + 11 * 4 + 1], ==, 0xFFFFFFFFu);
+  g_clear_pointer (&a, g_free);
+  b = render_at_clock (win, t1, &w, &h, &cx, &cy);
+  g_assert_cmpint (assert_box_ring (b, w, &area, cx, cy, 10, 10, 11, 9, 4, 1, 40, 30, NULL), ==, 164);
+  g_clear_pointer (&b, g_free);
+  /* animations on, no button held: 0.3 s later the dashes are in other places */
+  animations (TRUE);
+  a = render_at_clock (win, t0, &w, &h, &cx, &cy);
+  b = render_at_clock (win, t1, &w, &h, &cx, &cy);
+  g_assert_false (top_line_same (a, b, w, cx, cy, 10, 10, 11, 4));
+  g_clear_pointer (&a, g_free);
+  g_clear_pointer (&b, g_free);
+  /* a handle drag held: they stand still */
+  sel_handle_center (canvas, EASEL_SEL_HANDLE_R, &x, &y);
+  easel_canvas_press (canvas, 1, x, y);
+  a = render_at_clock (win, t0, &w, &h, &cx, &cy);
+  b = render_at_clock (win, t1, &w, &h, &cx, &cy);
+  g_assert_true (top_line_same (a, b, w, cx, cy, 10, 10, 11, 4));
+  g_clear_pointer (&a, g_free);
+  g_clear_pointer (&b, g_free);
+  easel_canvas_release (canvas, 1);
+  assert_waiting_box (canvas, 10, 10, 11, 9);
+  /* a secondary press on the shape does nothing: they keep moving */
+  canvas_point (win, 12.5, 14.5, &x, &y);
+  easel_canvas_press (canvas, 3, x, y);
+  a = render_at_clock (win, t0, &w, &h, &cx, &cy);
+  b = render_at_clock (win, t1, &w, &h, &cx, &cy);
+  g_assert_false (top_line_same (a, b, w, cx, cy, 10, 10, 11, 4));
+  g_clear_pointer (&a, g_free);
+  g_clear_pointer (&b, g_free);
+  easel_canvas_release (canvas, 3);
+  /* a keyboard press held inside the box (a move drag): they stand still */
+  gtk_widget_grab_focus (GTK_WIDGET (canvas));
+  easel_canvas_marker_set (canvas, 12, 14);
+  tap (win, GDK_KEY_space, 0);
+  a = render_at_clock (win, t0, &w, &h, &cx, &cy);
+  b = render_at_clock (win, t1, &w, &h, &cx, &cy);
+  g_assert_true (top_line_same (a, b, w, cx, cy, 10, 10, 11, 4));
+  g_clear_pointer (&a, g_free);
+  g_clear_pointer (&b, g_free);
+  tap (win, GDK_KEY_space, 0);
+  assert_waiting_box (canvas, 10, 10, 11, 9);
+  g_assert_true (shape_waits (canvas));
+  /* the handles lie over the line */
+  animations (FALSE);
+  easel_canvas_set_selection_handles_shown (canvas, TRUE);
+  sel_handle_center (canvas, EASEL_SEL_HANDLE_T, &x, &y);
+  a = render_at_clock (win, t0, &w, &h, &cx, &cy);
+  g_assert_cmphex (a[(gsize) (cy + 10 * 4 - 1) * w + cx + (int) x], ==, 0xFF000080u);
+  g_clear_pointer (&a, g_free);
+  easel_canvas_set_selection_handles_shown (canvas, FALSE);
+  /* 800 %: 2 thick, dashes of 8 */
+  easel_canvas_set_zoom (canvas, 800);
+  wait_for_layout (win);
+  gtk_adjustment_set_value (view.h, 0);
+  gtk_adjustment_set_value (view.v, 0);
+  wait_for_layout (win);
+  g_assert_cmpint (easel_canvas_get_zoom (canvas), ==, 800);
+  area = view_area (win);
+  a = render_at_clock (win, t0, &w, &h, &cx, &cy);
+  g_assert_cmpint (assert_box_ring (a, w, &area, cx, cy, 10, 10, 11, 9, 8, 2, 40, 30, NULL), ==, 2 * (2 * 92 + 2 * 72));
+  g_clear_pointer (&a, g_free);
+  close_windows ();
+
+  /* a box past the picture's right and bottom edges (its line in the view's margin there), in a picture that scrolls at 400 % */
+  win = window_of (600, 400);
+  canvas = easel_window_get_canvas (win);
+  view = view_of (win);
+  easel_canvas_set_zoom (canvas, 400);
+  wait_for_layout (win);
+  use_shape (win, "triangle");
+  easel_canvas_set_selection_handles_shown (canvas, FALSE);
+  shape_press_move (win, 1, 591, 393, 601, 400);
+  shape_release (win, 1);
+  assert_waiting_box (canvas, 591, 393, 11, 8);
+  area = view_area (win);
+  gtk_adjustment_set_value (view.h, gtk_adjustment_get_upper (view.h) - gtk_adjustment_get_page_size (view.h));
+  gtk_adjustment_set_value (view.v, gtk_adjustment_get_upper (view.v) - gtk_adjustment_get_page_size (view.v));
+  wait_for_layout (win);
+  a = render_at_clock (win, t0, &w, &h, &cx, &cy);
+  g_assert_cmpint (assert_box_ring (a, w, &area, cx, cy, 591, 393, 11, 8, 4, 1, 600, 400, &beyond), ==, 2 * 46 + 2 * 32);
+  g_assert_cmpint (beyond, ==, 9 + 32 + 46 + 4);   /* past the picture's 2400 x 1600: 9 of the top, the right side, the bottom, 4 of the left */
+  g_clear_pointer (&a, g_free);
+  {
+    int cx0 = cx, cy0 = cy;
+
+    /* (GTK shades the view's edges where the picture goes on: only the pixels 16 or more inside them are read) */
+    graphene_rect_t inner = GRAPHENE_RECT_INIT (area.origin.x + 16, area.origin.y + 16, area.size.width - 32, area.size.height - 32);
+
+    gtk_adjustment_set_value (view.h, gtk_adjustment_get_value (view.h) - 20);
+    gtk_adjustment_set_value (view.v, gtk_adjustment_get_value (view.v) - 12);
+    wait_for_layout (win);
+    a = render_at_clock (win, t0, &w, &h, &cx, &cy);
+    g_assert_cmpint (cx, ==, cx0 + 20);
+    g_assert_cmpint (cy, ==, cy0 + 12);
+    g_assert_cmpint (assert_box_ring (a, w, &inner, cx, cy, 591, 393, 11, 8, 4, 1, 600, 400, NULL), >, 10);
+  }
+  easel_canvas_set_ants_clock (canvas, 0, FALSE);
+  close_windows ();
+  animations (FALSE);                          /* back to the test program's start (off) */
+}
+
+/* AS-15 (REQ-0043-19, REQ-0043-14), the line is never in the picture, through the user's path at 400 %: a Triangle dragged from
+   (10, 10) to (20, 18) and put down by Enter is Polygon P, the pixels under the line's place (the columns 9 and 21, the rows 9 and 19)
+   still white; a width-5 Triangle in (10, 10) to (12, 12), whose outline reaches under the line, put down by Enter, is Polygon P; saved
+   by Save and opened again, the file holds the picture's pixels. */
+static void
+as15_shape_line_not_in_picture (void)
+{
+  EaselWindow *win = window_of (40, 30), *again;
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  const EaselImage *img = easel_window_get_picture (win);
+  g_autoptr (EaselImage) white = distinct_copy_of (img), want = NULL, want5 = NULL;
+  g_autofree char *dir = g_dir_make_tmp ("easel-ui-XXXXXX", NULL);
+  g_autofree char *path = g_build_filename (dir, "line.png", NULL);
+
+  g_assert_true (easel_window_save_to (win, path));               /* the picture has its file: Save writes it with no dialog */
+  easel_canvas_set_zoom (canvas, 400);
+  wait_for_layout (win);
+  g_assert_cmpint (easel_canvas_get_zoom (canvas), ==, 400);
+  use_shape (win, "triangle");
+  shape_press_move (win, 1, 10, 10, 20, 18);
+  shape_release (win, 1);
+  assert_waiting_box (canvas, 10, 10, 11, 9);
+  wait_for_next_frame (win);                                       /* the line has been drawn */
+  g_assert_true (key_taken (win, GDK_KEY_Return, 0));
+  g_assert_false (shape_waits (canvas));
+  want = shape_drawn (white, EASEL_SHAPE_KIND_TRIANGLE, 10, 10, 11, 9, 1, EASEL_FIGURE_OUTLINE, FALSE);
+  assert_same_pixels (img, want);
+  for (int i = 9; i <= 21; i++)
+    {
+      g_assert_cmphex (easel_image_get (img, i, 9), ==, 0xFFFFFFFFu);
+      g_assert_cmphex (easel_image_get (img, i, 19), ==, 0xFFFFFFFFu);
+    }
+  for (int j = 9; j <= 19; j++)
+    {
+      g_assert_cmphex (easel_image_get (img, 9, j), ==, 0xFFFFFFFFu);
+      g_assert_cmphex (easel_image_get (img, 21, j), ==, 0xFFFFFFFFu);
+    }
+  /* width 5 in a 3 x 3 box: the outline reaches under the line */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "undo", NULL);
+  assert_same_pixels (img, white);
+  g_signal_emit_by_name (find_mapped_by_tooltip (GTK_WIDGET (win), "5 pixels"), "clicked");
+  g_assert_cmpint (int_state (win, "line-width"), ==, 5);
+  shape_press_move (win, 1, 10, 10, 12, 12);
+  shape_release (win, 1);
+  assert_waiting_box (canvas, 10, 10, 3, 3);
+  wait_for_next_frame (win);
+  g_assert_true (key_taken (win, GDK_KEY_Return, 0));
+  want5 = shape_drawn (white, EASEL_SHAPE_KIND_TRIANGLE, 10, 10, 3, 3, 5, EASEL_FIGURE_OUTLINE, FALSE);
+  g_assert_cmphex (easel_image_get (want5, 9, 11), ==, 0xFF000000u);   /* the outline does reach the line's column */
+  assert_same_pixels (img, want5);
+  /* Save, and the file opened again */
+  g_action_group_activate_action (G_ACTION_GROUP (win), "save", NULL);
+  g_assert_false (easel_window_get_modified (win));
+  again = start_window ();
+  open_and_wait (again, path);
+  assert_same_pixels (easel_window_get_picture (again), want5);
+  close_windows ();
+  g_unlink (path);
+  g_rmdir (dir);
+}
+
+/* The check of the change of 2026-11-13 (REQ-0043-19): no line while the first drag has not left its press's pixel, nor during a Line
+   drag; the dashes' timer starts by itself when a shape starts waiting and ends by itself when it is put down, the line then gone; the
+   line lies over the picture's resize handle. */
+static void
+check_shape_line_findings (void)
+{
+  EaselWindow *win = window_of (40, 30);
+  EaselCanvas *canvas = easel_window_get_canvas (win);
+  View view = view_of (win);
+  g_autofree uint32_t *a = NULL;
+  int w, h, cx, cy;
+
+  easel_canvas_set_zoom (canvas, 400);
+  wait_for_layout (win);
+  gtk_adjustment_set_value (view.h, 0);
+  gtk_adjustment_set_value (view.v, 0);
+  wait_for_layout (win);
+  g_assert_cmpint (easel_canvas_get_zoom (canvas), ==, 400);
+  easel_canvas_set_selection_handles_shown (canvas, FALSE);
+  animations (FALSE);
+  /* a press that has not left its pixel: no line (the corner (39, 39) of the line a box at (10, 10) would have) */
+  use_shape (win, "triangle");
+  shape_press_move (win, 1, 10, 10, 10, 10);
+  a = render_at_clock (win, 0, &w, &h, &cx, &cy);
+  g_assert_cmphex (a[(gsize) (cy + 39) * w + cx + 39], ==, 0xFFFFFFFFu);
+  g_clear_pointer (&a, g_free);
+  shape_release (win, 1);
+  g_assert_false (shape_waits (canvas));
+  /* the same drag that leaves it: the line's first dash there (the case's reference) */
+  shape_press_move (win, 1, 10, 10, 20, 18);
+  a = render_at_clock (win, 0, &w, &h, &cx, &cy);
+  g_assert_cmphex (a[(gsize) (cy + 39) * w + cx + 39], ==, 0xFF000000u);
+  g_clear_pointer (&a, g_free);
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+  shape_release (win, 1);
+  g_assert_false (shape_waits (canvas));
+  /* Line's drag: no line */
+  use_tool (win, "line");
+  shape_press_move (win, 1, 10, 10, 20, 18);
+  a = render_at_clock (win, 0, &w, &h, &cx, &cy);
+  g_assert_cmphex (a[(gsize) (cy + 39) * w + cx + 39], ==, 0xFFFFFFFFu);
+  g_clear_pointer (&a, g_free);
+  g_assert_true (key_taken (win, GDK_KEY_Escape, 0));
+  shape_release (win, 1);
+  /* the timer starts and ends by itself; after Enter the line is gone */
+  use_shape (win, "triangle");
+  animations (TRUE);
+  easel_canvas_set_ants_clock (canvas, 0, FALSE);
+  g_assert_false (easel_canvas_get_ants_running (canvas));
+  shape_press_move (win, 1, 10, 10, 20, 18);
+  shape_release (win, 1);
+  g_assert_true (shape_waits (canvas));
+  wait_for_next_frame (win);
+  g_assert_true (easel_canvas_get_ants_running (canvas));
+  g_assert_true (key_taken (win, GDK_KEY_Return, 0));
+  g_assert_false (shape_waits (canvas));
+  run_for_ms (300);
+  g_assert_false (easel_canvas_get_ants_running (canvas));
+  animations (FALSE);
+  wait_for_next_frame (win);
+  a = render_pixels (win, &w, &h, &cx, &cy);
+  g_assert_cmphex (a[(gsize) (cy + 39) * w + cx + 39], ==, 0xFFFFFFFFu);
+  g_clear_pointer (&a, g_free);
+  close_windows ();
+
+  /* 100 %: a Rectangle in (20, 0) to (39, 29), its line's right side on the picture's right handle (navy before) */
+  win = window_of (40, 30);
+  canvas = easel_window_get_canvas (win);
+  {
+    graphene_rect_t pr;
+    int hx, hy;
+
+    use_shape (win, "rectangle");
+    wait_for_layout (win);
+    g_assert_true (easel_canvas_get_handle_rect (canvas, EASEL_HANDLE_RIGHT, &pr));
+    hx = 40;
+    hy = (int) (pr.origin.y + pr.size.height / 2);
+    g_assert_cmpfloat (pr.origin.x, <=, hx);
+    g_assert_cmpfloat (pr.origin.x + pr.size.width, >, hx);
+    wait_for_next_frame (win);
+    a = render_pixels (win, &w, &h, &cx, &cy);
+    g_assert_cmphex (a[(gsize) (cy + hy) * w + cx + hx], ==, 0xFF000080u);      /* the picture's handle, before */
+    g_clear_pointer (&a, g_free);
+    easel_canvas_set_selection_handles_shown (canvas, FALSE);
+    shape_press_move (win, 1, 20, 0, 39, 29);
+    shape_release (win, 1);
+    assert_waiting_box (canvas, 20, 0, 20, 30);
+    wait_for_next_frame (win);
+    a = render_pixels (win, &w, &h, &cx, &cy);
+    g_assert_cmphex (a[(gsize) (cy + hy) * w + cx + hx], ==, ring_color_at ((40 - 20 + 2) + hy, 4));   /* the line over it */
+    g_clear_pointer (&a, g_free);
+  }
+  close_windows ();
+}
+
 /* ---- 0043 T011: memory ---- */
 
 /* The preview's buffer for a figure as the canvas makes it (REQ-0043-13): the runs of a row, Sharp or Smooth. */
@@ -45119,6 +45511,9 @@ main (int argc, char **argv)
   g_test_add_func ("/0043/as10_memory", as10_shape_memory);
   g_test_add_func ("/0043/as11_shown_is_put_down", as11_shape_shown_is_put_down);
   g_test_add_func ("/0043/check_findings", check_shape_findings);
+  g_test_add_func ("/0043/as15_line_pixels", as15_shape_line_pixels);
+  g_test_add_func ("/0043/as15_line_not_in_picture", as15_shape_line_not_in_picture);
+  g_test_add_func ("/0043/check_line_findings", check_shape_line_findings);
   g_test_add_func ("/0043-long/as1_least_size", as1_shapes_least_size);
   g_test_add_func ("/0043/as16_shape_icons_at_16", as16_shape_icons_at_16);
   g_test_add_func ("/0042/as4_pasted_and_free_form", as4_invert_pasted_and_free_form);

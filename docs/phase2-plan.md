@@ -116,6 +116,8 @@ Order suggestion: A and B first, C after the graphics path audit, D with file in
 ## From 0043's spec (2026-11-11)
 - G1: resizing a waiting shape from the keyboard (a keyboard press never takes a handle, REQ-0022-07); its keys and
   announcements are a design of their own. A keyboard user can move, put down or drop a waiting shape.
+- `perf-0043`, the fitted 1920 x 1080 Smooth Heart's handle drag: median 16.7 to 16.8 ms on 2026-11-12, just over a frame (17 to 33 ms) under higher load on 2026-11-13, the same with and without the dashed line of REQ-0043-19: measure again at the Phase 2 gate on a quiet machine.
+- G2 (0043 Check of 2026-11-13, F2): a waiting shape is drawn again at each step of its moving dashes, 12 a second: idle, up to about 18 points of a core more than a selection's line (32 % in all, a large Smooth Heart, isolated session, cairo); a preview kept between frames whose shape, colors and view are unchanged would remove it.
 
 ## From 0041's check (2026-11-12)
 - The key with a menu open: GTK holds the popup's keys, so only a manual try (the walk of Phase 2).

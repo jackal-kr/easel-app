@@ -15427,3 +15427,87 @@ test: ui-0017
   gtk_snapshot_append_color (snapshot, &edge, &GRAPHENE_RECT_INIT ((float) (x + w), (float) y, 1.0f, (float) h));
 --- replace
   (void) edge;
+
+# ---- the waiting shape's dashed line, the change of 2026-11-13 (0043, REQ-0043-19) ----
+
+=== REQ-0043-19 no line round a waiting shape
+file: src/ui/canvas.c
+test: ui-0043
+--- find
+      : self->tool == EASEL_TOOL_SHAPES ? !shape_line_box (self, &x, &y, &w, &h)
+--- replace
+      : self->tool == EASEL_TOOL_SHAPES ? TRUE
+
+=== REQ-0043-19 no line during the first drag
+file: src/ui/canvas.c
+test: ui-0043
+--- find
+      if (!self->shape_moved)
+        return FALSE;
+      easel_shape_box (self->shape_x0, self->shape_y0, self->shape_x1, self->shape_y1, FALSE, x, y, w, h);
+--- replace
+      return FALSE;
+
+=== REQ-0043-19 the dashes move during a held drag of the shape
+file: src/ui/canvas.c
+test: ui-0043
+--- find
+      if (!(self->pending && self->pend_shape) || self->pend_held || self->shaping)
+--- replace
+      if (!(self->pending && self->pend_shape) || self->shaping)
+
+=== REQ-0043-19 a tint over the waiting shape's box
+file: src/ui/canvas.c
+test: ui-0043
+--- find
+  if (self->tool == EASEL_TOOL_TEXT)
+    {
+      /* An open box is tinted as a selection is, over its whole rectangle (REQ-0017-05) */
+--- replace
+  if (self->tool == EASEL_TOOL_SHAPES && easel_canvas_get_waiting_shape (self, &x, &y, &w, &h))
+    gtk_snapshot_append_color (snapshot, &tint, &GRAPHENE_RECT_INIT ((float) (x * l), (float) (y * l), (float) (w * l), (float) (h * l)));
+  if (self->tool == EASEL_TOOL_TEXT)
+    {
+      /* An open box is tinted as a selection is, over its whole rectangle (REQ-0017-05) */
+
+=== REQ-0043-19 the line over the shape's handles
+file: src/ui/canvas.c
+test: ui-0043
+--- find
+  if (!self->probe_no_line)
+    append_selection_outline (self, snapshot);
+  append_selection_handles (self, snapshot);
+--- replace
+  append_selection_handles (self, snapshot);
+  if (!self->probe_no_line)
+    append_selection_outline (self, snapshot);
+
+=== REQ-0043-19 the line before the first drag leaves its press's pixel
+file: src/ui/canvas.c
+test: ui-0043
+--- find
+      if (!self->shape_moved)
+        return FALSE;
+      easel_shape_box (self->shape_x0, self->shape_y0, self->shape_x1, self->shape_y1, FALSE, x, y, w, h);
+--- replace
+      easel_shape_box (self->shape_x0, self->shape_y0, self->shape_x1, self->shape_y1, FALSE, x, y, w, h);
+
+=== REQ-0043-19 the picture's handles over the line
+file: src/ui/canvas.c
+test: ui-0043
+--- find
+  append_handles (self, snapshot);                /* the picture's handles lie under the selection's pixels and tint (REQ-0015-01) */
+  append_float_outside (self, snapshot, l);
+  if (!self->probe_no_tint)
+    append_selection_tint (self, snapshot);
+  append_text_highlight (self, snapshot, l);      /* on top of the tint (REQ-0017-05) */
+  if (!self->probe_no_line)
+    append_selection_outline (self, snapshot);
+--- replace
+  append_float_outside (self, snapshot, l);
+  if (!self->probe_no_tint)
+    append_selection_tint (self, snapshot);
+  append_text_highlight (self, snapshot, l);      /* on top of the tint (REQ-0017-05) */
+  if (!self->probe_no_line)
+    append_selection_outline (self, snapshot);
+  append_handles (self, snapshot);
